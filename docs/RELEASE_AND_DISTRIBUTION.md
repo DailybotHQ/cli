@@ -1,23 +1,197 @@
 # Release & Distribution
 
-The CLI ships through three channels, all triggered by pushing a `v*` git tag:
+The CLI ships through three channels:
 
 1. **PyPI** — Python users, CI pipelines (`pip install dailybot-cli`)
 2. **Homebrew tap** — macOS users (`brew install dailybothq/tap/dailybot`)
 3. **Linux x86_64 binary** — distros without a recent Python (`curl -sSL https://cli.dailybot.com/install.sh | bash`)
 
-The pipeline is defined in [`.github/workflows/release.yml`](../.github/workflows/release.yml).
+There are **two supported release flows**:
+
+| Flow | When to use | Effort | Surface area |
+|------|-------------|--------|--------------|
+| [**Manual**](#manual-flow) — local `twine` with `.pypirc` | Emergency hotfix, dry-run on TestPyPI, or when CI is broken | Higher per release | PyPI only (binary + Homebrew skipped) |
+| [**Automated**](#automated-flow-github-actions) — `git push --tags` triggers `release.yml` | Default for normal releases | One-time setup | PyPI + Linux binary + GitHub Release + Homebrew |
+
+The automated flow is the **recommended default**. Manual flow is the documented fallback.
 
 ## Single Source of Truth: `pyproject.toml`
 
 The version lives in **exactly one place**: `pyproject.toml::project.version`. Everything else reads it dynamically.
 
-- `dailybot --version` → `importlib.metadata.version("dailybot-cli")` (set by setuptools at install time)
-- The git tag `v0.4.13` matches `version = "0.4.13"` (the workflow strips the leading `v`)
+- `dailybot --version` → `importlib.metadata.version("dailybot-cli")`
+- The git tag `v0.4.13` matches `version = "0.4.13"` (strip the leading `v`)
 
 **Never** hardcode the version anywhere in `dailybot_cli/` source.
 
-## Release Flow
+---
+
+## Manual Flow
+
+For when you need to publish from your local Mac without going through CI.
+
+### One-time setup
+
+#### Repo-local `.pypirc` (preferred for this project)
+
+Create a `.pypirc` file **in the repo root** (`./` ., next to `pyproject.toml`). It is git-ignored — see `.gitignore`.
+
+```ini
+[distutils]
+index-servers =
+    pypi
+    testpypi
+
+[pypi]
+username = __token__
+password = pypi-AgEI...                 # PyPI API token
+
+[testpypi]
+repository = https://test.pypi.org/legacy/
+username = __token__
+password = pypi-AgEI...                 # TestPyPI API token
+```
+
+Tokens come from:
+- PyPI: <https://pypi.org/manage/account/token/>
+- TestPyPI: <https://test.pypi.org/manage/account/token/>
+
+Use the smallest scope possible — project-scoped to `dailybot-cli`, not account-wide.
+
+Restrict permissions:
+
+```bash
+chmod 600 .pypirc
+```
+
+> **Critical:** never commit `.pypirc`. The file pattern is in `.gitignore`, but double-check with `git status` before any commit.
+
+#### Alternative: `~/.pypirc`
+
+If you prefer the standard location (`$HOME/.pypirc`), `twine` reads it automatically without a `--config-file` flag. Same content as above. The trade-off:
+
+| | Repo-local `./.pypirc` | Standard `~/.pypirc` |
+|---|------------------------|----------------------|
+| Pros | Project-scoped; less risk of cross-project leakage | Standard location; no `--config-file` flag |
+| Cons | Must pass `--config-file` every time; one slip and it could be staged | If your home is on a shared/synced drive, the token rides along |
+
+Pick one. Don't keep both — you'll lose track of which is current.
+
+#### Build tools
+
+```bash
+pip install build twine
+```
+
+### Procedure
+
+#### 1. Pre-flight
+
+```bash
+git status -s                    # working tree clean
+git rev-parse --abbrev-ref HEAD  # on main
+pytest -x                        # green
+ls -la .pypirc 2>/dev/null && stat -f "%Lp" .pypirc   # confirm 600
+```
+
+#### 2. Bump the version (its own commit)
+
+Edit `pyproject.toml::project.version`, then:
+
+```bash
+git add pyproject.toml
+git commit -m "Version bump"
+```
+
+#### 3. Clean and build
+
+```bash
+rm -rf dist/ build/ *.egg-info/
+python -m build
+twine check dist/*               # validates README rendering, metadata
+ls dist/
+# Expect:
+#   dailybot_cli-X.Y.Z.tar.gz
+#   dailybot_cli-X.Y.Z-py3-none-any.whl
+```
+
+#### 4. Verify on TestPyPI first
+
+```bash
+# Repo-local config
+twine upload --config-file ./.pypirc --repository testpypi dist/*
+
+# Or with ~/.pypirc
+twine upload --repository testpypi dist/*
+```
+
+Then in a **fresh virtualenv**, smoke-test the install:
+
+```bash
+python3 -m venv /tmp/dailybot-test && source /tmp/dailybot-test/bin/activate
+pip install --index-url https://test.pypi.org/simple/ \
+            --extra-index-url https://pypi.org/simple/ \
+            dailybot-cli==X.Y.Z
+dailybot --version          # should print X.Y.Z
+dailybot --help             # should render cleanly
+deactivate
+rm -rf /tmp/dailybot-test
+```
+
+The `--extra-index-url` is needed so transitive deps come from real PyPI (TestPyPI doesn't mirror them).
+
+#### 5. Publish to real PyPI
+
+```bash
+twine upload --config-file ./.pypirc dist/*
+# or: twine upload dist/*  (with ~/.pypirc)
+```
+
+PyPI rejects re-uploads of an existing version. If you typo'd the version, bump to the next patch — you cannot reuse `X.Y.Z`.
+
+#### 6. Tag and push
+
+```bash
+git tag v<X.Y.Z>
+git push origin main
+git push origin v<X.Y.Z>
+```
+
+> **Note:** in the manual flow, the tag is just a marker. It does NOT trigger the automated workflow's PyPI step (you've already done that). If `release.yml` is wired up, pushing the tag WILL also trigger it — and the workflow will fail at the PyPI step because the version already exists. To avoid confusion, comment the workflow out before pushing the tag, or just accept that you'll see a failed Action run. See [Combining the flows](#combining-the-flows).
+
+#### 7. Verify
+
+```bash
+pip install --upgrade dailybot-cli
+dailybot --version
+```
+
+Wait ~30s for CDN propagation if you see the old version.
+
+### Manual flow does NOT cover
+
+- **Linux x86_64 binary** — build it locally and attach to a GitHub Release manually:
+  ```bash
+  docker run --rm -v "$PWD":/src -w /src python:3.12-slim-bullseye sh -c '
+    apt-get update && apt-get install -y binutils
+    pip install pyinstaller
+    pip install -e .
+    pyinstaller --onefile --name dailybot --clean dailybot_cli/main.py
+  '
+  mv dist/dailybot dist/dailybot-linux-x86_64
+  gh release create v<X.Y.Z> dist/dailybot-linux-x86_64 --generate-notes
+  ```
+- **Homebrew formula update** — see [Homebrew tap](#homebrew-tap-update) below.
+
+If you need to ship to all three channels manually, expect ~30 minutes of work versus ~5 minutes with the automated flow.
+
+---
+
+## Automated Flow (GitHub Actions)
+
+Triggered by pushing a `v*` git tag. Defined in [`.github/workflows/release.yml`](../.github/workflows/release.yml).
+
+### What it does
 
 ```
                    ┌─ git tag v0.4.13 ─┐
@@ -25,181 +199,225 @@ The version lives in **exactly one place**: `pyproject.toml::project.version`. E
                              │ push
                              ▼
               ┌──────────────────────────────┐
-              │ .github/workflows/release.yml │
+              │  release.yml workflow         │
               └──┬───────────┬───────────┬───┘
                  │           │           │
-        ┌────────┘           │           └─────────┐
-        ▼                    ▼                     ▼
-┌──────────────┐   ┌─────────────────┐   ┌──────────────────┐
-│ build-linux  │   │ publish-pypi    │   │ update-homebrew  │
-│ pyinstaller  │   │ python -m build │   │ wait for PyPI    │
-│ in glibc 2.31│   │ twine upload    │   │ recompute sha256 │
-│ container    │   │                 │   │ rewrite formula  │
-└──────┬───────┘   └────────┬────────┘   └──────────────────┘
-       │                    │
-       │   ┌────────────────┘
-       │   │
-       ▼   ▼
-┌──────────────────────────────┐
-│ release (GitHub Release)     │
-│ uploads dailybot-linux-x86_64│
-│ generates release notes      │
-└──────────────────────────────┘
+        ┌────────▼────┐  ┌───▼─────────┐ │
+        │ build-linux │  │ publish-pypi│ │
+        │ pyinstaller │  │ twine upload│ │
+        │ glibc 2.31  │  │             │ │
+        └──────┬──────┘  └─────┬───────┘ │
+               │               │         │
+               └───────┬───────┘         │
+                       │                 │
+                       ▼                 ▼
+               ┌──────────────┐  ┌──────────────────┐
+               │ release      │  │ update-homebrew  │
+               │ GitHub       │  │ wait for PyPI    │
+               │ Release +    │  │ update formula   │
+               │ binary attach│  │ push to tap repo │
+               └──────────────┘  └──────────────────┘
 ```
 
-### Step-by-step (cutting a release)
+### One-time setup (per maintainer / per repo)
 
-1. Implement and test changes; merge to `main`.
-2. Bump `pyproject.toml::project.version` in **its own commit**:
-   ```bash
-   git add pyproject.toml
-   git commit -m "Version bump"
-   git push
-   ```
-3. Tag and push:
-   ```bash
-   git tag v0.4.13
-   git push origin v0.4.13
-   ```
-4. Watch the Actions tab. The full pipeline takes 5–10 minutes (most of it is the Homebrew "wait for PyPI propagation" step).
-5. Verify:
-   ```bash
-   pip install --upgrade dailybot-cli
-   brew upgrade dailybot
-   curl -sSL https://cli.dailybot.com/install.sh | bash
-   ```
+The current workflow uses **API token-based** authentication. Two GitHub repository secrets are required:
 
-## Linux Binary (PyInstaller)
+| Secret | Where | Used for |
+|--------|-------|----------|
+| `PYPI_API_TOKEN` | This repo → Settings → Secrets and variables → Actions | `twine upload` to PyPI |
+| `HOMEBREW_TAP_TOKEN` | Same place | Push commits to `dailybothq/homebrew-tap` |
 
-The binary is built inside `python:3.12-slim-bullseye`, which ships glibc 2.31 — old enough to run on most current distros (Ubuntu 20.04+, Debian 11+, RHEL 9+, etc.).
-
-The workflow command:
-
-```yaml
-- name: Build binary in container with glibc 2.31
-  run: |
-    docker run --rm -v "$PWD":/src -w /src python:3.12-slim-bullseye sh -c '
-      apt-get update && apt-get install -y binutils
-      pip install pyinstaller
-      pip install -e .
-      pyinstaller --onefile --name dailybot --clean dailybot_cli/main.py
-    '
-```
-
-### Reproducing locally (Linux parity)
+To create / verify:
 
 ```bash
-docker run --rm -v "$PWD":/src -w /src python:3.12-slim-bullseye sh -c '
-  apt-get update && apt-get install -y binutils
-  pip install pyinstaller
-  pip install -e .
-  pyinstaller --onefile --name dailybot --clean dailybot_cli/main.py
-'
-ls -la dist/dailybot
+# List existing secrets (won't show values)
+gh secret list
+
+# Set if missing
+gh secret set PYPI_API_TOKEN
+gh secret set HOMEBREW_TAP_TOKEN
 ```
 
-### Why x86_64 only
+The `PYPI_API_TOKEN` should be project-scoped to `dailybot-cli` (not account-wide). The `HOMEBREW_TAP_TOKEN` is a GitHub fine-grained PAT with `Contents: write` on `dailybothq/homebrew-tap`.
 
-The current installer (`install.sh`) and release pipeline produce only `dailybot-linux-x86_64`. On `aarch64` (Linux ARM, Apple Silicon Linux VMs, Docker Desktop on Mac), the installer falls back to pip. If/when we add ARM, both `install.sh` and `release.yml` need updates.
+> **Modern alternative — Trusted Publishing (OIDC).** PyPI now supports OIDC-based publishing where GitHub Actions authenticates to PyPI via short-lived tokens, eliminating `PYPI_API_TOKEN` entirely. See [Migrating to OIDC](#migrating-to-trusted-publishing-oidc) below. Recommended but requires a one-time PyPI configuration change. Not in use yet for this repo.
 
-## PyPI
+### Procedure
 
-```yaml
-- name: Build package
-  run: |
-    pip install build twine
-    python -m build
+#### 1. Pre-flight
 
-- name: Publish to PyPI
-  env:
-    TWINE_USERNAME: __token__
-    TWINE_PASSWORD: ${{ secrets.PYPI_API_TOKEN }}
-  run: |
-    twine upload dist/*
+```bash
+git status -s
+pytest -x
+gh secret list                   # confirm both secrets exist
 ```
 
-The PyPI token is configured as a GitHub Actions secret (`PYPI_API_TOKEN`). It is project-scoped to `dailybot-cli`.
+#### 2. (If deps changed) Sync the Homebrew formula in the workflow
 
-If publishing fails:
-- **Conflict (409)**: the version already exists on PyPI. Bump `pyproject.toml::project.version` and re-tag. PyPI does not allow re-uploads of the same version.
-- **Auth error**: the token is invalid or expired. Generate a new one at <https://pypi.org/manage/account/token/>.
+The formula is rendered inline in `release.yml` and includes pinned `resource` blocks for every transitive Python dep. When `pyproject.toml::dependencies` changes, the formula MUST be updated in the same PR.
 
-## Homebrew Tap
-
-The formula lives in a separate repo: `DailyBotHQ/homebrew-tap`. The workflow:
-
-1. Waits up to 3 minutes for the version to appear on PyPI.
-2. Downloads the sdist and computes its sha256.
-3. Rewrites `Formula/dailybot.rb` with the new version and sha.
-4. Pushes the change to `homebrew-tap`.
-
-### When to update the resource list
-
-The formula declares every transitive Python dependency as a `resource` block (sdist URL + sha256). When you **add a new dependency** to `pyproject.toml`, you MUST add a corresponding `resource` block to the inline formula in `release.yml`.
-
-To compute a resource block:
+For each new or changed dep:
 
 ```bash
 pip download <pkg>==<version> --no-binary :all: --no-deps -d /tmp
 sha256sum /tmp/<pkg>-<version>.tar.gz
 ```
 
-Then add to `release.yml`:
+Then add or update the `resource "<pkg>"` block in `release.yml`.
 
-```ruby
-resource "<pkg>" do
-  url "https://files.pythonhosted.org/packages/source/<first>/<pkg>/<pkg>-<version>.tar.gz"
-  sha256 "<hash>"
-end
+#### 3. Bump version (its own commit)
+
+```bash
+# Edit pyproject.toml::project.version
+git add pyproject.toml
+git commit -m "Version bump"
+git push origin main
 ```
 
-> Forgetting this is the most common cause of a broken Homebrew release. The PyPI publish succeeds, but `brew install` fails because the formula references a dep that doesn't exist locally and the resource list is incomplete.
+#### 4. Tag and push
+
+```bash
+git tag v<X.Y.Z>
+git push origin v<X.Y.Z>
+```
+
+#### 5. Watch the workflow
+
+```bash
+gh run watch
+```
+
+Or open <https://github.com/DailyBotHQ/cli/actions> in a browser. The full run takes ~5–10 minutes (the Homebrew job waits up to 3 min for PyPI propagation).
+
+#### 6. Verify
+
+```bash
+pip install --upgrade dailybot-cli
+brew upgrade dailybot
+gh release view v<X.Y.Z>           # confirm binary attached
+dailybot --version
+```
+
+### What can go wrong
+
+| Symptom | Cause | Fix |
+|---------|-------|-----|
+| `publish-pypi` job: 409 Conflict | Version already on PyPI | Bump version, retag |
+| `publish-pypi` job: 403 Forbidden | `PYPI_API_TOKEN` invalid/expired | Regenerate, `gh secret set` |
+| `update-homebrew` job: timeout | PyPI propagation slow | Re-run only that job |
+| `update-homebrew` job: push rejected | `HOMEBREW_TAP_TOKEN` lacks `Contents: write` | Reissue PAT with correct scope |
+| `build-linux` job fails | A new dep has a C extension or PyInstaller bug | Run the docker build locally to repro |
+| Release runs twice (tag + manual flow) | You ran manual then pushed the tag | Delete the failed Action run and the duplicate GitHub Release if any. PyPI/Homebrew remain on the manually-published version |
+
+### Migrating to Trusted Publishing (OIDC)
+
+[PyPI Trusted Publishing](https://docs.pypi.org/trusted-publishers/) eliminates the need for `PYPI_API_TOKEN`. The workflow authenticates via OIDC — short-lived, repo-scoped, no secret to leak.
+
+**One-time setup:**
+
+1. On PyPI: project settings → "Publishing" → "Add a new publisher" → fill in:
+   - Repository: `DailyBotHQ/cli`
+   - Workflow filename: `release.yml`
+   - Environment name: `pypi` (optional but recommended)
+
+2. In `release.yml`, replace the PyPI publish step:
+
+   ```yaml
+   publish-pypi:
+     runs-on: ubuntu-latest
+     environment: pypi
+     permissions:
+       id-token: write          # Required for OIDC
+     steps:
+       - uses: actions/checkout@v4
+       - uses: actions/setup-python@v5
+         with: { python-version: "3.12" }
+       - run: pip install build && python -m build
+       - uses: pypa/gh-action-pypi-publish@release/v1
+   ```
+
+3. Delete the `PYPI_API_TOKEN` secret from the repo: `gh secret delete PYPI_API_TOKEN`.
+
+This is the recommended end-state but is a separate task from a normal release. Don't migrate during a release window — do it on a quiet day, with a test run on TestPyPI first (TestPyPI also supports trusted publishing, configured separately).
+
+---
+
+## Homebrew Tap Update
+
+The formula lives in `dailybothq/homebrew-tap`, file `Formula/dailybot.rb`. The automated flow updates it via the `update-homebrew` job. To do it manually:
+
+### Compute the new sdist sha256
+
+```bash
+pip download dailybot-cli==X.Y.Z --no-binary :all: --no-deps -d /tmp/sdist
+sha256sum /tmp/sdist/dailybot_cli-X.Y.Z.tar.gz
+```
+
+### Update the formula
+
+In `dailybothq/homebrew-tap/Formula/dailybot.rb`:
+
+- Bump the URL to the new version
+- Replace the `sha256` with the new value
+- If you added or removed a Python dep this release, also update the matching `resource` block(s). Each transitive dep is listed there with its own URL + sha256. To compute a new resource:
+
+  ```bash
+  pip download <pkg>==<version> --no-binary :all: --no-deps -d /tmp
+  sha256sum /tmp/<pkg>-<version>.tar.gz
+  ```
+
+Commit and push to `dailybothq/homebrew-tap`. The formula is published the moment it lands on `main` of the tap repo.
+
+### Verify
+
+```bash
+brew update
+brew upgrade dailybot
+dailybot --version
+```
+
+---
 
 ## Curl Installer (`install.sh`)
 
-The script in `install.sh` is published at `https://cli.dailybot.com/install.sh`. It:
+The script in `install.sh` is also published at `https://cli.dailybot.com/install.sh`. The hosted version is updated **out-of-band** — pushing to this repo does NOT redeploy the CDN copy. Confirm with the maintainer before changing user-visible installer behavior.
 
-1. **macOS**: requires Homebrew, runs `brew install dailybothq/tap/dailybot`.
-2. **Linux**: tries the pre-built x86_64 binary first; falls back to `pipx`/`uv`/`pip`.
-3. **Other**: skips to the pip fallback chain.
+---
 
-**The script is served from a CDN.** Updates to the hosted version do not happen automatically when you push to this repo — the CDN needs to be refreshed out-of-band. Confirm with the maintainer before changing user-visible installer behavior.
+## Combining the Flows
 
-## GitHub Release
+If you start a manual release and partway through decide to switch to automated, **don't push the tag** until you've decided which flow owns the PyPI publish. PyPI rejects re-uploads, so whoever publishes first "wins".
 
-The `release` job in the workflow:
+Common patterns:
 
-- Downloads the Linux binary built in `build-linux`.
-- Renames it to `dailybot-linux-x86_64`.
-- Creates a GitHub Release tagged with the version.
-- Auto-generates release notes from PR titles since the previous tag.
+- **Manual on TestPyPI, then automated for real:** publish to TestPyPI manually for verification, then push the tag and let CI handle real PyPI + binary + Homebrew.
+- **Automated entirely:** just push the tag.
+- **Manual entirely:** skip the tag push, or push it knowing the workflow's PyPI step will fail (which is harmless — Linux binary and Homebrew jobs still depend on PyPI succeeding, so they'll skip too).
 
-If you want curated release notes, edit them on GitHub after the workflow finishes.
-
-## Troubleshooting Releases
-
-| Symptom | Likely cause | Fix |
-|---------|--------------|-----|
-| PyPI upload failed: 409 | Version already published | Bump version, re-tag |
-| PyPI upload failed: 403 | Token expired / wrong scope | Regenerate `PYPI_API_TOKEN` |
-| Homebrew job timed out waiting for PyPI | Propagation slow | Re-run only the `update-homebrew` job |
-| `brew install` fails: "resource X not found" | Missing resource block in formula | Add the resource to `release.yml` and re-tag |
-| Linux binary won't run on user's distro | glibc too old (< 2.31) | The user is on a very old distro; recommend pip install |
-| `curl -sSL https://cli.dailybot.com/install.sh \| bash` runs old script | CDN caches it | Coordinate with the team that controls the CDN |
+---
 
 ## Pre-Release Checklist
 
-Before pushing a tag:
+### For both flows
+- [ ] Working tree clean
+- [ ] On `main`
+- [ ] `pytest -x` green
+- [ ] `pyproject.toml::project.version` bumped in its own "Version bump" commit
+- [ ] If a dep changed: Homebrew formula synced (in `release.yml` for automated, in the tap repo for manual)
 
-- [ ] All PRs merged are reflected in the changelog (or `git log --oneline` is clean enough for auto-generated notes)
-- [ ] `pyproject.toml::project.version` bumped in a dedicated commit
-- [ ] `pytest` green on `main`
-- [ ] If a new dependency was added: Homebrew `resource` block updated in `release.yml`
-- [ ] If `install.sh` changed: someone with CDN access is queued to deploy the new version
-- [ ] No `0o600` regression (audit `os.chmod` calls if you touched config.py)
-- [ ] Tested locally:
-  ```bash
-  pip install --force-reinstall -e .
-  dailybot --version
-  dailybot --help
-  ```
+### Manual flow
+- [ ] `.pypirc` exists (repo-local at `./.pypirc` or `~/.pypirc`)
+- [ ] `.pypirc` is `chmod 600`
+- [ ] `.pypirc` is in `.gitignore` (already there for the repo-local case)
+- [ ] `python -m build` succeeded; `twine check dist/*` passed
+- [ ] TestPyPI upload + smoke-test install passed
+- [ ] Real PyPI upload succeeded
+- [ ] Git tag pushed (knowing the CI workflow will run if active)
+
+### Automated flow
+- [ ] `gh secret list` shows `PYPI_API_TOKEN` and `HOMEBREW_TAP_TOKEN`
+- [ ] No partial manual upload to PyPI for this version
+- [ ] Tag pushed
+- [ ] Workflow run succeeded (`gh run watch`)
+- [ ] PyPI / Homebrew / GitHub Release verified

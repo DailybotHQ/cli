@@ -30,3 +30,4 @@ htmlcov/
 
 # Config secrets
 .env
+.pypirc
