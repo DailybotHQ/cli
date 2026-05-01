@@ -1,0 +1,132 @@
+# Security
+
+## Threat Model
+
+The Dailybot CLI runs on **user machines** and sometimes on **CI runners**. The threats we care about:
+
+1. **Credential leakage** to other users on a shared host (multi-user dev box, CI runner).
+2. **Credential leakage** through logs, terminal scrollback, or piped output.
+3. **Man-in-the-middle** on the CLI ↔ API connection.
+4. **Replay** of OTP codes after a failed verification.
+5. **Confused-deputy** attacks where an agent uses cached credentials in unexpected contexts.
+
+We do **not** defend against:
+
+- A compromised user account (an attacker with shell access on the user's machine can read `~/.config/dailybot/`).
+- A compromised Dailybot API.
+- Targeted social engineering of the human running the CLI.
+
+## File Permissions
+
+Every file in `~/.config/dailybot/` that contains a secret is written with **mode `0o600`** (owner read/write, no group, no other). The pattern in `dailybot_cli/config.py`:
+
+```python
+PATH.write_text(json.dumps(data, indent=2))
+os.chmod(PATH, 0o600)
+```
+
+Files with secrets:
+- `credentials.json` (login Bearer token)
+- `config.json` (stored API key)
+- `agents.json` (per-profile API keys)
+
+Files without secrets (no chmod required):
+- `org_cache.json` (transient list of org names + UUIDs from step 1 of multi-org login)
+
+## Secrets in Output
+
+Never display, log, or echo a full secret. Always mask:
+
+```python
+def _mask(value: str) -> str:
+    if len(value) <= 4:
+        return value[0] + "****" if value else "****"
+    return value[:4] + "****"
+```
+
+Helpers that already mask correctly: `dailybot config key`, `dailybot agent profiles`. New code that handles a secret must use the same pattern.
+
+## Transport
+
+The default API URL is `https://api.dailybot.com` — TLS is enforced by httpx (no `verify=False`). When the user passes `--api-url` for staging/local development:
+
+- HTTPS is still required for any externally-reachable endpoint.
+- For local dev (e.g., `http://localhost:8000`), the user is implicitly accepting the insecure transport on their own loopback.
+
+We do **not** disable certificate verification anywhere. Don't add a flag for it.
+
+## OTP Handling
+
+The login flow is two HTTP calls:
+
+1. `request_code(email)` → API generates and emails an OTP, returns the org list (if multi-org).
+2. `verify_code(email, code, organization_id?)` → consumes the OTP and returns a Bearer token.
+
+Critical invariant: **calling `request_code` again invalidates any pending OTP for that email.** This is why non-interactive multi-org login caches the org list to disk during step 1 (`org_cache.json`) — step 2 reads the cache to resolve UUID → integer ID without re-issuing `request_code`. Breaking this would silently invalidate users' codes.
+
+The `org_cache.json` is cleared after a successful verify.
+
+## Bearer Token Lifecycle
+
+- Issued by `verify_code(...)`.
+- Stored in `credentials.json` with `0o600`.
+- Sent on every authenticated request as `Authorization: Bearer <token>`.
+- Revoked by `dailybot logout` (best-effort `POST /v1/cli/auth/logout/` + local file removal).
+- Treated as expired/invalid on any 401/403 from a Bearer-mode call → `_handle_response` rewrites the error to "Session expired. Run 'dailybot login' to re-authenticate."
+
+There is no automatic refresh. Tokens have a server-defined lifetime; the user is expected to re-run `dailybot login` when prompted.
+
+## API Key Lifecycle
+
+- Issued by `dailybot agent register` (returned in the registration response).
+- Stored either in `config.json::api_key`, `agents.json::profiles[<slug>].api_key`, or in the `DAILYBOT_API_KEY` env var.
+- Sent as `X-API-KEY: <key>` on agent endpoints.
+- **Never expires automatically.** Rotation is a manual op (re-register or have the org admin rotate via the web UI).
+
+## Webhook Secrets
+
+- Set by the user via `dailybot agent webhook register --secret <secret>`.
+- Stored on the API side, not locally on the CLI.
+- Forwarded by Dailybot as `X-Webhook-Secret: <secret>` on inbound webhook deliveries.
+- Treated as opaque by the CLI — we don't validate format.
+
+When generating a secret on behalf of a user, suggest a high-entropy random string:
+
+```bash
+python -c 'import secrets; print(secrets.token_urlsafe(32))'
+```
+
+## Standalone Registration
+
+`dailybot agent register` calls a no-auth endpoint protected by a math-puzzle challenge:
+
+1. `GET /v1/agent/register/challenge/` returns `{ challenge_id, instruction }`. The instruction is a sentence ending in `"... session is <random_number>."`.
+2. Compute `random_number * 52` (the constant `_CHALLENGE_WORD_COUNT`).
+3. `POST /v1/agent/register/` with `challenge_id`, `answer`, and the org/agent metadata.
+4. Server validates the answer + rate-limits.
+
+**This is a low-friction anti-bot measure, not a strong security control.** The backend additionally rate-limits by IP and applies abuse heuristics. If the challenge format ever needs to change, the CLI and the Dailybot API have to be updated together.
+
+## CI / Headless Runners
+
+Recommended pattern for CI:
+
+```bash
+# Inject the API key via env var (never commit it, never write it to disk)
+export DAILYBOT_API_KEY="${DAILYBOT_API_KEY}"
+dailybot agent update "Build #${BUILD_ID} passed" --name "CI Bot"
+```
+
+Avoid:
+- `dailybot config key=...` in CI (writes to disk; awkward to scrub between jobs).
+- Using a shared user account login (the Bearer token is a per-user credential — `dailybot agent register` is the right move for autonomous bots).
+
+## Reporting a Vulnerability
+
+If you find a security issue in the CLI:
+
+- **Do not open a public GitHub issue.**
+- Email `support@dailybot.com` with a subject prefix `[SECURITY]`.
+- Include a minimal reproduction and the version (`dailybot --version`).
+
+For the API itself, follow Dailybot's main responsible-disclosure process.
