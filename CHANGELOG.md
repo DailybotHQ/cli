@@ -9,6 +9,14 @@ Do not edit it by hand — your edits will be overwritten on the next release.
 
 <!-- version list -->
 
+## v1.4.0 (2026-05-02)
+
+### Features
+
+- **cli**: Add `dailybot upgrade` command with install-method detection
+  ([`8e8b9f9`](https://github.com/DailybotHQ/cli/commit/8e8b9f9bff37e06f6ee861a4ebcd1eb3c1544eb0))
+
+
 ## v1.3.0 (2026-05-02)
 
 ### Bug Fixes
