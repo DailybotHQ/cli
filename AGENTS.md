@@ -315,6 +315,7 @@ See [docs/DEVELOPMENT_COMMANDS.md](docs/DEVELOPMENT_COMMANDS.md) for full refere
 19. Add a Click flag without a short alias if the existing command in the same group already uses one (consistency)
 20. Forget the `\b` marker in Click docstrings — without it, Click reflows your example block
 21. Drop scratch files anywhere outside `tmp/` (draft PR bodies, debug dumps, sample payloads, etc.) — see Rule 17
+22. **Push directly to `main`** — even a one-line workflow fix or a `pyproject.toml` toggle MUST go through a feature branch + PR + the `code_check.yml` gate. The only exception is the `chore(release): X.Y.Z [skip ci]` commit that `auto-release.yml` itself makes automatically. Force-pushes to `main` are forbidden without explicit, scoped permission for that exact operation.
 
 ### DO
 
