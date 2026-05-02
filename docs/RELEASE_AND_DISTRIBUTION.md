@@ -32,7 +32,51 @@ For when you need to publish from your local Mac without going through CI.
 
 ### One-time setup
 
-#### Repo-local `.pypirc` (preferred for this project)
+Pick **one** of the three options below. They all produce a working `~/.pypirc` (or repo-local `./.pypirc`); the difference is where the secret lives and how it gets there.
+
+| Option | Best for | Secret lives in |
+|---|---|---|
+| [Devcontainer env vars](#devcontainer-env-vars-recommended) | Anyone using the VS Code devcontainer / `docker-compose` setup in this repo | `docker/local/cli/.env` (git-ignored) |
+| [Repo-local `./.pypirc`](#repo-local-pypirc) | Bare-metal dev not using the devcontainer, who wants per-project tokens | `./.pypirc` (git-ignored) |
+| [Standard `~/.pypirc`](#alternative-pypirc) | Bare-metal dev who already has a global PyPI config | `~/.pypirc` |
+
+#### Devcontainer env vars (recommended)
+
+If you're working inside the devcontainer (`docker/local/docker-compose.yaml`), keep your tokens in `docker/local/cli/.env` and let the entrypoint generate `~/.pypirc` for you on container start.
+
+1. Copy the template once:
+
+   ```bash
+   cp docker/local/cli/.env.example docker/local/cli/.env
+   ```
+
+2. Edit `docker/local/cli/.env` and set either or both:
+
+   ```env
+   PYPI_API_TOKEN=pypi-AgEI...
+   TESTPYPI_API_TOKEN=pypi-AgEI...
+   ```
+
+3. Restart the container so docker-compose reloads `env_file`:
+
+   ```bash
+   docker compose -f docker/local/docker-compose.yaml up -d --force-recreate clivscode
+   ```
+
+   On startup, `docker/local/cli/entrypoint.sh::setup_pypirc_from_env_for_user` writes `/home/dev-user/.pypirc` with `chmod 600`. If neither token is set, no file is written.
+
+4. Verify inside the container:
+
+   ```bash
+   ls -la ~/.pypirc        # should be -rw------- (0600)
+   twine check dist/*      # smoke test
+   ```
+
+> **Why this is the default for the devcontainer:** the secret never touches the repo or a hand-edited dotfile, and it survives container rebuilds because `.env` is on the host. The generated `~/.pypirc` is regenerated from env vars on every start, so rotating a token is a one-line edit + restart.
+>
+> **Caveat:** the token is duplicated on disk inside the container at `~/.pypirc`. The container is ephemeral and the file is `0600` for `dev-user` only, but treat it like any other secret-bearing file.
+
+#### Repo-local `./.pypirc`
 
 Create a `.pypirc` file **in the repo root** (`./` ., next to `pyproject.toml`). It is git-ignored — see `.gitignore`.
 
@@ -66,6 +110,7 @@ chmod 600 .pypirc
 
 > **Critical:** never commit `.pypirc`. The file pattern is in `.gitignore`, but double-check with `git status` before any commit.
 
+<a id="alternative-pypirc"></a>
 #### Alternative: `~/.pypirc`
 
 If you prefer the standard location (`$HOME/.pypirc`), `twine` reads it automatically without a `--config-file` flag. Same content as above. The trade-off:
@@ -91,7 +136,9 @@ pip install build twine
 git status -s                    # working tree clean
 git rev-parse --abbrev-ref HEAD  # on main
 pytest -x                        # green
-ls -la .pypirc 2>/dev/null && stat -f "%Lp" .pypirc   # confirm 600
+# Confirm a .pypirc exists (one of the three options above) and is 0600.
+# Devcontainer: ~/.pypirc is auto-generated from docker/local/cli/.env on startup.
+ls -la ~/.pypirc 2>/dev/null || ls -la ./.pypirc 2>/dev/null
 ```
 
 #### 2. Bump the version (its own commit)
@@ -407,9 +454,9 @@ Common patterns:
 - [ ] If a dep changed: Homebrew formula synced (in `release.yml` for automated, in the tap repo for manual)
 
 ### Manual flow
-- [ ] `.pypirc` exists (repo-local at `./.pypirc` or `~/.pypirc`)
-- [ ] `.pypirc` is `chmod 600`
-- [ ] `.pypirc` is in `.gitignore` (already there for the repo-local case)
+- [ ] Tokens available via one of: `docker/local/cli/.env` (devcontainer), `./.pypirc` (repo-local), or `~/.pypirc`
+- [ ] If using a `.pypirc` file, it is `chmod 600`
+- [ ] If using a `.pypirc` file, it is in `.gitignore` (already there for the repo-local case)
 - [ ] `python -m build` succeeded; `twine check dist/*` passed
 - [ ] TestPyPI upload + smoke-test install passed
 - [ ] Real PyPI upload succeeded
