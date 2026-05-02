@@ -37,7 +37,7 @@
 
 It talks exclusively to the Dailybot HTTP API under `/v1/cli/*` and `/v1/agent*/*` endpoints. There is no local database; all state is either in `~/.config/dailybot/` (credentials, agent profiles, config) or fetched from the API.
 
-**Stack:** Python 3.9+, [Click](https://click.palletsprojects.com/) 8.1+, [httpx](https://www.python-httpx.org/) 0.25+, [questionary](https://questionary.readthedocs.io/) 2.0+, [rich](https://rich.readthedocs.io/) 13.0+. Tested with `pytest`. Built and packaged with `setuptools`; distributed via PyPI, Homebrew tap (`dailybothq/tap`), and a PyInstaller-built Linux x86_64 binary.
+**Stack:** Python 3.10+, [Click](https://click.palletsprojects.com/) 8.3+, [httpx](https://www.python-httpx.org/) 0.28+, [questionary](https://questionary.readthedocs.io/) 2.1+, [rich](https://rich.readthedocs.io/) 15+. Tested with `pytest`. Built and packaged with `setuptools`; distributed via PyPI, Homebrew tap (`dailybothq/tap`), and a PyInstaller-built Linux x86_64 binary.
 
 ## Project Structure
 
@@ -76,7 +76,7 @@ pytest.ini                     # `python_files = *_test.py`, testpaths = tests
 Verify your environment before working:
 
 ```bash
-python --version          # >= 3.9
+python --version          # >= 3.10
 pip install -e ".[dev]"   # editable install (note: [dev] extra may need to be added if missing)
 pip install -e .          # plain editable install if no [dev] extra is defined yet
 pytest                    # run the suite
@@ -98,9 +98,9 @@ ALL Python code MUST use type hints. **If you generate code without type hints, 
 
 ```python
 # ✅ CORRECT — all parameters, return types, and local variables annotated
-from typing import Any, Optional
+from typing import Any
 
-def submit_report(content: str, metadata: Optional[dict[str, Any]] = None) -> dict[str, Any]:
+def submit_report(content: str, metadata: dict[str, Any] | None = None) -> dict[str, Any]:
     payload: dict[str, Any] = {"content": content}
     if metadata:
         payload["metadata"] = metadata
@@ -114,7 +114,7 @@ def submit_report(content, metadata=None):
     return payload
 ```
 
-Use modern syntax: `list[str]` and `dict[str, Any]` (not `List`/`Dict`), `Optional[X]` for nullable, `tuple[str, ...]` for click multi-options. See [docs/DEVELOPMENT_GUIDELINES.md](docs/DEVELOPMENT_GUIDELINES.md).
+Use modern syntax (`requires-python = ">=3.10"`): `list[str]` and `dict[str, Any]` (not `List`/`Dict`), `X | None` for nullable (PEP 604, not `Optional[X]`), `X | Y` for unions (not `Union[X, Y]`), `tuple[str, ...]` for click multi-options. `ruff check --fix` enforces this. See [docs/DEVELOPMENT_GUIDELINES.md](docs/DEVELOPMENT_GUIDELINES.md).
 
 ### 3. Import Order (MANDATORY)
 
@@ -123,7 +123,7 @@ Use modern syntax: `list[str]` and `dict[str, Any]` (not `List`/`Dict`), `Option
 import json
 import os
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any
 
 # 2. Third-party
 import click
@@ -240,7 +240,7 @@ The implementation lives in `dailybot_cli/commands/agent.py::_resolve_agent_cont
 
 - The CLI version is read at runtime from installed package metadata (`importlib.metadata.version("dailybot-cli")`) — see `dailybot_cli/__init__.py`.
 - The single source of truth is `pyproject.toml::project.version`. **Never** hardcode the version anywhere else.
-- **Default release path: merge a PR to `main` with conventional-commit messages.** Every PR is gated by `code_check.yml` (ruff + mypy + pytest matrix on Python 3.9 / 3.12 + a `python -m build` smoke-test). Once that passes and the PR is merged, `auto-release.yml` (powered by `python-semantic-release`) decides the bump (`feat:` → minor, `fix:`/`perf:` → patch, `BREAKING CHANGE:` → major; `chore:`/`docs:`/`refactor:`/etc → no release), updates `pyproject.toml::version` + `CHANGELOG.md`, commits, tags `vX.Y.Z`, and pushes. The tag push then triggers `release.yml`, which fans out to PyPI, the Linux binary, the GitHub Release, and the Homebrew tap.
+- **Default release path: merge a PR to `main` with conventional-commit messages.** Every PR is gated by `code_check.yml` (ruff + mypy + pytest matrix on Python 3.10 / 3.12 + a `python -m build` smoke-test). Once that passes and the PR is merged, `auto-release.yml` (powered by `python-semantic-release`) decides the bump (`feat:` → minor, `fix:`/`perf:` → patch, `BREAKING CHANGE:` → major; `chore:`/`docs:`/`refactor:`/etc → no release), updates `pyproject.toml::version` + `CHANGELOG.md`, commits, tags `vX.Y.Z`, and pushes. The tag push then triggers `release.yml`, which fans out to PyPI, the Linux binary, the GitHub Release, and the Homebrew tap.
 - Do **NOT** hand-edit `pyproject.toml::version` or `CHANGELOG.md` for normal work — let the automation own them. The two fallback flows (manual `git tag`, local `twine`) are documented for emergencies. See [docs/RELEASE_AND_DISTRIBUTION.md](docs/RELEASE_AND_DISTRIBUTION.md).
 
 ### 16. Backward Compatibility for Stored Files
@@ -317,7 +317,7 @@ See [docs/DEVELOPMENT_COMMANDS.md](docs/DEVELOPMENT_COMMANDS.md) for full refere
 
 ### DO
 
-1. ALWAYS use type hints (modern syntax: `list[str]`, `Optional[X]`)
+1. ALWAYS use type hints (modern syntax: `list[str]`, `X | None`)
 2. Name tests `*_test.py`
 3. Follow import order: stdlib → third-party → internal
 4. Mock `httpx` at the call site in tests

@@ -8,7 +8,7 @@ The command-line bridge between **humans** and **agents**. [Dailybot](https://ww
 pip install dailybot-cli
 ```
 
-Requires Python 3.9+.
+Requires Python 3.10+.
 
 ### Alternative installation methods
 

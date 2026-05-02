@@ -1,6 +1,6 @@
 """HTTP client for Dailybot CLI API endpoints."""
 
-from typing import Any, Optional
+from typing import Any
 
 import httpx
 
@@ -21,16 +21,16 @@ class DailyBotClient:
 
     def __init__(
         self,
-        api_url: Optional[str] = None,
-        token: Optional[str] = None,
-        api_key: Optional[str] = None,
+        api_url: str | None = None,
+        token: str | None = None,
+        api_key: str | None = None,
         timeout: float = 30.0,
     ) -> None:
         self.api_url: str = (api_url or get_api_url()).rstrip("/")
-        self.token: Optional[str] = token or get_token()
-        self.api_key: Optional[str] = api_key or get_api_key()
+        self.token: str | None = token or get_token()
+        self.api_key: str | None = api_key or get_api_key()
         self.timeout: float = timeout
-        self._agent_auth_mode: Optional[str] = None
+        self._agent_auth_mode: str | None = None
 
     def _headers(self, authenticated: bool = True) -> dict[str, str]:
         """Build request headers."""
@@ -89,7 +89,7 @@ class DailyBotClient:
         self,
         email: str,
         code: str,
-        organization_id: Optional[int] = None,
+        organization_id: int | None = None,
     ) -> dict[str, Any]:
         """POST /v1/cli/auth/verify-code/"""
         payload: dict[str, Any] = {"email": email, "code": code}
@@ -125,10 +125,10 @@ class DailyBotClient:
 
     def submit_update(
         self,
-        message: Optional[str] = None,
-        done: Optional[str] = None,
-        doing: Optional[str] = None,
-        blocked: Optional[str] = None,
+        message: str | None = None,
+        done: str | None = None,
+        doing: str | None = None,
+        blocked: str | None = None,
     ) -> dict[str, Any]:
         """POST /v1/cli/updates/"""
         payload: dict[str, str] = {}
@@ -163,10 +163,10 @@ class DailyBotClient:
         self,
         agent_name: str,
         content: str,
-        structured: Optional[dict[str, Any]] = None,
-        metadata: Optional[dict[str, Any]] = None,
+        structured: dict[str, Any] | None = None,
+        metadata: dict[str, Any] | None = None,
         is_milestone: bool = False,
-        co_authors: Optional[list[str]] = None,
+        co_authors: list[str] | None = None,
     ) -> dict[str, Any]:
         """POST /v1/agent-reports/"""
         payload: dict[str, Any] = {
@@ -193,7 +193,7 @@ class DailyBotClient:
         self,
         agent_name: str,
         ok: bool,
-        message: Optional[str] = None,
+        message: str | None = None,
     ) -> dict[str, Any]:
         """POST /v1/agent-health/"""
         payload: dict[str, Any] = {
@@ -226,7 +226,7 @@ class DailyBotClient:
         self,
         agent_name: str,
         webhook_url: str,
-        webhook_secret: Optional[str] = None,
+        webhook_secret: str | None = None,
     ) -> dict[str, Any]:
         """POST /v1/agent-webhook/"""
         payload: dict[str, Any] = {
@@ -262,7 +262,7 @@ class DailyBotClient:
         to: list[str],
         subject: str,
         body_html: str,
-        metadata: Optional[dict[str, Any]] = None,
+        metadata: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
         """POST /v1/agent-email/send/"""
         payload: dict[str, Any] = {
@@ -287,11 +287,11 @@ class DailyBotClient:
         self,
         agent_name: str,
         content: str,
-        message_type: Optional[str] = None,
-        metadata: Optional[dict[str, Any]] = None,
-        expires_at: Optional[str] = None,
-        sender_type: Optional[str] = None,
-        sender_name: Optional[str] = None,
+        message_type: str | None = None,
+        metadata: dict[str, Any] | None = None,
+        expires_at: str | None = None,
+        sender_type: str | None = None,
+        sender_name: str | None = None,
     ) -> dict[str, Any]:
         """POST /v1/agent-messages/"""
         payload: dict[str, Any] = {
@@ -319,7 +319,7 @@ class DailyBotClient:
     def get_agent_messages(
         self,
         agent_name: str,
-        delivered: Optional[bool] = None,
+        delivered: bool | None = None,
     ) -> list[dict[str, Any]]:
         """GET /v1/agent-messages/?agent_name=..."""
         params: dict[str, str] = {"agent_name": agent_name}
@@ -366,7 +366,7 @@ class DailyBotClient:
         reason: str,
         org_name: str,
         agent_name: str,
-        contact_email: Optional[str] = None,
+        contact_email: str | None = None,
         timezone: str = "UTC",
     ) -> dict[str, Any]:
         """POST /v1/agent/register/ — no auth required."""

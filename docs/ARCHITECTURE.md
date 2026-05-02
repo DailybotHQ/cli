@@ -170,7 +170,7 @@ user runs `dailybot agent update "Built X" --milestone -j '{...}'`
 Every HTTP call should be wrapped in `with console.status("..."):` so the user gets feedback. This is a UX rule, not a hard constraint, but it's followed everywhere in the codebase and the absence of a spinner reads as a regression.
 
 ### Type Hints
-The codebase uses modern Python typing throughout: `dict[str, Any]`, `list[dict[str, Any]]`, `Optional[X]`, `tuple[str, ...]`. Annotate all parameters, return types, and meaningful local variables (this is a project convention even where mypy doesn't strictly require it).
+The codebase uses modern Python typing throughout: `dict[str, Any]`, `list[dict[str, Any]]`, `X | None` (PEP 604, not `Optional[X]`), `tuple[str, ...]`. Annotate all parameters, return types, and meaningful local variables (this is a project convention even where mypy doesn't strictly require it).
 
 ## Where to Add Things
 

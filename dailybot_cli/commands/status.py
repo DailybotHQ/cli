@@ -1,6 +1,6 @@
 """Status command for Dailybot CLI."""
 
-from typing import Any, Optional
+from typing import Any
 
 import click
 
@@ -21,7 +21,7 @@ def _check_auth() -> None:
     client: DailyBotClient = DailyBotClient()
 
     # Try OTP/login token first
-    token: Optional[str] = get_token()
+    token: str | None = get_token()
     if token:
         try:
             with console.status("Checking login session..."):
@@ -33,7 +33,7 @@ def _check_auth() -> None:
             print_info("Login session is invalid or expired.")
 
     # Try API key
-    api_key: Optional[str] = get_api_key()
+    api_key: str | None = get_api_key()
     if api_key:
         try:
             with console.status("Checking API key..."):
@@ -69,7 +69,7 @@ def status(auth: bool) -> None:
         _check_auth()
         return
 
-    token: Optional[str] = get_token()
+    token: str | None = get_token()
     if not token:
         print_error("Not logged in. Run: dailybot login")
         raise SystemExit(1)

@@ -3,10 +3,10 @@
 import json
 import os
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any
 
 DEFAULT_API_URL: str = "https://api.dailybot.com"
-_api_url_override: Optional[str] = None
+_api_url_override: str | None = None
 
 
 def set_api_url_override(url: str) -> None:
@@ -28,7 +28,7 @@ def get_config_dir() -> Path:
     return CONFIG_DIR
 
 
-def load_credentials() -> Optional[dict[str, Any]]:
+def load_credentials() -> dict[str, Any] | None:
     """Load stored credentials from disk."""
     if not CREDENTIALS_FILE.exists():
         return None
@@ -74,21 +74,21 @@ def get_api_url() -> str:
     """Return the API URL (--api-url flag > env var > credentials > default)."""
     if _api_url_override:
         return _api_url_override
-    env_url: Optional[str] = os.environ.get("DAILYBOT_API_URL")
+    env_url: str | None = os.environ.get("DAILYBOT_API_URL")
     if env_url:
         return env_url.rstrip("/")
-    creds: Optional[dict[str, Any]] = load_credentials()
+    creds: dict[str, Any] | None = load_credentials()
     if creds and creds.get("api_url"):
         return str(creds["api_url"]).rstrip("/")
     return DEFAULT_API_URL
 
 
-def get_token() -> Optional[str]:
+def get_token() -> str | None:
     """Return the stored auth token, or the DAILYBOT_CLI_TOKEN env var."""
-    env_token: Optional[str] = os.environ.get("DAILYBOT_CLI_TOKEN")
+    env_token: str | None = os.environ.get("DAILYBOT_CLI_TOKEN")
     if env_token:
         return env_token
-    creds: Optional[dict[str, Any]] = load_credentials()
+    creds: dict[str, Any] | None = load_credentials()
     if creds:
         return creds.get("token")
     return None
@@ -117,9 +117,9 @@ def save_config(data: dict[str, Any]) -> None:
     os.chmod(CONFIG_FILE, 0o600)
 
 
-def get_api_key() -> Optional[str]:
+def get_api_key() -> str | None:
     """Return the org API key (env var > stored config > None)."""
-    env_key: Optional[str] = os.environ.get("DAILYBOT_API_KEY")
+    env_key: str | None = os.environ.get("DAILYBOT_API_KEY")
     if env_key:
         return env_key
     config: dict[str, Any] = load_config()
@@ -133,7 +133,7 @@ def save_org_cache(email: str, organizations: list[dict[str, Any]]) -> None:
     ORG_CACHE_FILE.write_text(json.dumps(data))
 
 
-def load_org_cache(email: str) -> Optional[list[dict[str, Any]]]:
+def load_org_cache(email: str) -> list[dict[str, Any]] | None:
     """Load cached org list for the given email. Returns None if missing or stale."""
     if not ORG_CACHE_FILE.exists():
         return None
@@ -152,7 +152,7 @@ def clear_org_cache() -> None:
         ORG_CACHE_FILE.unlink()
 
 
-def get_agent_auth() -> Optional[str]:
+def get_agent_auth() -> str | None:
     """Return the auth mode available for agent commands.
 
     Returns ``"api_key"`` if an API key is available (env or config),
@@ -197,8 +197,8 @@ def _save_agents(data: dict[str, Any]) -> None:
 def save_agent_profile(
     profile_name: str,
     agent_name: str,
-    api_key: Optional[str] = None,
-    agent_email: Optional[str] = None,
+    api_key: str | None = None,
+    agent_email: str | None = None,
 ) -> None:
     """Upsert an agent profile. Sets as default if no default exists."""
     data: dict[str, Any] = load_agents()
@@ -214,24 +214,24 @@ def save_agent_profile(
     _save_agents(data)
 
 
-def get_default_profile() -> Optional[dict[str, Any]]:
+def get_default_profile() -> dict[str, Any] | None:
     """Return the default profile dict with its name, or None."""
     data: dict[str, Any] = load_agents()
-    default_name: Optional[str] = data.get("default")
+    default_name: str | None = data.get("default")
     if not default_name:
         return None
     profiles: dict[str, Any] = data.get("profiles", {})
-    profile: Optional[dict[str, Any]] = profiles.get(default_name)
+    profile: dict[str, Any] | None = profiles.get(default_name)
     if not profile:
         return None
     return {"profile": default_name, **profile}
 
 
-def get_profile(name: str) -> Optional[dict[str, Any]]:
+def get_profile(name: str) -> dict[str, Any] | None:
     """Return a specific profile dict, or None."""
     data: dict[str, Any] = load_agents()
     profiles: dict[str, Any] = data.get("profiles", {})
-    profile: Optional[dict[str, Any]] = profiles.get(name)
+    profile: dict[str, Any] | None = profiles.get(name)
     if not profile:
         return None
     return {"profile": name, **profile}
@@ -240,7 +240,7 @@ def get_profile(name: str) -> Optional[dict[str, Any]]:
 def list_profiles() -> list[dict[str, Any]]:
     """Return all profiles as a list of dicts with metadata."""
     data: dict[str, Any] = load_agents()
-    default_name: Optional[str] = data.get("default")
+    default_name: str | None = data.get("default")
     profiles: dict[str, Any] = data.get("profiles", {})
     result: list[dict[str, Any]] = []
     for name, entry in profiles.items():

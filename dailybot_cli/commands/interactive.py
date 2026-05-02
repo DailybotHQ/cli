@@ -1,7 +1,7 @@
 """Interactive mode for Dailybot CLI."""
 
 import readline  # noqa: F401 — enables arrow-key editing in input()
-from typing import Any, Optional
+from typing import Any
 
 import click
 import httpx
@@ -34,8 +34,8 @@ MENU_CHOICES: list[str] = [
 
 def run_interactive() -> None:
     """Run the interactive TUI mode."""
-    creds: Optional[dict[str, Any]] = load_credentials()
-    token: Optional[str] = get_token()
+    creds: dict[str, Any] | None = load_credentials()
+    token: str | None = get_token()
 
     console.print("\n[bold]Dailybot CLI[/bold]")
 
@@ -60,7 +60,7 @@ def run_interactive() -> None:
 
     while True:
         console.print()
-        choice: Optional[str] = questionary.select(
+        choice: str | None = questionary.select(
             "What would you like to do?",
             choices=MENU_CHOICES,
         ).ask()

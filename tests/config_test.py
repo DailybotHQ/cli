@@ -2,7 +2,7 @@
 
 import os
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any
 
 import pytest
 
@@ -38,7 +38,7 @@ def test_save_and_load_credentials(tmp_config: Path) -> None:
         organization="MyOrg",
         organization_uuid="org-uuid-42",
     )
-    creds: Optional[dict[str, Any]] = load_credentials()
+    creds: dict[str, Any] | None = load_credentials()
     assert creds is not None
     assert creds["token"] == "tok123"
     assert creds["email"] == "user@example.com"

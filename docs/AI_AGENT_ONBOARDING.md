@@ -9,14 +9,14 @@ This is the first-session checklist for any AI agent (Claude Code, Cursor, Codex
 This project does **not** require Docker. It is a plain Python package.
 
 ```bash
-python3 --version           # >= 3.9 expected
+python3 --version           # >= 3.10 expected
 which python3               # not the system Python? then a venv is active — good
 pip --version               # match the venv
 git rev-parse --abbrev-ref HEAD   # which branch
 git status -s               # any uncommitted noise?
 ```
 
-If `python3 --version` reports `< 3.9`, ask the user how they'd like to proceed (`pyenv install 3.11`, `uv venv --python 3.11`, etc.) before doing anything else.
+If `python3 --version` reports `< 3.10`, ask the user how they'd like to proceed (`pyenv install 3.12`, `uv venv --python 3.12`, etc.) before doing anything else.
 
 ## Step 2 — Install the Package
 
@@ -87,7 +87,7 @@ For any non-trivial change:
 
 Before submitting any change:
 
-- [ ] All code in English with type hints (modern syntax: `list[X]`, `Optional[X]`)
+- [ ] All code in English with type hints (modern syntax: `list[X]`, `X | None`)
 - [ ] Tests use `*_test.py` naming and pass
 - [ ] No real HTTP calls in tests (mock `httpx`)
 - [ ] All `client.*` calls wrapped in `try/except APIError`

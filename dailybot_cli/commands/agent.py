@@ -1,7 +1,7 @@
 """Agent commands for Dailybot CLI (API key or login session)."""
 
 import re
-from typing import Any, Optional
+from typing import Any
 
 import click
 
@@ -45,8 +45,8 @@ _CHALLENGE_NUMBER_RE: re.Pattern[str] = re.compile(r"session is (\d+)\.")
 
 
 def _resolve_agent_context(
-    profile_flag: Optional[str],
-    name_flag: Optional[str],
+    profile_flag: str | None,
+    name_flag: str | None,
 ) -> tuple[str, DailyBotClient]:
     """Resolve agent name and build a configured client.
 
@@ -61,7 +61,7 @@ def _resolve_agent_context(
     agent_name: profile.agent_name > --name flag > "CLI Agent"
     """
     # Try profile
-    profile_data: Optional[dict[str, Any]] = None
+    profile_data: dict[str, Any] | None = None
     if profile_flag:
         profile_data = get_profile(profile_flag)
         if not profile_data:
@@ -72,7 +72,7 @@ def _resolve_agent_context(
 
     if profile_data:
         agent_name: str = name_flag or profile_data.get("agent_name", "CLI Agent")
-        api_key: Optional[str] = profile_data.get("api_key")
+        api_key: str | None = profile_data.get("api_key")
         if api_key:
             return agent_name, DailyBotClient(api_key=api_key)
         # Profile without key — fall through to Bearer token
@@ -101,7 +101,7 @@ def _resolve_agent_context(
     "--profile", "-p", default=None, help="Agent profile name from agents.json.", hidden=False
 )
 @click.pass_context
-def agent(ctx: click.Context, profile: Optional[str]) -> None:
+def agent(ctx: click.Context, profile: str | None) -> None:
     """Agent commands (requires API key or login session)."""
     ctx.ensure_object(dict)
     ctx.obj["profile"] = profile
@@ -118,7 +118,7 @@ def agent(ctx: click.Context, profile: Optional[str]) -> None:
 )
 @click.pass_context
 def agent_configure(
-    ctx: click.Context, name: str, key: Optional[str], profile_name: Optional[str]
+    ctx: click.Context, name: str, key: str | None, profile_name: str | None
 ) -> None:
     """Configure a named agent profile.
 
@@ -161,7 +161,7 @@ def agent_profiles() -> None:
     data: dict[str, Any] = load_agents()
     all_profiles: dict[str, Any] = data.get("profiles", {})
     for p in profiles:
-        raw_key: Optional[str] = all_profiles.get(p["profile"], {}).get("api_key")
+        raw_key: str | None = all_profiles.get(p["profile"], {}).get("api_key")
         if raw_key:
             p["masked_key"] = raw_key[:4] + "****" if len(raw_key) > 4 else "****"
     print_agent_profiles(profiles)
@@ -189,10 +189,10 @@ def agent_profiles() -> None:
 def agent_update(
     ctx: click.Context,
     content: str,
-    name: Optional[str],
-    profile: Optional[str],
-    json_data: Optional[str],
-    metadata: Optional[str],
+    name: str | None,
+    profile: str | None,
+    json_data: str | None,
+    metadata: str | None,
     milestone: bool,
     co_authors: tuple[str, ...],
 ) -> None:
@@ -203,12 +203,12 @@ def agent_update(
       dailybot agent update "Built feature X" --name "Claude Code"
       dailybot agent update "Deployed" --profile ci-bot
     """
-    profile_flag: Optional[str] = profile or ctx.obj.get("profile")
+    profile_flag: str | None = profile or ctx.obj.get("profile")
     agent_name, client = _resolve_agent_context(profile_flag, name)
 
     import json as json_mod
 
-    structured: Optional[dict[str, Any]] = None
+    structured: dict[str, Any] | None = None
     if json_data:
         try:
             structured = json_mod.loads(json_data)
@@ -216,7 +216,7 @@ def agent_update(
             print_error("Invalid JSON in --json-data.")
             raise SystemExit(1)
 
-    metadata_dict: Optional[dict[str, Any]] = None
+    metadata_dict: dict[str, Any] | None = None
     if metadata:
         try:
             metadata_dict = json_mod.loads(metadata)
@@ -245,7 +245,7 @@ def agent_update(
         msg: str = f"Report submitted (id: {result.get('id', 'N/A')})"
         if result.get("is_milestone"):
             msg += " [Milestone]"
-        co: Optional[list[dict[str, Any]]] = result.get("co_authors")
+        co: list[dict[str, Any]] | None = result.get("co_authors")
         if co:
             names: str = ", ".join(a.get("name", a.get("uuid", "?")) for a in co)
             msg += f"\n  Co-authors: {names}"
@@ -276,9 +276,9 @@ def agent_health(
     report_ok: bool,
     report_fail: bool,
     query_status: bool,
-    message: Optional[str],
-    name: Optional[str],
-    profile: Optional[str],
+    message: str | None,
+    name: str | None,
+    profile: str | None,
 ) -> None:
     """Report or query agent health status.
 
@@ -292,7 +292,7 @@ def agent_health(
         print_error("Specify exactly one of --ok, --fail, or --status.")
         raise SystemExit(1)
 
-    profile_flag: Optional[str] = profile or ctx.obj.get("profile")
+    profile_flag: str | None = profile or ctx.obj.get("profile")
     agent_name, client = _resolve_agent_context(profile_flag, name)
 
     try:
@@ -329,7 +329,7 @@ def agent_webhook() -> None:
 @click.option("--profile", "-p", default=None, help="Agent profile name from agents.json.")
 @click.pass_context
 def webhook_register(
-    ctx: click.Context, url: str, secret: Optional[str], name: Optional[str], profile: Optional[str]
+    ctx: click.Context, url: str, secret: str | None, name: str | None, profile: str | None
 ) -> None:
     """Register a webhook for the agent.
 
@@ -337,7 +337,7 @@ def webhook_register(
       dailybot agent webhook register --url https://my-server.com/hook
       dailybot agent webhook register --url https://... --secret my-token
     """
-    profile_flag: Optional[str] = profile or ctx.obj.get("profile")
+    profile_flag: str | None = profile or ctx.obj.get("profile")
     agent_name, client = _resolve_agent_context(profile_flag, name)
 
     try:
@@ -357,14 +357,14 @@ def webhook_register(
 @click.option("--name", "-n", default=None, help="Agent worker name.")
 @click.option("--profile", "-p", default=None, help="Agent profile name from agents.json.")
 @click.pass_context
-def webhook_unregister(ctx: click.Context, name: Optional[str], profile: Optional[str]) -> None:
+def webhook_unregister(ctx: click.Context, name: str | None, profile: str | None) -> None:
     """Unregister the agent's webhook.
 
     \b
       dailybot agent webhook unregister
       dailybot agent webhook unregister --name "Claude Code"
     """
-    profile_flag: Optional[str] = profile or ctx.obj.get("profile")
+    profile_flag: str | None = profile or ctx.obj.get("profile")
     agent_name, client = _resolve_agent_context(profile_flag, name)
 
     try:
@@ -400,11 +400,11 @@ def message_send(
     ctx: click.Context,
     to_agent: str,
     content: str,
-    message_type: Optional[str],
-    name: Optional[str],
-    profile: Optional[str],
-    json_data: Optional[str],
-    expires_at: Optional[str],
+    message_type: str | None,
+    name: str | None,
+    profile: str | None,
+    json_data: str | None,
+    expires_at: str | None,
 ) -> None:
     """Send a message to an agent.
 
@@ -412,10 +412,10 @@ def message_send(
       dailybot agent message send --to "Claude Code" --content "Review PR #42"
       dailybot agent message send --to "Claude Code" --content "Do X" --type command
     """
-    profile_flag: Optional[str] = profile or ctx.obj.get("profile")
+    profile_flag: str | None = profile or ctx.obj.get("profile")
     agent_name, client = _resolve_agent_context(profile_flag, name)
 
-    metadata: Optional[dict[str, Any]] = None
+    metadata: dict[str, Any] | None = None
     if json_data:
         import json
 
@@ -447,19 +447,17 @@ def message_send(
 @click.option("--profile", "-p", default=None, help="Agent profile name from agents.json.")
 @click.option("--pending", is_flag=True, default=False, help="Show only undelivered messages.")
 @click.pass_context
-def message_list(
-    ctx: click.Context, name: Optional[str], profile: Optional[str], pending: bool
-) -> None:
+def message_list(ctx: click.Context, name: str | None, profile: str | None, pending: bool) -> None:
     """List messages for an agent.
 
     \b
       dailybot agent message list --name "Claude Code"
       dailybot agent message list --pending
     """
-    profile_flag: Optional[str] = profile or ctx.obj.get("profile")
+    profile_flag: str | None = profile or ctx.obj.get("profile")
     agent_name, client = _resolve_agent_context(profile_flag, name)
 
-    delivered: Optional[bool] = False if pending else None
+    delivered: bool | None = False if pending else None
     try:
         with console.status("Fetching messages..."):
             messages: list[dict[str, Any]] = client.get_agent_messages(
@@ -476,14 +474,14 @@ def message_list(
 @click.argument("message_ids", nargs=-1, required=True)
 @click.option("--profile", "-p", default=None, help="Agent profile name from agents.json.")
 @click.pass_context
-def message_claim(ctx: click.Context, message_ids: tuple[str, ...], profile: Optional[str]) -> None:
+def message_claim(ctx: click.Context, message_ids: tuple[str, ...], profile: str | None) -> None:
     """Mark one or more messages as read.
 
     \b
       dailybot agent message claim abc-123
       dailybot agent message claim abc-123 def-456
     """
-    profile_flag: Optional[str] = profile or ctx.obj.get("profile")
+    profile_flag: str | None = profile or ctx.obj.get("profile")
     _agent_name, client = _resolve_agent_context(profile_flag, None)
 
     try:
@@ -502,14 +500,14 @@ def message_claim(ctx: click.Context, message_ids: tuple[str, ...], profile: Opt
 @click.option("--name", "-n", default=None, help="Agent worker name.")
 @click.option("--profile", "-p", default=None, help="Agent profile name from agents.json.")
 @click.pass_context
-def message_claim_all(ctx: click.Context, name: Optional[str], profile: Optional[str]) -> None:
+def message_claim_all(ctx: click.Context, name: str | None, profile: str | None) -> None:
     """Mark all pending messages as delivered via health check.
 
     \b
       dailybot agent message claim-all
       dailybot agent message claim-all --name "Claude Code"
     """
-    profile_flag: Optional[str] = profile or ctx.obj.get("profile")
+    profile_flag: str | None = profile or ctx.obj.get("profile")
     agent_name, client = _resolve_agent_context(profile_flag, name)
 
     try:
@@ -549,9 +547,9 @@ def email_send(
     recipients: tuple[str, ...],
     subject: str,
     body_html: str,
-    name: Optional[str],
-    profile: Optional[str],
-    metadata: Optional[str],
+    name: str | None,
+    profile: str | None,
+    metadata: str | None,
 ) -> None:
     """Send an email through an agent.
 
@@ -561,12 +559,12 @@ def email_send(
       dailybot agent email send --to a@co.com --to b@co.com --subject "Report" \\
         --body-html "<h1>Done</h1>"
     """
-    profile_flag: Optional[str] = profile or ctx.obj.get("profile")
+    profile_flag: str | None = profile or ctx.obj.get("profile")
     agent_name, client = _resolve_agent_context(profile_flag, name)
 
     to_list: list[str] = list(recipients)
 
-    metadata_dict: Optional[dict[str, Any]] = None
+    metadata_dict: dict[str, Any] | None = None
     if metadata:
         import json
 
@@ -600,7 +598,7 @@ def email_send(
 
 def _solve_challenge(instruction: str) -> int:
     """Extract random_number from challenge instruction and compute the answer."""
-    match: Optional[re.Match[str]] = _CHALLENGE_NUMBER_RE.search(instruction)
+    match: re.Match[str] | None = _CHALLENGE_NUMBER_RE.search(instruction)
     if not match:
         print_error("Could not parse challenge. Please report this issue.")
         raise SystemExit(1)
@@ -622,9 +620,9 @@ def _solve_challenge(instruction: str) -> int:
 def agent_register(
     org_name: str,
     agent_name: str,
-    email: Optional[str],
+    email: str | None,
     timezone: str,
-    profile_name: Optional[str],
+    profile_name: str | None,
 ) -> None:
     """Register a new agent and organization (no existing account needed).
 
@@ -669,8 +667,8 @@ def agent_register(
             raise SystemExit(1)
 
     # Save profile
-    api_key: Optional[str] = result.get("api_key")
-    agent_email: Optional[str] = result.get("agent_email")
+    api_key: str | None = result.get("api_key")
+    agent_email: str | None = result.get("agent_email")
     save_agent_profile(slug, agent_name=agent_name, api_key=api_key, agent_email=agent_email)
 
     # Display result

@@ -1,7 +1,5 @@
 """Dailybot CLI entry point."""
 
-from typing import Optional
-
 import click
 
 from dailybot_cli import __version__
@@ -23,7 +21,7 @@ from dailybot_cli.config import set_api_url_override
     help="Override the API base URL (e.g. staging).",
 )
 @click.pass_context
-def cli(ctx: click.Context, api_url: Optional[str]) -> None:
+def cli(ctx: click.Context, api_url: str | None) -> None:
     """Dailybot CLI - The command-line bridge between humans and agents.
 
     \b

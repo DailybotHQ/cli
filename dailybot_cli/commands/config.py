@@ -1,7 +1,5 @@
 """Configuration command for Dailybot CLI."""
 
-from typing import Optional
-
 import click
 
 from dailybot_cli.config import load_config, save_config
@@ -43,7 +41,7 @@ def config(setting: str) -> None:
 
     # Show current value
     if value is None:
-        current: Optional[str] = load_config().get(config_key)
+        current: str | None = load_config().get(config_key)
         if current:
             print_info(f"{name}: {_mask(current)}")
         else:

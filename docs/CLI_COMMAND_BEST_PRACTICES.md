@@ -12,13 +12,13 @@ Every Click callback should be structured as five clear phases:
 @click.option("--name", "-n", default=None)
 @click.option("--profile", "-p", default=None)
 @click.pass_context
-def agent_update(ctx: click.Context, content: str, name: Optional[str], profile: Optional[str]) -> None:
+def agent_update(ctx: click.Context, content: str, name: str | None, profile: str | None) -> None:
     """User-facing docstring."""
     # 1. Validate flag combinations
     #    (e.g., exactly one of --ok/--fail/--status)
 
     # 2. Resolve auth context
-    profile_flag: Optional[str] = profile or ctx.obj.get("profile")
+    profile_flag: str | None = profile or ctx.obj.get("profile")
     agent_name, client = _resolve_agent_context(profile_flag, name)
 
     # 3. Parse JSON / shape inputs
@@ -89,7 +89,7 @@ Without the `\b`, Click joins the lines into a paragraph and your examples becom
 @click.group()
 @click.option("--profile", "-p", default=None)
 @click.pass_context
-def agent(ctx: click.Context, profile: Optional[str]) -> None:
+def agent(ctx: click.Context, profile: str | None) -> None:
     ctx.ensure_object(dict)
     ctx.obj["profile"] = profile
 ```
@@ -97,7 +97,7 @@ def agent(ctx: click.Context, profile: Optional[str]) -> None:
 Subcommands accept their own `--profile` and combine with `ctx.obj`:
 
 ```python
-profile_flag: Optional[str] = profile or ctx.obj.get("profile")
+profile_flag: str | None = profile or ctx.obj.get("profile")
 ```
 
 This way `dailybot agent --profile ci-bot update "..."` and `dailybot agent update "..." --profile ci-bot` both work, with the inner flag taking precedence (which mirrors Click's natural argument resolution).

@@ -11,7 +11,7 @@ set -euo pipefail
 REPO="DailyBotHQ/cli"
 PACKAGE="dailybot-cli"
 COMMAND="dailybot"
-MIN_PYTHON="3.9"
+MIN_PYTHON="3.10"
 
 # --- Helpers ---
 

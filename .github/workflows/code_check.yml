@@ -35,10 +35,10 @@ jobs:
       # whether the issue is version-specific.
       fail-fast: false
       matrix:
-        # Lower bound (project's `requires-python = ">=3.9"`) + a current
-        # interpreter. Add 3.13 once we drop 3.9, or expand here if a
-        # downstream user reports a 3.10/3.11-specific issue.
-        python-version: ["3.9", "3.12"]
+        # Lower bound (project's `requires-python = ">=3.10"`) + a current
+        # interpreter. Expand here if a downstream user reports a
+        # 3.11/3.13-specific issue.
+        python-version: ["3.10", "3.12"]
 
     steps:
       - name: Checkout

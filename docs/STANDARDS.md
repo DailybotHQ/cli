@@ -48,8 +48,8 @@ Within each tier, imports are alphabetical. Group `from X import a, b, c` after 
 ```python
 def submit_report(
     content: str,
-    structured: Optional[dict[str, Any]] = None,
-    metadata: Optional[dict[str, Any]] = None,
+    structured: dict[str, Any] | None = None,
+    metadata: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     payload: dict[str, Any] = {"content": content}
     if structured:
@@ -59,7 +59,7 @@ def submit_report(
     return payload
 ```
 
-Use modern syntax: `list[X]`, `dict[K, V]`, `tuple[X, ...]`, `Optional[X]`. Annotate parameters, return type, and meaningful local variables. The codebase favors explicit annotations even where mypy could infer.
+Use modern syntax (Python 3.10+): `list[X]`, `dict[K, V]`, `tuple[X, ...]`, `X | None` (not `Optional[X]`), `X | Y` (not `Union[X, Y]`). Annotate parameters, return type, and meaningful local variables. The codebase favors explicit annotations even where mypy could infer.
 
 ## Module-Level Constants
 

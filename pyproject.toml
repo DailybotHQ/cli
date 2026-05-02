@@ -8,7 +8,7 @@ version = "0.4.12"
 description = "Dailybot CLI - The command-line bridge between humans and agents. Progress reports, observability, and workflow automation for modern teams across Slack, Google Chat, Discord, MS Teams, and more."
 readme = "README.md"
 license = {text = "MIT"}
-requires-python = ">=3.9"
+requires-python = ">=3.10"
 authors = [
     {name = "Dailybot", email = "support@dailybot.com"},
 ]
@@ -18,10 +18,10 @@ classifiers = [
     "Intended Audience :: Developers",
     "License :: OSI Approved :: MIT License",
     "Programming Language :: Python :: 3",
-    "Programming Language :: Python :: 3.9",
     "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
     "Topic :: Software Development :: Build Tools",
 ]
 dependencies = [
@@ -65,7 +65,7 @@ include = ["dailybot_cli*"]
 # Replaces flake8, isort, pylint, black, pyupgrade, and friends.
 # ----------------------------------------------------------------------------
 [tool.ruff]
-target-version = "py39"
+target-version = "py310"
 line-length = 100
 extend-exclude = [
     "build",
@@ -125,7 +125,7 @@ indent-style = "space"
 # Tighten rules over time as the codebase converges.
 # ----------------------------------------------------------------------------
 [tool.mypy]
-python_version = "3.9"
+python_version = "3.10"
 files = ["dailybot_cli"]
 ignore_missing_imports = true       # questionary/rich/etc. ship loose stubs
 warn_unused_ignores = true

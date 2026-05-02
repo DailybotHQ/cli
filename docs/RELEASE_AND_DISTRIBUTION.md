@@ -39,7 +39,7 @@ The fully automated flow makes releases a side-effect of merging PRs. You never 
                       │
                       ▼
        ┌──────────────────────────────┐
-       │ code_check.yml                │  ← gate (matrix: Py 3.9 + 3.12)
+       │ code_check.yml                │  ← gate (matrix: Py 3.10 + 3.12)
        │  ruff check / format          │
        │  mypy                         │
        │  pytest -x                    │
@@ -86,7 +86,7 @@ The fully automated flow makes releases a side-effect of merging PRs. You never 
 **Branch protection on `main`** — go to `Settings → Branches → main` and:
 
 1. Enable "Require a pull request before merging".
-2. Enable "Require status checks to pass before merging" and add `Code Check (Python 3.9)`, `Code Check (Python 3.12)`, and `Build smoke-test (sdist + wheel)` from `code_check.yml` as required checks.
+2. Enable "Require status checks to pass before merging" and add `Code Check (Python 3.10)`, `Code Check (Python 3.12)`, and `Build smoke-test (sdist + wheel)` from `code_check.yml` as required checks.
 3. Add the actor that owns `AUTOMATION_GITHUB_TOKEN` (see below) to the bypass list of "Require a pull request before merging" — `auto-release.yml` needs to push the `chore(release): X.Y.Z` commit + tag directly to `main`.
 
 **Repository secrets** — three are required:

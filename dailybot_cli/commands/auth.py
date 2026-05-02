@@ -1,6 +1,6 @@
 """Authentication commands for Dailybot CLI."""
 
-from typing import Any, Optional
+from typing import Any
 
 import click
 import questionary
@@ -27,7 +27,7 @@ def _prompt_org_selection(organizations: list[dict[str, Any]]) -> dict[str, Any]
     choices: list[questionary.Choice] = [
         questionary.Choice(title=org.get("name", "Unknown"), value=org) for org in organizations
     ]
-    selected: Optional[dict[str, Any]] = questionary.select(
+    selected: dict[str, Any] | None = questionary.select(
         "You belong to multiple organizations. Select one:",
         choices=choices,
     ).ask()
@@ -46,7 +46,7 @@ def _print_org_list(organizations: list[dict[str, Any]]) -> None:
         click.echo(f"  {org_name} (uuid: {org_uuid})")
 
 
-def _resolve_org_uuid(organizations: list[dict[str, Any]], org_uuid: str) -> Optional[int]:
+def _resolve_org_uuid(organizations: list[dict[str, Any]], org_uuid: str) -> int | None:
     """Find the integer ID for an org given its UUID."""
     for org in organizations:
         if org.get("uuid") == org_uuid:
@@ -55,7 +55,7 @@ def _resolve_org_uuid(organizations: list[dict[str, Any]], org_uuid: str) -> Opt
 
 
 def _verify_and_save(
-    client: DailyBotClient, email: str, code: str, organization_id: Optional[int]
+    client: DailyBotClient, email: str, code: str, organization_id: int | None
 ) -> None:
     """Verify OTP code and save credentials."""
     try:
@@ -83,7 +83,7 @@ def _verify_and_save(
             print_error("Organization selection required but no organizations returned.")
         raise SystemExit(1)
 
-    token: Optional[str] = result.get("token")
+    token: str | None = result.get("token")
     if not token:
         print_error("Authentication failed: no token received.")
         raise SystemExit(1)
@@ -132,7 +132,7 @@ def _do_login(email: str) -> None:
     code = code.strip()
 
     # Step 3: If multi-org, prompt for org selection before verifying
-    organization_id: Optional[int] = None
+    organization_id: int | None = None
     if is_multi_org and len(organizations) > 1:
         selected_org: dict[str, Any] = _prompt_org_selection(organizations)
         organization_id = selected_org["id"]
@@ -168,16 +168,16 @@ def _request_code_non_interactive(email: str) -> None:
         print_info(f"Run: dailybot login --email={email} --code=CODE")
 
 
-def _verify_non_interactive(email: str, code: str, org_uuid: Optional[str]) -> None:
+def _verify_non_interactive(email: str, code: str, org_uuid: str | None) -> None:
     """Non-interactive step 2: verify code, handle missing --org for multi-org."""
     client: DailyBotClient = DailyBotClient()
 
-    organization_id: Optional[int] = None
+    organization_id: int | None = None
     if org_uuid is not None:
         # Resolve UUID → integer ID from the cached org list (saved in step 1).
         # This avoids calling request_code or verify_code without org_id,
         # which would consume/invalidate the OTP.
-        cached_orgs: Optional[list[dict[str, Any]]] = load_org_cache(email)
+        cached_orgs: list[dict[str, Any]] | None = load_org_cache(email)
         if cached_orgs is None:
             print_error("No cached organization list found. Run step 1 first:")
             print_info(f"  dailybot login --email={email}")
@@ -208,7 +208,7 @@ def _verify_non_interactive(email: str, code: str, org_uuid: Optional[str]) -> N
     help="Organization UUID to log in to (for multi-org accounts). Shown after requesting a code.",
 )
 @click.pass_context
-def login(ctx: click.Context, email: str, code: Optional[str], org_uuid: Optional[str]) -> None:
+def login(ctx: click.Context, email: str, code: str | None, org_uuid: str | None) -> None:
     """Authenticate with Dailybot via email OTP.
 
     \b
@@ -238,7 +238,7 @@ def login(ctx: click.Context, email: str, code: Optional[str], org_uuid: Optiona
 @click.command()
 def logout() -> None:
     """Log out and revoke the current token."""
-    token: Optional[str] = get_token()
+    token: str | None = get_token()
     if not token:
         print_info("Not logged in.")
         return

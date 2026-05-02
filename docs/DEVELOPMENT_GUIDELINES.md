@@ -22,32 +22,35 @@ def get_status(self):
     return self._handle_response(response)
 ```
 
-### Modern Syntax (Python 3.9+)
+### Modern Syntax (Python 3.10+)
 
 ```python
 # ✅ CORRECT
 items: list[str]
 mapping: dict[str, Any]
-maybe: Optional[int]
+maybe: int | None                # PEP 604, not Optional[int]
+either: str | int                # PEP 604, not Union[str, int]
 fixed: tuple[str, str, int]
 variadic: tuple[str, ...]
 
-# ❌ WRONG (legacy 3.8 style)
-from typing import List, Dict, Tuple
+# ❌ WRONG (legacy style — `ruff check --fix` will rewrite these)
+from typing import List, Dict, Tuple, Optional, Union
 items: List[str]
 mapping: Dict[str, Any]
 fixed: Tuple[str, str, int]
+maybe: Optional[int]
+either: Union[str, int]
 ```
 
-### `Optional` and `None`
+### Nullable values (`X | None`)
 
 ```python
-# ✅ When a value can be None, mark it explicitly
-def get_token() -> Optional[str]: ...
+# ✅ When a value can be None, mark it explicitly with PEP 604 syntax
+def get_token() -> str | None: ...
 def save_credentials(token: str, email: str) -> None: ...
 
 # Reading optional dict values
-result: Optional[str] = data.get("token")
+result: str | None = data.get("token")
 if not result:
     print_error("Authentication failed: no token received.")
     raise SystemExit(1)
@@ -67,14 +70,14 @@ Click decorators wrap a function but the signature still gets type-checked. Anno
 def agent_update(
     ctx: click.Context,
     content: str,
-    name: Optional[str],
+    name: str | None,
     milestone: bool,
     co_authors: tuple[str, ...],
 ) -> None:
     ...
 ```
 
-`multiple=True` flags arrive as `tuple[str, ...]`. `is_flag=True` flags are `bool`. Optional flags without a default behave as `Optional[<type>]`.
+`multiple=True` flags arrive as `tuple[str, ...]`. `is_flag=True` flags are `bool`. Optional flags without a default behave as `<type> | None`.
 
 ## Error Handling
 
@@ -131,7 +134,7 @@ sys.exit(1)
 ### Reading JSON Files
 
 ```python
-def load_credentials() -> Optional[dict[str, Any]]:
+def load_credentials() -> dict[str, Any] | None:
     if not CREDENTIALS_FILE.exists():
         return None
     try:
@@ -210,7 +213,7 @@ The `# type: ignore[no-any-return]` is acceptable here — `response.json()` ret
 @click.group()
 @click.option("--profile", "-p", default=None)
 @click.pass_context
-def agent(ctx: click.Context, profile: Optional[str]) -> None:
+def agent(ctx: click.Context, profile: str | None) -> None:
     """Agent commands (requires API key or login session)."""
     ctx.ensure_object(dict)
     ctx.obj["profile"] = profile
@@ -295,5 +298,5 @@ The CLI is stateless with respect to transactions — there is no DB. If a write
 | `urllib3` directly | Same — `httpx` is the boundary |
 | Custom JSON parsers | `json.loads` / `json.dumps(..., indent=2)` is enough |
 | Bare `except:` | Always catch a specific class. `except Exception:` is acceptable around third-party code that raises unknowns |
-| Mutable default args (`def f(x=[]):`) | Use `Optional[X] = None` and assign the default inside the body |
+| Mutable default args (`def f(x=[]):`) | Use `X \| None = None` and assign the default inside the body |
 | Circular imports | If you need a config helper from a command module, it belongs in `config.py` instead |
