@@ -101,6 +101,16 @@ class TestVersionCommand:
             assert result.exit_code == 0
             assert "Could not reach PyPI" in result.output
 
+    def test_version_command_pyinstaller_bundle(self, runner: CliRunner) -> None:
+        """In a frozen (PyInstaller) build, show the binary path, not the temp dir."""
+        with patch("dailybot_cli.commands.version.sys") as mock_sys:
+            mock_sys.frozen = True
+            mock_sys.executable = "/usr/local/bin/dailybot"
+            result = runner.invoke(cli, ["version"])
+            assert result.exit_code == 0
+            assert "/usr/local/bin/dailybot" in result.output
+            assert "PyInstaller bundle" in result.output
+
     @patch("dailybot_cli.main.set_api_url_override")
     @patch("dailybot_cli.commands.update.get_token")
     @patch("dailybot_cli.commands.update.DailyBotClient")

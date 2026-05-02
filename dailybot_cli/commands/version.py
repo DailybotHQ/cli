@@ -1,6 +1,7 @@
 """`dailybot version` subcommand — show install info, optionally check PyPI."""
 
 import platform
+import sys
 from pathlib import Path
 
 import click
@@ -16,7 +17,20 @@ _PYPI_URL: str = "https://pypi.org/pypi/dailybot-cli/json"
 
 
 def _resolve_install_path() -> str:
-    """Return the directory where the running `dailybot_cli` package is installed."""
+    """Return a user-friendly path describing where the CLI lives.
+
+    For normal Python installs (pip / pipx / Homebrew / editable), this is the
+    directory of the running `dailybot_cli` package. For the PyInstaller-built
+    Linux binary, the package source lives in an ephemeral `/tmp/_MEIxxxxxx/`
+    extraction dir that is meaningless to the user — we surface the binary
+    path itself in that case so the value is actionable.
+    """
+    # PyInstaller sets `sys.frozen = True` and `sys._MEIPASS` to the temp dir
+    # where it extracted the bundle. Prefer the executable path the user
+    # invoked.
+    if getattr(sys, "frozen", False):
+        return f"{sys.executable}  (PyInstaller bundle)"
+
     import dailybot_cli
 
     return str(Path(dailybot_cli.__file__).resolve().parent)
