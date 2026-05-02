@@ -232,142 +232,305 @@ function dev_install() {
 }
 
 # ============================================================================
-# Package smoke-test: build → twine check → install in clean venv → run.
-# Catches packaging issues that `pytest` misses: missing files in the wheel,
-# dependencies declared in pyproject.toml that aren't actually imported,
-# entry-point glue, README rendering, exact pin resolution, etc.
+# clitest — package smoke-test workspace manager
+# ----------------------------------------------------------------------------
+# Build the wheel, install it in a fresh isolated venv under /tmp/clitest.*,
+# smoke-test the CLI, and DROP YOU INTO that venv (i.e. activate it in your
+# current shell). Each invocation creates a new env; older ones stick around
+# under /tmp/clitest.* until you `clitest clean` (or `clean --all`).
 #
-# Manual equivalents (run directly without this helper):
-#   python -m build
-#   twine check dist/*
-#   python -m venv /tmp/dbtest && source /tmp/dbtest/bin/activate
-#   pip install dist/dailybot_cli-*-py3-none-any.whl
-#   dailybot --version && dailybot --help
-#   deactivate && rm -rf /tmp/dbtest
+# Subcommands:
+#   clitest               Build + create + activate (default action).
+#   clitest list          Show all envs with index, age, size; mark active/latest.
+#   clitest exec [N|PATH] Re-attach to an env (default: latest).
+#   clitest clean         Deactivate + delete the current env.
+#   clitest clean --all   Nuke every /tmp/clitest.* on the box.
+#   clitest help          Long help.
 # ============================================================================
 
-function pkg_test() {
-    local project_root venv_dir wheel keep=false
+CLITEST_BASE_DIR="${CLITEST_BASE_DIR:-/tmp}"
+CLITEST_PREFIX="clitest"
+CLITEST_LATEST_LINK="${CLITEST_BASE_DIR}/${CLITEST_PREFIX}.latest"
 
-    while [[ $# -gt 0 ]]; do
-        case "$1" in
-            --keep)
-                keep=true
-                shift
-                ;;
-            -h|--help)
-                cat <<'EOF'
-pkg_test — build the package and smoke-test it in a clean venv.
+function clitest() {
+    if [[ $# -eq 0 ]]; then
+        _clitest_create
+        return $?
+    fi
+    local subcmd="$1"
+    shift
+    case "$subcmd" in
+        create)             _clitest_create "$@" ;;
+        clean)              _clitest_clean "$@" ;;
+        exec|attach)        _clitest_exec "$@" ;;
+        list|ls)            _clitest_list ;;
+        help|-h|--help)     _clitest_help ;;
+        *)
+            print.error "Unknown subcommand: $subcmd"
+            echo "Run 'clitest help' for usage."
+            return 2
+            ;;
+    esac
+}
+
+function _clitest_help() {
+    cat <<'EOF'
+clitest — package smoke-test workspace manager.
 
 Usage:
-  pkg_test               Build, install in a throwaway venv, smoke-test, clean up.
-  pkg_test --keep        Same, but leave the venv around (path printed at the end).
-                         Useful when you want to `source <path>/bin/activate` and
-                         poke at the installed CLI manually (e.g. against staging).
-  pkg_test -h | --help   Show this help.
+  clitest [create]      Build the wheel, install it in a fresh venv under
+                          /tmp/clitest.XXXXXX, smoke-test, and ACTIVATE that
+                          venv in your current shell. The previous "latest"
+                          symlink is updated to point at the new env.
 
-What it does:
-  1. python -m build      → sdist + wheel under dist/
-  2. twine check dist/*   → metadata + README validation
-  3. python -m venv ...   → fresh isolated environment
-  4. pip install <wheel>  → exact resolution against pyproject.toml's pinned deps
-  5. dailybot --version + import check + every subcommand --help
+  clitest list          Show all /tmp/clitest.* envs as a table with index,
+                          creation time, size, and tags ("latest", "active").
 
-Exit code is non-zero on any step that fails.
+  clitest exec [TARGET] Re-attach (`source ... activate`) to an existing env:
+                            no arg                → clitest.latest
+                            integer (1, 2, ...)   → that index from `list`
+                            absolute path         → that exact venv
+                          Useful when opening a second terminal, or when you
+                          have multiple envs and want to switch between them.
+
+  clitest clean         Deactivate the currently-active clitest venv (if you
+                          are inside one) and delete it. If you are NOT inside
+                          one, deletes clitest.latest instead.
+  clitest clean --all   Deactivate (if applicable) and nuke EVERY clitest
+                          venv on the box. The clitest.latest symlink is
+                          removed too. Use this to start fresh.
+
+  clitest help          Show this help.
+
+Inside an active clitest venv your shell prompt shows `(clitest.XXXXXX)`
+to remind you you're in a sandbox, not the editable /workspace install.
+
+Typical flow:
+  $ clitest                          # build + create + activate
+  (clitest.io98bF) $ dailybot --version
+  (clitest.io98bF) $ dailybot --api-url https://staging.dailybot.com login \
+                          --email me@dailybot.com
+  ...
+  (clitest.io98bF) $ clitest clean   # exit + delete this env
+  $ clitest list                      # see remaining envs (other terminals)
+  $ clitest exec                      # re-attach to latest in a new terminal
 EOF
-                return 0
-                ;;
-            *)
-                print.error "Unknown flag: $1"
-                echo "Run 'pkg_test --help' for usage."
-                return 2
-                ;;
-        esac
-    done
+}
 
-    project_root="$(git rev-parse --show-toplevel 2>/dev/null || echo "$PWD")"
-    venv_dir="$(mktemp -d -t pkg_test.XXXXXX)"
-
-    # Cleanup on any exit path (success, failure, Ctrl-C) — unless --keep
-    if ! $keep; then
-        trap "rm -rf '$venv_dir'" RETURN
+# Returns 0 (and echoes path) iff $VIRTUAL_ENV currently points at a clitest
+# venv. Returns 1 if not in any clitest venv (possibly in another venv).
+function _clitest_active_venv() {
+    if [[ -n "${VIRTUAL_ENV:-}" && "$VIRTUAL_ENV" == "${CLITEST_BASE_DIR}/${CLITEST_PREFIX}".* ]]; then
+        echo "$VIRTUAL_ENV"
+        return 0
     fi
+    return 1
+}
+
+# List all clitest venv paths, sorted by mtime (newest first), excluding the
+# `latest` symlink itself.
+function _clitest_list_paths() {
+    ls -dt "${CLITEST_BASE_DIR}/${CLITEST_PREFIX}".*/ 2>/dev/null \
+        | sed 's:/$::' \
+        | grep -v "${CLITEST_PREFIX}\.latest$"
+}
+
+function _clitest_create() {
+    local project_root venv_dir wheel
+    project_root="$(git rev-parse --show-toplevel 2>/dev/null || echo "$PWD")"
+
+    # If currently in a non-clitest venv, refuse — don't trample user's env.
+    if [[ -n "${VIRTUAL_ENV:-}" ]] && ! _clitest_active_venv >/dev/null; then
+        print.error "You're already inside a non-clitest venv: $VIRTUAL_ENV"
+        echo "  Run 'deactivate' first, then re-run 'clitest'."
+        return 1
+    fi
+
+    # If in a clitest venv, deactivate it (don't delete — user might still need it)
+    if _clitest_active_venv >/dev/null; then
+        print.success "Leaving current clitest venv before creating a new one..."
+        deactivate 2>/dev/null || true
+    fi
+
+    venv_dir="$(mktemp -d -t "${CLITEST_PREFIX}.XXXXXX")"
 
     print.success "1/5 — Building sdist + wheel..."
     (cd "$project_root" && rm -rf dist/ build/ && python -m build) || {
         print.error "⚠️  Build failed."
+        rm -rf "$venv_dir"
         return 1
     }
 
     print.success "2/5 — Validating package metadata (twine check)..."
     (cd "$project_root" && twine check dist/*) || {
         print.error "⚠️  twine check failed."
+        rm -rf "$venv_dir"
         return 1
     }
 
     print.success "3/5 — Creating clean venv at $venv_dir ..."
-    python -m venv "$venv_dir" || return 1
+    python -m venv "$venv_dir" || { rm -rf "$venv_dir"; return 1; }
 
     wheel="$(ls "$project_root"/dist/dailybot_cli-*-py3-none-any.whl 2>/dev/null | head -n1)"
     if [ -z "$wheel" ]; then
         print.error "⚠️  No wheel found under dist/."
+        rm -rf "$venv_dir"
         return 1
     fi
 
     print.success "4/5 — Installing wheel into the clean venv..."
-    # Run pip from the venv directly, no need to source/activate
-    "$venv_dir/bin/pip" install --upgrade pip --quiet || return 1
+    "$venv_dir/bin/pip" install --upgrade pip --quiet || { rm -rf "$venv_dir"; return 1; }
     "$venv_dir/bin/pip" install "$wheel" --quiet || {
         print.error "⚠️  Wheel install failed."
+        rm -rf "$venv_dir"
         return 1
     }
 
     print.success "5/5 — Smoke-testing the installed CLI..."
-    echo ""
-    echo "    which dailybot:    $("$venv_dir/bin/dailybot" --version 2>&1 | head -1)"
-    echo "    binary path:       $venv_dir/bin/dailybot"
-    echo ""
-
-    # Verify each subcommand loads (catches missing modules in the wheel)
+    if ! "$venv_dir/bin/dailybot" --version >/dev/null 2>&1; then
+        print.error "⚠️  dailybot --version failed inside the venv."
+        rm -rf "$venv_dir"
+        return 1
+    fi
     local subcommand
     for subcommand in login logout status update config agent; do
         if ! "$venv_dir/bin/dailybot" "$subcommand" --help >/dev/null 2>&1; then
-            print.error "⚠️  '$subcommand --help' failed to load — wheel may be missing files."
+            print.error "⚠️  '$subcommand --help' failed — wheel may be missing files."
+            rm -rf "$venv_dir"
             return 1
         fi
     done
 
-    # Verify all internal modules import cleanly
-    "$venv_dir/bin/python" -c "
-import dailybot_cli, dailybot_cli.main, dailybot_cli.api_client
-import dailybot_cli.config, dailybot_cli.display
-import dailybot_cli.commands.auth, dailybot_cli.commands.status
-import dailybot_cli.commands.update, dailybot_cli.commands.config
-import dailybot_cli.commands.interactive, dailybot_cli.commands.agent
-" || {
-        print.error "⚠️  Module import check failed."
-        return 1
-    }
+    # Update the "latest" symlink so other terminals can `clitest exec` into it.
+    rm -f "$CLITEST_LATEST_LINK"
+    ln -s "$venv_dir" "$CLITEST_LATEST_LINK"
 
     echo ""
-    print.success "✅ All checks passed — package is publishable."
+    print.success "✅ Package built and verified — entering venv now..."
+    echo "    Path:           $venv_dir"
+    echo "    dailybot:       $("$venv_dir/bin/dailybot" --version 2>&1 | head -1)"
     echo ""
-    if $keep; then
-        echo "    Venv kept at: $venv_dir"
-        echo ""
-        echo "    To poke around manually (e.g. against staging):"
-        echo "      source $venv_dir/bin/activate"
-        echo "      dailybot --api-url https://staging.dailybot.com login --email <you>@dailybot.com"
-        echo "      ..."
-        echo "      deactivate && rm -rf $venv_dir"
-    else
-        echo "    Venv was cleaned up. Re-run with 'pkg_test --keep' to keep it for"
-        echo "    interactive smoke-testing (e.g. against staging)."
+    echo "    Run 'clitest clean' when done, or 'clitest list' to see all envs."
+    echo ""
+
+    # Activate in the caller's interactive shell.
+    # shellcheck disable=SC1091
+    source "$venv_dir/bin/activate"
+}
+
+function _clitest_clean() {
+    if [[ "${1:-}" == "--all" ]]; then
+        if _clitest_active_venv >/dev/null; then
+            deactivate 2>/dev/null || true
+        fi
+        local v removed=0
+        for v in "${CLITEST_BASE_DIR}/${CLITEST_PREFIX}".*; do
+            [[ -d "$v" ]] || continue
+            rm -rf "$v"
+            removed=$((removed + 1))
+        done
+        rm -f "$CLITEST_LATEST_LINK"
+        if [[ $removed -gt 0 ]]; then
+            print.success "Removed $removed clitest env(s)."
+        else
+            echo "No clitest envs to remove."
+        fi
+        return 0
     fi
-    echo ""
-    echo "    To publish to TestPyPI (if TESTPYPI_API_TOKEN is in .env):"
-    echo "      twine upload --repository testpypi $project_root/dist/*"
-    echo ""
+
+    local target
+    if target="$(_clitest_active_venv)"; then
+        print.success "Deactivating $target ..."
+        deactivate 2>/dev/null || true
+    elif [[ -L "$CLITEST_LATEST_LINK" ]]; then
+        target="$(readlink -f "$CLITEST_LATEST_LINK")"
+    else
+        print.error "Not in a clitest venv and no clitest.latest exists."
+        echo "  Run 'clitest list' to see what's available, or 'clitest' to create one."
+        return 1
+    fi
+
+    if [[ -d "$target" ]]; then
+        print.success "Removing $target ..."
+        rm -rf "$target"
+    fi
+
+    # If the latest symlink was pointing at this env (or is now broken), drop it.
+    if [[ -L "$CLITEST_LATEST_LINK" ]]; then
+        local latest_target
+        latest_target="$(readlink -f "$CLITEST_LATEST_LINK" 2>/dev/null || echo "")"
+        if [[ -z "$latest_target" || "$latest_target" == "$target" || ! -d "$latest_target" ]]; then
+            rm -f "$CLITEST_LATEST_LINK"
+        fi
+    fi
+
+    echo "Done."
+}
+
+function _clitest_exec() {
+    local target="${1:-}" venv_path
+
+    if [[ -z "$target" ]]; then
+        if [[ ! -L "$CLITEST_LATEST_LINK" ]]; then
+            print.error "No clitest.latest exists."
+            echo "  Run 'clitest' to create one, or 'clitest list' to see existing envs."
+            return 1
+        fi
+        venv_path="$(readlink -f "$CLITEST_LATEST_LINK")"
+    elif [[ "$target" =~ ^[0-9]+$ ]]; then
+        venv_path="$(_clitest_list_paths | sed -n "${target}p")"
+        if [[ -z "$venv_path" ]]; then
+            print.error "No clitest env at index $target. Run 'clitest list' first."
+            return 1
+        fi
+    else
+        venv_path="$target"
+    fi
+
+    if [[ ! -d "$venv_path" || ! -f "$venv_path/bin/activate" ]]; then
+        print.error "$venv_path does not look like a venv."
+        return 1
+    fi
+
+    # Already attached to that exact one? No-op.
+    if [[ "${VIRTUAL_ENV:-}" == "$venv_path" ]]; then
+        echo "Already in $venv_path."
+        return 0
+    fi
+
+    # In some other venv (clitest or not) — leave it first
+    if [[ -n "${VIRTUAL_ENV:-}" ]]; then
+        deactivate 2>/dev/null || true
+    fi
+
+    print.success "Activating $venv_path ..."
+    # shellcheck disable=SC1091
+    source "$venv_path/bin/activate"
+}
+
+function _clitest_list() {
+    local count=0 path latest_target="" current=""
+    if [[ -L "$CLITEST_LATEST_LINK" ]]; then
+        latest_target="$(readlink -f "$CLITEST_LATEST_LINK" 2>/dev/null || echo "")"
+    fi
+    current="$(_clitest_active_venv 2>/dev/null || true)"
+
+    printf "%-3s  %-44s  %-8s  %-8s  %s\n" "#" "Path" "Created" "Size" "Tags"
+    printf '%s\n' "----------------------------------------------------------------------------------"
+    while IFS= read -r path; do
+        [[ -z "$path" ]] && continue
+        count=$((count + 1))
+        local created size tags=""
+        created="$(date -r "$path" '+%H:%M:%S' 2>/dev/null || echo "?")"
+        size="$(du -sh "$path" 2>/dev/null | cut -f1)"
+        [[ "$path" == "$latest_target" ]] && tags="${tags}latest "
+        [[ "$path" == "$current" ]] && tags="${tags}active"
+        printf "%-3s  %-44s  %-8s  %-8s  %s\n" "$count" "$path" "$created" "$size" "${tags% }"
+    done < <(_clitest_list_paths)
+
+    if [[ $count -eq 0 ]]; then
+        echo "  (no envs — run 'clitest' to create one)"
+    fi
 }
 
 # ============================================================================
@@ -453,6 +616,7 @@ function set_bash_prompt() {
     local yellow="\[\033[0;33m\]"
     local red="\[\033[0;31m\]"
     local green="\[\033[0;32m\]"
+    local magenta="\[\033[0;35m\]"
     local white="\[\033[0;37m\]"
     local reset="\[\033[0m\]"
 
@@ -474,8 +638,18 @@ function set_bash_prompt() {
         fi
     fi
 
-    # Build the prompt - simple format: path (git) $
-    PS1="${yellow}\w${reset}${git_info}${white} \$ ${reset}"
+    # Show active venv (clitest sandbox or any other) so it's obvious which
+    # `dailybot` you're running. The standard venv activate script's PS1 hack
+    # gets blown away by PROMPT_COMMAND, so we re-derive it here.
+    local venv_info=""
+    if [[ -n "${VIRTUAL_ENV:-}" ]]; then
+        local venv_basename
+        venv_basename="$(basename "$VIRTUAL_ENV")"
+        venv_info=" ${magenta}(${venv_basename})${reset}"
+    fi
+
+    # Build the prompt - simple format: path (git) (venv) $
+    PS1="${yellow}\w${reset}${git_info}${venv_info}${white} \$ ${reset}"
 }
 
 # Set the custom prompt
@@ -534,9 +708,13 @@ function show_welcome() {
     echo "  • pso                  - List outdated installed packages"
     echo "  • dev_install          - pip install -e \".[dev]\" (one-shot)"
     echo ""
-    echo "Package release smoke test:"
-    echo "  • pkg_test             - build sdist+wheel → twine check → install in"
-    echo "                           a clean venv → smoke-test the CLI (~30s)"
+    echo "Package release smoke test (clitest — sandbox manager):"
+    echo "  • clitest               - build wheel → fresh venv → smoke-test → drop you inside"
+    echo "  • clitest list          - table of available envs (#, path, time, size, tags)"
+    echo "  • clitest exec [N|PATH] - re-attach to an existing env (default: latest)"
+    echo "  • clitest clean         - deactivate + remove the current env"
+    echo "  • clitest clean --all   - remove every /tmp/clitest.*"
+    echo "  • clitest help          - detailed help"
     echo ""
     echo "AI Assistant commands:"
     echo "  • claude            - Claude Code CLI"
