@@ -18,27 +18,19 @@ Requires Python 3.10+.
 brew install dailybothq/tap/dailybot
 ```
 
-**Linux (binary)**
+**Linux, WSL2, or Git Bash on Windows (binary or pip fallback)**
 
 ```bash
 curl -sSL https://cli.dailybot.com/install.sh | bash
 ```
 
-**Windows (PowerShell)**
+**Native Windows PowerShell** (only if you don't have WSL2 or Git Bash)
 
 ```powershell
 irm https://cli.dailybot.com/install.ps1 | iex
 ```
 
-Requires Python 3.10+ on PATH. The script installs via `pipx` if available (recommended), otherwise falls back to `uv tool` or `pip --user`. To verify the script before running it (recommended for security-conscious users):
-
-```powershell
-$script   = irm https://cli.dailybot.com/install.ps1
-$expected = (irm https://cli.dailybot.com/install.ps1.sha256).Split(' ')[0]
-$actual   = (Get-FileHash -InputStream ([IO.MemoryStream][byte[]][char[]]$script) -Algorithm SHA256).Hash.ToLower()
-if ($actual -ne $expected) { throw "SHA-256 mismatch — refusing to run." }
-iex $script
-```
+Requires Python 3.10+ on PATH. Wraps `pipx` / `uv tool` / `pip --user`.
 
 Or download directly from [GitHub Releases](https://github.com/DailyBotHQ/cli/releases).
 
