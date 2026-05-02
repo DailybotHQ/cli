@@ -68,9 +68,10 @@ jobs:
           # `--changelog` regenerates CHANGELOG.md as part of the bump commit.
           # If there are no releasable commits since the last tag, this exits 0
           # without doing anything (and the rest of the workflow is a no-op).
-          semantic-release \
-            --strict=false \
-            version --push --changelog --commit --tag
+          # `--strict` is a boolean flag in python-semantic-release 10+ (it took
+          # `=false` in v9). Omitted here = non-strict, which is what we want:
+          # if the resolver finds nothing to release, exit 0 instead of failing.
+          semantic-release version --push --changelog --commit --tag
 
       - name: Summarize result
         if: always()
