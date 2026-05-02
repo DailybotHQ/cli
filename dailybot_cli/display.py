@@ -31,6 +31,52 @@ def print_info(message: str) -> None:
     console.print(f"[dim]{message}[/dim]")
 
 
+def print_version_info(
+    version: str,
+    python_version: str,
+    install_path: str,
+    latest_version: str | None = None,
+) -> None:
+    """Render the rich `dailybot version` panel.
+
+    Shows the installed CLI version, the host Python version, where the package
+    is installed on disk, and a link to the matching GitHub release. When
+    ``latest_version`` is provided, also indicates whether the install is
+    up-to-date or an update is available.
+    """
+    table: Table = Table.grid(padding=(0, 2))
+    table.add_column(justify="right", style="dim")
+    table.add_column()
+    table.add_row("Version:", f"[bold]{version}[/bold]")
+    table.add_row("Python:", python_version)
+    table.add_row("Installed:", install_path)
+    table.add_row(
+        "Release notes:",
+        f"https://github.com/DailyBotHQ/cli/releases/tag/v{version}",
+    )
+
+    if latest_version is not None:
+        if latest_version == version:
+            table.add_row("Update check:", "[green]up-to-date[/green]")
+        else:
+            table.add_row(
+                "Update check:",
+                f"[yellow]update available: {latest_version}[/yellow]",
+            )
+
+    console.print(Panel(table, title="Dailybot CLI", border_style="cyan", expand=False))
+
+    if latest_version is not None and latest_version != version:
+        console.print()
+        console.print("[dim]Upgrade with one of:[/dim]")
+        console.print("  [cyan]brew upgrade dailybot[/cyan]                       (macOS)")
+        console.print(
+            "  [cyan]curl -sSL https://cli.dailybot.com/install.sh | bash[/cyan]  (Linux x86_64)"
+        )
+        console.print("  [cyan]pipx upgrade dailybot-cli[/cyan]                    (any OS, pipx)")
+        console.print("  [cyan]pip install --upgrade dailybot-cli[/cyan]           (any OS, pip)")
+
+
 def _format_sender(msg: dict[str, Any]) -> str:
     """Format sender prefix for a message: [type] name: or [type]:
 

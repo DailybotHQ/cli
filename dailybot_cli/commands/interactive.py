@@ -7,6 +7,7 @@ import click
 import httpx
 import questionary
 
+from dailybot_cli import __version__
 from dailybot_cli.api_client import APIError, DailyBotClient
 from dailybot_cli.commands.auth import _do_login
 from dailybot_cli.config import get_token, load_credentials
@@ -37,7 +38,7 @@ def run_interactive() -> None:
     creds: dict[str, Any] | None = load_credentials()
     token: str | None = get_token()
 
-    console.print("\n[bold]Dailybot CLI[/bold]")
+    console.print(f"\n[bold]Dailybot CLI[/bold] [dim]v{__version__}[/dim]")
 
     if not token or not creds:
         console.print()

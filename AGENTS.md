@@ -55,6 +55,7 @@ dailybot_cli/                # Source package
     ├── update.py            # submit human check-in update
     ├── config.py            # get/set/remove stored settings (api_key)
     ├── interactive.py       # questionary-based TUI when run with no args
+    ├── version.py           # `dailybot version` — install info + PyPI update check
     └── agent.py             # `agent` group: configure, profiles, register,
                              #   update, health, webhook, message, email
 

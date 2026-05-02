@@ -25,6 +25,14 @@ class TestVersionAndHelp:
         assert "dailybot" in result.output
         assert __version__ in result.output
 
+    def test_version_includes_python_version(self, runner: CliRunner) -> None:
+        """`--version` should show the Python version too (gh-cli style)."""
+        import platform
+
+        result = runner.invoke(cli, ["--version"])
+        assert result.exit_code == 0
+        assert f"Python {platform.python_version()}" in result.output
+
     def test_help(self, runner: CliRunner) -> None:
         result = runner.invoke(cli, ["--help"])
         assert result.exit_code == 0
@@ -33,7 +41,65 @@ class TestVersionAndHelp:
         assert "update" in result.output
         assert "status" in result.output
         assert "agent" in result.output
+        assert "version" in result.output
         assert "--api-url" in result.output
+
+
+class TestVersionCommand:
+    """`dailybot version` (rich panel) and `dailybot version --check`."""
+
+    def test_version_command_local_only(self, runner: CliRunner) -> None:
+        """No network when --check is omitted."""
+        from dailybot_cli import __version__
+
+        with patch("dailybot_cli.commands.version.httpx.get") as mock_get:
+            result = runner.invoke(cli, ["version"])
+            assert result.exit_code == 0
+            assert __version__ in result.output
+            mock_get.assert_not_called()  # no network without --check
+
+    def test_version_command_includes_install_path(self, runner: CliRunner) -> None:
+        """Output should include the on-disk install location of the package."""
+        result = runner.invoke(cli, ["version"])
+        assert result.exit_code == 0
+        # The path resolves to .../dailybot_cli, so just check the package name
+        # appears in the rendered panel.
+        assert "dailybot_cli" in result.output
+
+    def test_version_command_check_up_to_date(self, runner: CliRunner) -> None:
+        """When PyPI returns the same version, mark as up-to-date."""
+        from dailybot_cli import __version__
+
+        mock_response: MagicMock = MagicMock()
+        mock_response.status_code = 200
+        mock_response.json.return_value = {"info": {"version": __version__}}
+        with patch("dailybot_cli.commands.version.httpx.get", return_value=mock_response):
+            result = runner.invoke(cli, ["version", "--check"])
+            assert result.exit_code == 0
+            assert "up-to-date" in result.output
+
+    def test_version_command_check_update_available(self, runner: CliRunner) -> None:
+        """When PyPI returns a higher version, surface the upgrade hint."""
+        mock_response: MagicMock = MagicMock()
+        mock_response.status_code = 200
+        mock_response.json.return_value = {"info": {"version": "999.0.0"}}
+        with patch("dailybot_cli.commands.version.httpx.get", return_value=mock_response):
+            result = runner.invoke(cli, ["version", "--check"])
+            assert result.exit_code == 0
+            assert "update available: 999.0.0" in result.output
+            assert "brew upgrade dailybot" in result.output
+
+    def test_version_command_check_offline(self, runner: CliRunner) -> None:
+        """If PyPI is unreachable, fall back to local info with a warning."""
+        import httpx as _httpx
+
+        with patch(
+            "dailybot_cli.commands.version.httpx.get",
+            side_effect=_httpx.ConnectError("offline"),
+        ):
+            result = runner.invoke(cli, ["version", "--check"])
+            assert result.exit_code == 0
+            assert "Could not reach PyPI" in result.output
 
     @patch("dailybot_cli.main.set_api_url_override")
     @patch("dailybot_cli.commands.update.get_token")
