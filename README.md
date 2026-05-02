@@ -33,7 +33,7 @@ The CLI exposes two ways to inspect what's installed — a quick one-liner for s
 ```bash
 # Single-line, scriptable
 dailybot --version
-# → dailybot 0.5.0 (Python 3.12.4)
+# → dailybot 1.0.0 (Python 3.12.4)
 
 # Multi-line panel: version, Python runtime, install path, release notes link
 dailybot version
@@ -42,7 +42,9 @@ dailybot version
 dailybot version --check
 ```
 
-`dailybot version --check` is the recommended way to find out whether you should upgrade. If a newer release is available, the output also lists the upgrade command for each install method (Homebrew, Linux binary, pipx, pip).
+`dailybot version --check` is the recommended way to find out whether you should upgrade. If a newer release is available, the output lists the upgrade command for each install method (Homebrew, Linux binary, pipx, pip), so you don't need to remember which channel you used to install in the first place.
+
+> **Bug reports?** Always include the full output of `dailybot version` — the install path and Python runtime are usually enough to tell us whether the issue is in the CLI itself, in a transitive dep, or in the host environment.
 
 ## For humans
 
