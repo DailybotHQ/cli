@@ -9,6 +9,14 @@ Do not edit it by hand — your edits will be overwritten on the next release.
 
 <!-- version list -->
 
+## v1.2.0 (2026-05-02)
+
+### Features
+
+- **installer**: Publish install.sh.sha256 and keep it in sync via CI
+  ([`e0d5fa2`](https://github.com/DailybotHQ/cli/commit/e0d5fa233116684cc77597f483b21d5b9501560f))
+
+
 ## v1.1.0 (2026-05-02)
 
 ### Chores
