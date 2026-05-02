@@ -49,10 +49,16 @@ COPY requirements/dev.txt /tmp/requirements-dev.txt
 RUN pip install --no-cache-dir -r /tmp/requirements-dev.txt \
     && rm /tmp/requirements-dev.txt
 
-# python-semantic-release is only needed by auto-release.yml in CI. Install it
-# here too so devs can do `semantic-release version --noop --print` to preview
-# the next bump locally without polluting the [dev] extra.
-RUN pip install --no-cache-dir "python-semantic-release>=9,<10"
+# python-semantic-release ships its own pinned (and rather aggressive) versions
+# of click, rich, importlib-resources, etc. Installing it into the same Python
+# env as the rest of the dev tools would downgrade those packages, holding the
+# dev container behind what end users see when they `pip install dailybot-cli`.
+# pipx isolates PSR in its own venv and exposes only the `semantic-release`
+# binary on PATH — the user-visible behavior is the same, but click==8.3.x and
+# rich==15.x stay in the main env. Auto-release.yml uses plain `pip install` in
+# CI because that job has no other Python deps to protect.
+RUN pip install --no-cache-dir pipx \
+    && pipx install --global "python-semantic-release>=10,<11"
 
 # Install Codex CLI (system-wide via npm -g, available to dev-user)
 RUN npm install -g @openai/codex

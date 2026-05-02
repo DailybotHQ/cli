@@ -42,6 +42,10 @@ dev = [
     "twine>=5.0,<7.0",
     "pip-tools>=7.4,<8.0",
 ]
+# python-semantic-release is installed separately (Dockerfile + auto-release.yml)
+# rather than via [dev] because PSR's transitive pins (rich<15, click<8.2,
+# importlib_resources<7) would otherwise cap the dev container behind the
+# versions end users actually see.
 
 [project.scripts]
 dailybot = "dailybot_cli.main:cli"
