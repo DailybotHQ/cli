@@ -267,34 +267,30 @@ setup_ssh_keys_for_user() {
         # Create SSH directory if it doesn't exist
         mkdir -p "${SSH_DIR}"
 
-        # Check if SSH keys already exist in container
+        # Check if any private SSH key already exists in the container
+        # (skip .pub entries — those are public and don't count).
         KEYS_EXIST=false
-        if [ -f "${SSH_DIR}/id_rsa" ] || [ -f "${SSH_DIR}/id_ed25519" ] || [ -f "${SSH_DIR}/id_ecdsa" ]; then
+        for existing_key in "${SSH_DIR}"/id_*; do
+            [ -f "$existing_key" ] || continue
+            case "$(basename "$existing_key")" in *.pub) continue ;; esac
             KEYS_EXIST=true
-        fi
+            break
+        done
 
         # Only copy if keys don't exist yet (to avoid overwriting persistent volume)
         if [ "$KEYS_EXIST" = false ]; then
             echo "Setting up SSH keys from host for ${USER_HOME}..."
 
-            # Copy SSH keys from host
-            if [ -f "${SSH_HOST_DIR}/id_rsa" ]; then
-                cp "${SSH_HOST_DIR}/id_rsa" "${SSH_DIR}/id_rsa"
-                chmod 600 "${SSH_DIR}/id_rsa"
-                echo "  ✓ Copied id_rsa"
-            fi
-
-            if [ -f "${SSH_HOST_DIR}/id_ed25519" ]; then
-                cp "${SSH_HOST_DIR}/id_ed25519" "${SSH_DIR}/id_ed25519"
-                chmod 600 "${SSH_DIR}/id_ed25519"
-                echo "  ✓ Copied id_ed25519"
-            fi
-
-            if [ -f "${SSH_HOST_DIR}/id_ecdsa" ]; then
-                cp "${SSH_HOST_DIR}/id_ecdsa" "${SSH_DIR}/id_ecdsa"
-                chmod 600 "${SSH_DIR}/id_ecdsa"
-                echo "  ✓ Copied id_ecdsa"
-            fi
+            # Copy any private key matching id_* (skipping .pub files, which are handled below).
+            # This covers id_rsa, id_ed25519, id_ecdsa, id_rsa_xergioalex, etc.
+            for key_file in "${SSH_HOST_DIR}"/id_*; do
+                [ -f "$key_file" ] || continue
+                key_name="$(basename "$key_file")"
+                case "$key_name" in *.pub) continue ;; esac
+                cp "$key_file" "${SSH_DIR}/$key_name"
+                chmod 600 "${SSH_DIR}/$key_name"
+                echo "  ✓ Copied $key_name"
+            done
 
             # Copy public keys
             cp "${SSH_HOST_DIR}"/*.pub "${SSH_DIR}/" 2>/dev/null || true

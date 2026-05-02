@@ -21,6 +21,10 @@ services:
       - cursor_data:/home/dev-user/.cursor_data
       - dailybot_data:/home/dev-user/.dailybot_data
       - gh_data:/home/dev-user/.gh_data
+      # Mount the whole host ~/.ssh as read-only; the entrypoint then copies
+      # every id_* private key it finds (plus *.pub, config, known_hosts) into
+      # the container's writable ~/.ssh. This is portable across team members
+      # regardless of which key names they use locally.
       - ${HOME}/.ssh:/home/dev-user/.ssh_host:ro
       - ${HOME}/.gitconfig:/home/dev-user/.gitconfig:ro
 
