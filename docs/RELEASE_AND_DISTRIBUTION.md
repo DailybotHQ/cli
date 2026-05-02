@@ -34,10 +34,24 @@ The fully automated flow makes releases a side-effect of merging PRs. You never 
 ### What it does
 
 ```
-                ┌─ PR merged to main ─┐
-                └──────────┬──────────┘
-                           │
-                           ▼
+       ┌─ PR opened / pushed ────────┐
+       └──────────────┬──────────────┘
+                      │
+                      ▼
+       ┌──────────────────────────────┐
+       │ code_check.yml                │  ← gate (matrix: Py 3.9 + 3.12)
+       │  ruff check / format          │
+       │  mypy                         │
+       │  pytest -x                    │
+       │  build smoke-test             │
+       └──────────────┬───────────────┘
+                      │ (must pass — required check on `main`)
+                      ▼
+       ┌──────────────────────────────┐
+       │ PR merged to main             │
+       └──────────────┬───────────────┘
+                      │
+                      ▼
               ┌────────────────────────────┐
               │ auto-release.yml            │
               │  (python-semantic-release)  │
@@ -69,7 +83,13 @@ The fully automated flow makes releases a side-effect of merging PRs. You never 
 
 ### One-time setup
 
-You need three GitHub repository secrets:
+**Branch protection on `main`** — go to `Settings → Branches → main` and:
+
+1. Enable "Require a pull request before merging".
+2. Enable "Require status checks to pass before merging" and add `Code Check (Python 3.9)`, `Code Check (Python 3.12)`, and `Build smoke-test (sdist + wheel)` from `code_check.yml` as required checks.
+3. Add the actor that owns `AUTOMATION_GITHUB_TOKEN` (see below) to the bypass list of "Require a pull request before merging" — `auto-release.yml` needs to push the `chore(release): X.Y.Z` commit + tag directly to `main`.
+
+**Repository secrets** — three are required:
 
 | Secret | Used by | Notes |
 |---|---|---|
@@ -85,8 +105,6 @@ To create / verify:
 gh secret list                        # confirm all three exist
 gh secret set AUTOMATION_GITHUB_TOKEN  # paste the PAT value
 ```
-
-If `main` has branch protection ("Require pull request before merging" / "Require status checks"), add the user/app that owns `AUTOMATION_GITHUB_TOKEN` to the bypass list, or enable "Allow specified actors to bypass required pull requests".
 
 ### Configuration
 
@@ -557,8 +575,9 @@ Common patterns:
 
 ### Fully automated flow
 - [ ] `gh secret list` shows `PYPI_API_TOKEN`, `HOMEBREW_TAP_TOKEN`, and `AUTOMATION_GITHUB_TOKEN`
+- [ ] Branch protection on `main` requires the `Code Check` and `Build smoke-test` checks, AND allows `AUTOMATION_GITHUB_TOKEN`'s actor to push the bump commit + tag
 - [ ] PR commits use conventional-commit prefixes (`feat:` / `fix:` / `perf:` to release; `chore:` / `docs:` / `refactor:` to skip)
-- [ ] Branch protection on `main` allows `AUTOMATION_GITHUB_TOKEN`'s actor to push the bump commit + tag
+- [ ] PR's `code_check.yml` and `build_smoke_test` are green (will be enforced by branch protection once configured)
 - [ ] After merge: `gh run watch` confirms `auto-release.yml` then `release.yml` both succeeded
 - [ ] PyPI / Homebrew / GitHub Release verified
 
