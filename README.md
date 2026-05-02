@@ -52,6 +52,14 @@ dailybot version --check
 
 `dailybot version --check` is the recommended way to find out whether you should upgrade. If a newer release is available, the output lists the upgrade command for each install method (Homebrew, Linux binary, pipx, pip), so you don't need to remember which channel you used to install in the first place.
 
+To upgrade, just run:
+
+```bash
+dailybot upgrade
+```
+
+The CLI auto-detects how it was installed and either runs the right upgrade command for you (pipx / uv tool / pip) or prints the exact command you should run yourself (Homebrew, Linux binary, editable dev install). Use `dailybot upgrade --dry-run` to preview without executing.
+
 > **Bug reports?** Always include the full output of `dailybot version` — the install path and Python runtime are usually enough to tell us whether the issue is in the CLI itself, in a transitive dep, or in the host environment.
 
 ## For humans

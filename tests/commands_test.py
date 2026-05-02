@@ -111,6 +111,234 @@ class TestVersionCommand:
             assert "/usr/local/bin/dailybot" in result.output
             assert "PyInstaller bundle" in result.output
 
+
+class TestUpgradeCommand:
+    """`dailybot upgrade` — auto-detect install method and update."""
+
+    def test_upgrade_already_latest(self, runner: CliRunner) -> None:
+        """If we're already on the latest version, exit cleanly without running anything."""
+        from dailybot_cli import __version__
+
+        with (
+            patch(
+                "dailybot_cli.commands.upgrade._fetch_latest_pypi_version",
+                return_value=__version__,
+            ),
+            patch("dailybot_cli.commands.upgrade.subprocess.run") as mock_run,
+        ):
+            result = runner.invoke(cli, ["upgrade"])
+            assert result.exit_code == 0
+            assert "already on the latest" in result.output
+            mock_run.assert_not_called()
+
+    def test_upgrade_pipx_runs_pipx(self, runner: CliRunner) -> None:
+        """A pipx-detected install runs `pipx upgrade dailybot-cli`."""
+        with (
+            patch(
+                "dailybot_cli.commands.upgrade._fetch_latest_pypi_version",
+                return_value="999.0.0",
+            ),
+            patch(
+                "dailybot_cli.commands.upgrade._detect_install_method",
+                return_value="pipx",
+            ),
+            patch(
+                "dailybot_cli.commands.upgrade.shutil.which",
+                return_value="/usr/local/bin/pipx",
+            ),
+            patch("dailybot_cli.commands.upgrade.subprocess.run") as mock_run,
+        ):
+            mock_run.return_value = MagicMock(returncode=0)
+            result = runner.invoke(cli, ["upgrade"])
+            assert result.exit_code == 0
+            mock_run.assert_called_once()
+            argv = mock_run.call_args[0][0]
+            assert argv == ["pipx", "upgrade", "dailybot-cli"]
+
+    def test_upgrade_uv_tool(self, runner: CliRunner) -> None:
+        """A uv-tool install runs `uv tool upgrade dailybot-cli`."""
+        with (
+            patch(
+                "dailybot_cli.commands.upgrade._fetch_latest_pypi_version",
+                return_value="999.0.0",
+            ),
+            patch(
+                "dailybot_cli.commands.upgrade._detect_install_method",
+                return_value="uv-tool",
+            ),
+            patch(
+                "dailybot_cli.commands.upgrade.shutil.which",
+                return_value="/usr/local/bin/uv",
+            ),
+            patch("dailybot_cli.commands.upgrade.subprocess.run") as mock_run,
+        ):
+            mock_run.return_value = MagicMock(returncode=0)
+            result = runner.invoke(cli, ["upgrade"])
+            assert result.exit_code == 0
+            argv = mock_run.call_args[0][0]
+            assert argv == ["uv", "tool", "upgrade", "dailybot-cli"]
+
+    def test_upgrade_pip_runs_python_pip(self, runner: CliRunner) -> None:
+        """A generic pip install runs `<sys.executable> -m pip install --upgrade ...`."""
+        with (
+            patch(
+                "dailybot_cli.commands.upgrade._fetch_latest_pypi_version",
+                return_value="999.0.0",
+            ),
+            patch(
+                "dailybot_cli.commands.upgrade._detect_install_method",
+                return_value="pip",
+            ),
+            patch("dailybot_cli.commands.upgrade.subprocess.run") as mock_run,
+        ):
+            mock_run.return_value = MagicMock(returncode=0)
+            result = runner.invoke(cli, ["upgrade"])
+            assert result.exit_code == 0
+            argv = mock_run.call_args[0][0]
+            assert argv[1:] == ["-m", "pip", "install", "--upgrade", "dailybot-cli"]
+
+    def test_upgrade_homebrew_prints_command_not_run(self, runner: CliRunner) -> None:
+        """Homebrew installs print a manual command — do NOT auto-invoke brew."""
+        with (
+            patch(
+                "dailybot_cli.commands.upgrade._fetch_latest_pypi_version",
+                return_value="999.0.0",
+            ),
+            patch(
+                "dailybot_cli.commands.upgrade._detect_install_method",
+                return_value="homebrew",
+            ),
+            patch("dailybot_cli.commands.upgrade.subprocess.run") as mock_run,
+        ):
+            result = runner.invoke(cli, ["upgrade"])
+            assert result.exit_code == 0
+            assert "brew update && brew upgrade dailybot" in result.output
+            mock_run.assert_not_called()
+
+    def test_upgrade_binary_prints_install_sh(self, runner: CliRunner) -> None:
+        """A PyInstaller binary install prints the install.sh re-run command on Linux."""
+        with (
+            patch(
+                "dailybot_cli.commands.upgrade._fetch_latest_pypi_version",
+                return_value="999.0.0",
+            ),
+            patch(
+                "dailybot_cli.commands.upgrade._detect_install_method",
+                return_value="binary",
+            ),
+            patch(
+                "dailybot_cli.commands.upgrade.platform.system",
+                return_value="Linux",
+            ),
+            patch("dailybot_cli.commands.upgrade.subprocess.run") as mock_run,
+        ):
+            result = runner.invoke(cli, ["upgrade"])
+            assert result.exit_code == 0
+            assert "cli.dailybot.com/install.sh" in result.output
+            mock_run.assert_not_called()
+
+    def test_upgrade_binary_prints_install_ps1_on_windows(self, runner: CliRunner) -> None:
+        """A frozen install on Windows prints the install.ps1 command."""
+        with (
+            patch(
+                "dailybot_cli.commands.upgrade._fetch_latest_pypi_version",
+                return_value="999.0.0",
+            ),
+            patch(
+                "dailybot_cli.commands.upgrade._detect_install_method",
+                return_value="binary",
+            ),
+            patch(
+                "dailybot_cli.commands.upgrade.platform.system",
+                return_value="Windows",
+            ),
+            patch("dailybot_cli.commands.upgrade.subprocess.run") as mock_run,
+        ):
+            result = runner.invoke(cli, ["upgrade"])
+            assert result.exit_code == 0
+            assert "install.ps1" in result.output
+            mock_run.assert_not_called()
+
+    def test_upgrade_editable_refuses(self, runner: CliRunner) -> None:
+        """An editable (development) install must NOT auto-upgrade."""
+        with (
+            patch(
+                "dailybot_cli.commands.upgrade._fetch_latest_pypi_version",
+                return_value="999.0.0",
+            ),
+            patch(
+                "dailybot_cli.commands.upgrade._detect_install_method",
+                return_value="editable",
+            ),
+            patch("dailybot_cli.commands.upgrade.subprocess.run") as mock_run,
+        ):
+            result = runner.invoke(cli, ["upgrade"])
+            assert result.exit_code == 0
+            assert "editable" in result.output
+            assert "git" in result.output
+            mock_run.assert_not_called()
+
+    def test_upgrade_dry_run_does_not_execute(self, runner: CliRunner) -> None:
+        """--dry-run prints what would happen but does not invoke the upgrade."""
+        with (
+            patch(
+                "dailybot_cli.commands.upgrade._fetch_latest_pypi_version",
+                return_value="999.0.0",
+            ),
+            patch(
+                "dailybot_cli.commands.upgrade._detect_install_method",
+                return_value="pip",
+            ),
+            patch("dailybot_cli.commands.upgrade.subprocess.run") as mock_run,
+        ):
+            result = runner.invoke(cli, ["upgrade", "--dry-run"])
+            assert result.exit_code == 0
+            assert "Would run" in result.output
+            mock_run.assert_not_called()
+
+    def test_upgrade_force_runs_even_when_latest(self, runner: CliRunner) -> None:
+        """--force runs the upgrade even when the installed version equals latest."""
+        from dailybot_cli import __version__
+
+        with (
+            patch(
+                "dailybot_cli.commands.upgrade._fetch_latest_pypi_version",
+                return_value=__version__,
+            ),
+            patch(
+                "dailybot_cli.commands.upgrade._detect_install_method",
+                return_value="pip",
+            ),
+            patch("dailybot_cli.commands.upgrade.subprocess.run") as mock_run,
+        ):
+            mock_run.return_value = MagicMock(returncode=0)
+            result = runner.invoke(cli, ["upgrade", "--force"])
+            assert result.exit_code == 0
+            assert "already on the latest" not in result.output
+            mock_run.assert_called_once()
+
+    def test_upgrade_subprocess_failure_propagates_exit_code(self, runner: CliRunner) -> None:
+        """When the upgrade command itself fails, surface its exit code."""
+        import subprocess
+
+        with (
+            patch(
+                "dailybot_cli.commands.upgrade._fetch_latest_pypi_version",
+                return_value="999.0.0",
+            ),
+            patch(
+                "dailybot_cli.commands.upgrade._detect_install_method",
+                return_value="pip",
+            ),
+            patch(
+                "dailybot_cli.commands.upgrade.subprocess.run",
+                side_effect=subprocess.CalledProcessError(returncode=42, cmd="pip"),
+            ),
+        ):
+            result = runner.invoke(cli, ["upgrade"])
+            assert result.exit_code == 42
+            assert "failed with exit code 42" in result.output
+
     @patch("dailybot_cli.main.set_api_url_override")
     @patch("dailybot_cli.commands.update.get_token")
     @patch("dailybot_cli.commands.update.DailyBotClient")
