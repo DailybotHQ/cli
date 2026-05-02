@@ -1,0 +1,86 @@
+name: Auto Release
+
+# When a PR is merged into main, decide whether the changes warrant a release
+# and, if so, bump the version + create the v* tag. The tag push then triggers
+# `.github/workflows/release.yml` which fans out to PyPI, the Linux binary,
+# the GitHub Release, and the Homebrew tap.
+#
+# Bump level is decided by python-semantic-release from conventional-commit
+# prefixes since the last tag:
+#   - feat:       -> minor bump
+#   - fix:, perf: -> patch bump
+#   - BREAKING CHANGE: in body, or feat!:/fix!: -> major bump
+#   - chore/docs/refactor/style/test/ci/build -> no release
+#
+# Configuration lives in pyproject.toml under [tool.semantic_release].
+
+on:
+  pull_request:
+    types: [closed]
+    branches: [main]
+  # Manual trigger for emergency cuts (e.g. CI was down on the PR merge)
+  workflow_dispatch: {}
+
+concurrency:
+  group: auto-release-main
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    # Only run when the PR was actually merged (not just closed)
+    if: github.event_name == 'workflow_dispatch' || github.event.pull_request.merged == true
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout main with full history
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          # PSR needs the full history to inspect commits since the last tag
+          fetch-depth: 0
+          # PAT with `Contents: write` that is allowed to bypass branch protection
+          # on `main` (cannot use the default GITHUB_TOKEN if main is protected).
+          token: ${{ secrets.AUTOMATION_GITHUB_TOKEN }}
+          persist-credentials: true
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Configure git identity
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+      - name: Install python-semantic-release
+        run: pip install "python-semantic-release>=9,<10"
+
+      - name: Bump version, update changelog, tag, and push
+        id: release
+        env:
+          GH_TOKEN: ${{ secrets.AUTOMATION_GITHUB_TOKEN }}
+        run: |
+          # `semantic-release version` does the bump + commit + tag.
+          # `--push` pushes both the bump commit and the new v* tag to origin.
+          # `--changelog` regenerates CHANGELOG.md as part of the bump commit.
+          # If there are no releasable commits since the last tag, this exits 0
+          # without doing anything (and the rest of the workflow is a no-op).
+          semantic-release \
+            --strict=false \
+            version --push --changelog --commit --tag
+
+      - name: Summarize result
+        if: always()
+        run: |
+          echo "## Auto Release Summary" >> "$GITHUB_STEP_SUMMARY"
+          LATEST_TAG="$(git tag --sort=-creatordate | head -n1 || true)"
+          if [ -n "$LATEST_TAG" ]; then
+            echo "Latest tag: \`$LATEST_TAG\`" >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "No tags found." >> "$GITHUB_STEP_SUMMARY"
+          fi
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "If a new tag was just pushed, \`release.yml\` is now publishing to PyPI / GitHub Release / Homebrew." >> "$GITHUB_STEP_SUMMARY"

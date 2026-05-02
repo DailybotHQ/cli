@@ -6,14 +6,15 @@ The CLI ships through three channels:
 2. **Homebrew tap** — macOS users (`brew install dailybothq/tap/dailybot`)
 3. **Linux x86_64 binary** — distros without a recent Python (`curl -sSL https://cli.dailybot.com/install.sh | bash`)
 
-There are **two supported release flows**:
+There are **three supported release flows**, in order of preference:
 
-| Flow | When to use | Effort | Surface area |
-|------|-------------|--------|--------------|
-| [**Manual**](#manual-flow) — local `twine` with `.pypirc` | Emergency hotfix, dry-run on TestPyPI, or when CI is broken | Higher per release | PyPI only (binary + Homebrew skipped) |
-| [**Automated**](#automated-flow-github-actions) — `git push --tags` triggers `release.yml` | Default for normal releases | One-time setup | PyPI + Linux binary + GitHub Release + Homebrew |
+| Flow | Trigger | Effort per release | Surface area |
+|------|---------|--------------------|--------------|
+| [**Fully automated**](#fully-automated-flow-recommended) — PR merge to `main` triggers `auto-release.yml`, which decides the bump from conventional commits and pushes the tag, which triggers `release.yml` | Just merge a PR with `feat:` / `fix:` / `perf:` commits | None — zero ceremony | PyPI + Linux binary + GitHub Release + Homebrew |
+| [**Tag-triggered automated**](#tag-triggered-automated-flow) — `git push origin v<X.Y.Z>` triggers `release.yml` directly | Manual `git tag` + push | Low | PyPI + Linux binary + GitHub Release + Homebrew |
+| [**Manual**](#manual-flow) — local `twine` with `.pypirc` | Run from your machine | Higher | PyPI only (binary + Homebrew skipped) |
 
-The automated flow is the **recommended default**. Manual flow is the documented fallback.
+The fully automated flow is the **recommended default**. The other two are documented fallbacks for when CI is unavailable or you need to publish a specific version out-of-band.
 
 ## Single Source of Truth: `pyproject.toml`
 
@@ -23,6 +24,110 @@ The version lives in **exactly one place**: `pyproject.toml::project.version`. E
 - The git tag `v0.4.13` matches `version = "0.4.13"` (strip the leading `v`)
 
 **Never** hardcode the version anywhere in `dailybot_cli/` source.
+
+---
+
+## Fully Automated Flow (recommended)
+
+The fully automated flow makes releases a side-effect of merging PRs. You never run `git tag`, you never edit `pyproject.toml::version` by hand, you never call `twine`. The bump level is derived from the conventional-commit prefixes of the commits you merged.
+
+### What it does
+
+```
+                ┌─ PR merged to main ─┐
+                └──────────┬──────────┘
+                           │
+                           ▼
+              ┌────────────────────────────┐
+              │ auto-release.yml            │
+              │  (python-semantic-release)  │
+              ├────────────────────────────┤
+              │ 1. Inspect commits since    │
+              │    last tag                 │
+              │ 2. Decide bump:             │
+              │      feat -> minor          │
+              │      fix/perf -> patch      │
+              │      BREAKING -> major      │
+              │      others -> no release   │
+              │ 3. Update pyproject.toml    │
+              │    + CHANGELOG.md           │
+              │ 4. Commit + tag vX.Y.Z      │
+              │ 5. Push commit + tag        │
+              └─────────────┬───────────────┘
+                            │ tag push
+                            ▼
+              ┌────────────────────────────┐
+              │ release.yml                 │
+              │  (existing tag-triggered    │
+              │   workflow)                 │
+              ├────────────────────────────┤
+              │  publish-pypi               │
+              │  build-linux + release      │
+              │  update-homebrew            │
+              └────────────────────────────┘
+```
+
+### One-time setup
+
+You need three GitHub repository secrets:
+
+| Secret | Used by | Notes |
+|---|---|---|
+| `PYPI_API_TOKEN` | `release.yml` | Same as the tag-triggered flow. Project-scoped to `dailybot-cli`. |
+| `HOMEBREW_TAP_TOKEN` | `release.yml` | Same as the tag-triggered flow. Fine-grained PAT with `Contents: write` on `dailybothq/homebrew-tap`. |
+| `AUTOMATION_GITHUB_TOKEN` | `auto-release.yml` | Fine-grained PAT with `Contents: write` on **this** repo, allowed to bypass branch protection on `main` (push the bump commit + tag). |
+
+The default `${{ secrets.GITHUB_TOKEN }}` cannot push to a protected `main`, which is why `auto-release.yml` uses a separate PAT (same pattern as `xergioalex.com`'s `release_and_publish.yml`).
+
+To create / verify:
+
+```bash
+gh secret list                        # confirm all three exist
+gh secret set AUTOMATION_GITHUB_TOKEN  # paste the PAT value
+```
+
+If `main` has branch protection ("Require pull request before merging" / "Require status checks"), add the user/app that owns `AUTOMATION_GITHUB_TOKEN` to the bypass list, or enable "Allow specified actors to bypass required pull requests".
+
+### Configuration
+
+All version-bump behavior is configured in `pyproject.toml::[tool.semantic_release]`. The defaults that matter:
+
+- `version_toml = ["pyproject.toml:project.version"]` — single source of truth stays here
+- `tag_format = "v{version}"` — matches the existing `release.yml` trigger pattern
+- `commit_message = "chore(release): {version}\n\n[skip ci]"` — keeps the bump commit out of any future push-triggered jobs
+- `allow_zero_version = true` + `major_on_zero = false` — `feat:` on `0.x` stays in `0.x.y`; we don't auto-jump to `1.0.0` until we explicitly land a `BREAKING CHANGE`
+- `default_bump_level = 0` — if no `feat:` / `fix:` / `perf:` commits land in a PR, no release is cut (chore-only PRs are silent)
+
+### Conventional commit cheat sheet
+
+| Prefix | Effect on release | Example |
+|---|---|---|
+| `feat:` | Minor bump (`0.4.12` → `0.5.0`) | `feat(agent): add --co-authors flag` |
+| `fix:` | Patch bump (`0.4.12` → `0.4.13`) | `fix(release): handle 429 from PyPI` |
+| `perf:` | Patch bump | `perf(client): cache org list per session` |
+| `feat!:` / `BREAKING CHANGE:` in body | Major bump (`0.4.12` → `1.0.0` or `0.5.0` while we're on 0.x) | See `major_on_zero` note above |
+| `docs:`, `chore:`, `refactor:`, `style:`, `test:`, `ci:`, `build:` | No release | Used freely without cutting a version |
+
+### Procedure
+
+1. Land your work in a PR with proper conventional-commit messages.
+2. Merge the PR (squash-merge or merge-commit; either is fine — the workflow inspects commits since the last tag).
+3. Watch the run:
+   ```bash
+   gh run watch
+   ```
+4. If the PR contained at least one releasable commit, you'll see two runs in sequence: first `auto-release.yml` (~30s), then `release.yml` (~5–10 min).
+5. Verify:
+   ```bash
+   pip install --upgrade dailybot-cli
+   dailybot --version
+   ```
+
+### Manually triggering an extra release
+
+If `auto-release.yml` was skipped (e.g. CI was down at merge time), you can re-run it from the Actions tab via `workflow_dispatch`. It will inspect commits since the last tag and bump if appropriate.
+
+If you need a release for commits that don't qualify (e.g. an emergency `chore`-only release), fall back to the tag-triggered flow below.
 
 ---
 
@@ -234,9 +339,9 @@ If you need to ship to all three channels manually, expect ~30 minutes of work v
 
 ---
 
-## Automated Flow (GitHub Actions)
+## Tag-triggered Automated Flow
 
-Triggered by pushing a `v*` git tag. Defined in [`.github/workflows/release.yml`](../.github/workflows/release.yml).
+Triggered by pushing a `v*` git tag. Defined in [`.github/workflows/release.yml`](../.github/workflows/release.yml). Use this when you need to publish a specific version explicitly — for example, an emergency hotfix on a non-`feat`/`fix` commit, or a re-release after the fully automated flow misfired.
 
 ### What it does
 
@@ -446,14 +551,29 @@ Common patterns:
 
 ## Pre-Release Checklist
 
-### For both flows
-- [ ] Working tree clean
-- [ ] On `main`
-- [ ] `pytest -x` green
+### For all flows
+- [ ] `pytest -x` green on `main` (the auto-release flow doesn't run tests itself — that's the PR's job)
+- [ ] If a dep changed: Homebrew formula synced inside `release.yml`'s formula template
+
+### Fully automated flow
+- [ ] `gh secret list` shows `PYPI_API_TOKEN`, `HOMEBREW_TAP_TOKEN`, and `AUTOMATION_GITHUB_TOKEN`
+- [ ] PR commits use conventional-commit prefixes (`feat:` / `fix:` / `perf:` to release; `chore:` / `docs:` / `refactor:` to skip)
+- [ ] Branch protection on `main` allows `AUTOMATION_GITHUB_TOKEN`'s actor to push the bump commit + tag
+- [ ] After merge: `gh run watch` confirms `auto-release.yml` then `release.yml` both succeeded
+- [ ] PyPI / Homebrew / GitHub Release verified
+
+### Tag-triggered automated flow
+- [ ] Working tree clean, on `main`
 - [ ] `pyproject.toml::project.version` bumped in its own "Version bump" commit
-- [ ] If a dep changed: Homebrew formula synced (in `release.yml` for automated, in the tap repo for manual)
+- [ ] `gh secret list` shows `PYPI_API_TOKEN` and `HOMEBREW_TAP_TOKEN`
+- [ ] No partial manual upload to PyPI for this version
+- [ ] Tag pushed
+- [ ] Workflow run succeeded (`gh run watch`)
+- [ ] PyPI / Homebrew / GitHub Release verified
 
 ### Manual flow
+- [ ] Working tree clean, on `main`
+- [ ] `pyproject.toml::project.version` bumped in its own "Version bump" commit
 - [ ] Tokens available via one of: `docker/local/cli/.env` (devcontainer), `./.pypirc` (repo-local), or `~/.pypirc`
 - [ ] If using a `.pypirc` file, it is `chmod 600`
 - [ ] If using a `.pypirc` file, it is in `.gitignore` (already there for the repo-local case)
@@ -461,10 +581,3 @@ Common patterns:
 - [ ] TestPyPI upload + smoke-test install passed
 - [ ] Real PyPI upload succeeded
 - [ ] Git tag pushed (knowing the CI workflow will run if active)
-
-### Automated flow
-- [ ] `gh secret list` shows `PYPI_API_TOKEN` and `HOMEBREW_TAP_TOKEN`
-- [ ] No partial manual upload to PyPI for this version
-- [ ] Tag pushed
-- [ ] Workflow run succeeded (`gh run watch`)
-- [ ] PyPI / Homebrew / GitHub Release verified

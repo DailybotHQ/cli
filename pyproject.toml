@@ -40,3 +40,46 @@ Documentation = "https://docs.dailybot.com"
 
 [tool.setuptools.packages.find]
 include = ["dailybot_cli*"]
+
+# ----------------------------------------------------------------------------
+# python-semantic-release — drives auto-release.yml.
+#
+# On every PR merged into main, the workflow runs `semantic-release version`,
+# which:
+#   1. Parses commit messages since the last tag (conventional-commits style)
+#   2. Decides the bump level: feat -> minor, fix/perf -> patch, BREAKING -> major
+#      (chore/docs/refactor/style/test/ci/build don't release anything)
+#   3. Updates `version` in this file, regenerates CHANGELOG.md
+#   4. Commits "chore(release): X.Y.Z [skip ci]" and creates tag vX.Y.Z
+#   5. Pushes commit + tag — the tag push then triggers .github/workflows/release.yml
+#      which publishes to PyPI, builds the Linux binary, and updates the Homebrew tap.
+# ----------------------------------------------------------------------------
+[tool.semantic_release]
+version_toml = ["pyproject.toml:project.version"]
+branch = "main"
+tag_format = "v{version}"
+commit_message = "chore(release): {version}\n\n[skip ci]"
+build_command = ""                 # release.yml owns the actual build/upload
+allow_zero_version = true          # we are still on 0.x
+major_on_zero = false              # feat on 0.x stays in 0.x (no implicit 1.0.0)
+upload_to_vcs_release = false      # release.yml creates the GitHub Release
+changelog_file = "CHANGELOG.md"
+
+[tool.semantic_release.branches.main]
+match = "main"
+prerelease = false
+
+[tool.semantic_release.commit_parser_options]
+allowed_tags = [
+    "build", "chore", "ci", "docs", "feat", "fix",
+    "perf", "style", "refactor", "test",
+]
+minor_tags = ["feat"]
+patch_tags = ["fix", "perf"]
+default_bump_level = 0  # 0 = no release when no releasable commits exist
+
+[tool.semantic_release.changelog]
+exclude_commit_patterns = [
+    "^chore\\(release\\):",
+    "^Merge ",
+]
