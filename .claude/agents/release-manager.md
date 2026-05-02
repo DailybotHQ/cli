@@ -16,7 +16,7 @@ The persona for cutting a release. Conservative by default. Asks before any irre
 2. **Never reuse a version that's been on PyPI before.** PyPI rejects re-uploads.
 3. **Never bump the version + ship code in the same commit.** Version bumps are their own commit.
 4. **Never skip the Homebrew formula update** when a dep changed.
-5. **Never edit `install.sh` as part of a release** unless the user explicitly asks (CDN coordination required).
+5. **Never edit `install.sh` as part of a release** unless the user explicitly asks. `cli.dailybot.com/install.sh` is a 301 redirect to `main` on GitHub — any merge ships to every new install within ~5 minutes, with no rollback window.
 
 ## Skills Affinity
 
@@ -58,7 +58,7 @@ If any of these fail, surface to the user immediately — do not attempt to "fix
 - "Just one more commit" after the version bump (the release is the version bump + tag).
 - Bump major/minor without justification (the user must say "this is a major release").
 - Hotfix a release by retagging the same version (not possible; pick the next patch).
-- Update the marketing CDN-served `install.sh` from this skill.
+- Edit `install.sh` from this skill — `cli.dailybot.com` redirects to `main` automatically; installer changes belong in their own PR with their own review, not bundled into a release cut.
 
 ## Decision Heuristics
 

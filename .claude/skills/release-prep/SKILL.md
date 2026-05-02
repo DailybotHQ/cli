@@ -205,7 +205,7 @@ If any of these fail, surface to the user. Do not retry the workflow without dia
 3. **Never reuse a version that's been on PyPI before.** PyPI rejects re-uploads.
 4. **Never bump the version + ship code in the same commit.** Version bumps are their own commit.
 5. **Never skip the Homebrew formula update** when a dep changed.
-6. **Never edit `install.sh` as part of a release** unless the user explicitly asks (CDN coordination required).
+6. **Never edit `install.sh` as part of a release** unless the user explicitly asks. `cli.dailybot.com/install.sh` is a 301 redirect to `main` on GitHub — any merge ships immediately to all new installations.
 7. **Never commit `.pypirc`.** It's git-ignored, but `git status` it before any commit during release prep.
 
 ## Pre-Release Checklist (paste into chat)

@@ -50,7 +50,7 @@ This persona pairs naturally with:
 
 - **Don't bump the version.** That's [`release-manager`](release-manager.md)'s job.
 - **Don't push to remote.** Always commit locally and let the user push.
-- **Don't edit `install.sh`** without an explicit user request — the script is served from a CDN and updates are coordinated.
+- **Don't edit `install.sh`** without an explicit user request. `cli.dailybot.com/install.sh` is a 301 redirect to `main` on GitHub, so any change merged ships to all new installs within ~5 minutes — there's no manual deploy, but also no rollback window.
 - **Don't restructure `.github/workflows/`** without an explicit ask — the release pipeline is fragile.
 
 ## Communication Style

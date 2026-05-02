@@ -551,7 +551,11 @@ dailybot --version
 
 ## Curl Installer (`install.sh`)
 
-The script in `install.sh` is also published at `https://cli.dailybot.com/install.sh`. The hosted version is updated **out-of-band** — pushing to this repo does NOT redeploy the CDN copy. Confirm with the maintainer before changing user-visible installer behavior.
+The public URL `https://cli.dailybot.com/install.sh` is a **Cloudflare 301 redirect** to `https://raw.githubusercontent.com/DailyBotHQ/cli/main/install.sh`. There is no separate CDN copy to deploy.
+
+**Implication:** any change to `install.sh` merged into `main` is live within ~5 minutes (the upper bound for GitHub's `raw.githubusercontent.com` cache). New installations triggered by `curl -sSL https://cli.dailybot.com/install.sh | bash` execute the latest committed version automatically.
+
+**Be deliberate** when editing `install.sh` — there is no staging step between merge and rollout. Test the script locally (`bash install.sh` from a checkout, or `curl -sSL https://raw.githubusercontent.com/DailyBotHQ/cli/<branch>/install.sh | bash` on a feature branch) before merging.
 
 ---
 
