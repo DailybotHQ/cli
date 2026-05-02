@@ -1,0 +1,83 @@
+name: Sync installer checksums
+
+# Keeps `install.sh.sha256` in sync with `install.sh` automatically. Triggered
+# on every push to `main` that modifies `install.sh` (and `install.ps1` once
+# we add it). Without this, a developer can land an `install.sh` change while
+# leaving the `.sha256` stale, which would break the verified install path
+# documented in DailyBotHQ/agent-skill (the consumer side runs
+# `shasum -a 256 -c install.sh.sha256` and aborts on mismatch).
+#
+# How it works:
+#   1. After a PR is merged, this workflow runs against `main`.
+#   2. It regenerates the .sha256 from the current `install.sh` bytes.
+#   3. If the regenerated checksum differs from the file in the repo, it
+#      commits the update directly to `main` as `DailyBot Automations`.
+#   4. The auto-commit uses `[skip ci]` so we don't loop, and the workflow's
+#      own trigger (paths: install.sh) does not match the .sha256 file
+#      anyway — so even without `[skip ci]` there's no infinite loop.
+#
+# The CDN is a Cloudflare 301 redirect to raw.githubusercontent.com/.../main,
+# so once the .sha256 lands on `main`, it is publicly accessible at
+# https://cli.dailybot.com/install.sh.sha256 within ~5 minutes (the upper
+# bound on raw.githubusercontent.com cache). No manual upload step required.
+#
+# Manual trigger: from the Actions tab via workflow_dispatch (handy if you
+# notice drift and want to force a regen without touching install.sh).
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "install.sh"
+      - "install.ps1"
+  workflow_dispatch: {}
+
+concurrency:
+  group: sync-installer-checksums-main
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+
+jobs:
+  regenerate:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout main
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          # PAT so the auto-commit can push to main (passes branch protection
+          # bypass once that is configured) and so the push event is attributed
+          # to the bot user, consistent with auto-release.yml.
+          token: ${{ secrets.AUTOMATION_GITHUB_TOKEN }}
+          persist-credentials: true
+
+      - name: Configure git identity
+        # Same identity the auto-release commit uses, for consistency in git log.
+        run: |
+          git config user.name  "DailyBot Automations"
+          git config user.email "ops@dailybot.com"
+
+      - name: Regenerate install.sh.sha256
+        run: |
+          shasum -a 256 install.sh > install.sh.sha256
+          # Optional Windows installer
+          if [ -f install.ps1 ]; then
+            shasum -a 256 install.ps1 > install.ps1.sha256
+          fi
+
+      - name: Commit and push if checksums changed
+        run: |
+          # Stage only the .sha256 files (never anything else)
+          git add install.sh.sha256
+          [ -f install.ps1.sha256 ] && git add install.ps1.sha256 || true
+
+          if git diff --cached --quiet; then
+            echo "Checksums already in sync — nothing to commit."
+            exit 0
+          fi
+
+          git commit -m "chore(installer): regenerate installer checksums [skip ci]"
+          git push origin main
+          echo "✓ Pushed regenerated checksums to main."
