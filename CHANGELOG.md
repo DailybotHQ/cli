@@ -9,6 +9,25 @@ Do not edit it by hand — your edits will be overwritten on the next release.
 
 <!-- version list -->
 
+## v1.1.0 (2026-05-02)
+
+### Chores
+
+- **release**: Attribute auto-release commits and tags to dailybotops
+  ([`a3eff13`](https://github.com/DailybotHQ/cli/commit/a3eff13a9a45344bf70972ef747f919815b2284f))
+
+- **release**: Use 'DailyBot Automations <automations@dailybot.com>' as commit author
+  ([`1b937a8`](https://github.com/DailybotHQ/cli/commit/1b937a858d1b20edc92a40e9b9e31a2e476f5ce6))
+
+- **release**: Use ops@dailybot.com as the auto-release commit email
+  ([`b846ba8`](https://github.com/DailybotHQ/cli/commit/b846ba80a7be267356050f350c8f0f972cbc768d))
+
+### Features
+
+- **release**: Cut a release on every merge to main, regardless of prefix
+  ([`f2893c4`](https://github.com/DailybotHQ/cli/commit/f2893c4781975ff1c5a46a6350b75dc4b0916de2))
+
+
 ## v1.0.1 (2026-05-02)
 
 ### Bug Fixes
