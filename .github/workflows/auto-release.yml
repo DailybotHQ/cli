@@ -51,15 +51,37 @@ jobs:
           python-version: "3.12"
 
       - name: Configure git identity
+        # Use the PR author's GitHub identity for the bump commit so it shows
+        # in `git log` as authored by the human who triggered the release,
+        # not by an opaque bot. Falls back to ${{ github.actor }} for
+        # workflow_dispatch runs (where there is no PR).
+        #
+        # NOTE: this changes the *commit author*, not the *pusher*. The push
+        # itself is still authenticated with AUTOMATION_GITHUB_TOKEN — that
+        # is what determines whether the tag-push event fires release.yml.
+        # When the token is a bot/PAT that GitHub treats as automated, the
+        # tag push does not trigger workflows; in that case use
+        # `gh workflow run release.yml --ref v<X.Y.Z>` (workflow_dispatch).
+        env:
+          PR_AUTHOR_LOGIN: ${{ github.event.pull_request.user.login || github.actor }}
+          PR_AUTHOR_ID:    ${{ github.event.pull_request.user.id || github.actor_id }}
         run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git config user.name  "${PR_AUTHOR_LOGIN}"
+          git config user.email "${PR_AUTHOR_ID}+${PR_AUTHOR_LOGIN}@users.noreply.github.com"
 
       - name: Install python-semantic-release
         run: pip install "python-semantic-release>=10,<11"
 
+      - name: Capture latest tag (before)
+        # Used to detect whether semantic-release actually created a new tag
+        # in the next step (so we know whether to fire release.yml).
+        id: tag_before
+        run: |
+          LATEST="$(git tag --sort=-creatordate | head -n1 || echo none)"
+          echo "tag=$LATEST" >> "$GITHUB_OUTPUT"
+          echo "Latest tag before semantic-release: $LATEST"
+
       - name: Bump version, update changelog, tag, and push
-        id: release
         env:
           GH_TOKEN: ${{ secrets.AUTOMATION_GITHUB_TOKEN }}
         run: |
@@ -73,15 +95,50 @@ jobs:
           # if the resolver finds nothing to release, exit 0 instead of failing.
           semantic-release version --push --changelog --commit --tag
 
+      - name: Capture latest tag (after) and detect new release
+        id: tag_after
+        run: |
+          LATEST="$(git tag --sort=-creatordate | head -n1 || echo none)"
+          echo "tag=$LATEST" >> "$GITHUB_OUTPUT"
+          if [ "$LATEST" != "${{ steps.tag_before.outputs.tag }}" ]; then
+            echo "released=true" >> "$GITHUB_OUTPUT"
+            echo "✅ semantic-release created new tag: $LATEST"
+          else
+            echo "released=false" >> "$GITHUB_OUTPUT"
+            echo "ℹ️  No release this run (no qualifying commits since ${{ steps.tag_before.outputs.tag }})"
+          fi
+
+      - name: Trigger release.yml for the new tag
+        # GitHub does not always fire the `push: tags: v*` trigger on
+        # release.yml when the tag is pushed by a bot/PAT/GITHUB_TOKEN — its
+        # documented anti-recursion safeguard. To avoid silent stuck-tag
+        # incidents, we always dispatch release.yml explicitly here.
+        # `workflow_dispatch` is the one trigger type that GitHub guarantees
+        # WILL fire, regardless of which token initiated it. The result is a
+        # deterministic auto-release → publish chain that does not depend on
+        # how AUTOMATION_GITHUB_TOKEN happens to be configured.
+        if: steps.tag_after.outputs.released == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.AUTOMATION_GITHUB_TOKEN }}
+        run: |
+          TAG="${{ steps.tag_after.outputs.tag }}"
+          echo "Dispatching release.yml against $TAG ..."
+          gh workflow run release.yml \
+            --ref "$TAG" \
+            --repo "${{ github.repository }}"
+          echo "Watch: https://github.com/${{ github.repository }}/actions/workflows/release.yml"
+
       - name: Summarize result
         if: always()
         run: |
           echo "## Auto Release Summary" >> "$GITHUB_STEP_SUMMARY"
-          LATEST_TAG="$(git tag --sort=-creatordate | head -n1 || true)"
-          if [ -n "$LATEST_TAG" ]; then
-            echo "Latest tag: \`$LATEST_TAG\`" >> "$GITHUB_STEP_SUMMARY"
+          LATEST="$(git tag --sort=-creatordate | head -n1 || echo none)"
+          if [ "$LATEST" != "${{ steps.tag_before.outputs.tag }}" ]; then
+            echo "✅ Cut **\`$LATEST\`** from \`${{ steps.tag_before.outputs.tag }}\`." >> "$GITHUB_STEP_SUMMARY"
+            echo "" >> "$GITHUB_STEP_SUMMARY"
+            echo "\`release.yml\` was dispatched against \`$LATEST\` and should now be publishing to PyPI / Linux binary / GitHub Release / Homebrew tap." >> "$GITHUB_STEP_SUMMARY"
           else
-            echo "No tags found." >> "$GITHUB_STEP_SUMMARY"
+            echo "ℹ️  No release this run. Latest tag remains \`$LATEST\`." >> "$GITHUB_STEP_SUMMARY"
+            echo "" >> "$GITHUB_STEP_SUMMARY"
+            echo "This is normal for PRs that contain only \`chore:\`/\`docs:\`/\`refactor:\`/\`style:\`/\`test:\`/\`ci:\`/\`build:\` commits." >> "$GITHUB_STEP_SUMMARY"
           fi
-          echo "" >> "$GITHUB_STEP_SUMMARY"
-          echo "If a new tag was just pushed, \`release.yml\` is now publishing to PyPI / GitHub Release / Homebrew." >> "$GITHUB_STEP_SUMMARY"
