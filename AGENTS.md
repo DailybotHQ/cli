@@ -246,6 +246,20 @@ The implementation lives in `dailybot_cli/commands/agent.py::_resolve_agent_cont
 
 The schemas of `credentials.json`, `config.json`, `agents.json`, and `org_cache.json` are persisted on user machines across CLI upgrades. **Adding** keys is safe; **renaming or removing** keys requires a migration path or a new file name. When introducing a new key, treat its absence as the legacy default in `load_*` functions (see how `api_url` defaults to `DEFAULT_API_URL`).
 
+### 17. Temporary Files Live in `tmp/`
+
+The repo has a top-level `tmp/` directory reserved for any throwaway artifact: scratch notes, draft PR bodies, intermediate command output, downloaded sample payloads, debugging dumps, generated diffs to inspect, etc.
+
+**Rules for AI agents:**
+
+- **Always** drop temporary files inside `tmp/`. Never write scratch files to the repo root, to `docs/`, to `dailybot_cli/`, or anywhere else.
+- The folder is gitignored except for `tmp/.gitkeep` (which preserves the empty directory in git). Anything else you put inside is invisible to `git status` and will not be committed by accident.
+- Don't promote a file out of `tmp/` unless you've decided it's a real, permanent artifact (and then move it deliberately to its proper home).
+- Don't delete `tmp/.gitkeep`.
+- If you need a subdirectory for organization (`tmp/pr-bodies/`, `tmp/api-dumps/`), create it freely — everything under `tmp/` is ignored.
+
+This keeps the working tree clean across long agent sessions and avoids accidental commits of generated/scratch content.
+
 ## Quick Commands
 
 ```bash
@@ -298,6 +312,7 @@ See [docs/DEVELOPMENT_COMMANDS.md](docs/DEVELOPMENT_COMMANDS.md) for full refere
 18. Call `sys.exit(...)` from library code — `raise SystemExit(N)` from command callbacks only
 19. Add a Click flag without a short alias if the existing command in the same group already uses one (consistency)
 20. Forget the `\b` marker in Click docstrings — without it, Click reflows your example block
+21. Drop scratch files anywhere outside `tmp/` (draft PR bodies, debug dumps, sample payloads, etc.) — see Rule 17
 
 ### DO
 

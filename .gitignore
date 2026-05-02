@@ -34,3 +34,8 @@ htmlcov/
 # Project
 .vscode
 .devcontainer
+
+# Scratchpad for AI agents and humans — see AGENTS.md.
+# Anything dropped here is ignored except for the placeholder .gitkeep file.
+tmp/*
+!tmp/.gitkeep
