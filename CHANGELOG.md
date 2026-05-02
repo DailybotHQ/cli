@@ -9,6 +9,34 @@ Do not edit it by hand — your edits will be overwritten on the next release.
 
 <!-- version list -->
 
+## v1.3.0 (2026-05-02)
+
+### Bug Fixes
+
+- **ci**: Serialize auto-release.yml and sync-installer-checksums.yml
+  ([`3a8947a`](https://github.com/DailybotHQ/cli/commit/3a8947a50a0ec74da01208e35df9ff458c0613be))
+
+### Chores
+
+- **installer**: Regenerate installer checksums [skip ci]
+  ([`e1b37d7`](https://github.com/DailybotHQ/cli/commit/e1b37d7a83604bffa4bd85d870dbc785893cec63))
+
+### Continuous Integration
+
+- Trigger code_check.yml on PR (workflow event was missed on initial open)
+  ([`d0cd262`](https://github.com/DailybotHQ/cli/commit/d0cd262348e8bf60f8bd0a87ec709dd0d7c54e01))
+
+### Documentation
+
+- **readme**: Position install.sh as the default for Windows users with WSL or Git Bash
+  ([`95fd83a`](https://github.com/DailybotHQ/cli/commit/95fd83ad797a45bbd715f8bd4fb46689028371fb))
+
+### Features
+
+- **installer**: Add Windows PowerShell installer (install.ps1)
+  ([`fa59958`](https://github.com/DailybotHQ/cli/commit/fa599588d0c202dfffbdc62da1a5accc5f87f984))
+
+
 ## v1.2.0 (2026-05-02)
 
 ### Features
