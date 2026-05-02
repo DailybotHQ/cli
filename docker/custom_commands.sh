@@ -232,6 +232,145 @@ function dev_install() {
 }
 
 # ============================================================================
+# Package smoke-test: build → twine check → install in clean venv → run.
+# Catches packaging issues that `pytest` misses: missing files in the wheel,
+# dependencies declared in pyproject.toml that aren't actually imported,
+# entry-point glue, README rendering, exact pin resolution, etc.
+#
+# Manual equivalents (run directly without this helper):
+#   python -m build
+#   twine check dist/*
+#   python -m venv /tmp/dbtest && source /tmp/dbtest/bin/activate
+#   pip install dist/dailybot_cli-*-py3-none-any.whl
+#   dailybot --version && dailybot --help
+#   deactivate && rm -rf /tmp/dbtest
+# ============================================================================
+
+function pkg_test() {
+    local project_root venv_dir wheel keep=false
+
+    while [[ $# -gt 0 ]]; do
+        case "$1" in
+            --keep)
+                keep=true
+                shift
+                ;;
+            -h|--help)
+                cat <<'EOF'
+pkg_test — build the package and smoke-test it in a clean venv.
+
+Usage:
+  pkg_test               Build, install in a throwaway venv, smoke-test, clean up.
+  pkg_test --keep        Same, but leave the venv around (path printed at the end).
+                         Useful when you want to `source <path>/bin/activate` and
+                         poke at the installed CLI manually (e.g. against staging).
+  pkg_test -h | --help   Show this help.
+
+What it does:
+  1. python -m build      → sdist + wheel under dist/
+  2. twine check dist/*   → metadata + README validation
+  3. python -m venv ...   → fresh isolated environment
+  4. pip install <wheel>  → exact resolution against pyproject.toml's pinned deps
+  5. dailybot --version + import check + every subcommand --help
+
+Exit code is non-zero on any step that fails.
+EOF
+                return 0
+                ;;
+            *)
+                print.error "Unknown flag: $1"
+                echo "Run 'pkg_test --help' for usage."
+                return 2
+                ;;
+        esac
+    done
+
+    project_root="$(git rev-parse --show-toplevel 2>/dev/null || echo "$PWD")"
+    venv_dir="$(mktemp -d -t pkg_test.XXXXXX)"
+
+    # Cleanup on any exit path (success, failure, Ctrl-C) — unless --keep
+    if ! $keep; then
+        trap "rm -rf '$venv_dir'" RETURN
+    fi
+
+    print.success "1/5 — Building sdist + wheel..."
+    (cd "$project_root" && rm -rf dist/ build/ && python -m build) || {
+        print.error "⚠️  Build failed."
+        return 1
+    }
+
+    print.success "2/5 — Validating package metadata (twine check)..."
+    (cd "$project_root" && twine check dist/*) || {
+        print.error "⚠️  twine check failed."
+        return 1
+    }
+
+    print.success "3/5 — Creating clean venv at $venv_dir ..."
+    python -m venv "$venv_dir" || return 1
+
+    wheel="$(ls "$project_root"/dist/dailybot_cli-*-py3-none-any.whl 2>/dev/null | head -n1)"
+    if [ -z "$wheel" ]; then
+        print.error "⚠️  No wheel found under dist/."
+        return 1
+    fi
+
+    print.success "4/5 — Installing wheel into the clean venv..."
+    # Run pip from the venv directly, no need to source/activate
+    "$venv_dir/bin/pip" install --upgrade pip --quiet || return 1
+    "$venv_dir/bin/pip" install "$wheel" --quiet || {
+        print.error "⚠️  Wheel install failed."
+        return 1
+    }
+
+    print.success "5/5 — Smoke-testing the installed CLI..."
+    echo ""
+    echo "    which dailybot:    $("$venv_dir/bin/dailybot" --version 2>&1 | head -1)"
+    echo "    binary path:       $venv_dir/bin/dailybot"
+    echo ""
+
+    # Verify each subcommand loads (catches missing modules in the wheel)
+    local subcommand
+    for subcommand in login logout status update config agent; do
+        if ! "$venv_dir/bin/dailybot" "$subcommand" --help >/dev/null 2>&1; then
+            print.error "⚠️  '$subcommand --help' failed to load — wheel may be missing files."
+            return 1
+        fi
+    done
+
+    # Verify all internal modules import cleanly
+    "$venv_dir/bin/python" -c "
+import dailybot_cli, dailybot_cli.main, dailybot_cli.api_client
+import dailybot_cli.config, dailybot_cli.display
+import dailybot_cli.commands.auth, dailybot_cli.commands.status
+import dailybot_cli.commands.update, dailybot_cli.commands.config
+import dailybot_cli.commands.interactive, dailybot_cli.commands.agent
+" || {
+        print.error "⚠️  Module import check failed."
+        return 1
+    }
+
+    echo ""
+    print.success "✅ All checks passed — package is publishable."
+    echo ""
+    if $keep; then
+        echo "    Venv kept at: $venv_dir"
+        echo ""
+        echo "    To poke around manually (e.g. against staging):"
+        echo "      source $venv_dir/bin/activate"
+        echo "      dailybot --api-url https://staging.dailybot.com login --email <you>@dailybot.com"
+        echo "      ..."
+        echo "      deactivate && rm -rf $venv_dir"
+    else
+        echo "    Venv was cleaned up. Re-run with 'pkg_test --keep' to keep it for"
+        echo "    interactive smoke-testing (e.g. against staging)."
+    fi
+    echo ""
+    echo "    To publish to TestPyPI (if TESTPYPI_API_TOKEN is in .env):"
+    echo "      twine upload --repository testpypi $project_root/dist/*"
+    echo ""
+}
+
+# ============================================================================
 # Dependency lock-file workflow (pip-tools)
 # ----------------------------------------------------------------------------
 # Mirrors the api-services pattern adapted to setuptools + PEP 621:
@@ -394,6 +533,10 @@ function show_welcome() {
     echo "  • pip_update           - Recompile requirements/{base,dev}.txt + sync env"
     echo "  • pso                  - List outdated installed packages"
     echo "  • dev_install          - pip install -e \".[dev]\" (one-shot)"
+    echo ""
+    echo "Package release smoke test:"
+    echo "  • pkg_test             - build sdist+wheel → twine check → install in"
+    echo "                           a clean venv → smoke-test the CLI (~30s)"
     echo ""
     echo "AI Assistant commands:"
     echo "  • claude            - Claude Code CLI"
