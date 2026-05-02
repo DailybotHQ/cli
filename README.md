@@ -2,7 +2,7 @@
 
 The command-line bridge between **humans** and **agents**. [Dailybot](https://www.dailybot.com) connects your team — whether they work in Slack, Google Chat, Discord, Microsoft Teams, or the web — with AI agents and automated workflows. The CLI brings that power to your terminal: progress reports, observability, health checks, messaging, and workflow automation for modern teams.
 
-## Installation.
+## Installation
 
 ```bash
 pip install dailybot-cli
