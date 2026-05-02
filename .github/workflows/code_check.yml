@@ -68,6 +68,43 @@ jobs:
       - name: Tests — pytest
         run: pytest -x
 
+  installer_checksums:
+    name: Installer checksums in sync
+    runs-on: ubuntu-latest
+    # Cheap check, no Python needed — fail fast on this and developers see
+    # immediately that they forgot to regenerate the .sha256 alongside their
+    # install.sh edit. The auto-regenerate workflow on `main` will fix it
+    # post-merge anyway, but catching it pre-merge is friendlier for reviewers
+    # (the diff stays self-consistent).
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verify install.sh.sha256 matches install.sh
+        run: |
+          if [ ! -f install.sh.sha256 ]; then
+            echo "::error file=install.sh::install.sh.sha256 is missing. Run: shasum -a 256 install.sh > install.sh.sha256"
+            exit 1
+          fi
+          shasum -a 256 -c install.sh.sha256 || {
+            echo ""
+            echo "::error file=install.sh.sha256::install.sh.sha256 is out of sync with install.sh."
+            echo "Regenerate it locally and commit:"
+            echo "    shasum -a 256 install.sh > install.sh.sha256"
+            echo "    git add install.sh.sha256 && git commit -m 'chore(installer): regenerate install.sh.sha256'"
+            exit 1
+          }
+      - name: Verify install.ps1.sha256 matches install.ps1 (if present)
+        run: |
+          if [ -f install.ps1 ]; then
+            if [ ! -f install.ps1.sha256 ]; then
+              echo "::error file=install.ps1::install.ps1.sha256 is missing. Run: shasum -a 256 install.ps1 > install.ps1.sha256"
+              exit 1
+            fi
+            shasum -a 256 -c install.ps1.sha256 || {
+              echo "::error file=install.ps1.sha256::install.ps1.sha256 is out of sync with install.ps1."
+              exit 1
+            }
+          fi
+
   build_smoke_test:
     name: Build smoke-test (sdist + wheel)
     runs-on: ubuntu-latest

@@ -568,6 +568,51 @@ The public URL `https://cli.dailybot.com/install.sh` is a **Cloudflare 301 redir
 
 **Be deliberate** when editing `install.sh` — there is no staging step between merge and rollout. Test the script locally (`bash install.sh` from a checkout, or `curl -sSL https://raw.githubusercontent.com/DailyBotHQ/cli/<branch>/install.sh | bash` on a feature branch) before merging.
 
+### `install.sh.sha256` (supply-chain verification)
+
+Consumers like [`DailyBotHQ/agent-skill`](https://github.com/DailyBotHQ/agent-skill) verify `install.sh` against a SHA-256 sidecar before executing it:
+
+```bash
+curl -sSL https://cli.dailybot.com/install.sh        -o /tmp/install.sh
+curl -sSL https://cli.dailybot.com/install.sh.sha256 -o /tmp/install.sh.sha256
+( cd /tmp && shasum -a 256 -c install.sh.sha256 ) || {
+  echo "Refusing to run unverified install.sh" >&2
+  exit 1
+}
+bash /tmp/install.sh
+```
+
+`install.sh.sha256` lives next to `install.sh` in this repo and is kept in sync by:
+
+1. **`code_check.yml`** — every PR is gated on the checksum matching `install.sh`. If a contributor edits the script but forgets the `.sha256`, CI fails with a clear regenerate command.
+2. **`sync-installer-checksums.yml`** — runs on every push to `main` whose paths include `install.sh`, regenerates the `.sha256`, and commits it directly to `main` as `DailyBot Automations`. So even if a PR slips through with stale checksum (e.g. the workflow is bypassed), `main` self-heals.
+
+To regenerate locally before opening a PR:
+
+```bash
+shasum -a 256 install.sh > install.sh.sha256
+git add install.sh install.sh.sha256
+git commit -m "fix(installer): tweak Linux fallback and refresh checksum"
+```
+
+### Cloudflare DNS / Worker rules
+
+For `cli.dailybot.com/install.sh.sha256` (and any other file we add next to `install.sh`) to be served by the CDN, the Cloudflare zone needs the redirect rule to be a **wildcard** rather than a single-path rule. Recommended Page Rule / Bulk Redirect:
+
+```
+Source URL:      cli.dailybot.com/(.*)
+Destination URL: https://raw.githubusercontent.com/DailyBotHQ/cli/main/$1
+HTTP code:       301
+Preserve query string: yes
+```
+
+If today's rule is hard-coded to `/install.sh`, a Cloudflare admin must update it to the wildcard form (or add a second specific rule for `/install.sh.sha256`). Without this change, the new sidecar lands on `main` but stays inaccessible at `cli.dailybot.com/install.sh.sha256`. **Verify after a Cloudflare config change:**
+
+```bash
+curl -fsSL https://cli.dailybot.com/install.sh.sha256
+# Expected: <64-char-hex>  install.sh
+```
+
 ---
 
 ## Combining the Flows
