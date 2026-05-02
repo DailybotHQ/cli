@@ -168,7 +168,7 @@ commit_message = "chore(release): {version}\n\n[skip ci]"
 # verification, GitHub renders the commit author as a plain "DailyBot
 # Automations" string (no avatar, no profile link). The commit identity is
 # still valid in git itself either way.
-commit_author = "DailyBot Automations <automations@dailybot.com>"
+commit_author = "DailyBot Automations <ops@dailybot.com>"
 build_command = ""                 # release.yml owns the actual build/upload
 # `allow_zero_version` and `major_on_zero` together control how PSR treats
 # breaking changes while the package is still on 0.x.
