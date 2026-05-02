@@ -15,7 +15,6 @@ env/
 
 # IDE
 .idea/
-.vscode/
 *.swp
 *.swo
 
@@ -31,3 +30,7 @@ htmlcov/
 # Config secrets
 .env
 .pypirc
+
+# Project
+.vscode
+.devcontainer
