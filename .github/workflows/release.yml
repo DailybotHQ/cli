@@ -4,6 +4,13 @@ on:
   push:
     tags:
       - "v*"
+  # Manual escape hatch: when a tag was pushed by a bot/PAT and GitHub
+  # therefore did not fire the push trigger automatically, an admin can
+  # re-run the publish pipeline against an existing tag with:
+  #     gh workflow run release.yml --ref v<X.Y.Z> --repo DailybotHQ/cli
+  # The workflow uses ${{ github.ref_name }} for the version, which resolves
+  # to the tag name when the workflow is dispatched on a tag ref.
+  workflow_dispatch: {}
 
 permissions:
   contents: write
