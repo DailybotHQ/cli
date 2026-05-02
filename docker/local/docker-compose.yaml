@@ -1,0 +1,32 @@
+name: dailybotplatformlocal
+
+services:
+  clivscode:
+    container_name: dailybot-cli
+    init: true
+    build:
+      context: .
+      dockerfile: ./cli/Dockerfile
+    working_dir: /workspace
+    command: sleep infinity
+    environment:
+      - DOCKER_DEV_ENV=vscode
+    env_file:
+      - cli/.env
+    volumes:
+      - ../..:/workspace
+      # Persistent data volumes mounted only for dev-user (devcontainer runs as dev-user)
+      - claude_data:/home/dev-user/.claude_data
+      - codex_data:/home/dev-user/.codex_data
+      - cursor_data:/home/dev-user/.cursor_data
+      - dailybot_data:/home/dev-user/.dailybot_data
+      - gh_data:/home/dev-user/.gh_data
+      - ${HOME}/.ssh:/home/dev-user/.ssh_host:ro
+      - ${HOME}/.gitconfig:/home/dev-user/.gitconfig:ro
+
+volumes:
+  claude_data: {}
+  codex_data: {}
+  cursor_data: {}        # Cursor CLI session/auth (symlinked to ~/.cursor)
+  dailybot_data: {}      # Dailybot CLI config/auth (symlinked to ~/.config/dailybot)
+  gh_data: {}
