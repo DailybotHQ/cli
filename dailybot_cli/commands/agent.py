@@ -9,7 +9,6 @@ from dailybot_cli.api_client import APIError, DailyBotClient
 from dailybot_cli.config import (
     _slugify,
     get_agent_auth,
-    get_api_key,
     get_default_profile,
     get_profile,
     get_token,
@@ -32,10 +31,9 @@ from dailybot_cli.display import (
     print_webhook_result,
 )
 
-
 _NO_AUTH_MSG: str = (
     "No agent profile or authentication found. Use one of:\n"
-    "  - dailybot agent configure --name \"My Agent\"\n"
+    '  - dailybot agent configure --name "My Agent"\n'
     "  - DAILYBOT_API_KEY environment variable\n"
     "  - dailybot config key=<KEY>\n"
     "  - dailybot login"
@@ -99,7 +97,9 @@ def _resolve_agent_context(
 
 
 @click.group()
-@click.option("--profile", "-p", default=None, help="Agent profile name from agents.json.", hidden=False)
+@click.option(
+    "--profile", "-p", default=None, help="Agent profile name from agents.json.", hidden=False
+)
 @click.pass_context
 def agent(ctx: click.Context, profile: Optional[str]) -> None:
     """Agent commands (requires API key or login session)."""
@@ -113,9 +113,13 @@ def agent(ctx: click.Context, profile: Optional[str]) -> None:
 @agent.command(name="configure")
 @click.option("--name", "-n", required=True, help="Agent display name.")
 @click.option("--key", "-k", default=None, help="API key (optional — omit if using OTP login).")
-@click.option("--profile", "profile_name", default=None, help="Profile name (defaults to slugified --name).")
+@click.option(
+    "--profile", "profile_name", default=None, help="Profile name (defaults to slugified --name)."
+)
 @click.pass_context
-def agent_configure(ctx: click.Context, name: str, key: Optional[str], profile_name: Optional[str]) -> None:
+def agent_configure(
+    ctx: click.Context, name: str, key: Optional[str], profile_name: Optional[str]
+) -> None:
     """Configure a named agent profile.
 
     \b
@@ -172,10 +176,26 @@ def agent_profiles() -> None:
 @click.option("--profile", "-p", default=None, help="Agent profile name from agents.json.")
 @click.option("--json-data", "-j", help="Structured JSON data to include.")
 @click.option("--metadata", "-d", help="JSON metadata (e.g. repo, branch, PR).")
-@click.option("--milestone", "-m", is_flag=True, default=False, help="Mark as a milestone accomplishment.")
-@click.option("--co-authors", "-c", multiple=True, help="Co-author email or UUID (repeatable, or comma-separated).")
+@click.option(
+    "--milestone", "-m", is_flag=True, default=False, help="Mark as a milestone accomplishment."
+)
+@click.option(
+    "--co-authors",
+    "-c",
+    multiple=True,
+    help="Co-author email or UUID (repeatable, or comma-separated).",
+)
 @click.pass_context
-def agent_update(ctx: click.Context, content: str, name: Optional[str], profile: Optional[str], json_data: Optional[str], metadata: Optional[str], milestone: bool, co_authors: tuple[str, ...]) -> None:
+def agent_update(
+    ctx: click.Context,
+    content: str,
+    name: Optional[str],
+    profile: Optional[str],
+    json_data: Optional[str],
+    metadata: Optional[str],
+    milestone: bool,
+    co_authors: tuple[str, ...],
+) -> None:
     """Submit an agent activity report.
 
     \b
@@ -225,7 +245,7 @@ def agent_update(ctx: click.Context, content: str, name: Optional[str], profile:
         msg: str = f"Report submitted (id: {result.get('id', 'N/A')})"
         if result.get("is_milestone"):
             msg += " [Milestone]"
-        co: list[dict[str, Any]] | None = result.get("co_authors")
+        co: Optional[list[dict[str, Any]]] = result.get("co_authors")
         if co:
             names: str = ", ".join(a.get("name", a.get("uuid", "?")) for a in co)
             msg += f"\n  Co-authors: {names}"
@@ -244,7 +264,9 @@ def agent_update(ctx: click.Context, content: str, name: Optional[str], profile:
 @agent.command(name="health")
 @click.option("--ok", "report_ok", is_flag=True, default=False, help="Report healthy status.")
 @click.option("--fail", "report_fail", is_flag=True, default=False, help="Report unhealthy status.")
-@click.option("--status", "query_status", is_flag=True, default=False, help="Query current health status.")
+@click.option(
+    "--status", "query_status", is_flag=True, default=False, help="Query current health status."
+)
 @click.option("--message", "-m", default=None, help="Optional message to include.")
 @click.option("--name", "-n", default=None, help="Agent worker name.")
 @click.option("--profile", "-p", default=None, help="Agent profile name from agents.json.")
@@ -306,7 +328,9 @@ def agent_webhook() -> None:
 @click.option("--name", "-n", default=None, help="Agent worker name.")
 @click.option("--profile", "-p", default=None, help="Agent profile name from agents.json.")
 @click.pass_context
-def webhook_register(ctx: click.Context, url: str, secret: Optional[str], name: Optional[str], profile: Optional[str]) -> None:
+def webhook_register(
+    ctx: click.Context, url: str, secret: Optional[str], name: Optional[str], profile: Optional[str]
+) -> None:
     """Register a webhook for the agent.
 
     \b
@@ -364,7 +388,9 @@ def agent_message() -> None:
 @agent_message.command(name="send")
 @click.option("--to", "to_agent", required=True, help="Target agent name.")
 @click.option("--content", required=True, help="Message content.")
-@click.option("--type", "message_type", default=None, help="Message type: text, command, or system.")
+@click.option(
+    "--type", "message_type", default=None, help="Message type: text, command, or system."
+)
 @click.option("--name", "-n", default=None, help="Sender agent name.")
 @click.option("--profile", "-p", default=None, help="Agent profile name from agents.json.")
 @click.option("--json-data", "-j", default=None, help="JSON metadata to include.")
@@ -421,7 +447,9 @@ def message_send(
 @click.option("--profile", "-p", default=None, help="Agent profile name from agents.json.")
 @click.option("--pending", is_flag=True, default=False, help="Show only undelivered messages.")
 @click.pass_context
-def message_list(ctx: click.Context, name: Optional[str], profile: Optional[str], pending: bool) -> None:
+def message_list(
+    ctx: click.Context, name: Optional[str], profile: Optional[str], pending: bool
+) -> None:
     """List messages for an agent.
 
     \b
@@ -507,7 +535,9 @@ def agent_email() -> None:
 
 
 @agent_email.command(name="send")
-@click.option("--to", "recipients", multiple=True, required=True, help="Recipient email (repeatable).")
+@click.option(
+    "--to", "recipients", multiple=True, required=True, help="Recipient email (repeatable)."
+)
 @click.option("--subject", required=True, help="Email subject line.")
 @click.option("--body-html", required=True, help="HTML email body.")
 @click.option("--name", "-n", default=None, help="Agent name.")
@@ -583,7 +613,12 @@ def _solve_challenge(instruction: str) -> int:
 @click.option("--agent-name", required=True, help="Agent display name.")
 @click.option("--email", default=None, help="Human contact email (optional).")
 @click.option("--timezone", default="UTC", help="Timezone (default: UTC).")
-@click.option("--profile", "profile_name", default=None, help="Profile name to save (defaults to slugified --agent-name).")
+@click.option(
+    "--profile",
+    "profile_name",
+    default=None,
+    help="Profile name to save (defaults to slugified --agent-name).",
+)
 def agent_register(
     org_name: str,
     agent_name: str,
@@ -643,4 +678,6 @@ def agent_register(
     print_registration_result(result)
     claim_url: str = result.get("claim_url", "")
     if claim_url:
-        print_info("Share the claim URL with your team admin to connect this org to Slack or Google Chat. The URL expires in 30 days.")
+        print_info(
+            "Share the claim URL with your team admin to connect this org to Slack or Google Chat. The URL expires in 30 days."
+        )

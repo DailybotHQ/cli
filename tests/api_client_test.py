@@ -19,7 +19,6 @@ def client() -> DailyBotClient:
 
 
 class TestDailyBotClientAuth:
-
     def test_request_code(self, client: DailyBotClient) -> None:
         mock_response: MagicMock = MagicMock(spec=httpx.Response)
         mock_response.status_code = 200
@@ -81,7 +80,6 @@ class TestDailyBotClientAuth:
 
 
 class TestDailyBotClientUpdates:
-
     def test_submit_update_message(self, client: DailyBotClient) -> None:
         mock_response: MagicMock = MagicMock(spec=httpx.Response)
         mock_response.status_code = 201
@@ -100,9 +98,7 @@ class TestDailyBotClientUpdates:
         mock_response.json.return_value = {"followups_count": 1}
 
         with patch("httpx.post", return_value=mock_response) as mock_post:
-            result: dict[str, Any] = client.submit_update(
-                done="Auth", doing="Tests", blocked="None"
-            )
+            client.submit_update(done="Auth", doing="Tests", blocked="None")
 
         call_kwargs: dict[str, Any] = mock_post.call_args[1]
         assert call_kwargs["json"]["done"] == "Auth"
@@ -121,7 +117,6 @@ class TestDailyBotClientUpdates:
 
 
 class TestDailyBotClientAgent:
-
     def test_submit_agent_report(self, client: DailyBotClient) -> None:
         mock_response: MagicMock = MagicMock(spec=httpx.Response)
         mock_response.status_code = 201
@@ -137,7 +132,6 @@ class TestDailyBotClientAgent:
         assert call_kwargs["json"]["agent_name"] == "Claude Code"
         assert call_kwargs["headers"]["X-API-KEY"] == "test-api-key"
         assert result["id"] == 1
-
 
     def test_submit_agent_report_with_milestone(self, client: DailyBotClient) -> None:
         mock_response: MagicMock = MagicMock(spec=httpx.Response)
@@ -188,15 +182,13 @@ class TestDailyBotClientAgent:
 
 
 class TestAPIError:
-
     def test_api_error_raised(self, client: DailyBotClient) -> None:
         mock_response: MagicMock = MagicMock(spec=httpx.Response)
         mock_response.status_code = 400
         mock_response.json.return_value = {"detail": "Bad request"}
 
-        with patch("httpx.post", return_value=mock_response):
-            with pytest.raises(APIError) as exc_info:
-                client.request_code("bad@example.com")
+        with patch("httpx.post", return_value=mock_response), pytest.raises(APIError) as exc_info:
+            client.request_code("bad@example.com")
 
         assert exc_info.value.status_code == 400
         assert "Bad request" in exc_info.value.detail
@@ -207,29 +199,23 @@ class TestAPIError:
         mock_response.json.side_effect = ValueError("Not JSON")
         mock_response.text = "Internal Server Error"
 
-        with patch("httpx.post", return_value=mock_response):
-            with pytest.raises(APIError) as exc_info:
-                client.request_code("user@example.com")
+        with patch("httpx.post", return_value=mock_response), pytest.raises(APIError) as exc_info:
+            client.request_code("user@example.com")
 
         assert exc_info.value.status_code == 500
         assert "Internal Server Error" in exc_info.value.detail
 
 
 class TestAgentDualAuth:
-
     def test_agent_headers_prefers_api_key(self) -> None:
-        client = DailyBotClient(
-            api_url="http://test.com", token="tok", api_key="key123"
-        )
+        client = DailyBotClient(api_url="http://test.com", token="tok", api_key="key123")
         headers = client._agent_headers()
         assert headers["X-API-KEY"] == "key123"
         assert "Authorization" not in headers
         assert client._agent_auth_mode == "api_key"
 
     def test_agent_headers_falls_back_to_bearer(self) -> None:
-        client = DailyBotClient(
-            api_url="http://test.com", token="tok", api_key=None
-        )
+        client = DailyBotClient(api_url="http://test.com", token="tok", api_key=None)
         headers = client._agent_headers()
         assert headers["Authorization"] == "Bearer tok"
         assert "X-API-KEY" not in headers
@@ -238,18 +224,14 @@ class TestAgentDualAuth:
     @patch("dailybot_cli.api_client.get_token", return_value=None)
     @patch("dailybot_cli.api_client.get_api_key", return_value=None)
     def test_agent_headers_no_auth(self, _mock_key: MagicMock, _mock_tok: MagicMock) -> None:
-        client = DailyBotClient(
-            api_url="http://test.com", token=None, api_key=None
-        )
+        client = DailyBotClient(api_url="http://test.com", token=None, api_key=None)
         headers = client._agent_headers()
         assert "X-API-KEY" not in headers
         assert "Authorization" not in headers
         assert client._agent_auth_mode is None
 
     def test_handle_response_401_bearer_message(self) -> None:
-        client = DailyBotClient(
-            api_url="http://test.com", token="tok", api_key=None
-        )
+        client = DailyBotClient(api_url="http://test.com", token="tok", api_key=None)
         client._agent_headers()  # sets _agent_auth_mode to "bearer"
 
         mock_response: MagicMock = MagicMock(spec=httpx.Response)
@@ -263,9 +245,7 @@ class TestAgentDualAuth:
         assert "dailybot login" in exc_info.value.detail
 
     def test_handle_response_401_api_key_unchanged(self) -> None:
-        client = DailyBotClient(
-            api_url="http://test.com", token="tok", api_key="key123"
-        )
+        client = DailyBotClient(api_url="http://test.com", token="tok", api_key="key123")
         client._agent_headers()  # sets _agent_auth_mode to "api_key"
 
         mock_response: MagicMock = MagicMock(spec=httpx.Response)

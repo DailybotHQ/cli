@@ -71,7 +71,7 @@ class DailyBotClient:
             raise APIError(status_code=response.status_code, detail=detail)
         if response.status_code == 204:
             return {}
-        return response.json()  # type: ignore[no-any-return]
+        return response.json()
 
     # --- Auth endpoints ---
 
@@ -333,7 +333,7 @@ class DailyBotClient:
         )
         if response.status_code >= 400:
             self._handle_response(response)
-        return response.json()  # type: ignore[no-any-return]
+        return response.json()
 
     def mark_agent_messages_read(
         self,

@@ -48,7 +48,11 @@ def _format_sender(msg: dict[str, Any]) -> str:
 def print_auth_status(data: dict[str, Any]) -> None:
     """Display auth status information."""
     user_raw: Any = data.get("user", "")
-    email: str = user_raw.get("email", "") if isinstance(user_raw, dict) else str(user_raw or data.get("email", ""))
+    email: str = (
+        user_raw.get("email", "")
+        if isinstance(user_raw, dict)
+        else str(user_raw or data.get("email", ""))
+    )
     org_raw: Any = data.get("organization", "")
     org_name: str = org_raw.get("name", "") if isinstance(org_raw, dict) else str(org_raw)
     org_uuid: str = org_raw.get("uuid", "") if isinstance(org_raw, dict) else ""
@@ -134,7 +138,9 @@ def print_pending_agent_messages(messages: list[dict[str, Any]]) -> None:
         msg_id: str = msg.get("id", "?")
         sender: str = _format_sender(msg)
         content: str = msg.get("content", "")
-        line: str = f"\\[id:{msg_id}] {sender} {content}" if sender else f"\\[id:{msg_id}] {content}"
+        line: str = (
+            f"\\[id:{msg_id}] {sender} {content}" if sender else f"\\[id:{msg_id}] {content}"
+        )
         console.print(line)
     console.print("[dim]Claim: dailybot agent message claim <id>[/dim]")
 
@@ -194,7 +200,9 @@ def print_agent_email_sent(data: dict[str, Any]) -> None:
     table: Table = Table(show_header=False, box=None, padding=(0, 2))
     table.add_column(style="bold")
     table.add_column()
-    table.add_row("Sent", f"{data.get('sent_count', 0)} of {data.get('total_recipients', 0)} recipients")
+    table.add_row(
+        "Sent", f"{data.get('sent_count', 0)} of {data.get('total_recipients', 0)} recipients"
+    )
     reply_to: str = data.get("reply_to", "")
     if reply_to:
         table.add_row("Reply-to", reply_to)
@@ -204,7 +212,7 @@ def print_agent_email_sent(data: dict[str, Any]) -> None:
 def print_agent_profiles(profiles: list[dict[str, Any]]) -> None:
     """Display agent profiles in a table."""
     if not profiles:
-        print_info("No agent profiles configured. Run: dailybot agent configure --name \"My Agent\"")
+        print_info('No agent profiles configured. Run: dailybot agent configure --name "My Agent"')
         return
     table: Table = Table(title="Agent Profiles", border_style="cyan")
     table.add_column("Profile", style="bold")
@@ -254,5 +262,3 @@ def print_update_result(data: dict[str, Any]) -> None:
         action: str = followup.get("action", "created")
         label: str = "Updated" if action == "updated" else "Submitted"
         console.print(f"  [dim]-[/dim] {name} [dim]({label})[/dim]")
-
-

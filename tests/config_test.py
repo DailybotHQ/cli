@@ -1,10 +1,8 @@
 """Tests for config module."""
 
-import json
 import os
 from pathlib import Path
 from typing import Any, Optional
-from unittest import mock
 
 import pytest
 
@@ -95,7 +93,9 @@ def test_get_api_key_from_config(tmp_config: Path, monkeypatch: pytest.MonkeyPat
     assert get_api_key() == "stored-key"
 
 
-def test_get_api_key_env_overrides_config(tmp_config: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_get_api_key_env_overrides_config(
+    tmp_config: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     monkeypatch.setenv("DAILYBOT_API_KEY", "env-key")
     save_config({"api_key": "stored-key"})
     assert get_api_key() == "env-key"

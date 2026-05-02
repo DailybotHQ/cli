@@ -19,7 +19,6 @@ from dailybot_cli.display import (
     print_update_result,
 )
 
-
 MENU_SEND_UPDATE: str = "Send update"
 MENU_VIEW_PENDING: str = "View pending check-ins"
 MENU_AUTH_STATUS: str = "Auth status"
@@ -38,7 +37,7 @@ def run_interactive() -> None:
     creds: Optional[dict[str, Any]] = load_credentials()
     token: Optional[str] = get_token()
 
-    console.print(f"\n[bold]Dailybot CLI[/bold]")
+    console.print("\n[bold]Dailybot CLI[/bold]")
 
     if not token or not creds:
         console.print()
@@ -48,7 +47,7 @@ def run_interactive() -> None:
         _do_login(email)
         creds = load_credentials()
     else:
-        email: str = creds.get("email", "") if creds else ""
+        email = creds.get("email", "") if creds else ""
         org_stored: Any = creds.get("organization", "") if creds else ""
         org: str = org_stored.get("name", "") if isinstance(org_stored, dict) else str(org_stored)
         org_uuid: str = creds.get("organization_uuid", "") if creds else ""
@@ -124,7 +123,11 @@ def _show_auth(client: DailyBotClient) -> None:
     try:
         data: dict[str, Any] = client.auth_status()
         user_raw: Any = data.get("user", "")
-        email: str = user_raw.get("email", "") if isinstance(user_raw, dict) else str(user_raw or data.get("email", ""))
+        email: str = (
+            user_raw.get("email", "")
+            if isinstance(user_raw, dict)
+            else str(user_raw or data.get("email", ""))
+        )
         org_raw: Any = data.get("organization", "")
         org_name: str = org_raw.get("name", "") if isinstance(org_raw, dict) else str(org_raw)
         org_uuid: str = org_raw.get("uuid", "") if isinstance(org_raw, dict) else ""

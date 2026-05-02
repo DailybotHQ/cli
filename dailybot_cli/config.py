@@ -5,7 +5,6 @@ import os
 from pathlib import Path
 from typing import Any, Optional
 
-
 DEFAULT_API_URL: str = "https://api.dailybot.com"
 _api_url_override: Optional[str] = None
 
@@ -14,6 +13,8 @@ def set_api_url_override(url: str) -> None:
     """Set a CLI-level API URL override (from --api-url flag)."""
     global _api_url_override
     _api_url_override = url.rstrip("/")
+
+
 CONFIG_DIR: Path = Path.home() / ".config" / "dailybot"
 CREDENTIALS_FILE: Path = CONFIG_DIR / "credentials.json"
 CONFIG_FILE: Path = CONFIG_DIR / "config.json"
@@ -243,11 +244,13 @@ def list_profiles() -> list[dict[str, Any]]:
     profiles: dict[str, Any] = data.get("profiles", {})
     result: list[dict[str, Any]] = []
     for name, entry in profiles.items():
-        result.append({
-            "profile": name,
-            "agent_name": entry.get("agent_name", ""),
-            "agent_email": entry.get("agent_email", ""),
-            "has_key": bool(entry.get("api_key")),
-            "is_default": name == default_name,
-        })
+        result.append(
+            {
+                "profile": name,
+                "agent_name": entry.get("agent_name", ""),
+                "agent_email": entry.get("agent_email", ""),
+                "has_key": bool(entry.get("api_key")),
+                "is_default": name == default_name,
+            }
+        )
     return result

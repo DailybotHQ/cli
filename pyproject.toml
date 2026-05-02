@@ -31,6 +31,17 @@ dependencies = [
     "rich>=13.0.0",
 ]
 
+[project.optional-dependencies]
+# Dev tools for local development and CI. Install with:
+#   pip install -e ".[dev]"
+dev = [
+    "ruff>=0.6,<1.0",
+    "mypy>=1.10,<2.0",
+    "pytest>=8.0,<10.0",
+    "build>=1.2,<2.0",
+    "twine>=5.0,<7.0",
+]
+
 [project.scripts]
 dailybot = "dailybot_cli.main:cli"
 
@@ -40,6 +51,84 @@ Documentation = "https://docs.dailybot.com"
 
 [tool.setuptools.packages.find]
 include = ["dailybot_cli*"]
+
+# ----------------------------------------------------------------------------
+# Ruff — lint, import sorting, and code formatting in a single tool.
+# Replaces flake8, isort, pylint, black, pyupgrade, and friends.
+# ----------------------------------------------------------------------------
+[tool.ruff]
+target-version = "py39"
+line-length = 100
+extend-exclude = [
+    "build",
+    "dist",
+    "*.egg-info",
+    ".venv",
+    "venv",
+    "tmp",
+]
+
+[tool.ruff.lint]
+# Curated rule set: enough to catch real bugs and enforce AGENTS.md rules
+# (import order, type-hint conventions, no-print outside display.py, etc.)
+# without drowning the codebase in stylistic noise.
+select = [
+    "E",      # pycodestyle errors
+    "W",      # pycodestyle warnings
+    "F",      # pyflakes (unused imports, undefined names)
+    "I",      # isort (matches AGENTS.md import order: stdlib -> third-party -> internal)
+    "B",      # flake8-bugbear (likely bugs)
+    "UP",     # pyupgrade (modernize syntax for the target version)
+    "SIM",    # flake8-simplify (catch overly complex code)
+    "C4",     # flake8-comprehensions
+    "RUF",    # Ruff-specific rules
+    "N",      # pep8-naming
+]
+ignore = [
+    "E501",   # line-too-long — the formatter handles wrapping; some long strings stay
+    "B008",   # function-call-in-default-argument — Click decorators rely on this
+    "B904",   # raise-without-from-inside-except — Click callbacks intentionally use
+              # `except APIError as e: print_error(...); raise SystemExit(1)` (see
+              # AGENTS.md rule 8 + 10). Adding `from e` everywhere would be noise.
+    "SIM108", # ternary-instead-of-if-else — not always more readable
+    "N818",   # exception-naming — APIError already follows convention
+]
+
+[tool.ruff.lint.per-file-ignores]
+# Tests can be a bit looser
+"tests/*_test.py" = [
+    "N802",   # function names that look like methods (e.g. test_HTTPError_handler)
+    "N803",   # argument names: tests sometimes mirror fixture/api shapes
+    "B904",   # raise-without-from-inside-except — test fixtures often raise plain
+]
+
+[tool.ruff.lint.isort]
+known-first-party = ["dailybot_cli"]
+combine-as-imports = true
+
+[tool.ruff.format]
+# Black-compatible formatter. No config needed for normal use.
+quote-style = "double"
+indent-style = "space"
+
+# ----------------------------------------------------------------------------
+# Mypy — static type checking for dailybot_cli/.
+# Permissive enough to pass on existing code, strict enough to catch real bugs.
+# Tighten rules over time as the codebase converges.
+# ----------------------------------------------------------------------------
+[tool.mypy]
+python_version = "3.9"
+files = ["dailybot_cli"]
+ignore_missing_imports = true       # questionary/rich/etc. ship loose stubs
+warn_unused_ignores = true
+warn_redundant_casts = true
+warn_unreachable = true
+no_implicit_optional = true
+check_untyped_defs = true
+# Not strict (yet). Flip these on once the existing code is fully annotated:
+#   disallow_untyped_defs = true
+#   disallow_incomplete_defs = true
+#   strict_equality = true
 
 # ----------------------------------------------------------------------------
 # python-semantic-release — drives auto-release.yml.

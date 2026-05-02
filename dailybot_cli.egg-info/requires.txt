@@ -1,4 +1,0 @@
-click>=8.1.0
-httpx>=0.25.0
-questionary>=2.0.0
-rich>=13.0.0

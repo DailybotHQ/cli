@@ -1,6 +1,5 @@
 """Authentication commands for Dailybot CLI."""
 
-import sys
 from typing import Any, Optional
 
 import click
@@ -26,8 +25,7 @@ from dailybot_cli.display import (
 def _prompt_org_selection(organizations: list[dict[str, Any]]) -> dict[str, Any]:
     """Display orgs and prompt the user to pick one."""
     choices: list[questionary.Choice] = [
-        questionary.Choice(title=org.get("name", "Unknown"), value=org)
-        for org in organizations
+        questionary.Choice(title=org.get("name", "Unknown"), value=org) for org in organizations
     ]
     selected: Optional[dict[str, Any]] = questionary.select(
         "You belong to multiple organizations. Select one:",
@@ -52,15 +50,19 @@ def _resolve_org_uuid(organizations: list[dict[str, Any]], org_uuid: str) -> Opt
     """Find the integer ID for an org given its UUID."""
     for org in organizations:
         if org.get("uuid") == org_uuid:
-            return org["id"]  # type: ignore[no-any-return]
+            return org["id"]
     return None
 
 
-def _verify_and_save(client: DailyBotClient, email: str, code: str, organization_id: Optional[int]) -> None:
+def _verify_and_save(
+    client: DailyBotClient, email: str, code: str, organization_id: Optional[int]
+) -> None:
     """Verify OTP code and save credentials."""
     try:
         with console.status("Verifying code..."):
-            result: dict[str, Any] = client.verify_code(email, code, organization_id=organization_id)
+            result: dict[str, Any] = client.verify_code(
+                email, code, organization_id=organization_id
+            )
     except APIError as e:
         print_error(e.detail)
         raise SystemExit(1)
@@ -88,7 +90,11 @@ def _verify_and_save(client: DailyBotClient, email: str, code: str, organization
 
     org_raw: Any = result.get("organization", "")
     org_name: str = org_raw.get("name", "") if isinstance(org_raw, dict) else str(org_raw)
-    org_uuid: str = org_raw.get("uuid", "") if isinstance(org_raw, dict) else result.get("organization_uuid", "")
+    org_uuid: str = (
+        org_raw.get("uuid", "")
+        if isinstance(org_raw, dict)
+        else result.get("organization_uuid", "")
+    )
     save_credentials(
         token=token,
         email=email,
