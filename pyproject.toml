@@ -158,12 +158,17 @@ tag_format = "v{version}"
 commit_message = "chore(release): {version}\n\n[skip ci]"
 # Author + tagger of the auto-generated `chore(release)` commit and the v* tag.
 # Without this, PSR defaults to "semantic-release <semantic-release>", which
-# obscures who actually owns the automation. We attribute everything to the
-# `dailybotops` GitHub user so the git log + tag history match the bot account
-# that holds AUTOMATION_GITHUB_TOKEN. Format must be "Name <email>"; we use
-# the user's GitHub noreply email pattern (id+username@users.noreply.github.com)
-# so commits are properly linked to the user's GitHub profile.
-commit_author = "dailybotops <107195154+dailybotops@users.noreply.github.com>"
+# obscures who actually owns the automation. We use a branded identity that
+# matches the bot account holding AUTOMATION_GITHUB_TOKEN.
+#
+# IMPORTANT: for the commit to show the `dailybotops` avatar + profile link
+# in the GitHub UI, the email below must be a verified secondary email on
+# the `dailybotops` GitHub account
+# (https://github.com/settings/emails → Add email address). Without that
+# verification, GitHub renders the commit author as a plain "DailyBot
+# Automations" string (no avatar, no profile link). The commit identity is
+# still valid in git itself either way.
+commit_author = "DailyBot Automations <automations@dailybot.com>"
 build_command = ""                 # release.yml owns the actual build/upload
 # `allow_zero_version` and `major_on_zero` together control how PSR treats
 # breaking changes while the package is still on 0.x.
