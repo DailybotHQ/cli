@@ -156,6 +156,14 @@ version_toml = ["pyproject.toml:project.version"]
 branch = "main"
 tag_format = "v{version}"
 commit_message = "chore(release): {version}\n\n[skip ci]"
+# Author + tagger of the auto-generated `chore(release)` commit and the v* tag.
+# Without this, PSR defaults to "semantic-release <semantic-release>", which
+# obscures who actually owns the automation. We attribute everything to the
+# `dailybotops` GitHub user so the git log + tag history match the bot account
+# that holds AUTOMATION_GITHUB_TOKEN. Format must be "Name <email>"; we use
+# the user's GitHub noreply email pattern (id+username@users.noreply.github.com)
+# so commits are properly linked to the user's GitHub profile.
+commit_author = "dailybotops <107195154+dailybotops@users.noreply.github.com>"
 build_command = ""                 # release.yml owns the actual build/upload
 # `allow_zero_version` and `major_on_zero` together control how PSR treats
 # breaking changes while the package is still on 0.x.
