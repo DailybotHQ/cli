@@ -22,7 +22,15 @@ on:
   workflow_dispatch: {}
 
 concurrency:
-  group: auto-release-main
+  # Shared lock with `sync-installer-checksums.yml`: both workflows mutate
+  # `main` (PSR pushes a chore(release) commit + tag here; the sync workflow
+  # pushes a chore(installer) commit). If they ran in parallel — which happens
+  # when a PR touches install.sh / install.ps1 — the second-to-push hits
+  #     [LOCAL SHA] X != Y [UPSTREAM SHA]. Upstream branch has changed!
+  # and the run aborts. Putting both under the same `main-write` group serializes
+  # them: GitHub queues the second invocation until the first finishes, then it
+  # checks out the now-up-to-date main and proceeds normally.
+  group: main-write
   cancel-in-progress: false
 
 permissions:
