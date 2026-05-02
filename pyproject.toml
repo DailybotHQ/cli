@@ -25,22 +25,25 @@ classifiers = [
     "Topic :: Software Development :: Build Tools",
 ]
 dependencies = [
-    "click>=8.1.0",
-    "httpx>=0.25.0",
-    "questionary>=2.0.0",
-    "rich>=13.0.0",
+    # Runtime deps pinned to exact versions for full reproducibility — same
+    # pattern as api-services. To bump, edit the version here and run
+    # `pip_update` so requirements/{base,dev}.txt match the new resolution.
+    "click==8.3.3",
+    "httpx==0.28.1",
+    "questionary==2.1.1",
+    "rich==15.0.0",
 ]
 
 [project.optional-dependencies]
 # Dev tools for local development and CI. Install with:
 #   pip install -e ".[dev]"
 dev = [
-    "ruff>=0.6,<1.0",
-    "mypy>=1.10,<2.0",
-    "pytest>=8.0,<10.0",
-    "build>=1.2,<2.0",
-    "twine>=5.0,<7.0",
-    "pip-tools>=7.4,<8.0",
+    "ruff==0.15.12",
+    "mypy==1.20.2",
+    "pytest==9.0.3",
+    "build==1.5.0",
+    "twine==6.2.0",
+    "pip-tools==7.5.3",
 ]
 # python-semantic-release is installed separately (Dockerfile + auto-release.yml)
 # rather than via [dev] because PSR's transitive pins (rich<15, click<8.2,
