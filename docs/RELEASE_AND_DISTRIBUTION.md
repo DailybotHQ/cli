@@ -425,16 +425,27 @@ gh secret list                   # confirm both secrets exist
 
 #### 2. (If deps changed) Sync the Homebrew formula in the workflow
 
-The formula is rendered inline in `release.yml` and includes pinned `resource` blocks for every transitive Python dep. When `pyproject.toml::dependencies` changes, the formula MUST be updated in the same PR.
+The formula is rendered inline in `release.yml` and includes pinned `resource` blocks for every transitive Python dep. **The list of resources MUST mirror `requirements/base.txt`** (with one Python-version caveat — see below). If `pyproject.toml::dependencies` or any transitive in `requirements/base.txt` changed, the formula must be updated in the same PR.
 
-For each new or changed dep:
+**Bulk regeneration recipe:**
 
 ```bash
-pip download <pkg>==<version> --no-binary :all: --no-deps -d /tmp
-sha256sum /tmp/<pkg>-<version>.tar.gz
+# Download every base dep as an sdist and print "name version sha256" rows
+mkdir -p /tmp/sdists && rm -f /tmp/sdists/*
+while read -r line; do
+  pkg="${line%%==*}"; ver="${line##*==}"
+  pip download --no-binary :all: --no-deps --quiet -d /tmp/sdists "$pkg==$ver"
+done < <(grep -E "^[a-z]" requirements/base.txt)
+
+for f in /tmp/sdists/*.tar.gz; do
+  sha="$(sha256sum "$f" | cut -d' ' -f1)"
+  printf "%-30s sha256=%s\n" "$(basename "$f")" "$sha"
+done
 ```
 
-Then add or update the `resource "<pkg>"` block in `release.yml`.
+Then update each `resource "<pkg>"` block in `release.yml` so its `url` and `sha256` match.
+
+**Python-version caveat:** the formula declares `depends_on "python@3.12"`, but `requirements/base.txt` is locked under whichever Python ran `pip-compile` (typically the dev container's Python 3.14). Some transitives are conditional on Python version (`anyio` requires `typing_extensions; python_version < "3.13"`, `exceptiongroup; python_version < "3.11"`, etc.). If the lock was generated under a Python newer than 3.13, you must **manually add** the missing conditionals to the formula. Today that means `typing-extensions` is in the formula even though it's absent from `base.txt`.
 
 #### 3. Bump version (its own commit)
 
