@@ -231,6 +231,37 @@ function dev_install() {
     pip install -e ".[dev]"
 }
 
+# ============================================================================
+# Dependency lock-file workflow (pip-tools)
+# ----------------------------------------------------------------------------
+# Mirrors the api-services pattern adapted to setuptools + PEP 621:
+#   - pyproject.toml is the source of truth for dep ranges
+#   - requirements/base.txt + requirements/dev.txt are the locked outputs
+#   - The Dockerfile installs from requirements/dev.txt for reproducible builds
+# Run `pip_update` after changing dependencies in pyproject.toml.
+# ============================================================================
+
+function pip_update() {
+    print.success "Recompiling requirements/base.txt from [project.dependencies]..."
+    if pip-compile --quiet --strip-extras --output-file=requirements/base.txt pyproject.toml; then
+        print.success "Recompiling requirements/dev.txt from [project.dependencies] + [dev]..."
+        if pip-compile --quiet --strip-extras --extra=dev --output-file=requirements/dev.txt pyproject.toml; then
+            print.success "Syncing local environment to requirements/dev.txt..."
+            pip-sync requirements/dev.txt
+        else
+            print.error "⚠️ Compiling dev.txt failed."
+            return 1
+        fi
+    else
+        print.error "⚠️ Compiling base.txt failed."
+        return 1
+    fi
+}
+
+# Show outdated installed packages (analogous to api-services' `pso` =
+# `poetry show -o`). Pipe through column for readability.
+alias pso='pip list --outdated'
+
 # Check if running inside Docker container
 function check_devcontainer() {
     if [[ -f /.dockerenv ]] || [[ -n "${REMOTE_CONTAINERS:-}" ]] || [[ -n "${CODESPACES:-}" ]]; then
@@ -355,10 +386,14 @@ function show_welcome() {
     echo ""
     echo "Quality gates (each runs a single tool — chain manually or use codecheck):"
     echo "  • lint                 - ruff check dailybot_cli tests (read-only)"
-    echo "  • fix                  - ruff --fix + black (rewrites in place)"
+    echo "  • fix                  - ruff --fix + ruff format (rewrites in place)"
     echo "  • typecheck            - mypy dailybot_cli"
     echo "  • codecheck            - fix → typecheck → pytest -x (full sequence)"
-    echo "  • dev_install          - pip install dev tools (ruff, black, mypy, pytest, build, twine)"
+    echo ""
+    echo "Dependency management (pip-tools):"
+    echo "  • pip_update           - Recompile requirements/{base,dev}.txt + sync env"
+    echo "  • pso                  - List outdated installed packages"
+    echo "  • dev_install          - pip install -e \".[dev]\" (one-shot)"
     echo ""
     echo "AI Assistant commands:"
     echo "  • claude            - Claude Code CLI"

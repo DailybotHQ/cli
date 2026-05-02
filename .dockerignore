@@ -1,0 +1,75 @@
+# Keep the Docker build context small and free of secrets/noise.
+# This file applies to the repo-root context used by docker/local/docker-compose.yaml
+# (build.context = ../..). Anything matched here is NOT shipped to the Docker daemon.
+
+# Version control
+.git
+.gitignore
+.gitattributes
+
+# AI-agent / dev-tool config (not needed at build time)
+.claude
+.claude_data
+.codex
+.codex_data
+.cursor
+.cursor_data
+.gh_data
+.dailybot_data
+.devcontainer
+.devcontainer_example
+.vscode
+.vscode_example
+
+# Python build artifacts and caches
+__pycache__
+*.py[cod]
+*.pyo
+*.egg
+*.egg-info
+build/
+dist/
+.venv
+venv
+env
+
+# Tool caches
+.mypy_cache
+.ruff_cache
+.pytest_cache
+.tox
+.nox
+.cache
+.coverage
+.coverage.*
+coverage.xml
+htmlcov
+
+# IDE / OS
+.idea
+*.swp
+*.swo
+.DS_Store
+Thumbs.db
+
+# Project-specific
+tmp
+*.log
+*.bak
+
+# Docs / scratch / images / examples (not needed for runtime image)
+docs/**/*.png
+docs/**/*.jpg
+*.pdf
+
+# Secrets — extra safety on top of .gitignore
+.env
+.env.*
+!.env.example
+.pypirc
+
+# Node — not used by the Python build but Codex/Claude pull this in
+node_modules
+
+# Local devcontainer envs
+docker/local/cli/.env

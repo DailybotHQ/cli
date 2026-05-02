@@ -26,6 +26,27 @@ Thumbs.db
 .pytest_cache/
 htmlcov/
 .coverage
+.coverage.*
+coverage.xml
+.tox/
+.nox/
+
+# Tool caches
+.mypy_cache/
+.ruff_cache/
+.pyre/
+.pytype/
+.cache/
+
+# Logs / backups / temp
+*.log
+*.bak
+*.tmp
+pip-log.txt
+pip-delete-this-directory.txt
+
+# Jupyter
+.ipynb_checkpoints/
 
 # Config secrets
 .env

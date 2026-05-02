@@ -5,8 +5,11 @@ services:
     container_name: dailybot-cli
     init: true
     build:
-      context: .
-      dockerfile: ./cli/Dockerfile
+      # Repo root as build context so the Dockerfile can COPY pyproject.toml,
+      # requirements/, and any other repo file. .dockerignore at the root keeps
+      # the context lean (no node_modules, no .git, no AI-CLI persistence dirs).
+      context: ../..
+      dockerfile: ./docker/local/cli/Dockerfile
     working_dir: /workspace
     command: sleep infinity
     environment:
