@@ -241,7 +241,13 @@ The implementation lives in `dailybot_cli/commands/agent.py::_resolve_agent_cont
 
 - The CLI version is read at runtime from installed package metadata (`importlib.metadata.version("dailybot-cli")`) — see `dailybot_cli/__init__.py`.
 - The single source of truth is `pyproject.toml::project.version`. **Never** hardcode the version anywhere else.
-- **Default release path: merge a PR to `main` with conventional-commit messages.** Every PR is gated by `code_check.yml` (ruff + mypy + pytest matrix on Python 3.10 / 3.12 + a `python -m build` smoke-test). Once that passes and the PR is merged, `auto-release.yml` (powered by `python-semantic-release`) decides the bump (`feat:` → minor, `fix:`/`perf:` → patch, `BREAKING CHANGE:` → major; `chore:`/`docs:`/`refactor:`/etc → no release), updates `pyproject.toml::version` + `CHANGELOG.md`, commits, tags `vX.Y.Z`, and pushes. The tag push then triggers `release.yml`, which fans out to PyPI, the Linux binary, the GitHub Release, and the Homebrew tap.
+- **Default release path: merge a PR to `main` — that's it.** Every PR is gated by `code_check.yml` (ruff + mypy + pytest matrix on Python 3.10 / 3.12 + a `python -m build` smoke-test). Once that passes and the PR is merged, `auto-release.yml` (powered by `python-semantic-release`) cuts a release **unconditionally**. The bump level is decided by the conventional-commit prefixes when present, but they are **not required** — devs who forget the prefix still ship a PATCH automatically:
+  - `feat:` → MINOR (e.g. `1.0.1 → 1.1.0`)
+  - `fix:` / `perf:` → PATCH (e.g. `1.0.1 → 1.0.2`)
+  - `feat!:` or `BREAKING CHANGE:` in the body → MAJOR (e.g. `1.0.1 → 2.0.0`)
+  - any other prefix or no prefix at all → PATCH (because `default_bump_level = 1` in `pyproject.toml`)
+
+  PSR then updates `pyproject.toml::version` + `CHANGELOG.md`, commits as `DailyBot Automations`, tags `vX.Y.Z`, and pushes. The tag push triggers `release.yml`, which fans out to PyPI, the Linux binary, the GitHub Release, and the Homebrew tap.
 - Do **NOT** hand-edit `pyproject.toml::version` or `CHANGELOG.md` for normal work — let the automation own them. The two fallback flows (manual `git tag`, local `twine`) are documented for emergencies. See [docs/RELEASE_AND_DISTRIBUTION.md](docs/RELEASE_AND_DISTRIBUTION.md).
 
 ### 16. Backward Compatibility for Stored Files
