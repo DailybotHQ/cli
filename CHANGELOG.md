@@ -9,6 +9,17 @@ Do not edit it by hand — your edits will be overwritten on the next release.
 
 <!-- version list -->
 
+## v1.0.1 (2026-05-02)
+
+### Bug Fixes
+
+- **ci**: Add workflow_dispatch to release.yml for stuck-tag recovery
+  ([`f37fccb`](https://github.com/DailybotHQ/cli/commit/f37fccbc5f6bdd9aa96e779805a414631953ec38))
+
+- **ci**: Explicitly dispatch release.yml after PSR pushes the tag
+  ([`fb6ff63`](https://github.com/DailybotHQ/cli/commit/fb6ff6333f73e7a44fdb838d6050764ab37a9aa9))
+
+
 ## v1.0.0 (2026-05-02)
 
 ### Bug Fixes
