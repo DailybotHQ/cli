@@ -1,2 +1,0 @@
-[console_scripts]
-dailybot = dailybot_cli.main:cli

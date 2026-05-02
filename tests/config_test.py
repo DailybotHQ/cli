@@ -1,10 +1,8 @@
 """Tests for config module."""
 
-import json
 import os
 from pathlib import Path
-from typing import Any, Optional
-from unittest import mock
+from typing import Any
 
 import pytest
 
@@ -40,7 +38,7 @@ def test_save_and_load_credentials(tmp_config: Path) -> None:
         organization="MyOrg",
         organization_uuid="org-uuid-42",
     )
-    creds: Optional[dict[str, Any]] = load_credentials()
+    creds: dict[str, Any] | None = load_credentials()
     assert creds is not None
     assert creds["token"] == "tok123"
     assert creds["email"] == "user@example.com"
@@ -95,7 +93,9 @@ def test_get_api_key_from_config(tmp_config: Path, monkeypatch: pytest.MonkeyPat
     assert get_api_key() == "stored-key"
 
 
-def test_get_api_key_env_overrides_config(tmp_config: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_get_api_key_env_overrides_config(
+    tmp_config: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     monkeypatch.setenv("DAILYBOT_API_KEY", "env-key")
     save_config({"api_key": "stored-key"})
     assert get_api_key() == "env-key"

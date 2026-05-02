@@ -11,7 +11,7 @@ set -euo pipefail
 REPO="DailyBotHQ/cli"
 PACKAGE="dailybot-cli"
 COMMAND="dailybot"
-MIN_PYTHON="3.9"
+MIN_PYTHON="3.10"
 
 # --- Helpers ---
 
@@ -135,7 +135,7 @@ for cmd in python3 python; do
         ok=$("$cmd" -c "
 import sys
 v = sys.version_info
-print('yes' if v >= (3, 9) else 'no')
+print('yes' if v >= (3, 10) else 'no')
 " 2>/dev/null || echo "no")
         if [ "$ok" = "yes" ]; then
             PYTHON="$cmd"

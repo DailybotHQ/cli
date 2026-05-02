@@ -8,7 +8,7 @@ version = "0.4.12"
 description = "Dailybot CLI - The command-line bridge between humans and agents. Progress reports, observability, and workflow automation for modern teams across Slack, Google Chat, Discord, MS Teams, and more."
 readme = "README.md"
 license = {text = "MIT"}
-requires-python = ">=3.9"
+requires-python = ">=3.10"
 authors = [
     {name = "Dailybot", email = "support@dailybot.com"},
 ]
@@ -18,18 +18,37 @@ classifiers = [
     "Intended Audience :: Developers",
     "License :: OSI Approved :: MIT License",
     "Programming Language :: Python :: 3",
-    "Programming Language :: Python :: 3.9",
     "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
     "Topic :: Software Development :: Build Tools",
 ]
 dependencies = [
-    "click>=8.1.0",
-    "httpx>=0.25.0",
-    "questionary>=2.0.0",
-    "rich>=13.0.0",
+    # Runtime deps pinned to exact versions for full reproducibility — same
+    # pattern as api-services. To bump, edit the version here and run
+    # `pip_update` so requirements/{base,dev}.txt match the new resolution.
+    "click==8.3.3",
+    "httpx==0.28.1",
+    "questionary==2.1.1",
+    "rich==15.0.0",
 ]
+
+[project.optional-dependencies]
+# Dev tools for local development and CI. Install with:
+#   pip install -e ".[dev]"
+dev = [
+    "ruff==0.15.12",
+    "mypy==1.20.2",
+    "pytest==9.0.3",
+    "build==1.5.0",
+    "twine==6.2.0",
+    "pip-tools==7.5.3",
+]
+# python-semantic-release is installed separately (Dockerfile + auto-release.yml)
+# rather than via [dev] because PSR's transitive pins (rich<15, click<8.2,
+# importlib_resources<7) would otherwise cap the dev container behind the
+# versions end users actually see.
 
 [project.scripts]
 dailybot = "dailybot_cli.main:cli"
@@ -40,3 +59,124 @@ Documentation = "https://docs.dailybot.com"
 
 [tool.setuptools.packages.find]
 include = ["dailybot_cli*"]
+
+# ----------------------------------------------------------------------------
+# Ruff — lint, import sorting, and code formatting in a single tool.
+# Replaces flake8, isort, pylint, black, pyupgrade, and friends.
+# ----------------------------------------------------------------------------
+[tool.ruff]
+target-version = "py310"
+line-length = 100
+extend-exclude = [
+    "build",
+    "dist",
+    "*.egg-info",
+    ".venv",
+    "venv",
+    "tmp",
+]
+
+[tool.ruff.lint]
+# Curated rule set: enough to catch real bugs and enforce AGENTS.md rules
+# (import order, type-hint conventions, no-print outside display.py, etc.)
+# without drowning the codebase in stylistic noise.
+select = [
+    "E",      # pycodestyle errors
+    "W",      # pycodestyle warnings
+    "F",      # pyflakes (unused imports, undefined names)
+    "I",      # isort (matches AGENTS.md import order: stdlib -> third-party -> internal)
+    "B",      # flake8-bugbear (likely bugs)
+    "UP",     # pyupgrade (modernize syntax for the target version)
+    "SIM",    # flake8-simplify (catch overly complex code)
+    "C4",     # flake8-comprehensions
+    "RUF",    # Ruff-specific rules
+    "N",      # pep8-naming
+]
+ignore = [
+    "E501",   # line-too-long — the formatter handles wrapping; some long strings stay
+    "B008",   # function-call-in-default-argument — Click decorators rely on this
+    "B904",   # raise-without-from-inside-except — Click callbacks intentionally use
+              # `except APIError as e: print_error(...); raise SystemExit(1)` (see
+              # AGENTS.md rule 8 + 10). Adding `from e` everywhere would be noise.
+    "SIM108", # ternary-instead-of-if-else — not always more readable
+    "N818",   # exception-naming — APIError already follows convention
+]
+
+[tool.ruff.lint.per-file-ignores]
+# Tests can be a bit looser
+"tests/*_test.py" = [
+    "N802",   # function names that look like methods (e.g. test_HTTPError_handler)
+    "N803",   # argument names: tests sometimes mirror fixture/api shapes
+    "B904",   # raise-without-from-inside-except — test fixtures often raise plain
+]
+
+[tool.ruff.lint.isort]
+known-first-party = ["dailybot_cli"]
+combine-as-imports = true
+
+[tool.ruff.format]
+# Black-compatible formatter. No config needed for normal use.
+quote-style = "double"
+indent-style = "space"
+
+# ----------------------------------------------------------------------------
+# Mypy — static type checking for dailybot_cli/.
+# Permissive enough to pass on existing code, strict enough to catch real bugs.
+# Tighten rules over time as the codebase converges.
+# ----------------------------------------------------------------------------
+[tool.mypy]
+python_version = "3.10"
+files = ["dailybot_cli"]
+ignore_missing_imports = true       # questionary/rich/etc. ship loose stubs
+warn_unused_ignores = true
+warn_redundant_casts = true
+warn_unreachable = true
+no_implicit_optional = true
+check_untyped_defs = true
+# Not strict (yet). Flip these on once the existing code is fully annotated:
+#   disallow_untyped_defs = true
+#   disallow_incomplete_defs = true
+#   strict_equality = true
+
+# ----------------------------------------------------------------------------
+# python-semantic-release — drives auto-release.yml.
+#
+# On every PR merged into main, the workflow runs `semantic-release version`,
+# which:
+#   1. Parses commit messages since the last tag (conventional-commits style)
+#   2. Decides the bump level: feat -> minor, fix/perf -> patch, BREAKING -> major
+#      (chore/docs/refactor/style/test/ci/build don't release anything)
+#   3. Updates `version` in this file, regenerates CHANGELOG.md
+#   4. Commits "chore(release): X.Y.Z [skip ci]" and creates tag vX.Y.Z
+#   5. Pushes commit + tag — the tag push then triggers .github/workflows/release.yml
+#      which publishes to PyPI, builds the Linux binary, and updates the Homebrew tap.
+# ----------------------------------------------------------------------------
+[tool.semantic_release]
+version_toml = ["pyproject.toml:project.version"]
+branch = "main"
+tag_format = "v{version}"
+commit_message = "chore(release): {version}\n\n[skip ci]"
+build_command = ""                 # release.yml owns the actual build/upload
+allow_zero_version = true          # we are still on 0.x
+major_on_zero = false              # feat on 0.x stays in 0.x (no implicit 1.0.0)
+upload_to_vcs_release = false      # release.yml creates the GitHub Release
+changelog_file = "CHANGELOG.md"
+
+[tool.semantic_release.branches.main]
+match = "main"
+prerelease = false
+
+[tool.semantic_release.commit_parser_options]
+allowed_tags = [
+    "build", "chore", "ci", "docs", "feat", "fix",
+    "perf", "style", "refactor", "test",
+]
+minor_tags = ["feat"]
+patch_tags = ["fix", "perf"]
+default_bump_level = 0  # 0 = no release when no releasable commits exist
+
+[tool.semantic_release.changelog]
+exclude_commit_patterns = [
+    "^chore\\(release\\):",
+    "^Merge ",
+]

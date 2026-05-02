@@ -8,7 +8,7 @@ The command-line bridge between **humans** and **agents**. [Dailybot](https://ww
 pip install dailybot-cli
 ```
 
-Requires Python 3.9+.
+Requires Python 3.10+.
 
 ### Alternative installation methods
 
@@ -25,6 +25,24 @@ curl -sSL https://cli.dailybot.com/install.sh | bash
 ```
 
 Or download directly from [GitHub Releases](https://github.com/DailyBotHQ/cli/releases).
+
+## Checking your installed version
+
+The CLI exposes two ways to inspect what's installed — a quick one-liner for scripts and a richer panel for humans:
+
+```bash
+# Single-line, scriptable
+dailybot --version
+# → dailybot 0.5.0 (Python 3.12.4)
+
+# Multi-line panel: version, Python runtime, install path, release notes link
+dailybot version
+
+# Same panel, but also queries PyPI to tell you whether a newer version exists
+dailybot version --check
+```
+
+`dailybot version --check` is the recommended way to find out whether you should upgrade. If a newer release is available, the output also lists the upgrade command for each install method (Homebrew, Linux binary, pipx, pip).
 
 ## For humans
 

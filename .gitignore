@@ -15,10 +15,8 @@ env/
 
 # IDE
 .idea/
-.vscode/
 *.swp
 *.swo
-.claude/
 
 # OS
 .DS_Store
@@ -28,6 +26,37 @@ Thumbs.db
 .pytest_cache/
 htmlcov/
 .coverage
+.coverage.*
+coverage.xml
+.tox/
+.nox/
+
+# Tool caches
+.mypy_cache/
+.ruff_cache/
+.pyre/
+.pytype/
+.cache/
+
+# Logs / backups / temp
+*.log
+*.bak
+*.tmp
+pip-log.txt
+pip-delete-this-directory.txt
+
+# Jupyter
+.ipynb_checkpoints/
 
 # Config secrets
 .env
+.pypirc
+
+# Project
+.vscode
+.devcontainer
+
+# Scratchpad for AI agents and humans — see AGENTS.md.
+# Anything dropped here is ignored except for the placeholder .gitkeep file.
+tmp/*
+!tmp/.gitkeep

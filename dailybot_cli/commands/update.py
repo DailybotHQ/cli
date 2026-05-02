@@ -1,6 +1,6 @@
 """Update command for Dailybot CLI."""
 
-from typing import Any, Optional
+from typing import Any
 
 import click
 import httpx
@@ -12,7 +12,7 @@ from dailybot_cli.display import console, print_error, print_info, print_update_
 
 def _require_auth() -> DailyBotClient:
     """Ensure user is authenticated, return a client."""
-    token: Optional[str] = get_token()
+    token: str | None = get_token()
     if not token:
         print_error("Not logged in. Run: dailybot login")
         raise SystemExit(1)
@@ -25,10 +25,10 @@ def _require_auth() -> DailyBotClient:
 @click.option("--doing", "-w", help="What you are working on.")
 @click.option("--blocked", "-b", help="Any blockers.")
 def update(
-    message: Optional[str],
-    done: Optional[str],
-    doing: Optional[str],
-    blocked: Optional[str],
+    message: str | None,
+    done: str | None,
+    doing: str | None,
+    blocked: str | None,
 ) -> None:
     """Submit a check-in update.
 

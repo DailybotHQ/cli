@@ -1,12 +1,13 @@
 """Interactive mode for Dailybot CLI."""
 
 import readline  # noqa: F401 — enables arrow-key editing in input()
-from typing import Any, Optional
+from typing import Any
 
 import click
 import httpx
 import questionary
 
+from dailybot_cli import __version__
 from dailybot_cli.api_client import APIError, DailyBotClient
 from dailybot_cli.commands.auth import _do_login
 from dailybot_cli.config import get_token, load_credentials
@@ -18,7 +19,6 @@ from dailybot_cli.display import (
     print_success,
     print_update_result,
 )
-
 
 MENU_SEND_UPDATE: str = "Send update"
 MENU_VIEW_PENDING: str = "View pending check-ins"
@@ -35,10 +35,10 @@ MENU_CHOICES: list[str] = [
 
 def run_interactive() -> None:
     """Run the interactive TUI mode."""
-    creds: Optional[dict[str, Any]] = load_credentials()
-    token: Optional[str] = get_token()
+    creds: dict[str, Any] | None = load_credentials()
+    token: str | None = get_token()
 
-    console.print(f"\n[bold]Dailybot CLI[/bold]")
+    console.print(f"\n[bold]Dailybot CLI[/bold] [dim]v{__version__}[/dim]")
 
     if not token or not creds:
         console.print()
@@ -48,7 +48,7 @@ def run_interactive() -> None:
         _do_login(email)
         creds = load_credentials()
     else:
-        email: str = creds.get("email", "") if creds else ""
+        email = creds.get("email", "") if creds else ""
         org_stored: Any = creds.get("organization", "") if creds else ""
         org: str = org_stored.get("name", "") if isinstance(org_stored, dict) else str(org_stored)
         org_uuid: str = creds.get("organization_uuid", "") if creds else ""
@@ -61,7 +61,7 @@ def run_interactive() -> None:
 
     while True:
         console.print()
-        choice: Optional[str] = questionary.select(
+        choice: str | None = questionary.select(
             "What would you like to do?",
             choices=MENU_CHOICES,
         ).ask()
@@ -124,7 +124,11 @@ def _show_auth(client: DailyBotClient) -> None:
     try:
         data: dict[str, Any] = client.auth_status()
         user_raw: Any = data.get("user", "")
-        email: str = user_raw.get("email", "") if isinstance(user_raw, dict) else str(user_raw or data.get("email", ""))
+        email: str = (
+            user_raw.get("email", "")
+            if isinstance(user_raw, dict)
+            else str(user_raw or data.get("email", ""))
+        )
         org_raw: Any = data.get("organization", "")
         org_name: str = org_raw.get("name", "") if isinstance(org_raw, dict) else str(org_raw)
         org_uuid: str = org_raw.get("uuid", "") if isinstance(org_raw, dict) else ""

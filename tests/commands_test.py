@@ -17,7 +17,6 @@ def runner() -> CliRunner:
 
 
 class TestVersionAndHelp:
-
     def test_version(self, runner: CliRunner) -> None:
         from dailybot_cli import __version__
 
@@ -25,6 +24,14 @@ class TestVersionAndHelp:
         assert result.exit_code == 0
         assert "dailybot" in result.output
         assert __version__ in result.output
+
+    def test_version_includes_python_version(self, runner: CliRunner) -> None:
+        """`--version` should show the Python version too (gh-cli style)."""
+        import platform
+
+        result = runner.invoke(cli, ["--version"])
+        assert result.exit_code == 0
+        assert f"Python {platform.python_version()}" in result.output
 
     def test_help(self, runner: CliRunner) -> None:
         result = runner.invoke(cli, ["--help"])
@@ -34,7 +41,75 @@ class TestVersionAndHelp:
         assert "update" in result.output
         assert "status" in result.output
         assert "agent" in result.output
+        assert "version" in result.output
         assert "--api-url" in result.output
+
+
+class TestVersionCommand:
+    """`dailybot version` (rich panel) and `dailybot version --check`."""
+
+    def test_version_command_local_only(self, runner: CliRunner) -> None:
+        """No network when --check is omitted."""
+        from dailybot_cli import __version__
+
+        with patch("dailybot_cli.commands.version.httpx.get") as mock_get:
+            result = runner.invoke(cli, ["version"])
+            assert result.exit_code == 0
+            assert __version__ in result.output
+            mock_get.assert_not_called()  # no network without --check
+
+    def test_version_command_includes_install_path(self, runner: CliRunner) -> None:
+        """Output should include the on-disk install location of the package."""
+        result = runner.invoke(cli, ["version"])
+        assert result.exit_code == 0
+        # The path resolves to .../dailybot_cli, so just check the package name
+        # appears in the rendered panel.
+        assert "dailybot_cli" in result.output
+
+    def test_version_command_check_up_to_date(self, runner: CliRunner) -> None:
+        """When PyPI returns the same version, mark as up-to-date."""
+        from dailybot_cli import __version__
+
+        mock_response: MagicMock = MagicMock()
+        mock_response.status_code = 200
+        mock_response.json.return_value = {"info": {"version": __version__}}
+        with patch("dailybot_cli.commands.version.httpx.get", return_value=mock_response):
+            result = runner.invoke(cli, ["version", "--check"])
+            assert result.exit_code == 0
+            assert "up-to-date" in result.output
+
+    def test_version_command_check_update_available(self, runner: CliRunner) -> None:
+        """When PyPI returns a higher version, surface the upgrade hint."""
+        mock_response: MagicMock = MagicMock()
+        mock_response.status_code = 200
+        mock_response.json.return_value = {"info": {"version": "999.0.0"}}
+        with patch("dailybot_cli.commands.version.httpx.get", return_value=mock_response):
+            result = runner.invoke(cli, ["version", "--check"])
+            assert result.exit_code == 0
+            assert "update available: 999.0.0" in result.output
+            assert "brew upgrade dailybot" in result.output
+
+    def test_version_command_check_offline(self, runner: CliRunner) -> None:
+        """If PyPI is unreachable, fall back to local info with a warning."""
+        import httpx as _httpx
+
+        with patch(
+            "dailybot_cli.commands.version.httpx.get",
+            side_effect=_httpx.ConnectError("offline"),
+        ):
+            result = runner.invoke(cli, ["version", "--check"])
+            assert result.exit_code == 0
+            assert "Could not reach PyPI" in result.output
+
+    def test_version_command_pyinstaller_bundle(self, runner: CliRunner) -> None:
+        """In a frozen (PyInstaller) build, show the binary path, not the temp dir."""
+        with patch("dailybot_cli.commands.version.sys") as mock_sys:
+            mock_sys.frozen = True
+            mock_sys.executable = "/usr/local/bin/dailybot"
+            result = runner.invoke(cli, ["version"])
+            assert result.exit_code == 0
+            assert "/usr/local/bin/dailybot" in result.output
+            assert "PyInstaller bundle" in result.output
 
     @patch("dailybot_cli.main.set_api_url_override")
     @patch("dailybot_cli.commands.update.get_token")
@@ -59,7 +134,6 @@ class TestVersionAndHelp:
 
 
 class TestLoginCommand:
-
     @patch("dailybot_cli.commands.auth.DailyBotClient")
     @patch("dailybot_cli.commands.auth.save_credentials")
     def test_login_single_org(
@@ -88,7 +162,9 @@ class TestLoginCommand:
         assert "MyOrg" in result.output
         mock_save.assert_called_once()
         # Single-org: verify is called once with organization_id
-        mock_client.verify_code.assert_called_once_with("user@test.com", "123456", organization_id=1)
+        mock_client.verify_code.assert_called_once_with(
+            "user@test.com", "123456", organization_id=1
+        )
 
     @patch("dailybot_cli.commands.auth.questionary")
     @patch("dailybot_cli.commands.auth.DailyBotClient")
@@ -126,12 +202,12 @@ class TestLoginCommand:
         assert "Logged in" in result.output
         assert "Side Project" in result.output
         # Org selected before verify — single call with org_id
-        mock_client.verify_code.assert_called_once_with("user@test.com", "123456", organization_id=2)
+        mock_client.verify_code.assert_called_once_with(
+            "user@test.com", "123456", organization_id=2
+        )
 
     @patch("dailybot_cli.commands.auth.DailyBotClient")
-    def test_login_bad_email(
-        self, mock_client_cls: MagicMock, runner: CliRunner
-    ) -> None:
+    def test_login_bad_email(self, mock_client_cls: MagicMock, runner: CliRunner) -> None:
         from dailybot_cli.api_client import APIError
 
         mock_client: MagicMock = mock_client_cls.return_value
@@ -157,9 +233,7 @@ class TestLoginCommand:
             "organization": {"id": 1, "name": "MyOrg", "uuid": "org-uuid"},
         }
 
-        result = runner.invoke(
-            cli, ["login", "--email=user@test.com", "--code=123456"]
-        )
+        result = runner.invoke(cli, ["login", "--email=user@test.com", "--code=123456"])
         assert result.exit_code == 0
         assert "Logged in" in result.output
         mock_client.verify_code.assert_called_once_with(
@@ -294,9 +368,7 @@ class TestLoginCommand:
             ],
         }
 
-        result = runner.invoke(
-            cli, ["login", "--email=user@test.com", "--code=123456"]
-        )
+        result = runner.invoke(cli, ["login", "--email=user@test.com", "--code=123456"])
         assert result.exit_code != 0
         assert "Acme Corp" in result.output
         assert "Side Project" in result.output
@@ -326,9 +398,7 @@ class TestLoginCommand:
             },
         ]
 
-        result = runner.invoke(
-            cli, ["login", "--email=user@test.com", "--code=123456"]
-        )
+        result = runner.invoke(cli, ["login", "--email=user@test.com", "--code=123456"])
         assert result.exit_code == 0
         assert "Auto-selecting organization: MyOrg" in result.output
         assert "Logged in" in result.output
@@ -359,7 +429,6 @@ class TestLoginCommand:
 
 
 class TestLogoutCommand:
-
     @patch("dailybot_cli.commands.auth.get_token")
     @patch("dailybot_cli.commands.auth.clear_credentials")
     @patch("dailybot_cli.commands.auth.DailyBotClient")
@@ -380,9 +449,7 @@ class TestLogoutCommand:
         mock_clear.assert_called_once()
 
     @patch("dailybot_cli.commands.auth.get_token")
-    def test_logout_not_logged_in(
-        self, mock_get_token: MagicMock, runner: CliRunner
-    ) -> None:
+    def test_logout_not_logged_in(self, mock_get_token: MagicMock, runner: CliRunner) -> None:
         mock_get_token.return_value = None
         result = runner.invoke(cli, ["logout"])
         assert result.exit_code == 0
@@ -390,7 +457,6 @@ class TestLogoutCommand:
 
 
 class TestUpdateCommand:
-
     @patch("dailybot_cli.commands.update.get_token")
     @patch("dailybot_cli.commands.update.DailyBotClient")
     def test_update_message(
@@ -491,16 +557,13 @@ class TestUpdateCommand:
         assert "timed out" in result.output
 
     @patch("dailybot_cli.commands.update.get_token")
-    def test_update_not_logged_in(
-        self, mock_get_token: MagicMock, runner: CliRunner
-    ) -> None:
+    def test_update_not_logged_in(self, mock_get_token: MagicMock, runner: CliRunner) -> None:
         mock_get_token.return_value = None
         result = runner.invoke(cli, ["update", "test"])
         assert result.exit_code != 0
 
 
 class TestStatusCommand:
-
     @patch("dailybot_cli.commands.status.get_token")
     @patch("dailybot_cli.commands.status.DailyBotClient")
     def test_status_with_checkins(
@@ -619,7 +682,6 @@ class TestStatusCommand:
 
 
 class TestInteractiveLogin:
-
     @patch("dailybot_cli.commands.interactive.questionary")
     @patch("dailybot_cli.commands.interactive._do_login")
     @patch("dailybot_cli.commands.interactive.load_credentials")
@@ -641,12 +703,11 @@ class TestInteractiveLogin:
         # Mock questionary.select to return "Quit"
         mock_questionary.select.return_value.ask.return_value = "Quit"
         # Provide email for the prompt (code is handled inside _do_login which is mocked)
-        result = runner.invoke(cli, [], input="u@t.com\n")
+        runner.invoke(cli, [], input="u@t.com\n")
         mock_do_login.assert_called_once_with("u@t.com")
 
 
 class TestAgentCommand:
-
     @patch("dailybot_cli.commands.agent.get_agent_auth")
     @patch("dailybot_cli.commands.agent.DailyBotClient")
     def test_agent_update(
@@ -656,9 +717,7 @@ class TestAgentCommand:
         mock_client: MagicMock = mock_client_cls.return_value
         mock_client.submit_agent_report.return_value = {"id": 1, "uuid": "abc"}
 
-        result = runner.invoke(
-            cli, ["agent", "update", "Deployed v2.1", "--name", "Claude Code"]
-        )
+        result = runner.invoke(cli, ["agent", "update", "Deployed v2.1", "--name", "Claude Code"])
         assert result.exit_code == 0
         assert "Report submitted" in result.output
 
@@ -672,8 +731,16 @@ class TestAgentCommand:
         mock_client.submit_agent_report.return_value = {"id": 2, "uuid": "def"}
 
         result = runner.invoke(
-            cli, ["agent", "update", "Fixed login bug", "--name", "Claude Code",
-                  "--metadata", '{"repo": "api-services", "branch": "fix/login", "pr": "#142"}']
+            cli,
+            [
+                "agent",
+                "update",
+                "Fixed login bug",
+                "--name",
+                "Claude Code",
+                "--metadata",
+                '{"repo": "api-services", "branch": "fix/login", "pr": "#142"}',
+            ],
         )
         assert result.exit_code == 0
         assert "Report submitted" in result.output
@@ -759,9 +826,7 @@ class TestAgentCommand:
             ],
         }
 
-        result = runner.invoke(
-            cli, ["agent", "health", "--status", "--name", "Claude Code"]
-        )
+        result = runner.invoke(cli, ["agent", "health", "--status", "--name", "Claude Code"])
         assert result.exit_code == 0
         assert "healthy" in result.output
         assert "Claude Code" in result.output
@@ -812,9 +877,7 @@ class TestAgentCommand:
             ],
         }
 
-        result = runner.invoke(
-            cli, ["agent", "health", "--ok", "--name", "Claude Code"]
-        )
+        result = runner.invoke(cli, ["agent", "health", "--ok", "--name", "Claude Code"])
         assert result.exit_code == 0
         assert "Pending messages from Dailybot (2)" in result.output
         assert "[id:uuid-1]" in result.output
@@ -841,8 +904,17 @@ class TestAgentCommand:
 
         result = runner.invoke(
             cli,
-            ["agent", "webhook", "register", "--url", "https://my-server.com/hook",
-             "--secret", "my-token", "--name", "Claude Code"],
+            [
+                "agent",
+                "webhook",
+                "register",
+                "--url",
+                "https://my-server.com/hook",
+                "--secret",
+                "my-token",
+                "--name",
+                "Claude Code",
+            ],
         )
         assert result.exit_code == 0
         assert "Webhook Registered" in result.output
@@ -864,9 +936,7 @@ class TestAgentCommand:
             "detail": "Webhook unregistered.",
         }
 
-        result = runner.invoke(
-            cli, ["agent", "webhook", "unregister", "--name", "Claude Code"]
-        )
+        result = runner.invoke(cli, ["agent", "webhook", "unregister", "--name", "Claude Code"])
         assert result.exit_code == 0
         assert "Webhook unregistered" in result.output
 
@@ -896,7 +966,11 @@ class TestAgentCommand:
     @patch("dailybot_cli.commands.agent.get_agent_auth")
     @patch("dailybot_cli.commands.agent.DailyBotClient")
     def test_message_send(
-        self, mock_client_cls: MagicMock, mock_get_auth: MagicMock, _mock_profile: MagicMock, runner: CliRunner
+        self,
+        mock_client_cls: MagicMock,
+        mock_get_auth: MagicMock,
+        _mock_profile: MagicMock,
+        runner: CliRunner,
     ) -> None:
         mock_get_auth.return_value = "api_key"
         mock_client: MagicMock = mock_client_cls.return_value
@@ -949,8 +1023,19 @@ class TestAgentCommand:
 
         result = runner.invoke(
             cli,
-            ["agent", "message", "send", "--to", "Claude Code",
-             "--content", "Do X", "--type", "command", "--name", "My Bot"],
+            [
+                "agent",
+                "message",
+                "send",
+                "--to",
+                "Claude Code",
+                "--content",
+                "Do X",
+                "--type",
+                "command",
+                "--name",
+                "My Bot",
+            ],
         )
         assert result.exit_code == 0
         assert "Message Sent" in result.output
@@ -992,9 +1077,7 @@ class TestAgentCommand:
             },
         ]
 
-        result = runner.invoke(
-            cli, ["agent", "message", "list", "--name", "Claude Code"]
-        )
+        result = runner.invoke(cli, ["agent", "message", "list", "--name", "Claude Code"])
         assert result.exit_code == 0
         assert "Review PR #42" in result.output
         assert "John Doe" in result.output
@@ -1028,9 +1111,7 @@ class TestAgentCommand:
         self, mock_get_auth: MagicMock, _mock_profile: MagicMock, runner: CliRunner
     ) -> None:
         mock_get_auth.return_value = None
-        result = runner.invoke(
-            cli, ["agent", "message", "send", "--to", "Bot", "--content", "hi"]
-        )
+        result = runner.invoke(cli, ["agent", "message", "send", "--to", "Bot", "--content", "hi"])
         assert result.exit_code != 0
 
     @patch("dailybot_cli.commands.agent.get_default_profile", return_value=None)
@@ -1046,17 +1127,20 @@ class TestAgentCommand:
     @patch("dailybot_cli.commands.agent.get_agent_auth")
     @patch("dailybot_cli.commands.agent.DailyBotClient")
     def test_agent_update_milestone(
-        self, mock_client_cls: MagicMock, mock_get_auth: MagicMock, _mock_profile: MagicMock, runner: CliRunner
+        self,
+        mock_client_cls: MagicMock,
+        mock_get_auth: MagicMock,
+        _mock_profile: MagicMock,
+        runner: CliRunner,
     ) -> None:
         mock_get_auth.return_value = "api_key"
         mock_client: MagicMock = mock_client_cls.return_value
         mock_client.submit_agent_report.return_value = {
-            "id": 10, "is_milestone": True,
+            "id": 10,
+            "is_milestone": True,
         }
 
-        result = runner.invoke(
-            cli, ["agent", "update", "Big feature", "--milestone"]
-        )
+        result = runner.invoke(cli, ["agent", "update", "Big feature", "--milestone"])
         assert result.exit_code == 0
         assert "[Milestone]" in result.output
         mock_client.submit_agent_report.assert_called_once_with(
@@ -1072,7 +1156,11 @@ class TestAgentCommand:
     @patch("dailybot_cli.commands.agent.get_agent_auth")
     @patch("dailybot_cli.commands.agent.DailyBotClient")
     def test_agent_update_co_authors(
-        self, mock_client_cls: MagicMock, mock_get_auth: MagicMock, _mock_profile: MagicMock, runner: CliRunner
+        self,
+        mock_client_cls: MagicMock,
+        mock_get_auth: MagicMock,
+        _mock_profile: MagicMock,
+        runner: CliRunner,
     ) -> None:
         mock_get_auth.return_value = "api_key"
         mock_client: MagicMock = mock_client_cls.return_value
@@ -1085,8 +1173,16 @@ class TestAgentCommand:
         }
 
         result = runner.invoke(
-            cli, ["agent", "update", "Paired work",
-                  "--co-authors", "alice@co.com", "--co-authors", "bob@co.com"]
+            cli,
+            [
+                "agent",
+                "update",
+                "Paired work",
+                "--co-authors",
+                "alice@co.com",
+                "--co-authors",
+                "bob@co.com",
+            ],
         )
         assert result.exit_code == 0
         assert "Co-authors: Alice, Bob" in result.output
@@ -1103,7 +1199,11 @@ class TestAgentCommand:
     @patch("dailybot_cli.commands.agent.get_agent_auth")
     @patch("dailybot_cli.commands.agent.DailyBotClient")
     def test_agent_update_co_authors_comma_separated(
-        self, mock_client_cls: MagicMock, mock_get_auth: MagicMock, _mock_profile: MagicMock, runner: CliRunner
+        self,
+        mock_client_cls: MagicMock,
+        mock_get_auth: MagicMock,
+        _mock_profile: MagicMock,
+        runner: CliRunner,
     ) -> None:
         mock_get_auth.return_value = "api_key"
         mock_client: MagicMock = mock_client_cls.return_value
@@ -1116,8 +1216,7 @@ class TestAgentCommand:
         }
 
         result = runner.invoke(
-            cli, ["agent", "update", "Paired work",
-                  "--co-authors", "alice@co.com,bob@co.com"]
+            cli, ["agent", "update", "Paired work", "--co-authors", "alice@co.com,bob@co.com"]
         )
         assert result.exit_code == 0
         assert "Co-authors: Alice, Bob" in result.output
@@ -1134,7 +1233,11 @@ class TestAgentCommand:
     @patch("dailybot_cli.commands.agent.get_agent_auth")
     @patch("dailybot_cli.commands.agent.DailyBotClient")
     def test_agent_update_milestone_and_co_authors(
-        self, mock_client_cls: MagicMock, mock_get_auth: MagicMock, _mock_profile: MagicMock, runner: CliRunner
+        self,
+        mock_client_cls: MagicMock,
+        mock_get_auth: MagicMock,
+        _mock_profile: MagicMock,
+        runner: CliRunner,
     ) -> None:
         mock_get_auth.return_value = "api_key"
         mock_client: MagicMock = mock_client_cls.return_value
@@ -1145,8 +1248,7 @@ class TestAgentCommand:
         }
 
         result = runner.invoke(
-            cli, ["agent", "update", "Big feature", "--milestone",
-                  "--co-authors", "alice@co.com"]
+            cli, ["agent", "update", "Big feature", "--milestone", "--co-authors", "alice@co.com"]
         )
         assert result.exit_code == 0
         assert "[Milestone]" in result.output
@@ -1185,9 +1287,7 @@ class TestAgentCommand:
             ],
         }
 
-        result = runner.invoke(
-            cli, ["agent", "update", "Did some work"]
-        )
+        result = runner.invoke(cli, ["agent", "update", "Did some work"])
         assert result.exit_code == 0
         assert "Report submitted" in result.output
         assert "Pending messages from Dailybot (2)" in result.output
@@ -1211,7 +1311,6 @@ class TestAgentCommand:
 
 
 class TestAgentEmailCommand:
-
     @patch("dailybot_cli.commands.agent.get_agent_auth")
     @patch("dailybot_cli.commands.agent.DailyBotClient")
     def test_email_send(
@@ -1227,11 +1326,19 @@ class TestAgentEmailCommand:
 
         result = runner.invoke(
             cli,
-            ["agent", "email", "send",
-             "--to", "user@example.com",
-             "--subject", "Build passed",
-             "--body-html", "<p>All green.</p>",
-             "--name", "Claude Code"],
+            [
+                "agent",
+                "email",
+                "send",
+                "--to",
+                "user@example.com",
+                "--subject",
+                "Build passed",
+                "--body-html",
+                "<p>All green.</p>",
+                "--name",
+                "Claude Code",
+            ],
         )
         assert result.exit_code == 0
         assert "Email Sent" in result.output
@@ -1260,11 +1367,21 @@ class TestAgentEmailCommand:
 
         result = runner.invoke(
             cli,
-            ["agent", "email", "send",
-             "--to", "a@co.com", "--to", "b@co.com",
-             "--subject", "Report",
-             "--body-html", "<h1>Done</h1>",
-             "--name", "CI Bot"],
+            [
+                "agent",
+                "email",
+                "send",
+                "--to",
+                "a@co.com",
+                "--to",
+                "b@co.com",
+                "--subject",
+                "Report",
+                "--body-html",
+                "<h1>Done</h1>",
+                "--name",
+                "CI Bot",
+            ],
         )
         assert result.exit_code == 0
         assert "2 of 2" in result.output
@@ -1291,10 +1408,17 @@ class TestAgentEmailCommand:
 
         result = runner.invoke(
             cli,
-            ["agent", "email", "send",
-             "--to", "user@example.com",
-             "--subject", "Test",
-             "--body-html", "<p>Hi</p>"],
+            [
+                "agent",
+                "email",
+                "send",
+                "--to",
+                "user@example.com",
+                "--subject",
+                "Test",
+                "--body-html",
+                "<p>Hi</p>",
+            ],
         )
         assert result.exit_code != 0
         assert "Hourly email limit exceeded" in result.output
@@ -1307,10 +1431,17 @@ class TestAgentEmailCommand:
         mock_get_auth.return_value = None
         result = runner.invoke(
             cli,
-            ["agent", "email", "send",
-             "--to", "user@example.com",
-             "--subject", "Test",
-             "--body-html", "<p>Hi</p>"],
+            [
+                "agent",
+                "email",
+                "send",
+                "--to",
+                "user@example.com",
+                "--subject",
+                "Test",
+                "--body-html",
+                "<p>Hi</p>",
+            ],
         )
         assert result.exit_code != 0
 
@@ -1318,7 +1449,11 @@ class TestAgentEmailCommand:
     @patch("dailybot_cli.commands.agent.get_agent_auth")
     @patch("dailybot_cli.commands.agent.DailyBotClient")
     def test_email_send_with_metadata(
-        self, mock_client_cls: MagicMock, mock_get_auth: MagicMock, _mock_profile: MagicMock, runner: CliRunner
+        self,
+        mock_client_cls: MagicMock,
+        mock_get_auth: MagicMock,
+        _mock_profile: MagicMock,
+        runner: CliRunner,
     ) -> None:
         mock_get_auth.return_value = "api_key"
         mock_client: MagicMock = mock_client_cls.return_value
@@ -1330,11 +1465,19 @@ class TestAgentEmailCommand:
 
         result = runner.invoke(
             cli,
-            ["agent", "email", "send",
-             "--to", "user@example.com",
-             "--subject", "Build",
-             "--body-html", "<p>Done</p>",
-             "--metadata", '{"pr": "#42"}'],
+            [
+                "agent",
+                "email",
+                "send",
+                "--to",
+                "user@example.com",
+                "--subject",
+                "Build",
+                "--body-html",
+                "<p>Done</p>",
+                "--metadata",
+                '{"pr": "#42"}',
+            ],
         )
         assert result.exit_code == 0
         mock_client.send_agent_email.assert_called_once_with(
@@ -1347,7 +1490,6 @@ class TestAgentEmailCommand:
 
 
 class TestConfigCommand:
-
     @pytest.fixture(autouse=True)
     def _tmp_config(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         config_dir: Path = tmp_path / ".config" / "dailybot"
@@ -1385,7 +1527,6 @@ class TestConfigCommand:
 
 
 class TestAgentConfigure:
-
     @patch("dailybot_cli.commands.agent.get_token")
     @patch("dailybot_cli.commands.agent.save_agent_profile")
     def test_configure_otp_only(
@@ -1410,9 +1551,7 @@ class TestAgentConfigure:
         mock_save.assert_called_once_with("ci-bot", agent_name="CI Bot", api_key="abc123")
 
     @patch("dailybot_cli.commands.agent.DailyBotClient")
-    def test_configure_invalid_key(
-        self, mock_client_cls: MagicMock, runner: CliRunner
-    ) -> None:
+    def test_configure_invalid_key(self, mock_client_cls: MagicMock, runner: CliRunner) -> None:
         mock_client: MagicMock = mock_client_cls.return_value
         mock_client.get_agent_health.side_effect = APIError(401, "Unauthorized")
         result = runner.invoke(cli, ["agent", "configure", "--name", "Bot", "--key", "bad"])
@@ -1420,9 +1559,7 @@ class TestAgentConfigure:
         assert "invalid" in result.output.lower()
 
     @patch("dailybot_cli.commands.agent.get_token")
-    def test_configure_no_key_no_login(
-        self, mock_token: MagicMock, runner: CliRunner
-    ) -> None:
+    def test_configure_no_key_no_login(self, mock_token: MagicMock, runner: CliRunner) -> None:
         mock_token.return_value = None
         result = runner.invoke(cli, ["agent", "configure", "--name", "Bot"])
         assert result.exit_code != 0
@@ -1433,20 +1570,26 @@ class TestAgentConfigure:
         self, mock_save: MagicMock, mock_token: MagicMock, runner: CliRunner
     ) -> None:
         mock_token.return_value = "tok"
-        result = runner.invoke(cli, ["agent", "configure", "--name", "Claude Code", "--profile", "myprofile"])
+        result = runner.invoke(
+            cli, ["agent", "configure", "--name", "Claude Code", "--profile", "myprofile"]
+        )
         assert result.exit_code == 0
         mock_save.assert_called_once_with("myprofile", agent_name="Claude Code", api_key=None)
 
 
 class TestAgentProfiles:
-
     @patch("dailybot_cli.commands.agent.list_profiles")
     @patch("dailybot_cli.commands.agent.load_agents")
     def test_profiles_list(
         self, mock_load: MagicMock, mock_list: MagicMock, runner: CliRunner
     ) -> None:
         mock_list.return_value = [
-            {"profile": "claude-code", "agent_name": "Claude Code", "has_key": True, "is_default": True},
+            {
+                "profile": "claude-code",
+                "agent_name": "Claude Code",
+                "has_key": True,
+                "is_default": True,
+            },
             {"profile": "ci-bot", "agent_name": "CI Bot", "has_key": False, "is_default": False},
         ]
         mock_load.return_value = {
@@ -1474,12 +1617,15 @@ class TestAgentProfiles:
 
 
 class TestAgentProfileAuth:
-
     @patch("dailybot_cli.commands.agent.get_profile")
     @patch("dailybot_cli.commands.agent.get_default_profile")
     @patch("dailybot_cli.commands.agent.DailyBotClient")
     def test_update_uses_profile(
-        self, mock_client_cls: MagicMock, mock_default: MagicMock, mock_get: MagicMock, runner: CliRunner
+        self,
+        mock_client_cls: MagicMock,
+        mock_default: MagicMock,
+        mock_get: MagicMock,
+        runner: CliRunner,
     ) -> None:
         mock_get.return_value = {"profile": "test", "agent_name": "Test Agent", "api_key": "key123"}
         mock_client: MagicMock = mock_client_cls.return_value
@@ -1495,7 +1641,11 @@ class TestAgentProfileAuth:
     def test_update_uses_default_profile(
         self, mock_client_cls: MagicMock, mock_default: MagicMock, runner: CliRunner
     ) -> None:
-        mock_default.return_value = {"profile": "default", "agent_name": "Default Agent", "api_key": "k1"}
+        mock_default.return_value = {
+            "profile": "default",
+            "agent_name": "Default Agent",
+            "api_key": "k1",
+        }
         mock_client: MagicMock = mock_client_cls.return_value
         mock_client.submit_agent_report.return_value = {"id": 1}
         result = runner.invoke(cli, ["agent", "update", "did stuff"])
@@ -1508,7 +1658,11 @@ class TestAgentProfileAuth:
     def test_name_flag_overrides_profile(
         self, mock_client_cls: MagicMock, mock_default: MagicMock, runner: CliRunner
     ) -> None:
-        mock_default.return_value = {"profile": "default", "agent_name": "Default Agent", "api_key": "k1"}
+        mock_default.return_value = {
+            "profile": "default",
+            "agent_name": "Default Agent",
+            "api_key": "k1",
+        }
         mock_client: MagicMock = mock_client_cls.return_value
         mock_client.submit_agent_report.return_value = {"id": 1}
         result = runner.invoke(cli, ["agent", "update", "did stuff", "--name", "Override"])
@@ -1517,9 +1671,7 @@ class TestAgentProfileAuth:
         assert call_kwargs["agent_name"] == "Override"
 
     @patch("dailybot_cli.commands.agent.get_profile")
-    def test_profile_not_found(
-        self, mock_get: MagicMock, runner: CliRunner
-    ) -> None:
+    def test_profile_not_found(self, mock_get: MagicMock, runner: CliRunner) -> None:
         mock_get.return_value = None
         result = runner.invoke(cli, ["agent", "--profile", "nope", "update", "test"])
         assert result.exit_code != 0
@@ -1527,7 +1679,6 @@ class TestAgentProfileAuth:
 
 
 class TestAgentRegister:
-
     @patch("dailybot_cli.commands.agent.save_agent_profile")
     @patch("dailybot_cli.commands.agent.DailyBotClient")
     def test_register_success(
@@ -1546,12 +1697,19 @@ class TestAgentRegister:
             "org_name": "My Startup",
             "claim_url": "https://app.dailybot.com/claim/abc123",
         }
-        result = runner.invoke(cli, [
-            "agent", "register",
-            "--org-name", "My Startup",
-            "--agent-name", "Claude Code",
-            "--email", "me@co.com",
-        ])
+        result = runner.invoke(
+            cli,
+            [
+                "agent",
+                "register",
+                "--org-name",
+                "My Startup",
+                "--agent-name",
+                "Claude Code",
+                "--email",
+                "me@co.com",
+            ],
+        )
         assert result.exit_code == 0
         assert "Registered" in result.output
         assert "claude-code@mail.dailybot.co" in result.output
@@ -1565,7 +1723,12 @@ class TestAgentRegister:
             contact_email="me@co.com",
             timezone="UTC",
         )
-        mock_save.assert_called_once_with("claude-code", agent_name="Claude Code", api_key="new-key-123", agent_email="claude-code@mail.dailybot.co")
+        mock_save.assert_called_once_with(
+            "claude-code",
+            agent_name="Claude Code",
+            api_key="new-key-123",
+            agent_email="claude-code@mail.dailybot.co",
+        )
 
     @patch("dailybot_cli.commands.agent.save_agent_profile")
     @patch("dailybot_cli.commands.agent.DailyBotClient")
@@ -1585,11 +1748,17 @@ class TestAgentRegister:
             "org_name": "Org",
             "claim_url": "https://app.dailybot.com/claim/xyz",
         }
-        result = runner.invoke(cli, [
-            "agent", "register",
-            "--org-name", "Org",
-            "--agent-name", "Bot",
-        ])
+        result = runner.invoke(
+            cli,
+            [
+                "agent",
+                "register",
+                "--org-name",
+                "Org",
+                "--agent-name",
+                "Bot",
+            ],
+        )
         assert result.exit_code == 0
         mock_client.register_agent.assert_called_once_with(
             challenge_id="ch-1",
@@ -1614,20 +1783,32 @@ class TestAgentRegister:
         mock_client.get_registration_challenge.return_value = challenge
         mock_client.register_agent.side_effect = [
             APIError(400, "Challenge expired"),
-            {"api_key": "k", "agent_name": "A", "org_name": "O", "claim_url": "https://app.dailybot.com/claim/x"},
+            {
+                "api_key": "k",
+                "agent_name": "A",
+                "org_name": "O",
+                "claim_url": "https://app.dailybot.com/claim/x",
+            },
         ]
         with patch("dailybot_cli.commands.agent.save_agent_profile"):
-            result = runner.invoke(cli, [
-                "agent", "register",
-                "--org-name", "O", "--agent-name", "A", "--email", "a@b.com",
-            ])
+            result = runner.invoke(
+                cli,
+                [
+                    "agent",
+                    "register",
+                    "--org-name",
+                    "O",
+                    "--agent-name",
+                    "A",
+                    "--email",
+                    "a@b.com",
+                ],
+            )
         assert result.exit_code == 0
         assert "Registered" in result.output
 
     @patch("dailybot_cli.commands.agent.DailyBotClient")
-    def test_register_rate_limited(
-        self, mock_client_cls: MagicMock, runner: CliRunner
-    ) -> None:
+    def test_register_rate_limited(self, mock_client_cls: MagicMock, runner: CliRunner) -> None:
         mock_client: MagicMock = mock_client_cls.return_value
         mock_client.get_registration_challenge.return_value = {
             "challenge_id": "ch-1",
@@ -1635,21 +1816,33 @@ class TestAgentRegister:
             "expires_in": 300,
         }
         mock_client.register_agent.side_effect = APIError(429, "Too many requests")
-        result = runner.invoke(cli, [
-            "agent", "register",
-            "--org-name", "O", "--agent-name", "A", "--email", "a@b.com",
-        ])
+        result = runner.invoke(
+            cli,
+            [
+                "agent",
+                "register",
+                "--org-name",
+                "O",
+                "--agent-name",
+                "A",
+                "--email",
+                "a@b.com",
+            ],
+        )
         assert result.exit_code != 0
         assert "Rate limited" in result.output
 
 
 class TestAgentMessageClaim:
-
     @patch("dailybot_cli.commands.agent.get_agent_auth")
     @patch("dailybot_cli.commands.agent.get_default_profile")
     @patch("dailybot_cli.commands.agent.DailyBotClient")
     def test_claim_messages(
-        self, mock_client_cls: MagicMock, mock_default: MagicMock, mock_auth: MagicMock, runner: CliRunner
+        self,
+        mock_client_cls: MagicMock,
+        mock_default: MagicMock,
+        mock_auth: MagicMock,
+        runner: CliRunner,
     ) -> None:
         mock_default.return_value = None
         mock_auth.return_value = "api_key"
@@ -1658,23 +1851,33 @@ class TestAgentMessageClaim:
         result = runner.invoke(cli, ["agent", "message", "claim", "uuid-1", "uuid-2"])
         assert result.exit_code == 0
         assert "2 message(s)" in result.output
-        mock_client.mark_agent_messages_read.assert_called_once_with(message_ids=["uuid-1", "uuid-2"])
+        mock_client.mark_agent_messages_read.assert_called_once_with(
+            message_ids=["uuid-1", "uuid-2"]
+        )
 
     @patch("dailybot_cli.commands.agent.get_agent_auth")
     @patch("dailybot_cli.commands.agent.get_default_profile")
     @patch("dailybot_cli.commands.agent.DailyBotClient")
     def test_claim_all(
-        self, mock_client_cls: MagicMock, mock_default: MagicMock, mock_auth: MagicMock, runner: CliRunner
+        self,
+        mock_client_cls: MagicMock,
+        mock_default: MagicMock,
+        mock_auth: MagicMock,
+        runner: CliRunner,
     ) -> None:
         mock_default.return_value = None
         mock_auth.return_value = "api_key"
         mock_client: MagicMock = mock_client_cls.return_value
         mock_client.submit_agent_health.return_value = {
-            "agent_name": "CLI Agent", "status": "healthy", "last_check": "now",
+            "agent_name": "CLI Agent",
+            "status": "healthy",
+            "last_check": "now",
         }
         result = runner.invoke(cli, ["agent", "message", "claim-all"])
         assert result.exit_code == 0
         assert "delivered" in result.output.lower()
         mock_client.submit_agent_health.assert_called_once_with(
-            agent_name="CLI Agent", ok=True, message=None,
+            agent_name="CLI Agent",
+            ok=True,
+            message=None,
         )

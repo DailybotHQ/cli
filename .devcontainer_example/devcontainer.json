@@ -1,0 +1,25 @@
+{
+  "name": "Core CLI",
+  "dockerComposeFile": "../docker/local/docker-compose.yaml",
+  "service": "clivscode",
+  "workspaceFolder": "/workspace",
+  "runServices": ["clivscode"],
+  "remoteUser": "dev-user",
+  "customizations": {
+    "settings": {
+      "terminal.integrated.shell.linux": "/bin/bash"
+    },
+    "vscode": {
+      "extensions": [
+        "ms-python.python",
+        "ms-python.vscode-pylance",
+        "tamasfe.even-better-toml",
+        "eamodio.gitlens",
+        "shardulm94.trailing-spaces",
+        "oderwat.indent-rainbow",
+        "vscode-icons-team.vscode-icons",
+        "dailybot.dailybot"
+      ]
+    }
+  }
+}
