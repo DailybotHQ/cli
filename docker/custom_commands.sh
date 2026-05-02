@@ -175,6 +175,148 @@ function cursorx() {
     esac
 }
 
+# Run code-quality checks (linters + type checks + tests) for the Dailybot CLI.
+# Each tool is run only if it's installed — skipped tools are reported but
+# don't fail the run. The exit code is non-zero if any installed tool failed.
+#
+# Usage:
+#   codecheck                 - Run lint + tests (read-only)
+#   codecheck --fix           - Auto-fix lint/format issues, then run tests
+#   codecheck --lint-only     - Only run lint/type checks (no pytest)
+#   codecheck --tests-only    - Only run pytest
+#   codecheck -h | --help     - Show this help
+function codecheck() {
+    local run_lint=true
+    local run_tests=true
+    local fix=false
+    local failed_tools=()
+    local skipped_tools=()
+
+    while [[ $# -gt 0 ]]; do
+        case "$1" in
+            --fix)
+                fix=true
+                shift
+                ;;
+            --lint-only)
+                run_tests=false
+                shift
+                ;;
+            --tests-only)
+                run_lint=false
+                shift
+                ;;
+            -h|--help)
+                cat <<'EOF'
+codecheck — run linters, type checks, and tests for the Dailybot CLI.
+
+Usage:
+  codecheck                 Run lint + tests (read-only)
+  codecheck --fix           Auto-fix lint/format issues, then run tests
+  codecheck --lint-only     Only run lint/type checks
+  codecheck --tests-only    Only run pytest
+  codecheck -h | --help     Show this help
+
+Tools detected at runtime (skipped if not installed):
+  ruff      Lint + import sorting (pyproject.toml controls config)
+  black     Code formatter (check mode by default; --fix rewrites in place)
+  mypy      Static type checker for dailybot_cli/
+  pytest    Test runner (mandatory unless --lint-only)
+
+Exit code is non-zero if any installed tool reported failures.
+EOF
+                return 0
+                ;;
+            *)
+                print.error "Unknown flag: $1"
+                echo "Run 'codecheck --help' for usage."
+                return 2
+                ;;
+        esac
+    done
+
+    # Run from the repo root so each tool sees the project's pyproject.toml
+    local project_root
+    project_root="$(git rev-parse --show-toplevel 2>/dev/null)"
+    if [[ -z "$project_root" ]]; then
+        project_root="$PWD"
+    fi
+
+    print.success "🔎 codecheck — quality gates in ${project_root}"
+    echo ""
+
+    # ----- Lint / type checks ------------------------------------------------
+    if $run_lint; then
+        if command -v ruff >/dev/null 2>&1; then
+            if $fix; then
+                print.success "→ ruff check --fix"
+                (cd "$project_root" && ruff check --fix dailybot_cli tests) \
+                    || failed_tools+=("ruff")
+            else
+                print.success "→ ruff check"
+                (cd "$project_root" && ruff check dailybot_cli tests) \
+                    || failed_tools+=("ruff")
+            fi
+            echo ""
+        else
+            skipped_tools+=("ruff (pip install ruff)")
+        fi
+
+        if command -v black >/dev/null 2>&1; then
+            if $fix; then
+                print.success "→ black (rewrite)"
+                (cd "$project_root" && black dailybot_cli tests) \
+                    || failed_tools+=("black")
+            else
+                print.success "→ black --check"
+                (cd "$project_root" && black --check dailybot_cli tests) \
+                    || failed_tools+=("black")
+            fi
+            echo ""
+        else
+            skipped_tools+=("black (pip install black)")
+        fi
+
+        if command -v mypy >/dev/null 2>&1; then
+            print.success "→ mypy dailybot_cli"
+            (cd "$project_root" && mypy dailybot_cli) || failed_tools+=("mypy")
+            echo ""
+        else
+            skipped_tools+=("mypy (pip install mypy)")
+        fi
+    fi
+
+    # ----- Tests -------------------------------------------------------------
+    if $run_tests; then
+        if command -v pytest >/dev/null 2>&1; then
+            print.success "→ pytest -x"
+            (cd "$project_root" && pytest -x) || failed_tools+=("pytest")
+            echo ""
+        else
+            print.error "pytest not installed — run: pip install pytest"
+            failed_tools+=("pytest (missing)")
+        fi
+    fi
+
+    # ----- Summary -----------------------------------------------------------
+    echo "================ codecheck summary ================"
+    if [[ ${#skipped_tools[@]} -gt 0 ]]; then
+        echo "  Skipped (not installed):"
+        local t
+        for t in "${skipped_tools[@]}"; do
+            echo "    - $t"
+        done
+    fi
+
+    if [[ ${#failed_tools[@]} -eq 0 ]]; then
+        print.success "✅ All checks passed."
+        return 0
+    else
+        print.error "❌ Failed: ${failed_tools[*]}"
+        return 1
+    fi
+}
+
 # Check if running inside Docker container
 function check_devcontainer() {
     if [[ -f /.dockerenv ]] || [[ -n "${REMOTE_CONTAINERS:-}" ]] || [[ -n "${CODESPACES:-}" ]]; then
@@ -295,6 +437,7 @@ function show_welcome() {
     echo ""
     echo "Useful commands:"
     echo "  • check_devcontainer   - Check if running inside Docker container"
+    echo "  • codecheck            - Run linters + tests (use --fix to auto-fix, --help for flags)"
     echo "  • help                 - Show this message"
     echo ""
     echo "AI Assistant commands:"
