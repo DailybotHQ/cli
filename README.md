@@ -18,11 +18,19 @@ Requires Python 3.10+.
 brew install dailybothq/tap/dailybot
 ```
 
-**Linux (binary)**
+**Linux, WSL2, or Git Bash on Windows (binary or pip fallback)**
 
 ```bash
 curl -sSL https://cli.dailybot.com/install.sh | bash
 ```
+
+**Native Windows PowerShell** (only if you don't have WSL2 or Git Bash)
+
+```powershell
+irm https://cli.dailybot.com/install.ps1 | iex
+```
+
+Requires Python 3.10+ on PATH. Wraps `pipx` / `uv tool` / `pip --user`.
 
 Or download directly from [GitHub Releases](https://github.com/DailyBotHQ/cli/releases).
 
