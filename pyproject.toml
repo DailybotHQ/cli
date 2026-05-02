@@ -157,8 +157,19 @@ branch = "main"
 tag_format = "v{version}"
 commit_message = "chore(release): {version}\n\n[skip ci]"
 build_command = ""                 # release.yml owns the actual build/upload
-allow_zero_version = true          # we are still on 0.x
-major_on_zero = false              # feat on 0.x stays in 0.x (no implicit 1.0.0)
+# `allow_zero_version` and `major_on_zero` together control how PSR treats
+# breaking changes while the package is still on 0.x.
+#   allow_zero_version = true  → permit version numbers that start with 0.
+#   major_on_zero = true       → a `feat!:` / `BREAKING CHANGE:` commit on a
+#                                0.x version DOES promote to 1.0.0.
+#                                We flipped this from false to true once the
+#                                CLI was production-grade (CI, automated
+#                                release, multi-channel distribution, stable
+#                                feature surface). With this on, semver is
+#                                applied uniformly and breaking changes are
+#                                surfaced as real major bumps.
+allow_zero_version = true
+major_on_zero = true
 upload_to_vcs_release = false      # release.yml creates the GitHub Release
 changelog_file = "CHANGELOG.md"
 
