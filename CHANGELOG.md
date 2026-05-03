@@ -9,6 +9,14 @@ Do not edit it by hand — your edits will be overwritten on the next release.
 
 <!-- version list -->
 
+## v1.6.0 (2026-05-03)
+
+### Features
+
+- **cli**: Add `dailybot uninstall` command with install-method detection
+  ([`4af6279`](https://github.com/DailybotHQ/cli/commit/4af62799719fa2c1afc3c40b91f7973d90ad2e96))
+
+
 ## v1.5.0 (2026-05-03)
 
 
