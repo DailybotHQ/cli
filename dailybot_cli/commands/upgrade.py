@@ -30,68 +30,12 @@ from dailybot_cli.display import (
     print_success,
     print_warning,
 )
-
-_PACKAGE: str = "dailybot-cli"
-
-# Install methods we can reliably detect. Each maps to:
-#   - a "label" for human-facing output
-#   - a list of argv tokens (subprocess.run safe — no shell=True) when we can
-#     execute the upgrade ourselves; or `None` if we should print a command
-#     and let the user run it.
-#   - a "manual command" string for the print-only path.
-_METHOD_LABELS: dict[str, str] = {
-    "pipx": "pipx",
-    "uv-tool": "uv tool",
-    "pip": "pip",
-    "homebrew": "Homebrew",
-    "binary": "PyInstaller binary",
-    "editable": "editable install (development)",
-    "unknown": "unknown",
-}
-
-
-def _resolve_install_path() -> Path:
-    """Return the on-disk path of the running `dailybot_cli` package."""
-    import dailybot_cli
-
-    return Path(dailybot_cli.__file__).resolve().parent
-
-
-def _detect_install_method() -> str:
-    """Best-effort detection of how this CLI was installed.
-
-    Returns one of: pipx, uv-tool, pip, homebrew, binary, editable, unknown.
-
-    The heuristics inspect the install path's directory components. They
-    are deliberately conservative: when in doubt, fall back to "pip" (which
-    is always safe to upgrade with `python -m pip install --upgrade ...`).
-    """
-    # PyInstaller frozen build → can't trivially auto-replace itself.
-    if getattr(sys, "frozen", False):
-        return "binary"
-
-    path = _resolve_install_path()
-    parts_lower = [p.lower() for p in path.parts]
-
-    # Editable install: pyproject.toml lives next to the package source.
-    if (path.parent / "pyproject.toml").exists():
-        return "editable"
-
-    # Homebrew formulas live under .../Cellar/<formula>/<version>/...
-    if "cellar" in parts_lower and any("dailybot" in p for p in parts_lower):
-        return "homebrew"
-
-    # pipx isolated venvs live under .../pipx/venvs/<package>/...
-    if "pipx" in parts_lower:
-        return "pipx"
-
-    # uv tool installs live under .../uv/tools/<package>/... (XDG_DATA_HOME)
-    # or .../.local/share/uv/tools/<package>/...
-    if "uv" in parts_lower and "tools" in parts_lower:
-        return "uv-tool"
-
-    # Generic pip install (system, user-site, or a regular venv).
-    return "pip"
+from dailybot_cli.install_method import (
+    METHOD_LABELS as _METHOD_LABELS,
+    PACKAGE as _PACKAGE,
+    detect_install_method as _detect_install_method,
+    resolve_install_path as _resolve_install_path,
+)
 
 
 def _build_upgrade_argv(method: str) -> list[str] | None:

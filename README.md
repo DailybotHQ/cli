@@ -60,6 +60,17 @@ dailybot upgrade
 
 The CLI auto-detects how it was installed and either runs the right upgrade command for you (pipx / uv tool / pip) or prints the exact command you should run yourself (Homebrew, Linux binary, editable dev install). Use `dailybot upgrade --dry-run` to preview without executing.
 
+To uninstall:
+
+```bash
+dailybot uninstall              # confirm, then remove (keeps your config)
+dailybot uninstall --yes        # skip the confirmation (for scripts / CI)
+dailybot uninstall --purge      # also delete ~/.config/dailybot/
+dailybot uninstall --dry-run    # show the plan, do nothing
+```
+
+Same auto-detection as `upgrade`: the matching uninstall is run for you on `pipx` / `uv tool` / `pip` installs; for Homebrew and the Linux/Windows binary the exact command is printed instead. Your credentials and agent profiles in `~/.config/dailybot/` are **kept by default** so reinstalling later doesn't force you to redo `dailybot login` or `dailybot agent configure` — pass `--purge` to wipe them too.
+
 > **Bug reports?** Always include the full output of `dailybot version` — the install path and Python runtime are usually enough to tell us whether the issue is in the CLI itself, in a transitive dep, or in the host environment.
 
 ## For humans
