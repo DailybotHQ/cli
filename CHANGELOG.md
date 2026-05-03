@@ -9,6 +9,19 @@ Do not edit it by hand — your edits will be overwritten on the next release.
 
 <!-- version list -->
 
+## v1.4.1 (2026-05-03)
+
+### Bug Fixes
+
+- **ci**: Use PSR 10's PATCH level for default_bump_level
+  ([`cbb375c`](https://github.com/DailybotHQ/cli/commit/cbb375c527949d4474fc0143d328963f477bf0c6))
+
+### Continuous Integration
+
+- Bump actions/checkout to v6 and setup-python to v6
+  ([`7e9cbe6`](https://github.com/DailybotHQ/cli/commit/7e9cbe633e774c585dd99d5e8a79407f6a8b8f4b))
+
+
 ## v1.4.0 (2026-05-02)
 
 ### Features
