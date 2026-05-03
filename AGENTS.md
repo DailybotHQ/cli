@@ -26,7 +26,7 @@
 | Ecosystem Context | [docs/ECOSYSTEM_CONTEXT.md](docs/ECOSYSTEM_CONTEXT.md) |
 | PR Review Workflow | [docs/PR_REVIEW_WORKFLOW.md](docs/PR_REVIEW_WORKFLOW.md) |
 | Troubleshooting | [docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md) |
-| Skills Catalog | [.claude/docs/skills_agents_catalog.md](.claude/docs/skills_agents_catalog.md) |
+| Skills Catalog | [.agents/docs/skills_agents_catalog.md](.agents/docs/skills_agents_catalog.md) |
 
 ## Project Overview
 
@@ -414,7 +414,7 @@ dailybot agent update --name "Claude Code" --milestone \
   --metadata '{"model":"claude-opus-4-7","plan":"PLAN_agent_profiles","repo":"cli"}'
 ```
 
-Full philosophy, what to report, and what to skip: [.claude/skills/dailybot-progress-report/SKILL.md](.claude/skills/dailybot-progress-report/SKILL.md). Key rules:
+Full philosophy, what to report, and what to skip: [.agents/skills/dailybot-progress-report/SKILL.md](.agents/skills/dailybot-progress-report/SKILL.md). Key rules:
 
 - 1–3 sentences, **always in English**
 - Focus on WHAT + WHY, never "Agent completed…"
@@ -443,11 +443,13 @@ When applying bot feedback on a PR, agents **must** skip `isMinimized == true` c
 
 ## Skills & Agents System
 
-Reusable **Skills** (slash commands) and **Agents** (specialized personas) live under [`.claude/`](.claude/):
+Reusable **Skills** (slash commands) and **Agents** (specialized personas) live under [`.agents/`](.agents/) — the vendor-neutral standard adopted by most coding agents (Claude Code, Cursor, Codex, Gemini, Copilot, …):
 
-- [`.claude/skills/`](.claude/skills/) — slash commands (e.g., `/quick-fix`, `/release-prep`, `/cli-command-add`, `/dailybot-progress-report`)
-- [`.claude/agents/`](.claude/agents/) — agent personas (e.g., `cli-developer`, `release-manager`, `docs-writer`, `test-engineer`)
-- [`.claude/docs/skills_agents_catalog.md`](.claude/docs/skills_agents_catalog.md) — full index
+- [`.agents/skills/`](.agents/skills/) — slash commands (e.g., `/quick-fix`, `/release-prep`, `/cli-command-add`, `/dailybot-progress-report`)
+- [`.agents/agents/`](.agents/agents/) — agent personas (e.g., `cli-developer`, `release-manager`, `docs-writer`, `test-engineer`)
+- [`.agents/docs/skills_agents_catalog.md`](.agents/docs/skills_agents_catalog.md) — full index
+
+> `.claude/` at the repo root is a git-tracked **symlink to `.agents/`**, kept so tools that still default to the legacy Claude-specific path keep working unchanged. Edit content under `.agents/` only — never under `.claude/`. **This includes Claude-specific assets** (e.g. `settings.json`, `commands/`, hook scripts): put them in `.agents/` and the symlink will route Claude Code to them. Windows users without `core.symlinks = true` should reference `.agents/` directly.
 
 ### Slash Commands Across Agents
 
@@ -456,7 +458,7 @@ Reusable **Skills** (slash commands) and **Agents** (specialized personas) live 
 | Claude Code | `/` (native) | `/quick-fix` |
 | Codex / Cursor / Gemini | `#` | `#quick-fix` |
 
-When invoked: look up in `.claude/docs/skills_agents_catalog.md`, READ the procedure file, FOLLOW it exactly. Do not improvise.
+When invoked: look up in `.agents/docs/skills_agents_catalog.md`, READ the procedure file, FOLLOW it exactly. Do not improvise.
 
 ## Documentation Maintenance
 
@@ -466,7 +468,7 @@ When invoked: look up in `.claude/docs/skills_agents_catalog.md`, READ the proce
 |-------|--------|
 | AI agent rules & navigation for THIS repo | This file (`AGENTS.md`) |
 | Detailed reference docs | [`docs/`](docs/) |
-| Skills & agent personas | [`.claude/`](.claude/) |
+| Skills & agent personas | [`.agents/`](.agents/) |
 | Release pipeline | [`.github/workflows/release.yml`](.github/workflows/release.yml) |
 | Public user-facing docs | [`README.md`](README.md) |
 | Package metadata & deps | [`pyproject.toml`](pyproject.toml) |

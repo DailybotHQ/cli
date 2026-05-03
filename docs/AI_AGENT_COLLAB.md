@@ -24,17 +24,17 @@ If you change a mandatory rule, idiom, or pattern, update **`AGENTS.md`** — th
 
 ## Skills & Personas
 
-The `.claude/` folder hosts:
+The `.agents/` folder hosts:
 
-- `.claude/skills/` — slash-command procedures (e.g., `/quick-fix`, `/release-prep`)
-- `.claude/agents/` — persona definitions (e.g., `cli-developer`, `release-manager`)
-- `.claude/docs/skills_agents_catalog.md` — index of all of the above
+- `.agents/skills/` — slash-command procedures (e.g., `/quick-fix`, `/release-prep`)
+- `.agents/agents/` — persona definitions (e.g., `cli-developer`, `release-manager`)
+- `.agents/docs/skills_agents_catalog.md` — index of all of the above
 
 These are Claude-Code-native but **most are agent-agnostic** — Codex/Cursor/Gemini users invoke them by typing `#<name>` or by referring to them in plain English.
 
 When you're an agent invoked with `/<skill-name>` or `#<skill-name>`:
 
-1. Look up the procedure file in `.claude/docs/skills_agents_catalog.md`.
+1. Look up the procedure file in `.agents/docs/skills_agents_catalog.md`.
 2. **READ** the file completely.
 3. **FOLLOW** its steps — do not improvise.
 
@@ -86,7 +86,7 @@ dailybot agent update --name "Claude Code" \
   --metadata '{"model":"claude-opus-4-7","repo":"cli"}'
 ```
 
-See [`.claude/skills/dailybot-progress-report/SKILL.md`](../.claude/skills/dailybot-progress-report/SKILL.md) for the full reporting philosophy and what to skip.
+See [`.agents/skills/dailybot-progress-report/SKILL.md`](../.agents/skills/dailybot-progress-report/SKILL.md) for the full reporting philosophy and what to skip.
 
 ## Handing Off Mid-Task
 
