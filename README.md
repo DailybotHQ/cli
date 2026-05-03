@@ -150,10 +150,42 @@ dailybot agent --profile ci-bot update "Build #42 passed"
 
 Auth resolution order:
 1. `--profile` flag (explicit profile from `agents.json`)
-2. Default profile from `agents.json`
-3. `DAILYBOT_API_KEY` environment variable
-4. `dailybot config key=...` (stored API key)
-5. Login session (Bearer token from `dailybot login`)
+2. `.dailybot/profile.json::profile` in the current repo (see below)
+3. Default profile from `agents.json`
+4. `DAILYBOT_API_KEY` environment variable
+5. `dailybot config key=...` (stored API key)
+6. Login session (Bearer token from `dailybot login`)
+
+### Repo-level profile (`.dailybot/profile.json`)
+
+Commit a tiny config file at the root of your repo so every contributor — and every AI agent running in the repo — signs reports under the same identity, with no per-developer setup. The CLI walks up from `$PWD` looking for `.dailybot/profile.json`; the closest ancestor wins.
+
+```json
+{
+  "name": "Core Hub Bot",
+  "profile": "core-hub-bot",
+  "default_metadata": {
+    "team": "platform",
+    "service": "core-hub"
+  }
+}
+```
+
+All keys are optional:
+
+- **`name`** — overrides the worker display name (same effect as `--name`). Anyone running `dailybot agent update "..."` from the repo signs as `"Core Hub Bot"`.
+- **`profile`** — selects which entry of the **global** `agents.json` provides credentials. The repo file's `name` still wins over the global profile's display name. If the slug isn't found locally, the CLI warns once and falls back to your login session — handy for repos that ship the file before every teammate has run `dailybot agent configure`.
+- **`default_metadata`** — shallow-merged into every `--metadata` payload sent from the repo. Inline `--metadata` keys win per-key; missing keys fall through. Useful for stamping every report with team/service tags.
+
+Per-field precedence (highest wins): **CLI flag → `.dailybot/profile.json` → global `agents.json` → hardcoded fallback (`"CLI Agent"`)**.
+
+**Security:** a `key` field in the repo file is rejected with a hard error. Credentials must never be committed — auth always resolves from your global profile, `DAILYBOT_API_KEY`, or `dailybot login`. Unknown future keys log a warning and are ignored.
+
+To see exactly what the CLI will use in the current directory:
+
+```bash
+dailybot agent profiles --resolve
+```
 
 ### Standalone registration
 

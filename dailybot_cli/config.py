@@ -254,3 +254,189 @@ def list_profiles() -> list[dict[str, Any]]:
             }
         )
     return result
+
+
+# --- Repo-level profile (.dailybot/profile.json) ---
+
+REPO_PROFILE_DIRNAME: str = ".dailybot"
+REPO_PROFILE_FILENAME: str = "profile.json"
+_VALID_REPO_PROFILE_KEYS: frozenset[str] = frozenset({"name", "profile", "default_metadata"})
+_REPO_PROFILE_PATH_KEY: str = "_path"
+
+_warned_repo_paths: set[str] = set()
+_warned_repo_missing_slugs: set[str] = set()
+
+
+class RepoProfileError(Exception):
+    """Raised when ``.dailybot/profile.json`` violates a hard rule (e.g. carries a key)."""
+
+
+def reset_repo_profile_warnings() -> None:
+    """Clear the per-process warning dedup sets. Useful in tests."""
+    _warned_repo_paths.clear()
+    _warned_repo_missing_slugs.clear()
+
+
+def find_repo_profile_path(cwd: Path | None = None) -> Path | None:
+    """Walk up from *cwd* to find the closest ``.dailybot/profile.json``.
+
+    Returns ``None`` if no ancestor contains the file, if ``.dailybot`` exists
+    along the path as a regular file rather than a directory, or if the file
+    itself is missing or non-regular.
+    """
+    start: Path = (cwd or Path.cwd()).resolve()
+    for ancestor in [start, *start.parents]:
+        candidate_dir: Path = ancestor / REPO_PROFILE_DIRNAME
+        if not candidate_dir.is_dir():
+            continue
+        profile_path: Path = candidate_dir / REPO_PROFILE_FILENAME
+        if profile_path.is_file():
+            return profile_path
+    return None
+
+
+def _warn_once(path_key: str, message: str) -> None:
+    """Emit a warning once per *path_key* per process."""
+    if path_key in _warned_repo_paths:
+        return
+    _warned_repo_paths.add(path_key)
+    from dailybot_cli.display import print_warning
+
+    print_warning(message)
+
+
+def load_repo_profile(cwd: Path | None = None) -> dict[str, Any] | None:
+    """Load and validate ``.dailybot/profile.json``.
+
+    Returns the parsed dict (with the resolved file path stored under
+    ``_path``) or ``None`` when no file is found, the file is malformed, or
+    its top-level value is not a JSON object. Unknown top-level keys are
+    dropped with a one-line warning. A ``key`` field always raises
+    :class:`RepoProfileError` — credentials must never live in the repo file.
+    """
+    path: Path | None = find_repo_profile_path(cwd)
+    if not path:
+        return None
+
+    try:
+        raw: str = path.read_text()
+        data: Any = json.loads(raw)
+    except (OSError, json.JSONDecodeError) as exc:
+        _warn_once(
+            f"parse:{path}",
+            f"Could not parse {path}: {exc}. Falling back to global config.",
+        )
+        return None
+
+    if not isinstance(data, dict):
+        _warn_once(
+            f"shape:{path}",
+            f"{path} must contain a JSON object. Falling back to global config.",
+        )
+        return None
+
+    if "key" in data:
+        raise RepoProfileError(
+            f"{path} contains a 'key' field. Credentials must never be committed to "
+            "the repo. Remove the 'key' field; use a global profile, "
+            "DAILYBOT_API_KEY, or 'dailybot login' instead."
+        )
+
+    unknown: set[str] = set(data.keys()) - _VALID_REPO_PROFILE_KEYS
+    if unknown:
+        _warn_once(
+            f"unknown:{path}",
+            f"{path} has unknown key(s) {sorted(unknown)}; ignoring (forward-compat).",
+        )
+
+    cleaned: dict[str, Any] = {k: data[k] for k in _VALID_REPO_PROFILE_KEYS if k in data}
+    cleaned[_REPO_PROFILE_PATH_KEY] = str(path)
+    return cleaned
+
+
+def resolve_active_profile(
+    profile_flag: str | None = None,
+    name_flag: str | None = None,
+    cwd: Path | None = None,
+) -> dict[str, Any]:
+    """Resolve the active agent profile across CLI flags, repo file, and global.
+
+    Pure resolution — does not raise on missing global slugs (callers decide
+    how to react). Raises :class:`RepoProfileError` when the repo file carries
+    a ``key`` field.
+
+    Returns a dict with:
+      - ``agent_name``: resolved display name
+      - ``api_key``: API key from the global profile, or ``None``
+      - ``default_metadata``: merged repo-level default metadata (may be ``{}``)
+      - ``global_profile``: the matched entry from ``agents.json`` or ``None``
+      - ``profile_slug``: the slug actually used to look up the global entry
+      - ``profile_missing_from_flag``: ``True`` if ``--profile`` did not resolve
+      - ``profile_missing_from_repo``: ``True`` if repo's ``profile`` did not resolve
+      - ``repo_profile_path``: path to the repo file, or ``None``
+      - ``resolved_from``: provenance per field (``flag`` / ``repo`` / ``global`` / ``default``)
+    """
+    repo: dict[str, Any] = load_repo_profile(cwd) or {}
+    repo_name: str | None = repo.get("name")
+    repo_profile_slug: str | None = repo.get("profile")
+    repo_default_metadata: dict[str, Any] = repo.get("default_metadata") or {}
+    repo_path: str | None = repo.get(_REPO_PROFILE_PATH_KEY)
+
+    profile_slug: str | None
+    profile_source: str
+    if profile_flag:
+        profile_slug, profile_source = profile_flag, "flag"
+    elif repo_profile_slug:
+        profile_slug, profile_source = repo_profile_slug, "repo"
+    else:
+        profile_slug, profile_source = None, "default"
+
+    profile_data: dict[str, Any] | None = None
+    profile_missing_from_flag: bool = False
+    profile_missing_from_repo: bool = False
+    if profile_slug:
+        profile_data = get_profile(profile_slug)
+        if not profile_data:
+            if profile_source == "flag":
+                profile_missing_from_flag = True
+            else:
+                profile_missing_from_repo = True
+                if profile_slug not in _warned_repo_missing_slugs:
+                    _warned_repo_missing_slugs.add(profile_slug)
+                    from dailybot_cli.display import print_warning
+
+                    print_warning(
+                        f"Profile '{profile_slug}' from {repo_path} not found in "
+                        f"{AGENTS_FILE}. Using session credentials instead."
+                    )
+    else:
+        profile_data = get_default_profile()
+
+    name_source: str
+    agent_name: str
+    if name_flag:
+        agent_name, name_source = name_flag, "flag"
+    elif repo_name:
+        agent_name, name_source = repo_name, "repo"
+    elif profile_data and profile_data.get("agent_name"):
+        agent_name, name_source = profile_data["agent_name"], "global"
+    else:
+        agent_name, name_source = "CLI Agent", "default"
+
+    api_key: str | None = profile_data.get("api_key") if profile_data else None
+
+    return {
+        "agent_name": agent_name,
+        "api_key": api_key,
+        "default_metadata": repo_default_metadata,
+        "global_profile": profile_data,
+        "profile_slug": profile_slug,
+        "profile_missing_from_flag": profile_missing_from_flag,
+        "profile_missing_from_repo": profile_missing_from_repo,
+        "repo_profile_path": repo_path,
+        "resolved_from": {
+            "agent_name": name_source,
+            "profile": profile_source,
+            "default_metadata": "repo" if repo_default_metadata else "absent",
+        },
+    }

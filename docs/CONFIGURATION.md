@@ -10,6 +10,7 @@ The Dailybot CLI persists state in `~/.config/dailybot/`. There is no XDG-spec l
 | `config.json` | `dailybot config` | `{ api_key }` (and any future settings) | `0o600` |
 | `agents.json` | `dailybot agent configure` / `register` | `{ default, profiles: { <slug>: { agent_name, api_key?, agent_email? } } }` | `0o600` |
 | `org_cache.json` | `dailybot login --email` (step 1) | `{ email, organizations: [...] }` | (no chmod — non-secret) |
+| `<repo>/.dailybot/profile.json` | hand-authored, committed to git | `{ name?, profile?, default_metadata? }` | (no chmod — must be readable by team) |
 
 ### Schema notes
 
@@ -20,6 +21,16 @@ The Dailybot CLI persists state in `~/.config/dailybot/`. There is no XDG-spec l
 **`agents.json`** — `default` points to a profile slug under `profiles`. Slugs are derived from the agent name via `_slugify` (lowercase, alphanumeric + hyphens). When `save_agent_profile` is called and `default` is unset, the new profile becomes the default automatically.
 
 **`org_cache.json`** — written during step 1 of non-interactive multi-org login (`--email` only). Read during step 2 (`--code --org=<uuid>`) to resolve a UUID → integer ID **without** re-issuing `request_code`, which would invalidate the OTP. Cleared after a successful verification.
+
+**`<repo>/.dailybot/profile.json`** — repo-level agent profile, intended to be committed so every contributor signs reports under the same identity. Discovery walks up from `$PWD` to `/`; the first ancestor that contains the file wins. All keys are optional:
+
+| Key | Type | Purpose |
+|-----|------|---------|
+| `name` | string | Overrides the agent display name (`--name` equivalent) |
+| `profile` | string slug | Selects an entry in the global `agents.json` for credentials |
+| `default_metadata` | object | Shallow-merged into every report's `--metadata` (inline keys win per-key) |
+
+**Security rule:** a `key` field is rejected with a hard error — credentials must never be committed. The file is plain text and lives in the repo, so it must remain free of secrets. Unknown future keys log a one-line warning and are ignored (forward compatibility). Malformed JSON falls back to the global config with a warning.
 
 ## Environment Variables
 
@@ -48,21 +59,39 @@ Tries OTP login first (Bearer), then API key. Reports which one succeeded.
 
 ### For `dailybot agent` commands
 
-The full 5-step resolution (see `_resolve_agent_context` in `commands/agent.py`):
+The full resolution (see `_resolve_agent_context` in `commands/agent.py`):
 
-1. `--profile <name>` → that profile from `agents.json`
-2. Default profile from `agents.json`
-3. `DAILYBOT_API_KEY` env var
-4. `config.json::api_key` (set via `dailybot config key=...`)
-5. Login session Bearer token (`credentials.json::token`)
+**Profile slug** (which entry of `agents.json` to load credentials from):
 
-A profile that has no `api_key` but a login session is allowed — it just uses the Bearer token. A profile that has neither is an error.
+1. `--profile <name>` flag
+2. `.dailybot/profile.json::profile` (closest ancestor along `$PWD` → `/`)
+3. Default profile from `agents.json`
 
-The agent name resolves separately:
+**Credentials** (resolved against the selected profile, then via legacy fallback):
 
-1. Profile's `agent_name`
-2. `--name` flag
-3. Fallback: `"CLI Agent"`
+1. `<profile>::api_key` from `agents.json`
+2. `DAILYBOT_API_KEY` env var
+3. `config.json::api_key` (set via `dailybot config key=...`)
+4. Login session Bearer token (`credentials.json::token`)
+
+A profile that has no `api_key` but a login session is allowed — it just uses the Bearer token. A profile that has neither is an error. If `.dailybot/profile.json::profile` points at a slug that does not exist in `agents.json`, the CLI warns once and falls through to session credentials (this is **not** a hard error so the repo file can roll out safely before every developer has configured the matching local profile).
+
+**Agent display name** (per-field precedence — highest layer wins):
+
+1. `--name` flag
+2. `.dailybot/profile.json::name`
+3. Selected profile's `agent_name`
+4. Fallback: `"CLI Agent"`
+
+**`default_metadata`** is merged shallow per-key into every outgoing `--metadata`: inline `--metadata` keys win, missing keys fall through from the repo file. This is applied by `dailybot agent update` and `dailybot agent email send`.
+
+To inspect what the CLI will use in the current directory:
+
+```bash
+dailybot agent profiles --resolve
+```
+
+The output shows each resolved field plus which layer it came from.
 
 > **Do not change this order without bumping the minor version and writing a migration note.** It is observable behavior for users with multiple credentials configured.
 
