@@ -109,7 +109,7 @@ dailybot agent update --name "Claude Code" \
   --metadata '{"model":"claude-opus-4-7","repo":"cli"}'
 ```
 
-For DWP-style multi-task work, use `--milestone` + `--json-data`. See [`.claude/skills/dailybot-progress-report/SKILL.md`](../.claude/skills/dailybot-progress-report/SKILL.md) for the full philosophy.
+For DWP-style multi-task work, use `--milestone` + `--json-data`. See [`.agents/skills/dailybot-progress-report/SKILL.md`](../.agents/skills/dailybot-progress-report/SKILL.md) for the full philosophy.
 
 ## Repo Quick Facts
 
