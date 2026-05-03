@@ -447,7 +447,7 @@ Reusable **Skills** (slash commands) and **Agents** (specialized personas) live 
 - [`.agents/agents/`](.agents/agents/) — agent personas (e.g., `cli-developer`, `release-manager`, `docs-writer`, `test-engineer`)
 - [`.agents/docs/skills_agents_catalog.md`](.agents/docs/skills_agents_catalog.md) — full index
 
-> `.claude/` at the repo root is a git-tracked **symlink to `.agents/`**, kept so tools that still default to the legacy Claude-specific path keep working unchanged. Edit content under `.agents/` only — never under `.claude/`. Windows users without `core.symlinks = true` should reference `.agents/` directly.
+> `.claude/` at the repo root is a git-tracked **symlink to `.agents/`**, kept so tools that still default to the legacy Claude-specific path keep working unchanged. Edit content under `.agents/` only — never under `.claude/`. **This includes Claude-specific assets** (e.g. `settings.json`, `commands/`, hook scripts): put them in `.agents/` and the symlink will route Claude Code to them. Windows users without `core.symlinks = true` should reference `.agents/` directly.
 
 ### Slash Commands Across Agents
 

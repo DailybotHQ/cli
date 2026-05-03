@@ -1,4 +1,4 @@
-# `.claude/` — Skills, Agents, and Procedures for the Dailybot CLI
+# `.agents/` — Skills, Agents, and Procedures for the Dailybot CLI
 
 This directory hosts AI-agent-specific assets for working on the Dailybot CLI:
 
@@ -6,7 +6,9 @@ This directory hosts AI-agent-specific assets for working on the Dailybot CLI:
 - [`agents/`](agents/) — agent persona definitions (`cli-developer`, `release-manager`, etc.)
 - [`docs/skills_agents_catalog.md`](docs/skills_agents_catalog.md) — the index of everything below
 
-> Although the folder is named `.claude/`, the procedures here apply to **any AI agent** (Cursor, Codex, Gemini, Copilot). Claude Code reads `/<skill-name>` natively; other agents invoke the same procedure via `#<skill-name>` or by referring to the skill in plain English.
+> **`.agents/` is the canonical location** — it's the vendor-neutral standard adopted across coding agents (Cursor, Codex, Gemini, Copilot, Claude Code, …). The `.claude/` entry at the repo root is a symlink to this folder, kept for tools that still default to the legacy Claude-specific path. Edit content here, never inside `.claude/`.
+>
+> **This applies to Claude-specific assets too.** If you add Claude Code's own configuration (`settings.json`, `commands/`, hook scripts, etc.), put it under `.agents/` — the symlink makes Claude Code find it transparently. We keep one folder so the repo doesn't fragment as more agents adopt the same convention.
 
 ## How to Invoke
 
@@ -35,3 +37,9 @@ When invoked:
 2. Update [`docs/skills_agents_catalog.md`](docs/skills_agents_catalog.md) with a one-line entry.
 3. Cross-reference from `AGENTS.md` if the skill is mandatory or commonly used.
 4. Test it: invoke `/<name>` (or `#<name>`) in a session and walk through the procedure end to end.
+
+## About the `.claude` symlink
+
+`.claude/` at the repo root is a git-tracked symlink to `.agents/`. Both paths resolve to the same files on macOS/Linux, so existing Claude Code workflows that hard-code `.claude/skills/...` keep working without anyone changing their config.
+
+If you're on Windows without Developer Mode (or with `core.symlinks = false`), the symlink will appear as a plain text file containing the literal `agents`. In that case either turn on `git config --global core.symlinks true` and reclone, or just always reference `.agents/` directly.
