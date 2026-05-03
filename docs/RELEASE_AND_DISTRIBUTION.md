@@ -114,8 +114,8 @@ All version-bump behavior is configured in `pyproject.toml::[tool.semantic_relea
 - `version_toml = ["pyproject.toml:project.version"]` — single source of truth stays here
 - `tag_format = "v{version}"` — matches the existing `release.yml` trigger pattern
 - `commit_message = "chore(release): {version}\n\n[skip ci]"` — keeps the bump commit out of any future push-triggered jobs
-- `allow_zero_version = true` + `major_on_zero = false` — `feat:` on `0.x` stays in `0.x.y`; we don't auto-jump to `1.0.0` until we explicitly land a `BREAKING CHANGE`
-- `default_bump_level = 0` — if no `feat:` / `fix:` / `perf:` commits land in a PR, no release is cut (chore-only PRs are silent)
+- `allow_zero_version = true` + `major_on_zero = true` — once the CLI went production-grade, breaking changes on a 0.x version DO promote to 1.0.0 (uniform semver)
+- `default_bump_level = 2` — `chore:`/`docs:`/`refactor:` commits and unprefixed merges still cut a PATCH release (PSR 10 LevelBump: 0=NO_RELEASE, 1=PRERELEASE_REVISION, **2=PATCH**, 3=MINOR, 4=MAJOR). Setting this to `1` silently breaks releases — PSR will try to bump a non-prerelease tag with a prerelease level and fail with `Cannot increment a non-prerelease version with a prerelease level bump`
 
 ### Conventional commit cheat sheet
 

@@ -249,7 +249,7 @@ The implementation lives in `dailybot_cli/commands/agent.py::_resolve_agent_cont
   - `feat:` → MINOR (e.g. `1.0.1 → 1.1.0`)
   - `fix:` / `perf:` → PATCH (e.g. `1.0.1 → 1.0.2`)
   - `feat!:` or `BREAKING CHANGE:` in the body → MAJOR (e.g. `1.0.1 → 2.0.0`)
-  - any other prefix or no prefix at all → PATCH (because `default_bump_level = 1` in `pyproject.toml`)
+  - any other prefix or no prefix at all → PATCH (because `default_bump_level = 2` in `pyproject.toml` — PSR 10's LevelBump value for PATCH)
 
   PSR then updates `pyproject.toml::version` + `CHANGELOG.md`, commits as `DailyBot Automations`, tags `vX.Y.Z`, and pushes. The tag push triggers `release.yml`, which fans out to PyPI, the Linux binary, the GitHub Release, and the Homebrew tap.
 - Do **NOT** hand-edit `pyproject.toml::version` or `CHANGELOG.md` for normal work — let the automation own them. The two fallback flows (manual `git tag`, local `twine`) are documented for emergencies. See [docs/RELEASE_AND_DISTRIBUTION.md](docs/RELEASE_AND_DISTRIBUTION.md).
