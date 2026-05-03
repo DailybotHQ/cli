@@ -9,6 +9,9 @@ Do not edit it by hand — your edits will be overwritten on the next release.
 
 <!-- version list -->
 
+## v1.5.0 (2026-05-03)
+
+
 ## v1.4.1 (2026-05-03)
 
 ### Bug Fixes
