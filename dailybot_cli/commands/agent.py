@@ -7,6 +7,7 @@ import click
 
 from dailybot_cli.api_client import APIError, DailyBotClient
 from dailybot_cli.config import (
+    RepoProfileError,
     _slugify,
     get_agent_auth,
     get_default_profile,
@@ -14,6 +15,8 @@ from dailybot_cli.config import (
     get_token,
     list_profiles,
     load_agents,
+    load_repo_profile,
+    resolve_active_profile,
     save_agent_profile,
 )
 from dailybot_cli.display import (
@@ -27,7 +30,9 @@ from dailybot_cli.display import (
     print_info,
     print_pending_agent_messages,
     print_registration_result,
+    print_resolved_profile,
     print_success,
+    print_warning,
     print_webhook_result,
 )
 
@@ -47,50 +52,94 @@ _CHALLENGE_NUMBER_RE: re.Pattern[str] = re.compile(r"session is (\d+)\.")
 def _resolve_agent_context(
     profile_flag: str | None,
     name_flag: str | None,
-) -> tuple[str, DailyBotClient]:
+) -> tuple[str, DailyBotClient, dict[str, Any]]:
     """Resolve agent name and build a configured client.
 
-    Resolution order:
-      1. --profile explicitly passed → that profile from agents.json
-      2. No --profile → default profile from agents.json (if exists)
-      3. No profile → DAILYBOT_API_KEY env var
-      4. No env var → config.json api_key (legacy)
-      5. No api_key → Bearer token from credentials.json
-      6. Nothing → error
+    Resolution order (per-field, highest layer wins):
+      1. CLI flags (``--name``, ``--profile``)
+      2. Repo file ``.dailybot/profile.json`` (walk-up from cwd, closest wins)
+      3. Global default profile from ``agents.json``
+      4. Hardcoded fallback ``"CLI Agent"`` for the display name
 
-    agent_name: profile.agent_name > --name flag > "CLI Agent"
+    Returns ``(agent_name, client, default_metadata)`` — *default_metadata* is
+    the repo file's ``default_metadata`` dict (``{}`` when absent), which the
+    caller may shallow-merge into the outgoing report metadata.
     """
-    # Try profile
-    profile_data: dict[str, Any] | None = None
+    try:
+        repo: dict[str, Any] = load_repo_profile() or {}
+    except RepoProfileError as exc:
+        print_error(str(exc))
+        raise SystemExit(1)
+
+    repo_name: str | None = repo.get("name")
+    repo_profile_slug: str | None = repo.get("profile")
+    repo_default_metadata: dict[str, Any] = repo.get("default_metadata") or {}
+    repo_path: str | None = repo.get("_path")
+
+    selected_slug: str | None
+    selected_from_flag: bool = bool(profile_flag)
     if profile_flag:
-        profile_data = get_profile(profile_flag)
-        if not profile_data:
-            print_error(f"Profile '{profile_flag}' not found. Run: dailybot agent profiles")
-            raise SystemExit(1)
+        selected_slug = profile_flag
+    elif repo_profile_slug:
+        selected_slug = repo_profile_slug
     else:
+        selected_slug = None
+
+    profile_data: dict[str, Any] | None = None
+    if selected_slug:
+        profile_data = get_profile(selected_slug)
+        if not profile_data:
+            if selected_from_flag:
+                print_error(f"Profile '{selected_slug}' not found. Run: dailybot agent profiles")
+                raise SystemExit(1)
+            # Repo-declared slug missing in agents.json — warn once, fall back.
+            print_warning(
+                f"Profile '{selected_slug}' from {repo_path} not found in agents.json. "
+                "Using session credentials instead."
+            )
+    elif not profile_flag:
         profile_data = get_default_profile()
 
+    # Agent display name: --name > repo `name` > profile.agent_name > "CLI Agent"
+    if name_flag:
+        agent_name: str = name_flag
+    elif repo_name:
+        agent_name = repo_name
+    elif profile_data and profile_data.get("agent_name"):
+        agent_name = profile_data["agent_name"]
+    else:
+        agent_name = "CLI Agent"
+
     if profile_data:
-        agent_name: str = name_flag or profile_data.get("agent_name", "CLI Agent")
         api_key: str | None = profile_data.get("api_key")
         if api_key:
-            return agent_name, DailyBotClient(api_key=api_key)
+            return agent_name, DailyBotClient(api_key=api_key), repo_default_metadata
         # Profile without key — fall through to Bearer token
         if get_token():
-            return agent_name, DailyBotClient()
+            return agent_name, DailyBotClient(), repo_default_metadata
         print_error(
             f"Profile '{profile_data['profile']}' has no API key and no login session.\n"
             "  Run: dailybot login  or  dailybot agent configure --name ... --key ..."
         )
         raise SystemExit(1)
 
-    # No profile — legacy fallback
+    # No profile resolved — legacy fallback chain (env/config/login session).
     if not get_agent_auth():
         print_error(_NO_AUTH_MSG)
         raise SystemExit(1)
 
-    agent_name = name_flag or "CLI Agent"
-    return agent_name, DailyBotClient()
+    return agent_name, DailyBotClient(), repo_default_metadata
+
+
+def _merge_repo_metadata(
+    inline: dict[str, Any] | None,
+    default_metadata: dict[str, Any],
+) -> dict[str, Any] | None:
+    """Shallow-merge repo *default_metadata* under *inline* keys (inline wins)."""
+    if not default_metadata:
+        return inline
+    merged: dict[str, Any] = {**default_metadata, **(inline or {})}
+    return merged
 
 
 # --- Agent group ---
@@ -154,8 +203,31 @@ def agent_configure(
 
 
 @agent.command(name="profiles")
-def agent_profiles() -> None:
-    """List all configured agent profiles."""
+@click.option(
+    "--resolve",
+    "show_resolved",
+    is_flag=True,
+    default=False,
+    help="Show the resolved active profile (CLI > .dailybot/profile.json > global).",
+)
+@click.pass_context
+def agent_profiles(ctx: click.Context, show_resolved: bool) -> None:
+    """List all configured agent profiles.
+
+    \b
+      dailybot agent profiles
+      dailybot agent profiles --resolve
+    """
+    if show_resolved:
+        profile_flag: str | None = ctx.obj.get("profile") if ctx.obj else None
+        try:
+            resolved: dict[str, Any] = resolve_active_profile(profile_flag, None)
+        except RepoProfileError as exc:
+            print_error(str(exc))
+            raise SystemExit(1)
+        print_resolved_profile(resolved)
+        return
+
     profiles: list[dict[str, Any]] = list_profiles()
     # Add masked keys for display
     data: dict[str, Any] = load_agents()
@@ -204,7 +276,7 @@ def agent_update(
       dailybot agent update "Deployed" --profile ci-bot
     """
     profile_flag: str | None = profile or ctx.obj.get("profile")
-    agent_name, client = _resolve_agent_context(profile_flag, name)
+    agent_name, client, repo_default_metadata = _resolve_agent_context(profile_flag, name)
 
     import json as json_mod
 
@@ -223,6 +295,8 @@ def agent_update(
         except json_mod.JSONDecodeError:
             print_error("Invalid JSON in --metadata.")
             raise SystemExit(1)
+
+    metadata_dict = _merge_repo_metadata(metadata_dict, repo_default_metadata)
 
     # Flatten comma-separated co-authors
     co_author_list: list[str] = []
@@ -293,7 +367,7 @@ def agent_health(
         raise SystemExit(1)
 
     profile_flag: str | None = profile or ctx.obj.get("profile")
-    agent_name, client = _resolve_agent_context(profile_flag, name)
+    agent_name, client, _ = _resolve_agent_context(profile_flag, name)
 
     try:
         if query_status:
@@ -338,7 +412,7 @@ def webhook_register(
       dailybot agent webhook register --url https://... --secret my-token
     """
     profile_flag: str | None = profile or ctx.obj.get("profile")
-    agent_name, client = _resolve_agent_context(profile_flag, name)
+    agent_name, client, _ = _resolve_agent_context(profile_flag, name)
 
     try:
         with console.status("Registering webhook..."):
@@ -365,7 +439,7 @@ def webhook_unregister(ctx: click.Context, name: str | None, profile: str | None
       dailybot agent webhook unregister --name "Claude Code"
     """
     profile_flag: str | None = profile or ctx.obj.get("profile")
-    agent_name, client = _resolve_agent_context(profile_flag, name)
+    agent_name, client, _ = _resolve_agent_context(profile_flag, name)
 
     try:
         with console.status("Unregistering webhook..."):
@@ -413,7 +487,7 @@ def message_send(
       dailybot agent message send --to "Claude Code" --content "Do X" --type command
     """
     profile_flag: str | None = profile or ctx.obj.get("profile")
-    agent_name, client = _resolve_agent_context(profile_flag, name)
+    agent_name, client, _ = _resolve_agent_context(profile_flag, name)
 
     metadata: dict[str, Any] | None = None
     if json_data:
@@ -455,7 +529,7 @@ def message_list(ctx: click.Context, name: str | None, profile: str | None, pend
       dailybot agent message list --pending
     """
     profile_flag: str | None = profile or ctx.obj.get("profile")
-    agent_name, client = _resolve_agent_context(profile_flag, name)
+    agent_name, client, _ = _resolve_agent_context(profile_flag, name)
 
     delivered: bool | None = False if pending else None
     try:
@@ -482,7 +556,7 @@ def message_claim(ctx: click.Context, message_ids: tuple[str, ...], profile: str
       dailybot agent message claim abc-123 def-456
     """
     profile_flag: str | None = profile or ctx.obj.get("profile")
-    _agent_name, client = _resolve_agent_context(profile_flag, None)
+    _agent_name, client, _ = _resolve_agent_context(profile_flag, None)
 
     try:
         with console.status("Marking messages as read..."):
@@ -508,7 +582,7 @@ def message_claim_all(ctx: click.Context, name: str | None, profile: str | None)
       dailybot agent message claim-all --name "Claude Code"
     """
     profile_flag: str | None = profile or ctx.obj.get("profile")
-    agent_name, client = _resolve_agent_context(profile_flag, name)
+    agent_name, client, _ = _resolve_agent_context(profile_flag, name)
 
     try:
         with console.status("Marking all messages as delivered..."):
@@ -560,7 +634,7 @@ def email_send(
         --body-html "<h1>Done</h1>"
     """
     profile_flag: str | None = profile or ctx.obj.get("profile")
-    agent_name, client = _resolve_agent_context(profile_flag, name)
+    agent_name, client, repo_default_metadata = _resolve_agent_context(profile_flag, name)
 
     to_list: list[str] = list(recipients)
 
@@ -573,6 +647,8 @@ def email_send(
         except json.JSONDecodeError:
             print_error("Invalid JSON in --metadata.")
             raise SystemExit(1)
+
+    metadata_dict = _merge_repo_metadata(metadata_dict, repo_default_metadata)
 
     try:
         with console.status("Sending email..."):

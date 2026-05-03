@@ -231,10 +231,13 @@ class DailyBotClient: ...
 The agent commands resolve credentials in this strict order — changing it is a **breaking change** for users:
 
 1. `--profile` flag (explicit profile from `~/.config/dailybot/agents.json`)
-2. Default profile from `agents.json`
-3. `DAILYBOT_API_KEY` environment variable
-4. `dailybot config key=...` (stored in `~/.config/dailybot/config.json`)
-5. Login session (Bearer token from `~/.config/dailybot/credentials.json`)
+2. `<repo>/.dailybot/profile.json::profile` — the closest ancestor of `$PWD` containing this file pins a profile slug for everyone working in the repo
+3. Default profile from `agents.json`
+4. `DAILYBOT_API_KEY` environment variable
+5. `dailybot config key=...` (stored in `~/.config/dailybot/config.json`)
+6. Login session (Bearer token from `~/.config/dailybot/credentials.json`)
+
+The repo file may also pin the agent display name (`name`) and a `default_metadata` object that gets shallow-merged into every report. **Credentials never live in the repo file** — a `key` field in `.dailybot/profile.json` is a hard error. See [docs/CONFIGURATION.md](docs/CONFIGURATION.md) for the per-field precedence and the security rule.
 
 The implementation lives in `dailybot_cli/commands/agent.py::_resolve_agent_context` and `dailybot_cli/api_client.py::_agent_headers`. See [docs/CONFIGURATION.md](docs/CONFIGURATION.md).
 

@@ -275,6 +275,44 @@ def print_agent_profiles(profiles: list[dict[str, Any]]) -> None:
     console.print(table)
 
 
+def print_resolved_profile(resolved: dict[str, Any]) -> None:
+    """Display the resolved active agent profile with field provenance."""
+    table: Table = Table(title="Resolved Agent Profile", border_style="cyan")
+    table.add_column("Field", style="bold")
+    table.add_column("Value")
+    table.add_column("Source", style="dim")
+
+    sources: dict[str, str] = resolved.get("resolved_from", {})
+    table.add_row("Agent name", str(resolved.get("agent_name", "")), sources.get("agent_name", ""))
+
+    slug: str = resolved.get("profile_slug") or "(none)"
+    table.add_row("Profile slug", slug, sources.get("profile", ""))
+
+    api_key: str | None = resolved.get("api_key")
+    table.add_row("API key", "set" if api_key else "(none)", "global" if api_key else "")
+
+    repo_path: str | None = resolved.get("repo_profile_path")
+    table.add_row("Repo file", repo_path or "(not found)", "walk-up" if repo_path else "")
+
+    metadata: dict[str, Any] = resolved.get("default_metadata") or {}
+    if metadata:
+        table.add_row(
+            "Default metadata",
+            ", ".join(f"{k}={v}" for k, v in metadata.items()),
+            sources.get("default_metadata", ""),
+        )
+    else:
+        table.add_row("Default metadata", "(none)", "")
+
+    console.print(table)
+
+    if resolved.get("profile_missing_from_repo"):
+        print_warning(
+            f"Repo declared profile '{resolved.get('profile_slug')}' but it is not "
+            "in agents.json. Falling back to session credentials."
+        )
+
+
 def print_registration_result(data: dict[str, Any]) -> None:
     """Display agent registration result."""
     table: Table = Table(show_header=False, box=None, padding=(0, 2))
