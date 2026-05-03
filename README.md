@@ -97,6 +97,18 @@ Run `dailybot` with no arguments to enter **interactive mode** — if you're not
 
 Any software agent — AI coding assistants, CI jobs, deploy scripts, bots — can report activity through the CLI. This lets teams get visibility into what automated processes are doing, alongside human updates. Dailybot interconnects agents and humans with work analysis, progress reports, observability, and automations.
 
+### Quick start (interactive)
+
+If you only do one thing on a fresh install, run:
+
+```bash
+dailybot agent init
+```
+
+It's a 30-second wizard that walks you through both kinds of profile — your **personal** identity (saved to `~/.config/dailybot/agents.json`) and an optional **repo-shared** identity (`<repo>/.dailybot/profile.json`, committed to git so every contributor signs reports the same way) — and asks the bare minimum: a display name and how to authenticate.
+
+For non-interactive setup (CI, scripts, automation) every step the wizard does is also available as a flag — see the sections below.
+
 ### Authentication
 
 Authenticate with any of these methods (checked in this order):
@@ -170,6 +182,20 @@ Auth resolution order:
 ### Repo-level profile (`.dailybot/profile.json`)
 
 Commit a tiny config file at the root of your repo so every contributor — and every AI agent running in the repo — signs reports under the same identity, with no per-developer setup. The CLI walks up from `$PWD` looking for `.dailybot/profile.json`; the closest ancestor wins.
+
+The fastest way to create or update it is via the CLI:
+
+```bash
+# Create or merge the repo profile (anchors at the git root automatically)
+dailybot agent configure --repo --name "Core Hub Bot"
+
+# Add default metadata that gets stamped on every report from this repo
+dailybot agent configure --repo --metadata team=platform --metadata service=core-hub
+
+# Re-running is idempotent — fields are merged, metadata keys are added
+```
+
+Or hand-author the file if you prefer:
 
 ```json
 {
