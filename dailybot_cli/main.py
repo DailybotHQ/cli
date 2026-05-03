@@ -10,6 +10,7 @@ from dailybot_cli.commands.auth import login, logout
 from dailybot_cli.commands.config import config
 from dailybot_cli.commands.interactive import run_interactive
 from dailybot_cli.commands.status import status
+from dailybot_cli.commands.uninstall import uninstall
 from dailybot_cli.commands.update import update
 from dailybot_cli.commands.upgrade import upgrade
 from dailybot_cli.commands.version import version
@@ -66,6 +67,7 @@ cli.add_command(agent)
 cli.add_command(config)
 cli.add_command(version)
 cli.add_command(upgrade)
+cli.add_command(uninstall)
 
 
 if __name__ == "__main__":

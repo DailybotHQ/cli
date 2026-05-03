@@ -48,6 +48,7 @@ dailybot_cli/                # Source package
 ├── api_client.py            # DailyBotClient + APIError (httpx wrapper)
 ├── config.py                # Credentials, agent profiles, config files in ~/.config/dailybot/
 ├── display.py               # Rich console output helpers (panels, tables, status)
+├── install_method.py        # Install-method detection shared by upgrade + uninstall
 └── commands/
     ├── __init__.py
     ├── auth.py              # login / logout (email OTP, multi-org)
@@ -57,6 +58,7 @@ dailybot_cli/                # Source package
     ├── interactive.py       # questionary-based TUI when run with no args
     ├── version.py           # `dailybot version` — install info + PyPI update check
     ├── upgrade.py           # `dailybot upgrade` — auto-detect install method + self-update
+    ├── uninstall.py         # `dailybot uninstall` — auto-detect install method + remove
     └── agent.py             # `agent` group: configure, profiles, register,
                              #   update, health, webhook, message, email
 
