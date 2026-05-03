@@ -203,8 +203,15 @@ patch_tags = ["fix", "perf"]
 #   feat:                          → MINOR (1.0.1 → 1.1.0)
 #   fix: / perf:                   → PATCH (1.0.1 → 1.0.2)
 #   feat!: or BREAKING CHANGE:     → MAJOR (1.0.1 → 2.0.0)
-#   anything else (chore/docs/...) → PATCH (default_bump_level = 1)
-default_bump_level = 1
+#   anything else (chore/docs/...) → PATCH (default_bump_level = 2)
+#
+# `default_bump_level` is a python-semantic-release LevelBump enum value.
+# Under PSR 10.x:  0 = NO_RELEASE, 1 = PRERELEASE_REVISION, 2 = PATCH,
+# 3 = MINOR, 4 = MAJOR. Setting this to 1 (as it was previously, a v9-era
+# value where 1 meant PATCH) makes PSR try to cut a prerelease from a
+# non-prerelease tag and fail with "Cannot increment a non-prerelease
+# version with a prerelease level bump".
+default_bump_level = 2
 
 [tool.semantic_release.changelog]
 exclude_commit_patterns = [
