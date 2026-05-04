@@ -9,6 +9,14 @@ Do not edit it by hand — your edits will be overwritten on the next release.
 
 <!-- version list -->
 
+## v1.7.0 (2026-05-04)
+
+### Features
+
+- **agent**: Onboarding wizard, --repo flag, and first-run nudge
+  ([`228f22d`](https://github.com/DailybotHQ/cli/commit/228f22dcd55eb88c7f5ab11bc4df1df276474d58))
+
+
 ## v1.6.1 (2026-05-03)
 
 
