@@ -9,6 +9,14 @@ Do not edit it by hand — your edits will be overwritten on the next release.
 
 <!-- version list -->
 
+## v1.7.1 (2026-05-04)
+
+### Bug Fixes
+
+- **upgrade**: Pin version + verify post-install to prevent silent no-ops
+  ([`5a26bbf`](https://github.com/DailybotHQ/cli/commit/5a26bbf8c0e68542750c6af4db8f192c202a51b0))
+
+
 ## v1.7.0 (2026-05-04)
 
 ### Features
