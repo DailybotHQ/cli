@@ -146,6 +146,10 @@ class TestUpgradeCommand:
                 "dailybot_cli.commands.upgrade.shutil.which",
                 return_value="/usr/local/bin/pipx",
             ),
+            patch(
+                "dailybot_cli.commands.upgrade._query_installed_version",
+                return_value="999.0.0",
+            ),
             patch("dailybot_cli.commands.upgrade.subprocess.run") as mock_run,
         ):
             mock_run.return_value = MagicMock(returncode=0)
@@ -170,6 +174,10 @@ class TestUpgradeCommand:
                 "dailybot_cli.commands.upgrade.shutil.which",
                 return_value="/usr/local/bin/uv",
             ),
+            patch(
+                "dailybot_cli.commands.upgrade._query_installed_version",
+                return_value="999.0.0",
+            ),
             patch("dailybot_cli.commands.upgrade.subprocess.run") as mock_run,
         ):
             mock_run.return_value = MagicMock(returncode=0)
@@ -178,8 +186,9 @@ class TestUpgradeCommand:
             argv = mock_run.call_args[0][0]
             assert argv == ["uv", "tool", "upgrade", "dailybot-cli"]
 
-    def test_upgrade_pip_runs_python_pip(self, runner: CliRunner) -> None:
-        """A generic pip install runs `<sys.executable> -m pip install --upgrade ...`."""
+    def test_upgrade_pip_pins_version_from_pypi(self, runner: CliRunner) -> None:
+        """A pip install pins the exact version (==X.Y.Z) so pip can't no-op
+        when its index cache is stale or system-site is read-only."""
         with (
             patch(
                 "dailybot_cli.commands.upgrade._fetch_latest_pypi_version",
@@ -188,6 +197,36 @@ class TestUpgradeCommand:
             patch(
                 "dailybot_cli.commands.upgrade._detect_install_method",
                 return_value="pip",
+            ),
+            patch(
+                "dailybot_cli.commands.upgrade._query_installed_version",
+                return_value="999.0.0",
+            ),
+            patch("dailybot_cli.commands.upgrade.subprocess.run") as mock_run,
+        ):
+            mock_run.return_value = MagicMock(returncode=0)
+            result = runner.invoke(cli, ["upgrade"])
+            assert result.exit_code == 0
+            argv = mock_run.call_args[0][0]
+            assert argv[1:] == ["-m", "pip", "install", "--upgrade", "dailybot-cli==999.0.0"]
+
+    def test_upgrade_pip_falls_back_to_unpinned_when_pypi_unreachable(
+        self, runner: CliRunner
+    ) -> None:
+        """If the JSON API didn't return a version, we still try `pip install --upgrade`
+        without a pin — at least gives the user a chance instead of bailing."""
+        with (
+            patch(
+                "dailybot_cli.commands.upgrade._fetch_latest_pypi_version",
+                return_value=None,
+            ),
+            patch(
+                "dailybot_cli.commands.upgrade._detect_install_method",
+                return_value="pip",
+            ),
+            patch(
+                "dailybot_cli.commands.upgrade._query_installed_version",
+                return_value="999.0.0",
             ),
             patch("dailybot_cli.commands.upgrade.subprocess.run") as mock_run,
         ):
@@ -309,6 +348,10 @@ class TestUpgradeCommand:
                 "dailybot_cli.commands.upgrade._detect_install_method",
                 return_value="pip",
             ),
+            patch(
+                "dailybot_cli.commands.upgrade._query_installed_version",
+                return_value=__version__,
+            ),
             patch("dailybot_cli.commands.upgrade.subprocess.run") as mock_run,
         ):
             mock_run.return_value = MagicMock(returncode=0)
@@ -338,6 +381,66 @@ class TestUpgradeCommand:
             result = runner.invoke(cli, ["upgrade"])
             assert result.exit_code == 42
             assert "failed with exit code 42" in result.output
+
+    def test_upgrade_warns_when_pip_silently_noops(self, runner: CliRunner) -> None:
+        """Reproduces the real-world failure: pip exits 0 but the on-disk
+        version didn't change. This happened after the v1.7.0 release with
+        a stale pip index cache + read-only system site-packages.
+
+        The fix is twofold: pin ``==<latest>`` so pip can't claim "already
+        satisfied" (covered by other tests) AND verify the post-install
+        version (covered here)."""
+        from dailybot_cli import __version__
+
+        with (
+            patch(
+                "dailybot_cli.commands.upgrade._fetch_latest_pypi_version",
+                return_value="999.0.0",
+            ),
+            patch(
+                "dailybot_cli.commands.upgrade._detect_install_method",
+                return_value="pip",
+            ),
+            patch(
+                "dailybot_cli.commands.upgrade._query_installed_version",
+                return_value=__version__,  # pip exited 0 but didn't actually upgrade
+            ),
+            patch("dailybot_cli.commands.upgrade.subprocess.run") as mock_run,
+        ):
+            mock_run.return_value = MagicMock(returncode=0)
+            result = runner.invoke(cli, ["upgrade"])
+            assert result.exit_code == 0
+            # Should NOT claim success
+            assert "Upgrade complete" not in result.output
+            # Should warn the user clearly and point at the install.sh fallback.
+            # Rich wraps long warnings at terminal width, so collapse whitespace
+            # before searching for the phrase.
+            collapsed: str = " ".join(result.output.split())
+            assert "exited successfully but the installed version is still" in collapsed
+            assert "install.sh" in collapsed
+
+    def test_upgrade_succeeds_when_version_actually_changed(self, runner: CliRunner) -> None:
+        """Sanity: when the post-install version differs from current, we
+        report success."""
+        with (
+            patch(
+                "dailybot_cli.commands.upgrade._fetch_latest_pypi_version",
+                return_value="999.0.0",
+            ),
+            patch(
+                "dailybot_cli.commands.upgrade._detect_install_method",
+                return_value="pip",
+            ),
+            patch(
+                "dailybot_cli.commands.upgrade._query_installed_version",
+                return_value="999.0.0",
+            ),
+            patch("dailybot_cli.commands.upgrade.subprocess.run") as mock_run,
+        ):
+            mock_run.return_value = MagicMock(returncode=0)
+            result = runner.invoke(cli, ["upgrade"])
+            assert result.exit_code == 0
+            assert "Upgrade complete" in result.output
 
     @patch("dailybot_cli.main.set_api_url_override")
     @patch("dailybot_cli.commands.update.get_token")
