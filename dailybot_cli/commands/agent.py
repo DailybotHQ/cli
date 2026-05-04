@@ -1,6 +1,7 @@
 """Agent commands for Dailybot CLI (API key or login session)."""
 
 import re
+from pathlib import Path
 from typing import Any
 
 import click
@@ -9,6 +10,7 @@ from dailybot_cli.api_client import APIError, DailyBotClient
 from dailybot_cli.config import (
     RepoProfileError,
     _slugify,
+    find_repo_root,
     get_agent_auth,
     get_default_profile,
     get_profile,
@@ -18,6 +20,7 @@ from dailybot_cli.config import (
     load_repo_profile,
     resolve_active_profile,
     save_agent_profile,
+    write_repo_profile,
 )
 from dailybot_cli.display import (
     console,
@@ -43,6 +46,34 @@ _NO_AUTH_MSG: str = (
     "  - dailybot config key=<KEY>\n"
     "  - dailybot login"
 )
+
+# Sentinel for the first-run nudge (`agent update` with no profile configured).
+# Module-level on purpose: persists across calls within a single CLI process,
+# resets between processes — exactly what we want for a tip that should appear
+# at most once per terminal invocation (and never in CI loops that batch many
+# `agent update` calls in the same Python interpreter).
+_FALLBACK_NAME: str = "CLI Agent"
+_NUDGE_SHOWN: bool = False
+
+
+def _maybe_show_init_nudge(agent_name: str) -> None:
+    """Hint the user about `dailybot agent init` when their report is signed
+    with the hardcoded fallback name. Shown at most once per process."""
+    global _NUDGE_SHOWN
+    if _NUDGE_SHOWN or agent_name != _FALLBACK_NAME:
+        return
+    _NUDGE_SHOWN = True
+    print_info(
+        f"Tip: this report was signed as '{_FALLBACK_NAME}'. Run `dailybot agent init` "
+        "so future reports use your real name."
+    )
+
+
+def _reset_init_nudge() -> None:
+    """Test-only hook to reset the per-process nudge flag."""
+    global _NUDGE_SHOWN
+    _NUDGE_SHOWN = False
+
 
 # Challenge constants (from backend registration_challenge_service.py)
 _CHALLENGE_WORD_COUNT: int = 52
@@ -159,23 +190,83 @@ def agent(ctx: click.Context, profile: str | None) -> None:
 # --- configure & profiles ---
 
 
+def _parse_metadata_pairs(pairs: tuple[str, ...]) -> dict[str, str]:
+    """Parse repeatable ``--metadata key=value`` flags into a dict."""
+    result: dict[str, str] = {}
+    for pair in pairs:
+        if "=" not in pair:
+            print_error(
+                f"Invalid --metadata value '{pair}'. Expected key=value (e.g. team=platform)."
+            )
+            raise SystemExit(1)
+        key, _, value = pair.partition("=")
+        key = key.strip()
+        value = value.strip()
+        if not key:
+            print_error(f"Invalid --metadata value '{pair}'. Key must be non-empty.")
+            raise SystemExit(1)
+        result[key] = value
+    return result
+
+
 @agent.command(name="configure")
-@click.option("--name", "-n", required=True, help="Agent display name.")
+@click.option("--name", "-n", default=None, help="Agent display name.")
 @click.option("--key", "-k", default=None, help="API key (optional — omit if using OTP login).")
 @click.option(
     "--profile", "profile_name", default=None, help="Profile name (defaults to slugified --name)."
 )
+@click.option(
+    "--repo",
+    "repo_mode",
+    is_flag=True,
+    default=False,
+    help="Write to the repo's .dailybot/profile.json instead of the global agents.json.",
+)
+@click.option(
+    "--metadata",
+    "-d",
+    "metadata_pairs",
+    multiple=True,
+    help="Default metadata as key=value (repeatable). Only valid with --repo.",
+)
 @click.pass_context
 def agent_configure(
-    ctx: click.Context, name: str, key: str | None, profile_name: str | None
+    ctx: click.Context,
+    name: str | None,
+    key: str | None,
+    profile_name: str | None,
+    repo_mode: bool,
+    metadata_pairs: tuple[str, ...],
 ) -> None:
-    """Configure a named agent profile.
+    """Configure a named agent profile (global or repo-level).
 
     \b
+    Global (saved to ~/.config/dailybot/agents.json):
       dailybot agent configure --name "Claude Code"
       dailybot agent configure --name "CI Bot" --key abc123
       dailybot agent configure --name "Claude Code" --profile claude
+
+    \b
+    Repo-level (writes/merges <repo>/.dailybot/profile.json — committed to git
+    so every contributor signs reports under the same identity):
+      dailybot agent configure --repo --name "Core Hub Bot"
+      dailybot agent configure --repo --name "Core Hub Bot" \\
+        --metadata team=platform --metadata service=core-hub
+      dailybot agent configure --repo --profile core-hub-bot
     """
+    if repo_mode:
+        _agent_configure_repo(
+            name=name, profile_name=profile_name, key=key, metadata_pairs=metadata_pairs
+        )
+        return
+
+    if metadata_pairs:
+        print_error("--metadata is only valid with --repo.")
+        raise SystemExit(1)
+    if not name:
+        print_error("--name is required (use --repo for repo-level config).")
+        raise SystemExit(1)
+
     slug: str = profile_name or _slugify(name)
 
     if key:
@@ -200,6 +291,223 @@ def agent_configure(
 
     save_agent_profile(slug, agent_name=name, api_key=key)
     print_success(f"Agent profile '{slug}' configured. This is now your default agent.")
+
+
+def _agent_configure_repo(
+    *,
+    name: str | None,
+    profile_name: str | None,
+    key: str | None,
+    metadata_pairs: tuple[str, ...],
+) -> None:
+    """Implement `dailybot agent configure --repo`. Writes .dailybot/profile.json."""
+    if key:
+        print_error(
+            "--key cannot be combined with --repo. Repo-level profiles never carry "
+            "credentials (they are committed to git). Configure credentials globally "
+            "with `dailybot agent configure --name ... --key ...` instead."
+        )
+        raise SystemExit(1)
+
+    payload: dict[str, Any] = {}
+    if name:
+        payload["name"] = name
+    if profile_name:
+        payload["profile"] = profile_name
+    if metadata_pairs:
+        payload["default_metadata"] = _parse_metadata_pairs(metadata_pairs)
+
+    if not payload:
+        print_error("Nothing to write. Pass at least one of --name, --profile, or --metadata.")
+        raise SystemExit(1)
+
+    try:
+        path: Path = write_repo_profile(payload)
+    except RepoProfileError as exc:
+        print_error(str(exc))
+        raise SystemExit(1)
+    except ValueError as exc:
+        print_error(str(exc))
+        raise SystemExit(1)
+
+    print_success(f"Wrote {path}")
+    print_info(
+        "Commit this file so every contributor running `dailybot agent ...` from "
+        "the repo signs with the same identity."
+    )
+
+
+# --- agent init ---
+
+
+_INIT_CHOICE_PERSONAL: str = (
+    "Personal profile (this machine only — saves to ~/.config/dailybot/agents.json)"
+)
+_INIT_CHOICE_REPO: str = (
+    "Repo profile (writes .dailybot/profile.json — committed to git, shared by every contributor)"
+)
+_INIT_CHOICE_BOTH: str = "Both"
+_INIT_CHOICES: list[str] = [_INIT_CHOICE_PERSONAL, _INIT_CHOICE_REPO, _INIT_CHOICE_BOTH]
+
+_AUTH_CHOICE_LOGIN: str = "Use my login session (recommended for humans)"
+_AUTH_CHOICE_KEY: str = "Paste an API key (recommended for CI / dedicated agents)"
+_AUTH_CHOICES: list[str] = [_AUTH_CHOICE_LOGIN, _AUTH_CHOICE_KEY]
+
+
+@agent.command(name="init")
+def agent_init() -> None:
+    """Interactive wizard — set up your agent profile in under a minute.
+
+    \b
+    Walks you through both kinds of profile:
+      - Personal (this machine):      ~/.config/dailybot/agents.json
+      - Repo-shared (committed):      <repo>/.dailybot/profile.json
+
+    \b
+    For non-interactive setup (CI / scripts), use the underlying commands
+    directly:
+      dailybot agent configure --name "..."           # personal
+      dailybot agent configure --repo --name "..."    # repo-level
+    """
+    import questionary
+
+    console.print()
+    console.print("[bold cyan]Dailybot agent setup[/bold cyan]")
+    console.print("[dim]This wizard configures who your reports get signed as.[/dim]")
+    console.print()
+
+    choice: str | None = questionary.select(
+        "What do you want to set up?",
+        choices=_INIT_CHOICES,
+    ).ask()
+    if choice is None:
+        print_info("Aborted.")
+        return
+
+    setup_personal: bool = choice in (_INIT_CHOICE_PERSONAL, _INIT_CHOICE_BOTH)
+    setup_repo: bool = choice in (_INIT_CHOICE_REPO, _INIT_CHOICE_BOTH)
+
+    if setup_personal:
+        _init_personal(questionary)
+    if setup_repo:
+        _init_repo(questionary, defer_login_check=setup_personal)
+
+    console.print()
+    print_info("Verify the result with: dailybot agent profiles --resolve")
+
+
+def _init_personal(questionary: Any) -> None:
+    """Wizard step: configure a global profile in ~/.config/dailybot/agents.json."""
+    name: str | None = questionary.text(
+        "Your agent display name (e.g. 'Sergio Florez', 'Claude Code', 'CI Bot'):",
+        validate=lambda v: bool(v.strip()) or "Name is required.",
+    ).ask()
+    if not name:
+        print_info("Aborted.")
+        return
+    name = name.strip()
+
+    auth_choice: str | None = questionary.select(
+        "How will this profile authenticate?",
+        choices=_AUTH_CHOICES,
+    ).ask()
+    if auth_choice is None:
+        print_info("Aborted.")
+        return
+
+    api_key: str | None = None
+    if auth_choice == _AUTH_CHOICE_KEY:
+        api_key = questionary.password(
+            "Paste your API key:",
+            validate=lambda v: bool(v.strip()) or "API key is required.",
+        ).ask()
+        if not api_key:
+            print_info("Aborted.")
+            return
+        api_key = api_key.strip()
+    elif not get_token():
+        print_warning(
+            "No login session found. Run `dailybot login` first, or rerun this "
+            "wizard and choose 'Paste an API key'."
+        )
+        return
+
+    if api_key:
+        # Validate before saving.
+        client: DailyBotClient = DailyBotClient(api_key=api_key)
+        try:
+            with console.status("Validating API key..."):
+                client.get_agent_health(agent_name=name)
+        except APIError as exc:
+            if exc.status_code in (401, 403):
+                print_error("API key is invalid or unauthorized. Nothing was saved.")
+                raise SystemExit(1)
+            # Non-auth error → key is valid; the failure is unrelated.
+
+    slug: str = _slugify(name)
+    save_agent_profile(slug, agent_name=name, api_key=api_key)
+    print_success(f"Saved global profile '{slug}' (set as default).")
+
+
+def _init_repo(questionary: Any, *, defer_login_check: bool) -> None:
+    """Wizard step: write/merge .dailybot/profile.json."""
+    repo_root: Path = find_repo_root()
+    console.print()
+    console.print(f"[dim]Writing under: {repo_root / '.dailybot'}/[/dim]")
+
+    name: str | None = questionary.text(
+        "Display name for this repo (leave empty to inherit the personal profile):",
+    ).ask()
+    if name is None:  # Ctrl-C
+        print_info("Aborted.")
+        return
+    name = name.strip()
+
+    metadata_raw: str | None = questionary.text(
+        "Default metadata as 'key=value, key=value' (optional, press Enter to skip):",
+    ).ask()
+    if metadata_raw is None:
+        print_info("Aborted.")
+        return
+
+    metadata: dict[str, str] = {}
+    if metadata_raw.strip():
+        try:
+            pairs: tuple[str, ...] = tuple(p.strip() for p in metadata_raw.split(",") if p.strip())
+            metadata = _parse_metadata_pairs(pairs)
+        except SystemExit:
+            # _parse_metadata_pairs already printed; surface and bail cleanly.
+            return
+
+    payload: dict[str, Any] = {}
+    if name:
+        payload["name"] = name
+    if metadata:
+        payload["default_metadata"] = metadata
+
+    if not payload:
+        print_warning(
+            "Nothing to write — both 'name' and 'default_metadata' were empty. Skipping repo profile."
+        )
+        return
+
+    try:
+        path: Path = write_repo_profile(payload, cwd=repo_root)
+    except (RepoProfileError, ValueError) as exc:
+        print_error(str(exc))
+        return
+
+    print_success(f"Wrote {path}")
+    print_info("Commit this file so every contributor signs reports the same way.")
+
+    # Soft-warn if the user picked "Repo only" without any auth — the file alone
+    # does not authenticate; the user still needs login or an API key.
+    if not defer_login_check and not get_agent_auth():
+        print_warning(
+            "You don't have any credentials configured yet. The repo file pins "
+            "*how* reports are signed, but you still need to authenticate with "
+            "`dailybot login` (or set DAILYBOT_API_KEY) before sending one."
+        )
 
 
 @agent.command(name="profiles")
@@ -327,6 +635,7 @@ def agent_update(
         pending: list[dict[str, Any]] = result.get("pending_messages", [])
         if pending:
             print_pending_agent_messages(pending)
+        _maybe_show_init_nudge(agent_name)
     except APIError as e:
         print_error(e.detail)
         raise SystemExit(1)

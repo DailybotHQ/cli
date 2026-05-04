@@ -440,3 +440,81 @@ def resolve_active_profile(
             "default_metadata": "repo" if repo_default_metadata else "absent",
         },
     }
+
+
+def find_repo_root(start: Path | None = None) -> Path:
+    """Return the git repo root containing *start*, or *start* itself.
+
+    Used to anchor a freshly-written ``.dailybot/profile.json`` at the
+    "natural" repo root rather than wherever the user happened to ``cd``.
+    Falls back silently to the starting directory when there is no
+    ``.git`` ancestor — the caller still gets a writable directory.
+    """
+    base: Path = (start or Path.cwd()).resolve()
+    for ancestor in [base, *base.parents]:
+        if (ancestor / ".git").exists():
+            return ancestor
+    return base
+
+
+def write_repo_profile(
+    payload: dict[str, Any],
+    *,
+    cwd: Path | None = None,
+) -> Path:
+    """Write or merge ``.dailybot/profile.json`` and return the file path.
+
+    Merge semantics — keeps the file friendly to repeated runs from CI:
+      - Top-level scalar keys (``name``, ``profile``) overwrite.
+      - ``default_metadata`` is shallow-merged: incoming keys win, missing
+        keys carry over from the existing file.
+      - Keys outside the v1 schema in *payload* raise :class:`ValueError`
+        (forward-compat warnings only apply to *reading*, not writing).
+      - A ``key`` field always raises — credentials must never be
+        committed; this mirrors the read-side guard in
+        :func:`load_repo_profile`.
+
+    The target directory is the git repo root containing *cwd*, or *cwd*
+    itself if there is no ``.git`` ancestor.
+    """
+    if "key" in payload:
+        raise RepoProfileError(
+            "Refusing to write a 'key' field to .dailybot/profile.json — "
+            "credentials must never be committed. Configure credentials with "
+            "`dailybot login` or `dailybot agent configure --name ... --key ...` "
+            "(global, written to ~/.config/dailybot/agents.json) instead."
+        )
+    unknown: set[str] = set(payload.keys()) - _VALID_REPO_PROFILE_KEYS
+    if unknown:
+        raise ValueError(
+            f"Unknown repo-profile key(s): {sorted(unknown)}. "
+            f"Allowed: {sorted(_VALID_REPO_PROFILE_KEYS)}."
+        )
+
+    repo_root: Path = find_repo_root(cwd)
+    profile_dir: Path = repo_root / REPO_PROFILE_DIRNAME
+    profile_dir.mkdir(parents=True, exist_ok=True)
+    profile_path: Path = profile_dir / REPO_PROFILE_FILENAME
+
+    existing: dict[str, Any] = {}
+    if profile_path.is_file():
+        try:
+            raw: Any = json.loads(profile_path.read_text())
+            if isinstance(raw, dict):
+                existing = {k: raw[k] for k in _VALID_REPO_PROFILE_KEYS if k in raw}
+        except (OSError, json.JSONDecodeError):
+            # Corrupt or unreadable existing file → start fresh rather than
+            # propagating an error the user can't act on.
+            existing = {}
+
+    merged: dict[str, Any] = dict(existing)
+    for k, v in payload.items():
+        if k == "default_metadata" and isinstance(v, dict):
+            base_meta: dict[str, Any] = dict(existing.get("default_metadata") or {})
+            base_meta.update(v)
+            merged["default_metadata"] = base_meta
+        else:
+            merged[k] = v
+
+    profile_path.write_text(json.dumps(merged, indent=2) + "\n")
+    return profile_path
