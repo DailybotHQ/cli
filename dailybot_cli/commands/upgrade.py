@@ -38,11 +38,21 @@ from dailybot_cli.install_method import (
 )
 
 
-def _build_upgrade_argv(method: str) -> list[str] | None:
+def _build_upgrade_argv(method: str, latest: str | None = None) -> list[str] | None:
     """Return argv for `subprocess.run` to perform the upgrade, or None.
 
-    `None` means "we don't auto-run for this method — print the command
-    instead". `homebrew`, `binary`, `editable`, and `unknown` fall in
+    *latest* is the version string we resolved against PyPI's JSON API. When
+    known and the method is ``pip``, we pin ``dailybot-cli==<latest>`` so pip
+    can't silently no-op. This guards against a real-world failure mode
+    observed after a fresh release: the JSON API returned ``1.7.0`` but pip's
+    package index cache (or the user-fallback resolver) still saw ``1.6.1`` as
+    the latest available, so ``pip install --upgrade dailybot-cli`` exited 0
+    with "Requirement already satisfied" and we falsely reported success.
+    Pinning the exact version forces pip to fetch from PyPI regardless of any
+    cached resolution.
+
+    ``None`` means "we don't auto-run for this method — print the command
+    instead". ``homebrew``, ``binary``, ``editable``, and ``unknown`` fall in
     that category for safety reasons documented above.
     """
     if method == "pipx":
@@ -60,9 +70,40 @@ def _build_upgrade_argv(method: str) -> list[str] | None:
 
     if method == "pip":
         # Use the same Python that's running the CLI. Reliable across venvs.
-        return [sys.executable, "-m", "pip", "install", "--upgrade", _PACKAGE]
+        target: str = f"{_PACKAGE}=={latest}" if latest else _PACKAGE
+        return [sys.executable, "-m", "pip", "install", "--upgrade", target]
 
     return None  # homebrew, binary, editable, unknown
+
+
+def _query_installed_version() -> str | None:
+    """Return the currently installed ``dailybot-cli`` version as a string.
+
+    Spawns a fresh Python subprocess so the answer reflects the on-disk state
+    *after* pip finished, not whatever the running interpreter cached at
+    startup. Returns ``None`` when the package can't be located (e.g. it was
+    actually uninstalled, or the subprocess failed for an unrelated reason).
+    """
+    try:
+        result: subprocess.CompletedProcess[str] = subprocess.run(
+            [
+                sys.executable,
+                "-c",
+                "from importlib.metadata import version, PackageNotFoundError\n"
+                "try:\n"
+                "    print(version('dailybot-cli'))\n"
+                "except PackageNotFoundError:\n"
+                "    pass",
+            ],
+            capture_output=True,
+            text=True,
+            check=False,
+            timeout=10,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return None
+    out: str = result.stdout.strip()
+    return out or None
 
 
 def _manual_command_hint(method: str) -> str:
@@ -142,7 +183,7 @@ def upgrade(dry_run: bool, force: bool) -> None:
         click.echo(f"\n  {_manual_command_hint(method)}\n")
         return
 
-    argv: list[str] | None = _build_upgrade_argv(method)
+    argv: list[str] | None = _build_upgrade_argv(method, latest=latest)
 
     if argv is None:
         # Methods we don't auto-run: homebrew, binary, uv-tool-not-found, unknown.
@@ -176,4 +217,19 @@ def upgrade(dry_run: bool, force: bool) -> None:
         raise SystemExit(1)
 
     click.echo()
+
+    # Post-upgrade verification — pip can exit 0 without doing anything (e.g.
+    # stale index cache + user-fallback edge case). The subprocess returncode
+    # is not enough; check the actual on-disk version.
+    installed_after: str | None = _query_installed_version()
+    if installed_after and installed_after == __version__ and latest and latest != __version__:
+        print_warning(
+            f"The package manager exited successfully but the installed "
+            f"version is still {installed_after}. This sometimes happens "
+            f"with pip after a fresh release (cached index) or when system "
+            f"site-packages is read-only. Try the install script as a "
+            f"reliable fallback:\n  {_manual_command_hint('binary')}"
+        )
+        return
+
     print_success("Upgrade complete. Run 'dailybot --version' to confirm.")
