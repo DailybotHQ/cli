@@ -7,8 +7,11 @@ import click
 from dailybot_cli import __version__
 from dailybot_cli.commands.agent import agent
 from dailybot_cli.commands.auth import login, logout
+from dailybot_cli.commands.checkin import checkin
 from dailybot_cli.commands.config import config
+from dailybot_cli.commands.form import form
 from dailybot_cli.commands.interactive import run_interactive
+from dailybot_cli.commands.kudos import kudos
 from dailybot_cli.commands.status import status
 from dailybot_cli.commands.uninstall import uninstall
 from dailybot_cli.commands.update import update
@@ -63,6 +66,9 @@ cli.add_command(login)
 cli.add_command(logout)
 cli.add_command(update)
 cli.add_command(status)
+cli.add_command(checkin)
+cli.add_command(form)
+cli.add_command(kudos)
 cli.add_command(agent)
 cli.add_command(config)
 cli.add_command(version)
