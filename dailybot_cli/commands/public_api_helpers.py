@@ -2,13 +2,15 @@
 
 import json
 import re
+from collections.abc import Callable
 from typing import Any, NoReturn
 
 import click
+import questionary
 
 from dailybot_cli.api_client import APIError, DailyBotClient
 from dailybot_cli.config import get_token
-from dailybot_cli.display import error_console, print_error
+from dailybot_cli.display import error_console, print_error, print_info
 
 USER_SCOPED_MODEL_HELP: str = (
     "Acts as you. You can only see and act on what you could in the webapp."
@@ -176,3 +178,30 @@ def get_current_user_uuid(client: DailyBotClient) -> str | None:
         if uuid_value:
             return str(uuid_value)
     return None
+
+
+def pick_from_list(
+    items: list[Any],
+    prompt: str,
+    label_fn: Callable[[Any], str],
+) -> Any | None:
+    """Pick an item with questionary, falling back to a numbered list."""
+    if not items:
+        return None
+
+    choices: list[questionary.Choice] = [
+        questionary.Choice(title=label_fn(item), value=item) for item in items
+    ]
+    selected: Any | None = questionary.select(prompt, choices=choices).ask()
+    if selected is not None:
+        return selected
+
+    print_info("Select by number:")
+    for index, item in enumerate(items, start=1):
+        click.echo(f"  {index}. {label_fn(item)}")
+
+    while True:
+        choice: int = click.prompt("Number", type=int)
+        if 1 <= choice <= len(items):
+            return items[choice - 1]
+        print_error(f"Enter a number between 1 and {len(items)}.")
