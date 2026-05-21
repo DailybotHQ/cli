@@ -10,7 +10,7 @@ import questionary
 from dailybot_cli import __version__
 from dailybot_cli.api_client import APIError, DailyBotClient
 from dailybot_cli.commands.auth import _do_login
-from dailybot_cli.config import get_token, load_credentials
+from dailybot_cli.config import get_api_url, get_token, load_credentials
 from dailybot_cli.display import (
     console,
     print_error,
@@ -18,6 +18,7 @@ from dailybot_cli.display import (
     print_pending_checkins,
     print_success,
     print_update_result,
+    print_warning,
 )
 
 MENU_SEND_UPDATE: str = "Send update"
@@ -39,22 +40,44 @@ def run_interactive() -> None:
     token: str | None = get_token()
 
     console.print(f"\n[bold]Dailybot CLI[/bold] [dim]v{__version__}[/dim]")
+    api_url: str = get_api_url()
+    console.print(f"[dim]API: {api_url}[/dim]")
 
     if not token or not creds:
         console.print()
         print_info("Let's get you logged in.")
         console.print()
         email: str = click.prompt("Email")
-        _do_login(email)
+        try:
+            _do_login(email)
+        except SystemExit:
+            print_error("Login failed.")
+            return
         creds = load_credentials()
     else:
-        email = creds.get("email", "") if creds else ""
-        org_stored: Any = creds.get("organization", "") if creds else ""
-        org: str = org_stored.get("name", "") if isinstance(org_stored, dict) else str(org_stored)
-        org_uuid: str = creds.get("organization_uuid", "") if creds else ""
-        console.print(f"Logged in as {email} ({org})")
-        if org_uuid:
-            console.print(f"[dim]Org UUID: {org_uuid}[/dim]")
+        stored_api: str = str(creds.get("api_url") or api_url).rstrip("/")
+        if stored_api != api_url.rstrip("/"):
+            console.print()
+            print_warning(
+                f"Stored login targets {stored_api}, but this session uses {api_url}. "
+                "Run: dailybot login"
+            )
+            console.print()
+            email = click.prompt("Email")
+            try:
+                _do_login(email)
+            except SystemExit:
+                print_error("Login failed.")
+                return
+            creds = load_credentials()
+        else:
+            email = creds.get("email", "") if creds else ""
+            org_stored: Any = creds.get("organization", "") if creds else ""
+            org: str = org_stored.get("name", "") if isinstance(org_stored, dict) else str(org_stored)
+            org_uuid: str = creds.get("organization_uuid", "") if creds else ""
+            console.print(f"Logged in as {email} ({org})")
+            if org_uuid:
+                console.print(f"[dim]Org UUID: {org_uuid}[/dim]")
     console.print()
 
     client: DailyBotClient = DailyBotClient()
