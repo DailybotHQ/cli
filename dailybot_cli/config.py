@@ -23,17 +23,40 @@ AGENTS_FILE: Path = CONFIG_DIR / "agents.json"
 
 
 def get_config_dir() -> Path:
-    """Return the config directory, creating it if needed."""
-    CONFIG_DIR.mkdir(parents=True, exist_ok=True)
-    return CONFIG_DIR
+    """Return the config directory, creating it if needed.
+
+    Honors ``DAILYBOT_CONFIG_DIR`` when set (e.g. clitest sandboxes). Otherwise
+    uses the module-level ``CONFIG_DIR`` (``~/.config/dailybot/``).
+    """
+    env_override: str | None = os.environ.get("DAILYBOT_CONFIG_DIR")
+    path: Path = Path(env_override) if env_override else CONFIG_DIR
+    path.mkdir(parents=True, exist_ok=True)
+    return path
+
+
+def _credentials_path() -> Path:
+    return get_config_dir() / "credentials.json"
+
+
+def _config_path() -> Path:
+    return get_config_dir() / "config.json"
+
+
+def _org_cache_path() -> Path:
+    return get_config_dir() / "org_cache.json"
+
+
+def _agents_path() -> Path:
+    return get_config_dir() / "agents.json"
 
 
 def load_credentials() -> dict[str, Any] | None:
     """Load stored credentials from disk."""
-    if not CREDENTIALS_FILE.exists():
+    creds_path: Path = _credentials_path()
+    if not creds_path.exists():
         return None
     try:
-        data: dict[str, Any] = json.loads(CREDENTIALS_FILE.read_text())
+        data: dict[str, Any] = json.loads(creds_path.read_text())
         return data if data.get("token") else None
     except (json.JSONDecodeError, KeyError):
         return None
@@ -47,8 +70,9 @@ def save_credentials(
     api_url: str = DEFAULT_API_URL,
 ) -> None:
     """Save credentials to disk."""
+    creds_path: Path = _credentials_path()
     get_config_dir()
-    CREDENTIALS_FILE.write_text(
+    creds_path.write_text(
         json.dumps(
             {
                 "token": token,
@@ -61,13 +85,14 @@ def save_credentials(
         )
     )
     # Restrict file permissions (owner read/write only)
-    os.chmod(CREDENTIALS_FILE, 0o600)
+    os.chmod(creds_path, 0o600)
 
 
 def clear_credentials() -> None:
     """Remove stored credentials."""
-    if CREDENTIALS_FILE.exists():
-        CREDENTIALS_FILE.unlink()
+    creds_path: Path = _credentials_path()
+    if creds_path.exists():
+        creds_path.unlink()
 
 
 def get_api_url() -> str:
@@ -96,10 +121,11 @@ def get_token() -> str | None:
 
 def load_config() -> dict[str, Any]:
     """Read config.json, return {} if missing."""
-    if not CONFIG_FILE.exists():
+    config_path: Path = _config_path()
+    if not config_path.exists():
         return {}
     try:
-        return json.loads(CONFIG_FILE.read_text())
+        return json.loads(config_path.read_text())
     except (json.JSONDecodeError, KeyError):
         return {}
 
@@ -113,8 +139,9 @@ def save_config(data: dict[str, Any]) -> None:
         else:
             existing[key] = value
     get_config_dir()
-    CONFIG_FILE.write_text(json.dumps(existing, indent=2))
-    os.chmod(CONFIG_FILE, 0o600)
+    config_path: Path = _config_path()
+    config_path.write_text(json.dumps(existing, indent=2))
+    os.chmod(config_path, 0o600)
 
 
 def get_api_key() -> str | None:
@@ -130,15 +157,16 @@ def save_org_cache(email: str, organizations: list[dict[str, Any]]) -> None:
     """Cache the org list from request_code for UUID resolution in step 2."""
     get_config_dir()
     data: dict[str, Any] = {"email": email, "organizations": organizations}
-    ORG_CACHE_FILE.write_text(json.dumps(data))
+    _org_cache_path().write_text(json.dumps(data))
 
 
 def load_org_cache(email: str) -> list[dict[str, Any]] | None:
     """Load cached org list for the given email. Returns None if missing or stale."""
-    if not ORG_CACHE_FILE.exists():
+    cache_path: Path = _org_cache_path()
+    if not cache_path.exists():
         return None
     try:
-        data: dict[str, Any] = json.loads(ORG_CACHE_FILE.read_text())
+        data: dict[str, Any] = json.loads(cache_path.read_text())
     except (json.JSONDecodeError, OSError):
         return None
     if data.get("email") != email:
@@ -148,8 +176,9 @@ def load_org_cache(email: str) -> list[dict[str, Any]] | None:
 
 def clear_org_cache() -> None:
     """Remove the org cache file."""
-    if ORG_CACHE_FILE.exists():
-        ORG_CACHE_FILE.unlink()
+    cache_path: Path = _org_cache_path()
+    if cache_path.exists():
+        cache_path.unlink()
 
 
 def get_agent_auth() -> str | None:
@@ -179,10 +208,11 @@ def _slugify(name: str) -> str:
 
 def load_agents() -> dict[str, Any]:
     """Read agents.json, return {} if missing."""
-    if not AGENTS_FILE.exists():
+    agents_path: Path = _agents_path()
+    if not agents_path.exists():
         return {}
     try:
-        return json.loads(AGENTS_FILE.read_text())
+        return json.loads(agents_path.read_text())
     except (json.JSONDecodeError, OSError):
         return {}
 
@@ -190,8 +220,9 @@ def load_agents() -> dict[str, Any]:
 def _save_agents(data: dict[str, Any]) -> None:
     """Write agents.json with restricted permissions."""
     get_config_dir()
-    AGENTS_FILE.write_text(json.dumps(data, indent=2))
-    os.chmod(AGENTS_FILE, 0o600)
+    agents_path: Path = _agents_path()
+    agents_path.write_text(json.dumps(data, indent=2))
+    os.chmod(agents_path, 0o600)
 
 
 def save_agent_profile(
@@ -407,7 +438,7 @@ def resolve_active_profile(
 
                     print_warning(
                         f"Profile '{profile_slug}' from {repo_path} not found in "
-                        f"{AGENTS_FILE}. Using session credentials instead."
+                        f"{_agents_path()}. Using session credentials instead."
                     )
     else:
         profile_data = get_default_profile()
