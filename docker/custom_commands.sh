@@ -240,31 +240,257 @@ function dev_install() {
 # under /tmp/clitest.* until you `clitest clean` (or `clean --all`).
 #
 # Subcommands:
-#   clitest               Build + create + activate (default action).
-#   clitest list          Show all envs with index, age, size; mark active/latest.
-#   clitest exec [N|PATH] Re-attach to an env (default: latest).
-#   clitest clean         Deactivate + delete the current env.
-#   clitest clean --all   Nuke every /tmp/clitest.* on the box.
-#   clitest help          Long help.
+#   clitest [--env local] [--port N] [--api-url URL]  Build + activate (default: live).
+#   clitest env                                       Show default/local/custom options.
+#   clitest-local [--port N]                          Shortcut for --env local.
+#
+# Defaults: live API (https://api.dailybot.com). Local uses djangovscode:8000 in the
+# devcontainer; override host/port via flags or CLITEST_LOCAL_* in cli/.env.
+# Private URLs (dev/staging) → pass --api-url explicitly (never hardcoded here).
 # ============================================================================
 
 CLITEST_BASE_DIR="${CLITEST_BASE_DIR:-/tmp}"
 CLITEST_PREFIX="clitest"
 CLITEST_LATEST_LINK="${CLITEST_BASE_DIR}/${CLITEST_PREFIX}.latest"
+CLITEST_LIVE_API_URL="${CLITEST_LIVE_API_URL:-https://api.dailybot.com}"
+CLITEST_API_URL=""
+CLITEST_ENV_NAME=""
+CLITEST_LOCAL_HOST_FLAG=""
+CLITEST_LOCAL_PORT_FLAG=""
+CLITEST_RESOLVED_API_URL=""
+CLITEST_RESOLVED_ENV_NAME=""
+CLITEST_ARGS=()
+
+function _clitest_local_api_url() {
+    local host port
+    host="${CLITEST_LOCAL_HOST_FLAG:-${CLITEST_LOCAL_HOST:-djangovscode}}"
+    port="${CLITEST_LOCAL_PORT_FLAG:-${CLITEST_LOCAL_PORT:-8000}}"
+    if [[ ! "$port" =~ ^[0-9]+$ ]]; then
+        print.error "Invalid --port: must be a number (got: $port)"
+        return 1
+    fi
+    echo "http://${host}:${port}"
+}
+
+function _clitest_parse_global_flags() {
+    CLITEST_API_URL=""
+    CLITEST_ENV_NAME=""
+    CLITEST_LOCAL_HOST_FLAG=""
+    CLITEST_LOCAL_PORT_FLAG=""
+    CLITEST_ARGS=()
+    while [[ $# -gt 0 ]]; do
+        case "$1" in
+            --api-url)
+                if [[ -z "${2:-}" ]]; then
+                    print.error "--api-url requires a URL argument."
+                    return 2
+                fi
+                CLITEST_API_URL="$2"
+                shift 2
+                ;;
+            --api-url=*)
+                CLITEST_API_URL="${1#*=}"
+                shift
+                ;;
+            --env|--environment|-e)
+                if [[ -z "${2:-}" ]]; then
+                    print.error "--env requires a name (only 'local' is built-in)."
+                    return 2
+                fi
+                CLITEST_ENV_NAME="${2,,}"
+                shift 2
+                ;;
+            --env=*|--environment=*)
+                CLITEST_ENV_NAME="${1#*=}"
+                CLITEST_ENV_NAME="${CLITEST_ENV_NAME,,}"
+                shift
+                ;;
+            --port|-p)
+                if [[ -z "${2:-}" ]]; then
+                    print.error "--port requires a port number."
+                    return 2
+                fi
+                CLITEST_LOCAL_PORT_FLAG="$2"
+                shift 2
+                ;;
+            --port=*)
+                CLITEST_LOCAL_PORT_FLAG="${1#*=}"
+                shift
+                ;;
+            --local-host)
+                if [[ -z "${2:-}" ]]; then
+                    print.error "--local-host requires a hostname."
+                    return 2
+                fi
+                CLITEST_LOCAL_HOST_FLAG="$2"
+                shift 2
+                ;;
+            --local-host=*)
+                CLITEST_LOCAL_HOST_FLAG="${1#*=}"
+                shift
+                ;;
+            *)
+                CLITEST_ARGS+=("$1")
+                shift
+                ;;
+        esac
+    done
+}
+
+function _clitest_resolve_api_target() {
+    CLITEST_RESOLVED_API_URL=""
+    CLITEST_RESOLVED_ENV_NAME=""
+
+    if [[ -n "$CLITEST_API_URL" && -n "$CLITEST_ENV_NAME" ]]; then
+        print.error "Use either --env local or --api-url, not both."
+        return 2
+    fi
+
+    if [[ -n "$CLITEST_LOCAL_PORT_FLAG" || -n "$CLITEST_LOCAL_HOST_FLAG" ]] \
+        && [[ "$CLITEST_ENV_NAME" != "local" ]]; then
+        print.error "--port and --local-host require --env local."
+        return 2
+    fi
+
+    if [[ -n "$CLITEST_ENV_NAME" ]]; then
+        if [[ "$CLITEST_ENV_NAME" != "local" ]]; then
+            print.error "Unknown environment: $CLITEST_ENV_NAME"
+            echo "  Built-in: local (--env local or clitest-local)"
+            echo "  Default:  live (omit flags, or run plain 'clitest')"
+            echo "  Custom:   clitest --api-url https://your-api.example.com"
+            return 2
+        fi
+        local local_url=""
+        local_url="$(_clitest_local_api_url)" || return 2
+        CLITEST_RESOLVED_API_URL="$local_url"
+        CLITEST_RESOLVED_ENV_NAME="local"
+    elif [[ -n "$CLITEST_API_URL" ]]; then
+        CLITEST_RESOLVED_API_URL="$CLITEST_API_URL"
+    else
+        CLITEST_RESOLVED_API_URL="$CLITEST_LIVE_API_URL"
+        CLITEST_RESOLVED_ENV_NAME="live"
+    fi
+}
+
+function _clitest_normalize_api_url() {
+    local url="${1%/}"
+    if [[ ! "$url" =~ ^https?:// ]]; then
+        print.error "Invalid API URL: must start with http:// or https:// (got: $1)"
+        return 1
+    fi
+    echo "$url"
+}
+
+function _clitest_configure_environment() {
+    local venv_dir="$1"
+    local api_url="$2"
+    local env_name="${3:-}"
+    local activate_script="$venv_dir/bin/activate"
+    local hook_marker="clitest dailybot api url hook"
+
+    printf '%s\n' "$api_url" > "$venv_dir/.dailybot_api_url"
+    if [[ -n "$env_name" ]]; then
+        printf '%s\n' "$env_name" > "$venv_dir/.dailybot_env"
+    else
+        rm -f "$venv_dir/.dailybot_env"
+    fi
+
+    # Python 3.14 venv activate no longer sources bin/activate.d — append directly.
+    if [[ -f "$activate_script" ]] && ! grep -q "$hook_marker" "$activate_script" 2>/dev/null; then
+        cat >> "$activate_script" <<'EOF'
+
+# >>> clitest dailybot api url hook >>>
+if [[ -n "${VIRTUAL_ENV:-}" && -f "${VIRTUAL_ENV}/.dailybot_api_url" ]]; then
+    export DAILYBOT_API_URL="$(tr -d '\n\r' < "${VIRTUAL_ENV}/.dailybot_api_url")"
+fi
+if [[ -n "${VIRTUAL_ENV:-}" && -f "${VIRTUAL_ENV}/.dailybot_env" ]]; then
+    export CLITEST_DAILYBOT_ENV="$(tr -d '\n\r' < "${VIRTUAL_ENV}/.dailybot_env")"
+fi
+if [[ -n "${VIRTUAL_ENV:-}" ]]; then
+    export DAILYBOT_CONFIG_DIR="${VIRTUAL_ENV}/.dailybot-config"
+    mkdir -p "${DAILYBOT_CONFIG_DIR}"
+fi
+# <<< clitest dailybot api url hook <<<
+EOF
+    fi
+}
+
+function _clitest_read_api_url() {
+    local venv_dir="$1"
+    if [[ -f "$venv_dir/.dailybot_api_url" ]]; then
+        tr -d '\n\r' < "$venv_dir/.dailybot_api_url"
+    fi
+}
+
+function _clitest_read_env_name() {
+    local venv_dir="$1"
+    if [[ -f "$venv_dir/.dailybot_env" ]]; then
+        tr -d '\n\r' < "$venv_dir/.dailybot_env"
+    fi
+}
+
+function _clitest_env_list() {
+    local local_url=""
+    local_url="$(_clitest_local_api_url)" || return 1
+    echo "clitest API targets:"
+    echo ""
+    printf "  %-10s  %s\n" "TARGET" "API URL"
+    printf "  %-10s  %s\n" "----------" "----------------------------------------------"
+    printf "  %-10s  %s  (default — plain 'clitest')\n" "live" "$CLITEST_LIVE_API_URL"
+    printf "  %-10s  %s\n" "local" "$local_url"
+    printf "  %-10s  %s\n" "custom" "--api-url URL"
+    echo ""
+    echo "Local overrides:"
+    echo "  --port / -p PORT           default port: ${CLITEST_LOCAL_PORT:-8000}"
+    echo "  --local-host HOST          default host: ${CLITEST_LOCAL_HOST:-djangovscode}"
+    echo "  CLITEST_LOCAL_PORT / CLITEST_LOCAL_HOST in docker/local/cli/.env"
+    echo ""
+    echo "Examples:"
+    echo "  clitest                              # live (production API)"
+    echo "  clitest-local                        # local Django in devcontainer"
+    echo "  clitest-local --port 8600            # local on a custom port"
+    echo "  clitest --api-url https://your-api.example.com"
+}
 
 function clitest() {
-    if [[ $# -eq 0 ]]; then
-        _clitest_create
+    _clitest_parse_global_flags "$@" || return $?
+    _clitest_resolve_api_target || return $?
+
+    if [[ ${#CLITEST_ARGS[@]} -eq 0 ]]; then
+        _clitest_create "${CLITEST_RESOLVED_API_URL:-}" "${CLITEST_RESOLVED_ENV_NAME:-}"
         return $?
     fi
-    local subcmd="$1"
-    shift
+
+    local subcmd="${CLITEST_ARGS[0]}"
     case "$subcmd" in
-        create)             _clitest_create "$@" ;;
-        clean)              _clitest_clean "$@" ;;
-        exec|attach)        _clitest_exec "$@" ;;
-        list|ls)            _clitest_list ;;
-        help|-h|--help)     _clitest_help ;;
+        create)
+            _clitest_create "${CLITEST_RESOLVED_API_URL:-}" "${CLITEST_RESOLVED_ENV_NAME:-}"
+            ;;
+        env)
+            if [[ ${#CLITEST_ARGS[@]} -eq 1 ]]; then
+                _clitest_env_list
+            elif [[ ${#CLITEST_ARGS[@]} -eq 2 && "${CLITEST_ARGS[1],,}" == "local" ]]; then
+                CLITEST_ENV_NAME="local"
+                _clitest_resolve_api_target || return 2
+                _clitest_create "$CLITEST_RESOLVED_API_URL" "$CLITEST_RESOLVED_ENV_NAME"
+            else
+                print.error "Usage: clitest env   |   clitest env local"
+                return 2
+            fi
+            ;;
+        clean)
+            _clitest_clean "${CLITEST_ARGS[@]:1}"
+            ;;
+        exec|attach)
+            _clitest_exec "${CLITEST_RESOLVED_API_URL:-}" "${CLITEST_RESOLVED_ENV_NAME:-}" \
+                "${CLITEST_ARGS[@]:1}"
+            ;;
+        list|ls)
+            _clitest_list
+            ;;
+        help|-h|--help)
+            _clitest_help
+            ;;
         *)
             print.error "Unknown subcommand: $subcmd"
             echo "Run 'clitest help' for usage."
@@ -273,47 +499,52 @@ function clitest() {
     esac
 }
 
+function clitest-local() {
+    clitest --env local "$@"
+}
+
 function _clitest_help() {
     cat <<'EOF'
 clitest — package smoke-test workspace manager.
 
 Usage:
-  clitest [create]      Build the wheel, install it in a fresh venv under
+  clitest [create] [--env local] [--port N] [--local-host HOST]
+          [--api-url URL]
+                        Build the wheel, install it in a fresh venv under
                           /tmp/clitest.XXXXXX, smoke-test, and ACTIVATE that
-                          venv in your current shell. The previous "latest"
-                          symlink is updated to point at the new env.
+                          venv in your current shell.
+                        Default API target: live (https://api.dailybot.com).
+                        DAILYBOT_API_URL is exported on activate.
 
-  clitest list          Show all /tmp/clitest.* envs as a table with index,
-                          creation time, size, and tags ("latest", "active").
+  clitest env           List built-in targets (live, local) and --api-url usage.
 
-  clitest exec [TARGET] Re-attach (`source ... activate`) to an existing env:
-                            no arg                → clitest.latest
-                            integer (1, 2, ...)   → that index from `list`
-                            absolute path         → that exact venv
-                          Useful when opening a second terminal, or when you
-                          have multiple envs and want to switch between them.
+  clitest list          Show all sandboxes (path, env, API URL, tags).
 
-  clitest clean         Deactivate the currently-active clitest venv (if you
-                          are inside one) and delete it. If you are NOT inside
-                          one, deletes clitest.latest instead.
-  clitest clean --all   Deactivate (if applicable) and nuke EVERY clitest
-                          venv on the box. The clitest.latest symlink is
-                          removed too. Use this to start fresh.
+  clitest exec [--env local | --api-url URL] [--port N] [TARGET]
+                        Re-attach to an existing sandbox (default: latest).
+
+  clitest clean         Deactivate and delete the current sandbox.
+  clitest clean --all   Remove every /tmp/clitest.* sandbox.
 
   clitest help          Show this help.
+
+Shortcut:
+  clitest-local [--port N] [--local-host HOST]
+                        Same as: clitest --env local
 
 Inside an active clitest venv your shell prompt shows `(clitest.XXXXXX)`
 to remind you you're in a sandbox, not the editable /workspace install.
 
 Typical flow:
-  $ clitest                          # build + create + activate
-  (clitest.io98bF) $ dailybot --version
-  (clitest.io98bF) $ dailybot --api-url https://staging.dailybot.com login \
-                          --email me@dailybot.com
+  $ clitest                              # smoke-test against live API
+  (clitest.io98bF) $ dailybot login --email me@example.com
+
+  $ clitest-local                        # local Django (djangovscode:8000)
+  (clitest.io98bF) $ dailybot login --email me@example.com
+
+  $ clitest --api-url https://your-api.example.com   # private/staging/dev
   ...
-  (clitest.io98bF) $ clitest clean   # exit + delete this env
-  $ clitest list                      # see remaining envs (other terminals)
-  $ clitest exec                      # re-attach to latest in a new terminal
+  (clitest.io98bF) $ clitest clean
 EOF
 }
 
@@ -336,7 +567,9 @@ function _clitest_list_paths() {
 }
 
 function _clitest_create() {
-    local project_root venv_dir wheel
+    local api_url="${1:-}"
+    local env_name="${2:-}"
+    local project_root venv_dir wheel normalized_api_url=""
     project_root="$(git rev-parse --show-toplevel 2>/dev/null || echo "$PWD")"
 
     # If currently in a non-clitest venv, refuse — don't trample user's env.
@@ -393,13 +626,21 @@ function _clitest_create() {
         return 1
     fi
     local subcommand
-    for subcommand in login logout status update config agent; do
+    for subcommand in login logout status update config agent checkin form kudos; do
         if ! "$venv_dir/bin/dailybot" "$subcommand" --help >/dev/null 2>&1; then
             print.error "⚠️  '$subcommand --help' failed — wheel may be missing files."
             rm -rf "$venv_dir"
             return 1
         fi
     done
+
+    if [[ -n "$api_url" ]]; then
+        normalized_api_url="$(_clitest_normalize_api_url "$api_url")" || {
+            rm -rf "$venv_dir"
+            return 1
+        }
+        _clitest_configure_environment "$venv_dir" "$normalized_api_url" "$env_name"
+    fi
 
     # Update the "latest" symlink so other terminals can `clitest exec` into it.
     rm -f "$CLITEST_LATEST_LINK"
@@ -409,6 +650,15 @@ function _clitest_create() {
     print.success "✅ Package built and verified — entering venv now..."
     echo "    Path:           $venv_dir"
     echo "    dailybot:       $("$venv_dir/bin/dailybot" --version 2>&1 | head -1)"
+    if [[ -n "$env_name" ]]; then
+        echo "    Environment:    $env_name"
+    fi
+    if [[ -n "$normalized_api_url" ]]; then
+        echo "    API URL:        $normalized_api_url"
+        echo "    dailybot uses DAILYBOT_API_URL automatically in this venv."
+        echo "    Credentials:    isolated in \$VIRTUAL_ENV/.dailybot-config"
+        echo "                    Run: dailybot login  (sandbox session, not live)"
+    fi
     echo ""
     echo "    Run 'clitest clean' when done, or 'clitest list' to see all envs."
     echo ""
@@ -468,7 +718,14 @@ function _clitest_clean() {
 }
 
 function _clitest_exec() {
-    local target="${1:-}" venv_path
+    local api_url="${1:-}"
+    local env_name="${2:-}"
+    shift 2
+    local target="${1:-}" venv_path normalized_api_url="" stored_api_url="" stored_env_name=""
+
+    if [[ -n "$api_url" ]]; then
+        normalized_api_url="$(_clitest_normalize_api_url "$api_url")" || return 1
+    fi
 
     if [[ -z "$target" ]]; then
         if [[ ! -L "$CLITEST_LATEST_LINK" ]]; then
@@ -498,12 +755,25 @@ function _clitest_exec() {
         return 0
     fi
 
+    if [[ -n "$normalized_api_url" ]]; then
+        _clitest_configure_environment "$venv_path" "$normalized_api_url" "$env_name"
+    fi
+
+    stored_api_url="$(_clitest_read_api_url "$venv_path")"
+    stored_env_name="$(_clitest_read_env_name "$venv_path")"
+
     # In some other venv (clitest or not) — leave it first
     if [[ -n "${VIRTUAL_ENV:-}" ]]; then
         deactivate 2>/dev/null || true
     fi
 
     print.success "Activating $venv_path ..."
+    if [[ -n "$stored_env_name" ]]; then
+        echo "    Environment:    $stored_env_name"
+    fi
+    if [[ -n "$stored_api_url" ]]; then
+        echo "    API URL:        $stored_api_url"
+    fi
     # shellcheck disable=SC1091
     source "$venv_path/bin/activate"
 }
@@ -515,17 +785,28 @@ function _clitest_list() {
     fi
     current="$(_clitest_active_venv 2>/dev/null || true)"
 
-    printf "%-3s  %-44s  %-8s  %-8s  %s\n" "#" "Path" "Created" "Size" "Tags"
-    printf '%s\n' "----------------------------------------------------------------------------------"
+    printf "%-3s  %-28s  %-8s  %-5s  %-8s  %-18s  %s\n" \
+        "#" "Path" "Created" "Size" "Env" "API URL" "Tags"
+    printf '%s\n' "--------------------------------------------------------------------------------------------------------------"
     while IFS= read -r path; do
         [[ -z "$path" ]] && continue
         count=$((count + 1))
-        local created size tags=""
+        local created size tags="" api_display="" api_url="" env_display=""
         created="$(date -r "$path" '+%H:%M:%S' 2>/dev/null || echo "?")"
         size="$(du -sh "$path" 2>/dev/null | cut -f1)"
+        api_url="$(_clitest_read_api_url "$path")"
+        env_display="$(_clitest_read_env_name "$path")"
+        [[ -z "$env_display" ]] && env_display="-"
+        if [[ -n "$api_url" ]]; then
+            api_display="${api_url#http://}"
+            api_display="${api_display#https://}"
+        else
+            api_display="-"
+        fi
         [[ "$path" == "$latest_target" ]] && tags="${tags}latest "
         [[ "$path" == "$current" ]] && tags="${tags}active"
-        printf "%-3s  %-44s  %-8s  %-8s  %s\n" "$count" "$path" "$created" "$size" "${tags% }"
+        printf "%-3s  %-28s  %-8s  %-5s  %-8s  %-18s  %s\n" \
+            "$count" "$path" "$created" "$size" "$env_display" "$api_display" "${tags% }"
     done < <(_clitest_list_paths)
 
     if [[ $count -eq 0 ]]; then
@@ -709,12 +990,15 @@ function show_welcome() {
     echo "  • dev_install          - pip install -e \".[dev]\" (one-shot)"
     echo ""
     echo "Package release smoke test (clitest — sandbox manager):"
-    echo "  • clitest               - build wheel → fresh venv → smoke-test → drop you inside"
-    echo "  • clitest list          - table of available envs (#, path, time, size, tags)"
-    echo "  • clitest exec [N|PATH] - re-attach to an existing env (default: latest)"
-    echo "  • clitest clean         - deactivate + remove the current env"
-    echo "  • clitest clean --all   - remove every /tmp/clitest.*"
-    echo "  • clitest help          - detailed help"
+    echo "  • clitest                  - build wheel → venv → smoke-test → live API (default)"
+    echo "  • clitest-local [--port N] - same, pinned to local Django (djangovscode:8000)"
+    echo "  • clitest --api-url URL    - same, pinned to a custom API base URL"
+    echo "  • clitest env              - show live/local/custom targets"
+    echo "  • clitest list             - table of sandboxes (#, env, API URL, tags)"
+    echo "  • clitest exec [N|PATH]    - re-attach to an existing sandbox"
+    echo "  • clitest clean            - deactivate + remove the current sandbox"
+    echo "  • clitest clean --all      - remove every /tmp/clitest.*"
+    echo "  • clitest help             - detailed help"
     echo ""
     echo "AI Assistant commands:"
     echo "  • claude            - Claude Code CLI"
