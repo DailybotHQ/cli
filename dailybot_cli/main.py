@@ -16,6 +16,7 @@ from dailybot_cli.commands.status import status
 from dailybot_cli.commands.uninstall import uninstall
 from dailybot_cli.commands.update import update
 from dailybot_cli.commands.upgrade import upgrade
+from dailybot_cli.commands.user import user
 from dailybot_cli.commands.version import version
 from dailybot_cli.config import set_api_url_override
 
@@ -69,6 +70,7 @@ cli.add_command(status)
 cli.add_command(checkin)
 cli.add_command(form)
 cli.add_command(kudos)
+cli.add_command(user)
 cli.add_command(agent)
 cli.add_command(config)
 cli.add_command(version)

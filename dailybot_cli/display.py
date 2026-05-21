@@ -408,3 +408,22 @@ def print_kudos_result(receiver_name: str, data: dict[str, Any]) -> None:
     kudos_id: str = str(data.get("uuid") or data.get("id") or "N/A")
     print_success(f"Kudos sent to {receiver_name}")
     print_info(f"Kudos ID: {kudos_id}")
+
+
+def print_users_table(users: list[dict[str, Any]]) -> None:
+    """Display organization members in a table."""
+    if not users:
+        print_info("No team members found.")
+        return
+
+    table: Table = Table(title="Team members", border_style="cyan")
+    table.add_column("Name", style="bold")
+    table.add_column("User UUID", style="dim")
+    table.add_column("Email", style="dim")
+    for user in users:
+        table.add_row(
+            str(user.get("full_name") or user.get("uuid") or ""),
+            str(user.get("uuid") or ""),
+            str(user.get("email") or ""),
+        )
+    console.print(table)
