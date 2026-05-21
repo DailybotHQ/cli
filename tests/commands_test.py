@@ -1038,6 +1038,49 @@ class TestInteractiveLogin:
         mock_do_login.assert_called_once_with("u@t.com")
 
 
+class TestInteractiveMenu:
+    @patch("dailybot_cli.commands.interactive.pick_from_list")
+    @patch("dailybot_cli.commands.interactive.questionary")
+    @patch("dailybot_cli.commands.interactive.load_credentials")
+    @patch("dailybot_cli.commands.interactive.get_token")
+    @patch("dailybot_cli.commands.interactive.execute_kudos_give")
+    @patch("dailybot_cli.commands.interactive.get_current_user_uuid")
+    @patch("dailybot_cli.commands.interactive.DailyBotClient")
+    def test_interactive_give_kudos_picks_teammate(
+        self,
+        mock_client_cls: MagicMock,
+        mock_current_uuid: MagicMock,
+        mock_execute_kudos: MagicMock,
+        mock_get_token: MagicMock,
+        mock_load_creds: MagicMock,
+        mock_questionary: MagicMock,
+        mock_pick_from_list: MagicMock,
+        runner: CliRunner,
+    ) -> None:
+        mock_get_token.return_value = "tok"
+        mock_load_creds.return_value = {
+            "token": "tok",
+            "email": "me@example.com",
+            "organization": "Org",
+            "api_url": "https://api.dailybot.com",
+        }
+        mock_current_uuid.return_value = "self-uuid"
+        mock_client: MagicMock = mock_client_cls.return_value
+        mock_client.list_users.return_value = [
+            {"uuid": "self-uuid", "full_name": "Me"},
+            {"uuid": "peer-uuid", "full_name": "Jane Doe"},
+        ]
+        mock_questionary.select.return_value.ask.side_effect = ["Give kudos", "Quit"]
+        mock_pick_from_list.return_value = {"uuid": "peer-uuid", "full_name": "Jane Doe"}
+        mock_questionary.text.return_value.ask.return_value = "Great work!"
+
+        result = runner.invoke(cli, [], input="y\n")
+        assert result.exit_code == 0
+        mock_execute_kudos.assert_called_once()
+        assert mock_execute_kudos.call_args.args[1] == "peer-uuid"
+        assert mock_execute_kudos.call_args.args[3] == "Great work!"
+
+
 class TestAgentCommand:
     @patch("dailybot_cli.commands.agent.get_agent_auth")
     @patch("dailybot_cli.commands.agent.DailyBotClient")

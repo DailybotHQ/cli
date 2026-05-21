@@ -311,6 +311,48 @@ class TestFormCommand:
         assert payload["status"] == 429
 
 
+class TestUserCommand:
+    @patch("dailybot_cli.commands.public_api_helpers.get_token")
+    @patch("dailybot_cli.commands.public_api_helpers.DailyBotClient")
+    def test_user_list_success(
+        self,
+        mock_client_cls: MagicMock,
+        mock_get_token: MagicMock,
+        runner: CliRunner,
+    ) -> None:
+        mock_get_token.return_value = "tok"
+        mock_client: MagicMock = mock_client_cls.return_value
+        mock_client.list_users.return_value = [
+            {
+                "uuid": "user-uuid-1",
+                "full_name": "Jane Doe",
+                "email": "jane@example.com",
+            }
+        ]
+
+        result = runner.invoke(cli, ["user", "list"])
+        assert result.exit_code == 0
+        assert "Jane Doe" in result.output
+        assert "user-uuid-1" in result.output
+
+    @patch("dailybot_cli.commands.public_api_helpers.get_token")
+    @patch("dailybot_cli.commands.public_api_helpers.DailyBotClient")
+    def test_user_list_json(
+        self,
+        mock_client_cls: MagicMock,
+        mock_get_token: MagicMock,
+        runner: CliRunner,
+    ) -> None:
+        mock_get_token.return_value = "tok"
+        mock_client: MagicMock = mock_client_cls.return_value
+        mock_client.list_users.return_value = [{"uuid": "user-uuid-1", "full_name": "Jane Doe"}]
+
+        result = runner.invoke(cli, ["user", "list", "--json"])
+        assert result.exit_code == 0
+        payload: list[dict[str, Any]] = json.loads(result.output)
+        assert payload[0]["uuid"] == "user-uuid-1"
+
+
 class TestKudosCommand:
     @patch("dailybot_cli.commands.kudos.get_current_user_uuid")
     @patch("dailybot_cli.commands.public_api_helpers.get_token")
