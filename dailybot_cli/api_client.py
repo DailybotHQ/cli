@@ -157,6 +157,92 @@ class DailyBotClient:
         )
         return self._handle_response(response)
 
+    # --- User-scoped public API endpoints (Bearer token) ---
+
+    def complete_checkin(
+        self,
+        followup_uuid: str,
+        responses: list[dict[str, Any]],
+        last_question_index: int | None = None,
+        response_date: str | None = None,
+    ) -> dict[str, Any]:
+        """POST /v1/checkins/<followup_uuid>/responses/"""
+        payload: dict[str, Any] = {"responses": responses}
+        if last_question_index is not None:
+            payload["last_question_index"] = last_question_index
+        if response_date:
+            payload["response_date"] = response_date
+        response: httpx.Response = httpx.post(
+            f"{self.api_url}/v1/checkins/{followup_uuid}/responses/",
+            json=payload,
+            headers=self._headers(),
+            timeout=self.timeout,
+        )
+        return self._handle_response(response)
+
+    def list_forms(self) -> list[dict[str, Any]]:
+        """GET /v1/forms/"""
+        response: httpx.Response = httpx.get(
+            f"{self.api_url}/v1/forms/",
+            headers=self._headers(),
+            timeout=self.timeout,
+        )
+        if response.status_code >= 400:
+            self._handle_response(response)
+        return response.json()
+
+    def submit_form_response(
+        self,
+        form_uuid: str,
+        content: dict[str, Any],
+    ) -> dict[str, Any]:
+        """POST /v1/forms/<form_uuid>/responses/"""
+        response: httpx.Response = httpx.post(
+            f"{self.api_url}/v1/forms/{form_uuid}/responses/",
+            json={"content": content},
+            headers=self._headers(),
+            timeout=self.timeout,
+        )
+        return self._handle_response(response)
+
+    def list_users(self) -> list[dict[str, Any]]:
+        """GET /v1/users/ — fetch all pages and return the combined results list."""
+        results: list[dict[str, Any]] = []
+        url: str | None = f"{self.api_url}/v1/users/"
+        while url is not None:
+            response: httpx.Response = httpx.get(
+                url,
+                headers=self._headers(),
+                timeout=self.timeout,
+            )
+            if response.status_code >= 400:
+                self._handle_response(response)
+            body: dict[str, Any] = response.json()
+            results.extend(body.get("results", []))
+            url = body.get("next")
+        return results
+
+    def give_kudos(
+        self,
+        receivers: list[str],
+        content: str,
+        company_value: str | None = None,
+    ) -> dict[str, Any]:
+        """POST /v1/kudos/"""
+        payload: dict[str, Any] = {
+            "receivers": receivers,
+            "content": content,
+        }
+        if company_value:
+            payload["company_value"] = company_value
+        response: httpx.Response = httpx.post(
+            f"{self.api_url}/v1/kudos/",
+            json=payload,
+            headers=self._headers(),
+            timeout=self.timeout,
+        )
+        return self._handle_response(response)
+
     # --- Agent endpoints ---
 
     def submit_agent_report(
