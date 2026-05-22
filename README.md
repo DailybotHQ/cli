@@ -365,6 +365,16 @@ Per-field precedence (highest wins): **CLI flag → `.dailybot/profile.json` →
 
 **Security:** a `key` field in the repo file is rejected with a hard error. Credentials must never be committed — auth always resolves from your global profile, `DAILYBOT_API_KEY`, or `dailybot login`. Unknown future keys log a warning and are ignored.
 
+#### Best practice: `.dailybot_example/` template
+
+Since `.dailybot/profile.json` may contain local-only customizations (personal `vars`, machine-specific overrides), a good pattern is to **gitignore `.dailybot/`** and commit a **`.dailybot_example/`** folder as the template. New contributors copy it once to get started:
+
+```bash
+cp -r .dailybot_example .dailybot
+```
+
+This way the repo ships a ready-made profile that every developer and AI agent can adopt immediately, while still allowing local tweaks that won't pollute the git history. This repo follows the same pattern — see [`.dailybot_example/profile.json`](.dailybot_example/profile.json).
+
 To see exactly what the CLI will use in the current directory:
 
 ```bash

@@ -1,0 +1,7 @@
+{
+  "name": "CLI",
+  "default_metadata": {
+    "repo": "cli"
+  },
+  "vars": {}
+}
