@@ -10,7 +10,7 @@ The Dailybot CLI persists state in `~/.config/dailybot/` by default. The path ca
 | `config.json` | `dailybot config` | `{ api_key }` (and any future settings) | `0o600` |
 | `agents.json` | `dailybot agent configure` / `register` | `{ default, profiles: { <slug>: { agent_name, api_key?, agent_email? } } }` | `0o600` |
 | `org_cache.json` | `dailybot login --email` (step 1) | `{ email, organizations: [...] }` | (no chmod — non-secret) |
-| `<repo>/.dailybot/profile.json` | hand-authored, committed to git | `{ name?, profile?, default_metadata? }` | (no chmod — must be readable by team) |
+| `<repo>/.dailybot/profile.json` | hand-authored, committed to git | `{ name?, profile?, default_metadata?, vars? }` | (no chmod — must be readable by team) |
 
 ### Schema notes
 
@@ -29,6 +29,7 @@ The Dailybot CLI persists state in `~/.config/dailybot/` by default. The path ca
 | `name` | string | Overrides the agent display name (`--name` equivalent) |
 | `profile` | string slug | Selects an entry in the global `agents.json` for credentials |
 | `default_metadata` | object | Shallow-merged into every report's `--metadata` (inline keys win per-key) |
+| `vars` | object | Free-form repo variables for scripts, skills, and automation. The CLI carries this key but never sends it in reports or warnings. |
 
 **Security rule:** a `key` field is rejected with a hard error — credentials must never be committed. The file is plain text and lives in the repo, so it must remain free of secrets. Unknown future keys log a one-line warning and are ignored (forward compatibility). Malformed JSON falls back to the global config with a warning.
 
