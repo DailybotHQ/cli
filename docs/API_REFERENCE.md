@@ -73,6 +73,87 @@ Persists to `~/.config/dailybot/config.json` (`0o600`).
 
 ---
 
+### `dailybot checkin` (group) — user-scoped, Bearer auth
+
+#### `dailybot checkin list [--json]`
+
+Lists today's pending check-ins. Calls `GET /v1/cli/status/`. JSON mode adds 0-based `index` to each question.
+
+#### `dailybot checkin complete <followup_uuid> [-a index=response]... [--response-date YYYY-MM-DD] [--yes] [--json]`
+
+Completes a pending check-in.
+
+| Flag | Short | Notes |
+|------|-------|-------|
+| `--answer` | `-a` | Repeatable `index=response` (0-based). Prompts when omitted. |
+| `--response-date` | | Defaults to today. |
+| `--yes` | `-y` | Skip confirmation prompt. |
+| `--json` | | Machine-readable JSON output. |
+
+Interactive path: prompts each question using type-aware inputs (text, numeric, boolean, choice). Non-interactive path requires all `--answer` flags matching the question count.
+
+---
+
+### `dailybot form` (group) — user-scoped, Bearer auth
+
+#### `dailybot form list [--json]`
+
+Lists forms visible to the user. Calls `GET /v1/forms/?include=questions` to include question definitions.
+
+#### `dailybot form submit <form_uuid> [--content JSON] [--yes] [--json]`
+
+Submits a form response. When `--content` is omitted, calls `GET /v1/forms/<uuid>/` to load questions and prompts each one interactively with type-aware inputs.
+
+| Flag | Short | Notes |
+|------|-------|-------|
+| `--content` | `-c` | JSON map `{"<question_uuid>": "<answer>"}`. |
+| `--yes` | `-y` | Skip confirmation prompt. |
+| `--json` | | Machine-readable JSON output. |
+
+---
+
+### `dailybot kudos` (group) — user-scoped, Bearer auth
+
+#### `dailybot kudos give --to <name_or_uuid> --message <text> [--value <uuid>] [--yes] [--json]`
+
+Gives kudos to a teammate. Resolves receivers by name (exact then partial match) against `GET /v1/users/`.
+
+| Flag | Short | Notes |
+|------|-------|-------|
+| `--to` | `-t` | Receiver full name or UUID. Required. |
+| `--message` | `-m` | Kudos message. Required. |
+| `--value` | | Optional company value UUID. |
+| `--yes` | `-y` | Skip confirmation prompt. |
+| `--json` | | Machine-readable JSON output. |
+
+Self-kudos is rejected client-side (exit code 4). Ambiguous name matches return exit code 2.
+
+---
+
+### `dailybot user` (group) — user-scoped, Bearer auth
+
+#### `dailybot user list [--json]`
+
+Lists organization members. Calls `GET /v1/users/` with automatic pagination (capped at `_MAX_LIST_PAGES = 50`). Table displays Name and UUID only — emails are not shown.
+
+---
+
+### User-scoped exit codes
+
+All user-scoped commands (`checkin`, `form`, `kudos`, `user`) share these exit codes:
+
+| Code | Constant | Meaning |
+|------|----------|---------|
+| `0` | — | Success |
+| `2` | `EXIT_USAGE_ERROR` | Invalid input |
+| `3` | `EXIT_NOT_AUTHENTICATED` | Not logged in |
+| `4` | `EXIT_PERMISSION_DENIED` | Forbidden / self-kudos / daily limit |
+| `5` | `EXIT_QUOTA_EXHAUSTED` | Form quota (402) |
+| `6` | `EXIT_RATE_LIMITED` | Rate limited (429) |
+| `7` | `EXIT_USER_ABORTED` | Confirmation declined |
+
+---
+
 ### `dailybot agent` (group)
 
 Group-level flag: `--profile / -p <name>` (passed via `ctx.obj`).
@@ -159,6 +240,17 @@ All endpoints are POSTed to `{api_url}/v1/...`. The default `api_url` is `https:
 |--------|------|---------|----------|-------|
 | `POST` | `/v1/cli/updates/` | `{ message?, done?, doing?, blocked? }` | `{ followups_count, attached_followups: [{followup_name, action}] }` | 120s timeout (AI parsing) |
 | `GET` | `/v1/cli/status/` | — | `{ pending_checkins: [{followup_name, template_questions}] }` | |
+
+### User-scoped (Bearer)
+
+| Method | Path | Request | Response | Notes |
+|--------|------|---------|----------|-------|
+| `GET` | `/v1/forms/` | `?include=questions` (optional) | `[{ id, name, questions?: [...] }]` | |
+| `GET` | `/v1/forms/<uuid>/` | — | `{ id, name, questions: [{ uuid, question, question_type, choices? }] }` | Used by guided form submit |
+| `POST` | `/v1/forms/<uuid>/responses/` | `{ content: { "<q_uuid>": "<answer>" } }` | `{ uuid }` | 402 = quota exhausted |
+| `POST` | `/v1/checkins/<followup_uuid>/responses/` | `{ responses: [{ uuid, index, response }], last_question_index?, response_date? }` | `{ uuid }` | |
+| `GET` | `/v1/users/` | — | `{ results: [{ uuid, full_name }], next: url\|null }` | Paginated |
+| `POST` | `/v1/kudos/` | `{ receivers: ["<uuid>"], content, company_value? }` | `{ uuid }` | 406 = daily limit |
 
 ### Agent (X-API-KEY *or* Bearer)
 

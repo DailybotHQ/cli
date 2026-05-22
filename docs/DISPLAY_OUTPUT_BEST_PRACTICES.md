@@ -57,6 +57,12 @@ Don't reinvent panels and tables in command code. The existing helpers cover mos
 | `print_agent_profiles(profiles)` | Profile table with masked keys |
 | `print_registration_result(data)` | Registration panel + claim URL |
 | `print_update_result(data)` | Update receipt with attached follow-ups |
+| `print_users_table(users)` | Team members table (Name + UUID, no email) |
+| `print_forms_table(forms)` | Forms table (Name + UUID + Questions count) |
+| `print_checkin_list(checkins)` | Pending check-ins table with question count |
+| `print_kudos_result(name, data)` | Kudos sent confirmation panel |
+| `print_form_submit_result(data)` | Form submission confirmation panel |
+| `print_checkin_complete_result(data)` | Check-in completion confirmation panel |
 
 If you need a new shape, add a helper here rather than building it inline.
 
@@ -98,6 +104,13 @@ Status text is short, imperative, present-continuous. Examples used in the codeb
 - `"Registering webhook..."`
 - `"Sending message..."`
 - `"Marking messages as read..."`
+- `"Fetching pending check-ins..."`
+- `"Submitting check-in..."`
+- `"Fetching forms..."`
+- `"Submitting form response..."`
+- `"Resolving receiver..."`
+- `"Sending kudos..."`
+- `"Fetching team members..."`
 
 If a call is fast (<100ms typical), a spinner is still preferred — it provides feedback that the CLI is actually doing something even on slow networks.
 

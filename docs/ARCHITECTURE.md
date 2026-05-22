@@ -13,7 +13,8 @@ The Dailybot CLI is a **thin Click-based wrapper** around the Dailybot HTTP API.
           ▼                                                     ▼
 ┌──────────────────────────────────────────────┐   ┌────────────────────────┐
 │ dailybot_cli/commands/*.py                   │   │ commands/interactive.py│
-│   (auth, status, update, agent, config)      │   │   questionary-driven   │
+│   (auth, status, update, agent, config,      │   │   questionary-driven   │
+│    checkin, form, kudos, user)                │   │   grouped TUI menu     │
 │   • Parse args, validate flags               │   │   TUI; calls the same  │
 │   • Resolve auth context (profile / token)   │   │   client + display     │
 │   • Wrap APIError → user-friendly message    │   │   helpers              │
@@ -35,6 +36,7 @@ The Dailybot CLI is a **thin Click-based wrapper** around the Dailybot HTTP API.
 │ Dailybot API                                 │
 │   /v1/cli/auth/{request-code,verify-code,…}  │
 │   /v1/cli/{updates,status}                   │
+│   /v1/{checkins,forms,users,kudos}           │
 │   /v1/agent-{reports,health,messages,email,  │
 │              webhook}                        │
 │   /v1/agent/register/{challenge,}            │
@@ -44,7 +46,7 @@ The Dailybot CLI is a **thin Click-based wrapper** around the Dailybot HTTP API.
 ## Module Responsibilities
 
 ### `dailybot_cli/main.py`
-The entry point. Defines the root `cli` Click group, the `--api-url` override, and `--version`. Registers the top-level commands (`login`, `logout`, `update`, `status`, `agent`, `config`). When invoked with no subcommand, drops into `commands/interactive.py::run_interactive`.
+The entry point. Defines the root `cli` Click group, the `--api-url` override, and `--version`. Registers the top-level commands (`login`, `logout`, `update`, `status`, `agent`, `config`, `checkin`, `form`, `kudos`, `user`). When invoked with no subcommand, drops into `commands/interactive.py::run_interactive`.
 
 **Key contract:** `--api-url` calls `set_api_url_override(...)` *before* any subcommand runs, so every subsequent `DailyBotClient()` picks up the overridden URL. The override is also exposed via `DAILYBOT_API_URL` env var.
 
@@ -57,7 +59,7 @@ The single HTTP boundary. Owns:
   - `_headers(authenticated=True)` — used by **human** endpoints; sends `Authorization: Bearer <token>`.
   - `_agent_headers()` — used by **agent** endpoints; sends `X-API-KEY` if available, falls back to `Authorization: Bearer <token>`. Tracks the chosen mode in `_agent_auth_mode` so `_handle_response` can produce the right error message on 401/403.
 
-**Two different auth schemes.** Human endpoints (`/v1/cli/*`) only accept Bearer tokens. Agent endpoints (`/v1/agent*/*`) accept either. The split is intentional and reflects the platform's security model.
+**Three auth schemes.** Human endpoints (`/v1/cli/*`) and user-scoped endpoints (`/v1/checkins/*`, `/v1/forms/*`, `/v1/users/`, `/v1/kudos/`) only accept Bearer tokens. Agent endpoints (`/v1/agent*/*`) accept either API key or Bearer. The split is intentional and reflects the platform's security model.
 
 **Two different timeouts.** Most calls use `self.timeout` (default 30s). The `submit_update` call uses 120s because the AI parsing on the backend can take a while. Add new long-running calls to a named constant rather than inlining a number.
 
@@ -88,7 +90,7 @@ The user-facing rendering layer. Two distinct `rich.Console` instances:
 Every command callback rendering output should go through one of:
 
 - `print_success`, `print_error`, `print_warning`, `print_info`
-- Specialized helpers: `print_auth_status`, `print_pending_checkins`, `print_agent_health`, `print_agent_messages`, `print_agent_message_sent`, `print_agent_email_sent`, `print_agent_profiles`, `print_registration_result`, `print_update_result`, `print_pending_agent_messages`, `print_webhook_result`
+- Specialized helpers: `print_auth_status`, `print_pending_checkins`, `print_agent_health`, `print_agent_messages`, `print_agent_message_sent`, `print_agent_email_sent`, `print_agent_profiles`, `print_registration_result`, `print_update_result`, `print_pending_agent_messages`, `print_webhook_result`, `print_users_table`, `print_forms_table`, `print_checkin_list`, `print_kudos_result`, `print_form_submit_result`
 
 **Why stderr matters.** Users pipe CLI output into other tools (`dailybot agent message list | jq …`). Errors going to stderr mean failures are visible without polluting the data stream.
 
@@ -117,8 +119,14 @@ Specific notes per file:
 - **`status.py`** — two modes: list pending check-ins (default) or verify auth (`--auth`). The `--auth` path tries OTP first, then API key, with carefully tuned error messages.
 - **`update.py`** — supports free-text + structured fields. When invoked with no args, falls back to a stdin loop (Enter twice to submit). 401/403 → `dailybot login`; 400 with "ai processing failed" → contact support.
 - **`agent.py`** — the largest module. Sub-groups: `webhook`, `message`, `email`. The `_resolve_agent_context` helper centralizes the 5-step auth resolution and is the only function that should be touched if the resolution order needs to change. The `register` command implements a math-challenge handshake (no auth needed).
+- **`checkin.py`** — thin Click group (`list`, `complete`). Delegates to `user_scoped_actions.py` for all logic.
+- **`form.py`** — thin Click group (`list`, `submit`). Delegates to `user_scoped_actions.py`.
+- **`kudos.py`** — thin Click group (`give`). Contains `execute_kudos_give` (the shared handler used by both CLI and interactive mode).
+- **`user.py`** — thin Click group (`list`). Delegates to `user_scoped_actions.py`.
+- **`public_api_helpers.py`** — shared helpers for user-scoped commands: `require_bearer_auth`, `exit_for_api_error`, `confirm_write`, `pick_from_list`, `InteractiveAbort`, `resolve_user_by_name_or_uuid`, exit-code constants. Analogous to `_resolve_agent_context` but for Bearer-only commands.
+- **`user_scoped_actions.py`** — shared action logic extracted from command modules. Contains `execute_checkin_list`, `execute_checkin_complete`, `execute_form_list`, `execute_form_submit`, `execute_user_list`, `collect_checkin_answers`, `_prompt_form_answer` (type-aware prompts). Enables code reuse between CLI commands and the interactive TUI.
 - **`config.py`** — minimal get/set/remove for stored settings. Only `key` (→ `api_key`) is currently a known setting; adding new ones is a 1-line `KNOWN_SETTINGS` change.
-- **`interactive.py`** — questionary-based TUI. Calls into `auth._do_login` if not already authenticated; otherwise loops a four-choice menu.
+- **`interactive.py`** — questionary-based TUI. Calls into `auth._do_login` if not already authenticated; otherwise loops a grouped menu (Check-ins / Forms / Team / Session). Uses stable action IDs (`ACTION_*` constants) dispatched through `_HANDLER_MAP`. Pressing Esc in any sub-prompt raises `InteractiveAbort`, returning to the main menu.
 
 ## Data Flow Examples
 
@@ -178,8 +186,11 @@ The codebase uses modern Python typing throughout: `dict[str, Any]`, `list[dict[
 |----------------|-----------|
 | A new command | `dailybot_cli/commands/<name>.py` + register in `main.py` |
 | A subcommand of `agent` | `dailybot_cli/commands/agent.py` (add to one of the sub-groups or as a top-level `@agent.command`) |
+| A new user-scoped command | Thin Click wrapper in `dailybot_cli/commands/<name>.py`, shared logic in `user_scoped_actions.py`, auth via `public_api_helpers.require_bearer_auth()` |
 | A new HTTP endpoint call | `dailybot_cli/api_client.py` (one method per endpoint) |
 | A new rendered output | `dailybot_cli/display.py` (one helper per output shape) |
 | A new on-disk file | `dailybot_cli/config.py` (matching read/write/clear helpers; chmod 0600) |
 | A new env var read | `dailybot_cli/config.py` resolution helper, never inlined elsewhere |
-| A test | `tests/<matching>_test.py` (file name mirrors the module under test) |
+| A test for agent commands | `tests/commands_test.py` |
+| A test for user-scoped commands | `tests/public_api_commands_test.py` |
+| A test for `api_client.py` | `tests/api_client_test.py` |

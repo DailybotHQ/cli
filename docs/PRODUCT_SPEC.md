@@ -32,7 +32,13 @@ It is a **public, open-source product** distributed through PyPI, Homebrew, and 
 | Verify auth | `dailybot status --auth` | Tries OTP login first, then API key |
 | Submit a free-text update | `dailybot update "<message>"` | Dailybot AI parses and routes to the matching follow-ups |
 | Submit a structured update | `dailybot update --done X --doing Y --blocked Z` | Bypasses AI parsing |
-| Interactive TUI | `dailybot` (no args) | questionary-driven menu: send update, view pending, auth status |
+| List pending check-ins | `dailybot checkin list` | Pending follow-ups for today with question details |
+| Complete a check-in | `dailybot checkin complete <uuid>` | Interactive or `--answer` flags; type-aware prompts |
+| List forms | `dailybot form list` | All visible forms with question count |
+| Submit a form | `dailybot form submit <uuid>` | Guided per-question prompts or `--content` JSON |
+| Give kudos | `dailybot kudos give --to "Name"` | Resolves receiver by name or UUID; team-visible |
+| List team members | `dailybot user list` | Name + UUID; emails not exposed |
+| Interactive TUI | `dailybot` (no args) | Grouped menu: Check-ins, Forms, Team, Session |
 
 ### Agent-Facing
 
@@ -71,7 +77,7 @@ The CLI supports four credential sources, resolved in this order for **agent com
 4. Stored API key (`dailybot config key=...`)
 5. Login session Bearer token (`dailybot login`)
 
-For **human commands** (`status`, `update`, `logout`), only the login session is supported.
+For **human commands** (`status`, `update`, `logout`) and **user-scoped commands** (`checkin`, `form`, `kudos`, `user`), only the login session Bearer token is supported. These commands call `require_bearer_auth()` which checks `get_token()` and exits with code 3 if not logged in.
 
 For **standalone agent registration**, no authentication is required — agents complete a math challenge to prove they're not bots.
 
