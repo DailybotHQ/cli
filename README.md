@@ -75,7 +75,7 @@ Same auto-detection as `upgrade`: the matching uninstall is run for you on `pipx
 
 ## For humans
 
-Authenticate once with your Dailybot email, then submit updates and check pending check-ins right from your terminal.
+Authenticate once with your Dailybot email, then submit updates, complete check-ins, fill out forms, give kudos, and browse your team — all from your terminal.
 
 ```bash
 # Log in (interactive, email OTP)
@@ -91,7 +91,139 @@ dailybot update "Finished the auth module, starting on tests."
 dailybot update --done "Auth module" --doing "Tests" --blocked "None"
 ```
 
-Run `dailybot` with no arguments to enter **interactive mode** — if you're not logged in yet, it will walk you through authentication first, then let you submit updates step by step.
+Run `dailybot` with no arguments to enter **interactive mode** — a grouped menu covering check-ins, forms, kudos, and team browsing. If you're not logged in yet, it walks you through authentication first.
+
+---
+
+## Check-ins
+
+```bash
+# List today's pending check-ins
+dailybot checkin list
+
+# Complete a check-in interactively (prompts each question)
+dailybot checkin complete <followup_uuid>
+
+# Complete non-interactively with answer flags (0-based index)
+dailybot checkin complete <followup_uuid> \
+  -a 0="Shipped the auth refactor" \
+  -a 1="Reviewing the migration plan" \
+  --yes
+
+# Target a specific response date
+dailybot checkin complete <followup_uuid> -a 0="Done" --response-date 2026-05-20 --yes
+
+# Machine-readable JSON output
+dailybot checkin list --json
+dailybot checkin complete <followup_uuid> -a 0="Done" --yes --json
+```
+
+### `dailybot checkin complete` options
+
+| Flag | Short | Description |
+|------|-------|-------------|
+| `--answer` | `-a` | Answer as `index=response` (0-based). Repeatable. Prompts when omitted. |
+| `--response-date` | | Target date `YYYY-MM-DD`. Defaults to today. |
+| `--yes` | `-y` | Skip the confirmation prompt. |
+| `--json` | | Emit machine-readable JSON to stdout. |
+
+---
+
+## Forms
+
+```bash
+# List all forms visible to you (includes question count)
+dailybot form list
+
+# Submit a form — guided mode (prompts each question by label and type)
+dailybot form submit <form_uuid>
+
+# Submit non-interactively with a JSON content map
+dailybot form submit <form_uuid> \
+  --content '{"<question-uuid>":"Great week!", "<question-uuid-2>":"No blockers"}' \
+  --yes
+
+# Machine-readable JSON output
+dailybot form list --json
+dailybot form submit <form_uuid> --content '{"<q-uuid>":"Yes"}' --yes --json
+```
+
+Guided mode (`form submit` without `--content`) fetches the form's question list from the API and prompts each question one by one, with type-aware inputs:
+
+| Question type | Prompt |
+|--------------|--------|
+| `text_field` | Free-text input |
+| `numeric` | Number input, validated |
+| `boolean` | Yes / No selector |
+| `choice` | Pick from a list of options |
+
+### `dailybot form submit` options
+
+| Flag | Short | Description |
+|------|-------|-------------|
+| `--content` | `-c` | JSON map of `{"<question_uuid>": "<answer>"}`. Prompts when omitted. |
+| `--yes` | `-y` | Skip the confirmation prompt. |
+| `--json` | | Emit machine-readable JSON to stdout. |
+
+---
+
+## Kudos
+
+```bash
+# Give kudos — receiver resolved by full name against your org directory
+dailybot kudos give --to "Jane Doe" --message "Shipped the auth refactor cleanly, great work!"
+
+# Resolve by UUID instead
+dailybot kudos give --to <user-uuid> --message "Thanks for the PR review." --yes
+
+# Attach a company value
+dailybot kudos give --to "Jane Doe" --message "Great!" --value <company-value-uuid> --yes
+
+# Machine-readable
+dailybot kudos give --to "Jane Doe" --message "Great!" --yes --json
+```
+
+If `--to` matches more than one name partially, the CLI lists the ambiguous matches and exits — it never guesses. Pass the full name or a UUID to be precise.
+
+### `dailybot kudos give` options
+
+| Flag | Short | Description |
+|------|-------|-------------|
+| `--to` | `-t` | Receiver full name or UUID. Required. |
+| `--message` | `-m` | Kudos message (team-visible). Required. |
+| `--value` | | Optional company value UUID. |
+| `--yes` | `-y` | Skip the confirmation prompt. |
+| `--json` | | Emit machine-readable JSON to stdout. |
+
+---
+
+## Team
+
+```bash
+# List all members in your organization
+dailybot user list
+
+# Machine-readable
+dailybot user list --json
+```
+
+The table shows **Name** and **User UUID**. You can copy a UUID directly into `dailybot kudos give --to <uuid>` for precise targeting.
+
+---
+
+## User-scoped exit codes
+
+All user-scoped commands (`checkin`, `form`, `kudos`, `user`) use structured exit codes for scripting:
+
+| Code | Meaning |
+|------|---------|
+| `0` | Success |
+| `2` | Invalid input (bad format, ambiguous receiver) |
+| `3` | Not logged in — run `dailybot login` |
+| `4` | Permission denied (403), self-kudos, or daily kudos limit reached |
+| `5` | Form response quota exhausted |
+| `6` | Rate limited — wait and retry |
+| `7` | User declined the confirmation prompt |
 
 ## For agents
 
@@ -309,13 +441,49 @@ Replies to agent emails land as messages retrievable via `dailybot agent message
 
 ## Commands
 
+### Session
+
 | Command | Description |
-|---|---|
+|---------|-------------|
 | `dailybot login` | Authenticate with email OTP |
 | `dailybot logout` | Log out and revoke token |
-| `dailybot status` | Show pending check-ins for today |
-| `dailybot update` | Submit a check-in update (free-text or structured) |
+| `dailybot status` | Show pending check-ins and auth status |
+| `dailybot update` | Submit a free-text or structured check-in update |
 | `dailybot config` | Get, set, or remove a stored setting (e.g. API key) |
+| `dailybot version` | Show version info and optionally check for updates |
+| `dailybot upgrade` | Upgrade the CLI (auto-detects install method) |
+| `dailybot uninstall` | Remove the CLI |
+
+### Check-ins
+
+| Command | Description |
+|---------|-------------|
+| `dailybot checkin list` | List today's pending check-ins |
+| `dailybot checkin complete <uuid>` | Complete a pending check-in (interactive or `-a` flags) |
+
+### Forms
+
+| Command | Description |
+|---------|-------------|
+| `dailybot form list` | List forms visible to you (includes question count) |
+| `dailybot form submit <uuid>` | Submit a form (guided prompts or `--content` JSON) |
+
+### Kudos
+
+| Command | Description |
+|---------|-------------|
+| `dailybot kudos give` | Give kudos to a teammate by name or UUID |
+
+### Team
+
+| Command | Description |
+|---------|-------------|
+| `dailybot user list` | List all members in your organization |
+
+### Agent commands
+
+| Command | Description |
+|---------|-------------|
 | `dailybot agent configure` | Configure a named agent profile |
 | `dailybot agent profiles` | List all configured agent profiles |
 | `dailybot agent register` | Register a new agent and organization (standalone) |
