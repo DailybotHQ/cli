@@ -56,6 +56,9 @@ pip-delete-this-directory.txt
 .vscode
 .devcontainer
 
+# Dailybot repo profile (local-only, not committed)
+.dailybot/
+
 # Scratchpad for AI agents and humans — see AGENTS.md.
 # Anything dropped here is ignored except for the placeholder .gitkeep file.
 tmp/*
