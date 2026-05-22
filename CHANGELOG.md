@@ -9,6 +9,63 @@ Do not edit it by hand — your edits will be overwritten on the next release.
 
 <!-- version list -->
 
+## v1.8.0 (2026-05-22)
+
+### Bug Fixes
+
+- **auth**: Improve multi-org selection in interactive login
+  ([`0f25ff3`](https://github.com/DailybotHQ/cli/commit/0f25ff397facd119477871f74fde1d79bba40cb2))
+
+- **codecheck**: Ruff format + fix isolated_global_agents test fixture
+  ([`58fdcd8`](https://github.com/DailybotHQ/cli/commit/58fdcd81b4bb2c04fda0e494b0dc1656f45ea591))
+
+- **codecheck**: Security hardening and linter cleanup for user-scoped API
+  ([`8b9ef78`](https://github.com/DailybotHQ/cli/commit/8b9ef7890014aceb5bfe450a007083f23ff4dea5))
+
+### Build System
+
+- **docker**: Improve clitest with API env pinning and network
+  ([`060b0b4`](https://github.com/DailybotHQ/cli/commit/060b0b40fb6523e18c46e4142d7fb559aaf62b5e))
+
+### Documentation
+
+- Update all docs for user-scoped commands (checkin, form, kudos, user)
+  ([`066c195`](https://github.com/DailybotHQ/cli/commit/066c1951fe8298ef314b68bf6a720b46ceac1b8a))
+
+- **readme**: Document user-scoped commands (checkin, form, kudos, user)
+  ([`086381f`](https://github.com/DailybotHQ/cli/commit/086381ff3485e7eff8a53c2445eef4a3e2b579c3))
+
+### Features
+
+- **cli**: Add checkin, form, and kudos commands
+  ([`9c2c278`](https://github.com/DailybotHQ/cli/commit/9c2c278e3d07d9311edda10a4fb6b131651af0a5))
+
+- **client**: Add user-scoped public API methods
+  ([`4598d3f`](https://github.com/DailybotHQ/cli/commit/4598d3f1a5fa8b96721595fd645d81840d963c7c))
+
+- **config**: Honor DAILYBOT_CONFIG_DIR for sandbox isolation
+  ([`b8b4277`](https://github.com/DailybotHQ/cli/commit/b8b42774215c518cbf8d298a5769c51cb6c26946))
+
+- **interactive**: Expand menu with public API flows
+  ([`00a46f3`](https://github.com/DailybotHQ/cli/commit/00a46f35086aff2e0c37937eae050fcb3995fbcb))
+
+- **interactive**: Show API URL and handle login failures gracefully
+  ([`380c37b`](https://github.com/DailybotHQ/cli/commit/380c37b301bd494fafff6a06ae4c923102269efd))
+
+### Refactoring
+
+- **cli**: Extract user_scoped_actions shared handlers
+  ([`43e975f`](https://github.com/DailybotHQ/cli/commit/43e975fdf3129de6775e0d71dfbe4cc41e486602))
+
+### Testing
+
+- **cli**: Add coverage for checkin, form, and kudos commands
+  ([`914d077`](https://github.com/DailybotHQ/cli/commit/914d0771e175c20b2d1e3bbb07bcba80e368d53e))
+
+- **cli**: Cover user list and interactive kudos menu
+  ([`bf5f7cf`](https://github.com/DailybotHQ/cli/commit/bf5f7cf7f1ba1a2a1417ff2ba0f172bfd5707870))
+
+
 ## v1.7.1 (2026-05-04)
 
 ### Bug Fixes
