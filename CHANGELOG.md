@@ -9,6 +9,32 @@ Do not edit it by hand — your edits will be overwritten on the next release.
 
 <!-- version list -->
 
+## v1.9.0 (2026-05-22)
+
+### Bug Fixes
+
+- **codecheck**: Ruff format config.py valid keys line
+  ([`446f6d9`](https://github.com/DailybotHQ/cli/commit/446f6d9239a0bbb43fbe9dc9fd1e59f38f50adc4))
+
+### Chores
+
+- **skills**: Replace dailybot-progress-report with full skill pack
+  ([`0068638`](https://github.com/DailybotHQ/cli/commit/0068638a93170ec6d56291058da62a201fb59314))
+
+### Documentation
+
+- Document .dailybot_example template as best practice
+  ([`ae61bce`](https://github.com/DailybotHQ/cli/commit/ae61bce0dbd00fde12fdc8aee8ba8e7a4a78dab0))
+
+- Document vars key in repo profile
+  ([`b71a00e`](https://github.com/DailybotHQ/cli/commit/b71a00ec581c481a3b6176bb4e66600c5deab8ab))
+
+### Features
+
+- **config**: Support `vars` key in .dailybot/profile.json and gitignore .dailybot/
+  ([`21451ea`](https://github.com/DailybotHQ/cli/commit/21451eae0a4352b1224c447b08d25f0339a65ec8))
+
+
 ## v1.8.0 (2026-05-22)
 
 ### Bug Fixes
