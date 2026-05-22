@@ -336,6 +336,9 @@ Or hand-author the file if you prefer:
   "default_metadata": {
     "team": "platform",
     "service": "core-hub"
+  },
+  "vars": {
+    "release_form_id": "671b6410-83dc-4353-be08-dbea480274bc"
   }
 }
 ```
@@ -345,6 +348,18 @@ All keys are optional:
 - **`name`** — overrides the worker display name (same effect as `--name`). Anyone running `dailybot agent update "..."` from the repo signs as `"Core Hub Bot"`.
 - **`profile`** — selects which entry of the **global** `agents.json` provides credentials. The repo file's `name` still wins over the global profile's display name. If the slug isn't found locally, the CLI warns once and falls back to your login session — handy for repos that ship the file before every teammate has run `dailybot agent configure`.
 - **`default_metadata`** — shallow-merged into every `--metadata` payload sent from the repo. Inline `--metadata` keys win per-key; missing keys fall through. Useful for stamping every report with team/service tags.
+- **`vars`** — a free-form object for repo-specific variables that the CLI carries but does not act on. Use it to store IDs, config values, or any context that scripts, skills, or automation can read from the profile. The CLI will never send `vars` in reports or warnings.
+
+```json
+{
+  "name": "Core Hub Bot",
+  "default_metadata": { "team": "platform" },
+  "vars": {
+    "release_form_id": "671b6410-83dc-4353-be08-dbea480274bc",
+    "deploy_checkin_id": "abc-123"
+  }
+}
+```
 
 Per-field precedence (highest wins): **CLI flag → `.dailybot/profile.json` → global `agents.json` → hardcoded fallback (`"CLI Agent"`)**.
 
