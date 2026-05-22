@@ -1,6 +1,6 @@
 # Configuration & Credentials
 
-The Dailybot CLI persists state in `~/.config/dailybot/`. There is no XDG-spec lookup yet (issue: TODO if/when raised) — the path is hard-coded in `dailybot_cli/config.py`. All files that contain secrets are written with mode `0o600`.
+The Dailybot CLI persists state in `~/.config/dailybot/` by default. The path can be overridden by setting `DAILYBOT_CONFIG_DIR` (see Environment Variables below). All files that contain secrets are written with mode `0o600`.
 
 ## Files
 
@@ -36,6 +36,7 @@ The Dailybot CLI persists state in `~/.config/dailybot/`. There is no XDG-spec l
 
 | Variable | Read by | Effect |
 |----------|---------|--------|
+| `DAILYBOT_CONFIG_DIR` | `get_config_dir()` | Redirects all config/credential file I/O to this directory instead of `~/.config/dailybot/`. Useful for dev sandboxes (`clitest`) and CI environments. |
 | `DAILYBOT_API_URL` | `get_api_url()` | Overrides the API base URL (after `--api-url` flag) |
 | `DAILYBOT_API_KEY` | `get_api_key()` | Provides an org API key without storing it on disk |
 | `DAILYBOT_CLI_TOKEN` | `get_token()` | Provides a login Bearer token without `dailybot login` |
@@ -44,9 +45,9 @@ The Dailybot CLI persists state in `~/.config/dailybot/`. There is no XDG-spec l
 
 ## Auth Resolution Order
 
-### For `dailybot login` / `logout` / `status` / `update`
+### For `dailybot login` / `logout` / `status` / `update` / `checkin` / `form` / `kudos` / `user`
 
-These commands only accept the **login session Bearer token**. Resolution:
+These commands only accept the **login session Bearer token**. The user-scoped commands (`checkin`, `form`, `kudos`, `user`) use `require_bearer_auth()` from `public_api_helpers.py`, which exits with code 3 if no token is found. Resolution:
 
 1. `DAILYBOT_CLI_TOKEN` env var
 2. `credentials.json::token`

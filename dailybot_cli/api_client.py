@@ -6,6 +6,8 @@ import httpx
 
 from dailybot_cli.config import get_api_key, get_api_url, get_token
 
+_MAX_LIST_PAGES: int = 50  # safety cap for paginated list endpoints
+
 
 class APIError(Exception):
     """Raised when the API returns a non-success response."""
@@ -152,6 +154,105 @@ class DailyBotClient:
         """GET /v1/cli/status/"""
         response: httpx.Response = httpx.get(
             f"{self.api_url}/v1/cli/status/",
+            headers=self._headers(),
+            timeout=self.timeout,
+        )
+        return self._handle_response(response)
+
+    # --- User-scoped public API endpoints (Bearer token) ---
+
+    def complete_checkin(
+        self,
+        followup_uuid: str,
+        responses: list[dict[str, Any]],
+        last_question_index: int | None = None,
+        response_date: str | None = None,
+    ) -> dict[str, Any]:
+        """POST /v1/checkins/<followup_uuid>/responses/"""
+        payload: dict[str, Any] = {"responses": responses}
+        if last_question_index is not None:
+            payload["last_question_index"] = last_question_index
+        if response_date:
+            payload["response_date"] = response_date
+        response: httpx.Response = httpx.post(
+            f"{self.api_url}/v1/checkins/{followup_uuid}/responses/",
+            json=payload,
+            headers=self._headers(),
+            timeout=self.timeout,
+        )
+        return self._handle_response(response)
+
+    def list_forms(self, *, include_questions: bool = False) -> list[dict[str, Any]]:
+        """GET /v1/forms/ — optionally expand question definitions per form."""
+        params: dict[str, str] = {"include": "questions"} if include_questions else {}
+        response: httpx.Response = httpx.get(
+            f"{self.api_url}/v1/forms/",
+            headers=self._headers(),
+            params=params,
+            timeout=self.timeout,
+        )
+        if response.status_code >= 400:
+            self._handle_response(response)
+        return response.json()
+
+    def get_form(self, form_uuid: str) -> dict[str, Any]:
+        """GET /v1/forms/<form_uuid>/ — form metadata and question definitions."""
+        response: httpx.Response = httpx.get(
+            f"{self.api_url}/v1/forms/{form_uuid}/",
+            headers=self._headers(),
+            timeout=self.timeout,
+        )
+        return self._handle_response(response)
+
+    def submit_form_response(
+        self,
+        form_uuid: str,
+        content: dict[str, Any],
+    ) -> dict[str, Any]:
+        """POST /v1/forms/<form_uuid>/responses/"""
+        response: httpx.Response = httpx.post(
+            f"{self.api_url}/v1/forms/{form_uuid}/responses/",
+            json={"content": content},
+            headers=self._headers(),
+            timeout=self.timeout,
+        )
+        return self._handle_response(response)
+
+    def list_users(self) -> list[dict[str, Any]]:
+        """GET /v1/users/ — fetch all pages and return the combined results list."""
+        results: list[dict[str, Any]] = []
+        url: str | None = f"{self.api_url}/v1/users/"
+        pages_fetched: int = 0
+        while url is not None and pages_fetched < _MAX_LIST_PAGES:
+            response: httpx.Response = httpx.get(
+                url,
+                headers=self._headers(),
+                timeout=self.timeout,
+            )
+            if response.status_code >= 400:
+                self._handle_response(response)
+            body: dict[str, Any] = response.json()
+            results.extend(body.get("results", []))
+            url = body.get("next")
+            pages_fetched += 1
+        return results
+
+    def give_kudos(
+        self,
+        receivers: list[str],
+        content: str,
+        company_value: str | None = None,
+    ) -> dict[str, Any]:
+        """POST /v1/kudos/"""
+        payload: dict[str, Any] = {
+            "receivers": receivers,
+            "content": content,
+        }
+        if company_value:
+            payload["company_value"] = company_value
+        response: httpx.Response = httpx.post(
+            f"{self.api_url}/v1/kudos/",
+            json=payload,
             headers=self._headers(),
             timeout=self.timeout,
         )

@@ -35,15 +35,19 @@ Both should run without error. If `dailybot` isn't on PATH, the user is probably
 
 ## Step 3 — Read the Source
 
-The codebase is small (~6 files in `dailybot_cli/` excluding `commands/`, plus 7 command modules). Read them in this order:
+The codebase is small (~6 files in `dailybot_cli/` excluding `commands/`, plus ~12 command modules). Read them in this order:
 
 1. `dailybot_cli/main.py` — entry point, root group
 2. `dailybot_cli/api_client.py` — every HTTP endpoint the CLI hits
 3. `dailybot_cli/config.py` — credential and profile management
 4. `dailybot_cli/display.py` — every output helper
-5. `dailybot_cli/commands/*.py` — one file per command/group; agent.py is the largest
+5. `dailybot_cli/commands/agent.py` — the largest module (agent subcommands)
+6. `dailybot_cli/commands/public_api_helpers.py` — shared auth/error/UX helpers for user-scoped commands
+7. `dailybot_cli/commands/user_scoped_actions.py` — shared action logic for checkin/form/user
+8. `dailybot_cli/commands/{checkin,form,kudos,user}.py` — thin Click wrappers for user-scoped features
+9. `dailybot_cli/commands/interactive.py` — grouped TUI menu
 
-Then skim `tests/` to understand the mocking patterns.
+Then skim `tests/` to understand the mocking patterns. Note that user-scoped commands are tested in `tests/public_api_commands_test.py`.
 
 ## Step 4 — Read the Docs
 

@@ -36,22 +36,20 @@ def chdir_tmp(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
 
 @pytest.fixture
 def isolated_global_agents(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
-    """Fully isolate global state: AGENTS_FILE, CREDENTIALS_FILE, CONFIG_FILE, env vars.
+    """Fully isolate global state via DAILYBOT_CONFIG_DIR env var.
 
-    Without all four, the wizard / nudge tests would read the real ~/.config/dailybot/
+    Without this, the wizard / nudge tests would read the real ~/.config/dailybot/
     on the developer's machine, making behavior dependent on whether they happen to
     be logged in.
     """
-    fake_agents: Path = tmp_path / "fake-agents.json"
-    fake_creds: Path = tmp_path / "fake-credentials.json"
-    fake_config: Path = tmp_path / "fake-config.json"
+    monkeypatch.setenv("DAILYBOT_CONFIG_DIR", str(tmp_path))
     monkeypatch.setattr("dailybot_cli.config.CONFIG_DIR", tmp_path)
-    monkeypatch.setattr("dailybot_cli.config.AGENTS_FILE", fake_agents)
-    monkeypatch.setattr("dailybot_cli.config.CREDENTIALS_FILE", fake_creds)
-    monkeypatch.setattr("dailybot_cli.config.CONFIG_FILE", fake_config)
+    monkeypatch.setattr("dailybot_cli.config.AGENTS_FILE", tmp_path / "agents.json")
+    monkeypatch.setattr("dailybot_cli.config.CREDENTIALS_FILE", tmp_path / "credentials.json")
+    monkeypatch.setattr("dailybot_cli.config.CONFIG_FILE", tmp_path / "config.json")
     monkeypatch.delenv("DAILYBOT_API_KEY", raising=False)
     monkeypatch.delenv("DAILYBOT_CLI_TOKEN", raising=False)
-    return fake_agents
+    return tmp_path / "agents.json"
 
 
 # --- write_repo_profile -----------------------------------------------------

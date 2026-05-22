@@ -14,6 +14,8 @@ services:
     command: sleep infinity
     environment:
       - DOCKER_DEV_ENV=vscode
+    networks:
+      - dailybot
     env_file:
       - cli/.env
     volumes:
@@ -35,5 +37,10 @@ volumes:
   claude_data: {}
   codex_data: {}
   cursor_data: {}        # Cursor CLI session/auth (symlinked to ~/.cursor)
-  dailybot_data: {}      # Dailybot CLI config/auth (symlinked to ~/.config/dailybot)
+  dailybot_data: {}      # Dailybot CLI config/auth (~/.config/dailybot, config_local, config_custom)
   gh_data: {}
+
+networks:
+  dailybot:
+    name: dailybot-project-network
+    external: true

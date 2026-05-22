@@ -116,6 +116,143 @@ class TestDailyBotClientUpdates:
         assert result["count"] == 1
 
 
+class TestDailyBotClientPublicApi:
+    def test_complete_checkin(self, client: DailyBotClient) -> None:
+        mock_response: MagicMock = MagicMock(spec=httpx.Response)
+        mock_response.status_code = 201
+        mock_response.json.return_value = {"uuid": "response-uuid"}
+
+        responses: list[dict[str, Any]] = [
+            {"uuid": "q-0", "index": 0, "response": "Done"},
+        ]
+        with patch("httpx.post", return_value=mock_response) as mock_post:
+            result: dict[str, Any] = client.complete_checkin(
+                followup_uuid="followup-uuid",
+                responses=responses,
+                last_question_index=0,
+            )
+
+        call_kwargs: dict[str, Any] = mock_post.call_args[1]
+        assert call_kwargs["json"]["responses"] == responses
+        assert "Bearer test-token" in call_kwargs["headers"]["Authorization"]
+        assert result["uuid"] == "response-uuid"
+
+    def test_list_forms(self, client: DailyBotClient) -> None:
+        mock_response: MagicMock = MagicMock(spec=httpx.Response)
+        mock_response.status_code = 200
+        mock_response.json.return_value = [{"id": "form-uuid", "name": "Feedback"}]
+
+        with patch("httpx.get", return_value=mock_response) as mock_get:
+            result: list[dict[str, Any]] = client.list_forms()
+
+        assert result[0]["id"] == "form-uuid"
+        assert "Bearer test-token" in mock_get.call_args[1]["headers"]["Authorization"]
+        assert mock_get.call_args[1].get("params", {}) == {}
+
+    def test_list_forms_with_questions(self, client: DailyBotClient) -> None:
+        mock_response: MagicMock = MagicMock(spec=httpx.Response)
+        mock_response.status_code = 200
+        mock_response.json.return_value = [
+            {
+                "id": "form-uuid",
+                "name": "Feedback",
+                "questions": [{"uuid": "q1", "question": "How was it?"}],
+            }
+        ]
+
+        with patch("httpx.get", return_value=mock_response) as mock_get:
+            result: list[dict[str, Any]] = client.list_forms(include_questions=True)
+
+        assert result[0]["questions"][0]["uuid"] == "q1"
+        assert mock_get.call_args[1]["params"] == {"include": "questions"}
+
+    def test_get_form(self, client: DailyBotClient) -> None:
+        mock_response: MagicMock = MagicMock(spec=httpx.Response)
+        mock_response.status_code = 200
+        mock_response.json.return_value = {
+            "id": "form-uuid",
+            "name": "Feedback",
+            "questions": [
+                {"uuid": "question-uuid", "question": "How was your week?"},
+            ],
+        }
+
+        with patch("httpx.get", return_value=mock_response) as mock_get:
+            result: dict[str, Any] = client.get_form("form-uuid")
+
+        assert result["id"] == "form-uuid"
+        assert mock_get.call_args[0][0].endswith("/v1/forms/form-uuid/")
+        assert "Bearer test-token" in mock_get.call_args[1]["headers"]["Authorization"]
+
+    def test_submit_form_response(self, client: DailyBotClient) -> None:
+        mock_response: MagicMock = MagicMock(spec=httpx.Response)
+        mock_response.status_code = 201
+        mock_response.json.return_value = {"uuid": "response-uuid"}
+
+        content: dict[str, str] = {"question-uuid": "Yes"}
+        with patch("httpx.post", return_value=mock_response) as mock_post:
+            result: dict[str, Any] = client.submit_form_response("form-uuid", content)
+
+        call_kwargs: dict[str, Any] = mock_post.call_args[1]
+        assert call_kwargs["json"] == {"content": content}
+        assert result["uuid"] == "response-uuid"
+
+    def test_list_users_paginated(self, client: DailyBotClient) -> None:
+        first_response: MagicMock = MagicMock(spec=httpx.Response)
+        first_response.status_code = 200
+        first_response.json.return_value = {
+            "results": [{"uuid": "user-1", "full_name": "Jane Doe"}],
+            "next": "http://test-api.example.com/v1/users/?page=2",
+        }
+        second_response: MagicMock = MagicMock(spec=httpx.Response)
+        second_response.status_code = 200
+        second_response.json.return_value = {
+            "results": [{"uuid": "user-2", "full_name": "John Doe"}],
+            "next": None,
+        }
+
+        with patch("httpx.get", side_effect=[first_response, second_response]) as mock_get:
+            result: list[dict[str, Any]] = client.list_users()
+
+        assert len(result) == 2
+        assert mock_get.call_count == 2
+
+    def test_list_users_page_cap(self, client: DailyBotClient) -> None:
+        """Pagination must stop at _MAX_LIST_PAGES even if the backend keeps returning next."""
+        from dailybot_cli.api_client import _MAX_LIST_PAGES
+
+        infinite_page: MagicMock = MagicMock(spec=httpx.Response)
+        infinite_page.status_code = 200
+        infinite_page.json.return_value = {
+            "results": [{"uuid": "user-x"}],
+            "next": "http://test-api.example.com/v1/users/?page=999",
+        }
+
+        with patch("httpx.get", return_value=infinite_page) as mock_get:
+            result: list[dict[str, Any]] = client.list_users()
+
+        assert mock_get.call_count == _MAX_LIST_PAGES
+        assert len(result) == _MAX_LIST_PAGES
+
+    def test_give_kudos(self, client: DailyBotClient) -> None:
+        mock_response: MagicMock = MagicMock(spec=httpx.Response)
+        mock_response.status_code = 200
+        mock_response.json.return_value = {"uuid": "kudos-uuid"}
+
+        with patch("httpx.post", return_value=mock_response) as mock_post:
+            result: dict[str, Any] = client.give_kudos(
+                receivers=["user-uuid"],
+                content="Great work!",
+                company_value="value-uuid",
+            )
+
+        call_kwargs: dict[str, Any] = mock_post.call_args[1]
+        assert call_kwargs["json"]["receivers"] == ["user-uuid"]
+        assert call_kwargs["json"]["company_value"] == "value-uuid"
+        assert "by_dailybot" not in call_kwargs["json"]
+        assert result["uuid"] == "kudos-uuid"
+
+
 class TestDailyBotClientAgent:
     def test_submit_agent_report(self, client: DailyBotClient) -> None:
         mock_response: MagicMock = MagicMock(spec=httpx.Response)

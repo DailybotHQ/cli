@@ -346,3 +346,86 @@ def print_update_result(data: dict[str, Any]) -> None:
         action: str = followup.get("action", "created")
         label: str = "Updated" if action == "updated" else "Submitted"
         console.print(f"  [dim]-[/dim] {name} [dim]({label})[/dim]")
+
+
+def print_checkin_list_overview(count: int, checkins: list[dict[str, Any]]) -> None:
+    """Display a summary table of pending check-ins with UUIDs."""
+    if not checkins:
+        print_info("No pending check-ins for today.")
+        return
+
+    table: Table = Table(title=f"Pending Check-ins ({count})", border_style="cyan")
+    table.add_column("Name", style="bold")
+    table.add_column("Followup UUID", style="dim")
+    table.add_column("Questions", justify="right")
+    for checkin in checkins:
+        table.add_row(
+            str(checkin.get("followup_name", "Check-in")),
+            str(checkin.get("followup_uuid", "")),
+            str(len(checkin.get("template_questions", []))),
+        )
+    console.print(table)
+
+
+def print_checkin_complete_result(followup_name: str, data: dict[str, Any]) -> None:
+    """Display the result of completing a check-in."""
+    response_id: str = str(data.get("uuid") or data.get("id") or "N/A")
+    print_success(f'Check-in completed for "{followup_name}"')
+    print_info(f"Response ID: {response_id}")
+
+
+def print_forms_table(forms: list[dict[str, Any]]) -> None:
+    """Display visible forms in a table."""
+    if not forms:
+        print_info("No forms visible to you.")
+        return
+
+    table: Table = Table(title="Forms", border_style="cyan")
+    table.add_column("Name", style="bold")
+    table.add_column("Form UUID", style="dim")
+    table.add_column("Questions", style="dim", justify="right")
+    for form in forms:
+        form_id: str = str(form.get("id") or "")
+        if not form_id:
+            continue
+        question_count: int = len(
+            form.get("questions") or form.get("template_questions") or form.get("fields") or []
+        )
+        count_str: str = str(question_count) if question_count else "—"
+        table.add_row(
+            str(form.get("name", "")),
+            form_id,
+            count_str,
+        )
+    console.print(table)
+
+
+def print_form_submit_result(form_name: str, data: dict[str, Any]) -> None:
+    """Display the result of submitting a form response."""
+    response_id: str = str(data.get("uuid") or data.get("id") or "N/A")
+    print_success(f'Form response submitted for "{form_name}"')
+    print_info(f"Response ID: {response_id}")
+
+
+def print_kudos_result(receiver_name: str, data: dict[str, Any]) -> None:
+    """Display the result of giving kudos."""
+    kudos_id: str = str(data.get("uuid") or data.get("id") or "N/A")
+    print_success(f"Kudos sent to {receiver_name}")
+    print_info(f"Kudos ID: {kudos_id}")
+
+
+def print_users_table(users: list[dict[str, Any]]) -> None:
+    """Display organization members in a table."""
+    if not users:
+        print_info("No team members found.")
+        return
+
+    table: Table = Table(title="Team members", border_style="cyan")
+    table.add_column("Name", style="bold")
+    table.add_column("User UUID", style="dim")
+    for user in users:
+        table.add_row(
+            str(user.get("full_name") or user.get("uuid") or ""),
+            str(user.get("uuid") or ""),
+        )
+    console.print(table)

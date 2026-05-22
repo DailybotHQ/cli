@@ -51,8 +51,12 @@ Anything that doesn't fit this shape is either:
 | `--profile` | `-p` | Profile slug |
 | `--metadata` | `-d` | JSON metadata |
 | `--json-data` | `-j` | Structured data |
-| `--milestone` | `-m` | Milestone marker |
-| `--co-authors` | `-c` | Repeatable co-authors |
+| `--milestone` | `-m` | Milestone marker (agent); message (kudos) |
+| `--co-authors` | `-c` | Repeatable co-authors (agent); content (form) |
+| `--answer` | `-a` | Repeatable check-in answers (index=response) |
+| `--to` | `-t` | Kudos receiver (name or UUID) |
+| `--yes` | `-y` | Skip confirmation prompt (user-scoped) |
+| `--json` | | Machine-readable JSON output (user-scoped) |
 
 Pick the same short alias every time you re-use the same long name. If you need a new short alias, check the list above first to avoid collisions inside the same command.
 
@@ -122,9 +126,10 @@ Every command that talks to an authenticated endpoint must resolve credentials t
 | Endpoint type | Resolution helper | Returns |
 |---------------|-------------------|---------|
 | Human (Bearer-only) | `_require_auth()` from the command file | `DailyBotClient` |
+| User-scoped (Bearer-only) | `require_bearer_auth()` from `public_api_helpers.py` | `DailyBotClient` |
 | Agent (key or Bearer) | `_resolve_agent_context(profile_flag, name_flag)` from `commands/agent.py` | `(agent_name, DailyBotClient)` |
 
-**Do not duplicate the resolution logic.** If a new command needs auth, route through one of these helpers.
+**Do not duplicate the resolution logic.** If a new command needs auth, route through one of these helpers. User-scoped commands (`checkin`, `form`, `kudos`, `user`) use `require_bearer_auth()`, which exits with code `EXIT_NOT_AUTHENTICATED = 3` when no token is available.
 
 For the resolution order specifics, see [CONFIGURATION.md](CONFIGURATION.md).
 
@@ -153,15 +158,26 @@ raise SystemExit(1)
 
 Avoid `sys.exit(...)` and never call `os._exit(...)`.
 
+## Shared Action Modules (User-Scoped Pattern)
+
+The user-scoped commands (`checkin`, `form`, `kudos`, `user`) introduced two shared modules:
+
+- **`public_api_helpers.py`** — auth helpers (`require_bearer_auth`), error translation (`exit_for_api_error`), interactive helpers (`confirm_write`, `pick_from_list`), name resolution (`resolve_user_by_name_or_uuid`), exit-code constants, and the `InteractiveAbort` exception.
+- **`user_scoped_actions.py`** — stateless action functions (`execute_checkin_list`, `execute_form_submit`, etc.) shared between CLI commands and the interactive TUI.
+
+This pattern enables code reuse: the CLI command `dailybot form submit` and the interactive menu's "Submit a form" both call the same `execute_form_submit(...)` function. The command module is a thin Click wrapper; the action module contains the logic.
+
+When adding a new user-scoped command, follow this pattern: thin Click group → delegates to action function in `user_scoped_actions.py` → uses helpers from `public_api_helpers.py`.
+
 ## When to Add a Helper Module
 
-The five command files in `dailybot_cli/commands/` average ~150–650 lines. When a single command is approaching ~250 lines or has multiple distinct responsibilities, consider extracting:
+The command files in `dailybot_cli/commands/` average ~150–650 lines. When a single command is approaching ~250 lines or has multiple distinct responsibilities, consider extracting:
 
 - A pure-function helper into the same file (lowercase `_helper_name`).
 - A reusable client method into `api_client.py`.
 - A reusable display helper into `display.py`.
 
-Avoid creating a `services/` or `domain/` layer prematurely — the architecture is intentionally flat. The biggest module today, `agent.py`, lives within that flat structure cleanly because each subcommand is independent.
+Avoid creating a `services/` or `domain/` layer prematurely — the architecture is intentionally flat. The biggest module today, `agent.py`, lives within that flat structure cleanly because each subcommand is independent. The user-scoped commands use `public_api_helpers.py` and `user_scoped_actions.py` as a deliberate two-module split (helpers vs actions) — this is the ceiling of acceptable decomposition.
 
 ## When to Add a New Command Group
 

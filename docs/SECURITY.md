@@ -71,10 +71,21 @@ The `org_cache.json` is cleared after a successful verify.
 - Issued by `verify_code(...)`.
 - Stored in `credentials.json` with `0o600`.
 - Sent on every authenticated request as `Authorization: Bearer <token>`.
+- Used by human endpoints (`/v1/cli/*`) and user-scoped endpoints (`/v1/checkins/*`, `/v1/forms/*`, `/v1/users/`, `/v1/kudos/`).
 - Revoked by `dailybot logout` (best-effort `POST /v1/cli/auth/logout/` + local file removal).
 - Treated as expired/invalid on any 401/403 from a Bearer-mode call → `_handle_response` rewrites the error to "Session expired. Run 'dailybot login' to re-authenticate."
 
 There is no automatic refresh. Tokens have a server-defined lifetime; the user is expected to re-run `dailybot login` when prompted.
+
+## User-Scoped Commands — Privacy Considerations
+
+The user-scoped commands (`checkin`, `form`, `kudos`, `user`) operate within the authenticated user's permissions. Specific security decisions:
+
+- **`dailybot user list`** — intentionally omits email addresses from both table and JSON output. This is a PII-minimization measure for an open-source CLI. UUIDs are exposed for programmatic use (e.g., `--to <uuid>` in kudos).
+- **`dailybot kudos give`** — prevents self-kudos client-side. The receiver is resolved by name against the user directory; ambiguous matches are rejected rather than guessed.
+- **Pagination safety** — `list_users()` caps at `_MAX_LIST_PAGES = 50` pages to prevent unbounded loops against a misbehaving backend.
+- **Confirmation prompts** — `checkin complete`, `form submit`, and `kudos give` show a confirmation before team-visible writes. `--yes` skips it for non-interactive/scripted use.
+- **Exit codes** — structured exit codes (2–7) enable safe scripting without parsing error messages. See [API_REFERENCE.md](API_REFERENCE.md) for the full table.
 
 ## API Key Lifecycle
 

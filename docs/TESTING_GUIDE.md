@@ -25,13 +25,19 @@ pytest -s                                # don't capture stdout (debugging)
 
 ```
 tests/
-├── __init__.py              # empty, just makes the dir importable
-├── api_client_test.py       # DailyBotClient + APIError
-├── commands_test.py         # Click commands via CliRunner
-└── config_test.py           # ~/.config/dailybot/ file management
+├── __init__.py                    # empty, just makes the dir importable
+├── api_client_test.py             # DailyBotClient + APIError
+├── commands_test.py               # Click commands via CliRunner (auth, agent, interactive)
+├── config_test.py                 # ~/.config/dailybot/ file management
+├── public_api_commands_test.py    # User-scoped commands (checkin, form, kudos, user)
+└── form_question_types_test.py    # Type-aware form prompt logic
 ```
 
 When adding a new module, mirror it in `tests/`. New test files **MUST** end in `_test.py`.
+
+### User-scoped command tests
+
+The user-scoped commands (`checkin`, `form`, `kudos`, `user`) are tested in `public_api_commands_test.py`. The pattern follows the same approach as `commands_test.py` but patches `dailybot_cli.commands.public_api_helpers.get_token` and `dailybot_cli.commands.public_api_helpers.DailyBotClient` (since the auth resolution for these commands goes through `require_bearer_auth()`).
 
 ## Mocking HTTP
 

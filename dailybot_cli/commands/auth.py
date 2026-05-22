@@ -22,6 +22,21 @@ from dailybot_cli.display import (
 )
 
 
+def _prompt_org_selection_numbered(organizations: list[dict[str, Any]]) -> dict[str, Any]:
+    """Numbered org picker — fallback when questionary TUI is unavailable."""
+    print_info("You belong to multiple organizations. Select one by number:")
+    for index, org in enumerate(organizations, start=1):
+        org_name: str = org.get("name", "Unknown")
+        org_uuid: str = org.get("uuid", "")
+        click.echo(f"  {index}. {org_name} (uuid: {org_uuid})")
+
+    while True:
+        choice: int = click.prompt("Organization number", type=int)
+        if 1 <= choice <= len(organizations):
+            return organizations[choice - 1]
+        print_error(f"Enter a number between 1 and {len(organizations)}.")
+
+
 def _prompt_org_selection(organizations: list[dict[str, Any]]) -> dict[str, Any]:
     """Display orgs and prompt the user to pick one."""
     choices: list[questionary.Choice] = [
@@ -31,10 +46,12 @@ def _prompt_org_selection(organizations: list[dict[str, Any]]) -> dict[str, Any]
         "You belong to multiple organizations. Select one:",
         choices=choices,
     ).ask()
-    if selected is None:
-        print_error("No organization selected.")
-        raise SystemExit(1)
-    return selected
+    if selected is not None:
+        return selected
+
+    # questionary returns None when cancelled or when the TUI cannot render
+    # (common after click.prompt in some terminals) — fall back to numbered input.
+    return _prompt_org_selection_numbered(organizations)
 
 
 def _print_org_list(organizations: list[dict[str, Any]]) -> None:
@@ -55,7 +72,12 @@ def _resolve_org_uuid(organizations: list[dict[str, Any]], org_uuid: str) -> int
 
 
 def _verify_and_save(
-    client: DailyBotClient, email: str, code: str, organization_id: int | None
+    client: DailyBotClient,
+    email: str,
+    code: str,
+    organization_id: int | None,
+    *,
+    allow_interactive_org_pick: bool = False,
 ) -> None:
     """Verify OTP code and save credentials."""
     try:
@@ -74,9 +96,25 @@ def _verify_and_save(
             # Auto-select the only org and retry
             auto_org_id: int = organizations[0]["id"]
             print_info(f"Auto-selecting organization: {organizations[0].get('name', 'Unknown')}")
-            _verify_and_save(client, email, code, auto_org_id)
+            _verify_and_save(
+                client,
+                email,
+                code,
+                auto_org_id,
+                allow_interactive_org_pick=allow_interactive_org_pick,
+            )
             return
         elif organizations:
+            if allow_interactive_org_pick:
+                selected_org: dict[str, Any] = _prompt_org_selection(organizations)
+                _verify_and_save(
+                    client,
+                    email,
+                    code,
+                    selected_org["id"],
+                    allow_interactive_org_pick=True,
+                )
+                return
             _print_org_list(organizations)
             print_info(f"Run: dailybot login --email={email} --code={code} --org=ORG_UUID")
         else:
@@ -123,15 +161,8 @@ def _do_login(email: str) -> None:
     is_multi_org: bool = request_result.get("is_multi_org", False)
     organizations: list[dict[str, Any]] = request_result.get("organizations", [])
 
-    # Print org list for reference if multi-org
-    if is_multi_org and len(organizations) > 1:
-        _print_org_list(organizations)
-
-    # Step 2: Enter code
-    code: str = click.prompt("Enter the 6-digit code", type=str)
-    code = code.strip()
-
-    # Step 3: If multi-org, prompt for org selection before verifying
+    # Step 2: Pick organization before the code prompt so questionary TUI works
+    # reliably (click.prompt can break questionary if it runs afterward).
     organization_id: int | None = None
     if is_multi_org and len(organizations) > 1:
         selected_org: dict[str, Any] = _prompt_org_selection(organizations)
@@ -139,8 +170,18 @@ def _do_login(email: str) -> None:
     elif len(organizations) == 1:
         organization_id = organizations[0].get("id")
 
+    # Step 3: Enter code
+    code: str = click.prompt("Enter the 6-digit code", type=str)
+    code = code.strip()
+
     # Step 4: Verify code and save credentials
-    _verify_and_save(client, email, code, organization_id)
+    _verify_and_save(
+        client,
+        email,
+        code,
+        organization_id,
+        allow_interactive_org_pick=True,
+    )
 
 
 def _request_code_non_interactive(email: str) -> None:
