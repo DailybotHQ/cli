@@ -389,10 +389,7 @@ def print_forms_table(forms: list[dict[str, Any]]) -> None:
         if not form_id:
             continue
         question_count: int = len(
-            form.get("questions")
-            or form.get("template_questions")
-            or form.get("fields")
-            or []
+            form.get("questions") or form.get("template_questions") or form.get("fields") or []
         )
         count_str: str = str(question_count) if question_count else "—"
         table.add_row(

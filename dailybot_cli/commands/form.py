@@ -42,7 +42,7 @@ def form_list(json_mode: bool) -> None:
     "--content",
     "-c",
     default=None,
-    help='JSON map of question UUID to answer. When omitted, prompts each question in order.',
+    help="JSON map of question UUID to answer. When omitted, prompts each question in order.",
 )
 @click.option("--yes", "-y", "assume_yes", is_flag=True, help="Skip the confirmation prompt.")
 @click.option("--json", "json_mode", is_flag=True, help="Emit machine-readable JSON to stdout.")

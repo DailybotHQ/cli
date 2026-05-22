@@ -139,9 +139,7 @@ def run_interactive() -> None:
             email = creds.get("email", "") if creds else ""
             org_stored: Any = creds.get("organization", "") if creds else ""
             org: str = (
-                org_stored.get("name", "")
-                if isinstance(org_stored, dict)
-                else str(org_stored)
+                org_stored.get("name", "") if isinstance(org_stored, dict) else str(org_stored)
             )
             org_uuid: str = creds.get("organization_uuid", "") if creds else ""
             console.print(f"Logged in as {email} ({org})")
@@ -291,9 +289,7 @@ def _give_kudos(client: DailyBotClient) -> None:
         return
 
     teammates: list[dict[str, Any]] = [
-        user
-        for user in users
-        if str(user.get("uuid", "")) != str(current_uuid or "")
+        user for user in users if str(user.get("uuid", "")) != str(current_uuid or "")
     ]
     if not teammates:
         print_error("No teammates available to receive kudos.")

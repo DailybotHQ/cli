@@ -151,18 +151,14 @@ def resolve_user_by_name_or_uuid(
         return identifier, identifier
 
     exact_matches: list[dict[str, Any]] = [
-        user
-        for user in users
-        if str(user.get("full_name", "")).lower() == identifier.lower()
+        user for user in users if str(user.get("full_name", "")).lower() == identifier.lower()
     ]
     if len(exact_matches) == 1:
         match: dict[str, Any] = exact_matches[0]
         return str(match["uuid"]), str(match.get("full_name") or match["uuid"])
 
     partial_matches: list[dict[str, Any]] = [
-        user
-        for user in users
-        if identifier.lower() in str(user.get("full_name", "")).lower()
+        user for user in users if identifier.lower() in str(user.get("full_name", "")).lower()
     ]
     if len(partial_matches) == 1:
         match = partial_matches[0]

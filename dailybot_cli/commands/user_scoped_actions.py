@@ -395,8 +395,7 @@ def execute_checkin_complete(
     )
     if checkin_data is None:
         message: str = (
-            f'No pending check-in found for followup "{followup_uuid}". '
-            "Run: dailybot checkin list"
+            f'No pending check-in found for followup "{followup_uuid}". Run: dailybot checkin list'
         )
         if json_mode:
             emit_json({"error": message, "status": 0})
@@ -423,8 +422,8 @@ def execute_checkin_complete(
         f"Followup UUID: {followup_uuid}",
     ]
     for index, question in enumerate(questions):
-        summary_lines.append(f'  Q{index + 1}: {question.get("question", "")}')
-        summary_lines.append(f'  A{index + 1}: {answers[index]}')
+        summary_lines.append(f"  Q{index + 1}: {question.get('question', '')}")
+        summary_lines.append(f"  A{index + 1}: {answers[index]}")
     if response_date:
         summary_lines.append(f"Response date: {response_date}")
 
