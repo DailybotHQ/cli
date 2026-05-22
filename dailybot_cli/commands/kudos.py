@@ -6,15 +6,14 @@ import click
 
 from dailybot_cli.api_client import APIError, DailyBotClient
 from dailybot_cli.commands.public_api_helpers import (
-    USER_SCOPED_MODEL_HELP,
+    EXIT_PERMISSION_DENIED,
+    EXIT_USAGE_ERROR,
     confirm_write,
     emit_json,
     exit_for_api_error,
     get_current_user_uuid,
     require_bearer_auth,
     resolve_user_by_name_or_uuid,
-    EXIT_PERMISSION_DENIED,
-    EXIT_USAGE_ERROR,
 )
 from dailybot_cli.display import (
     console,
@@ -110,7 +109,7 @@ def kudos_give(
     """Give kudos to a teammate.
 
     \b
-    {help}
+    Acts as you. You can only see and act on what you could in the webapp.
 
     Receivers are resolved by name against your organization directory — never guessed.
 
@@ -118,7 +117,7 @@ def kudos_give(
     Examples:
       dailybot kudos give --to "Jane Doe" --message "Great release work!"
       dailybot kudos give --to <user_uuid> --message "Thanks!" --yes
-    """.format(help=USER_SCOPED_MODEL_HELP)
+    """
     client = require_bearer_auth()
 
     try:

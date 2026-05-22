@@ -37,7 +37,7 @@ volumes:
   claude_data: {}
   codex_data: {}
   cursor_data: {}        # Cursor CLI session/auth (symlinked to ~/.cursor)
-  dailybot_data: {}      # Dailybot CLI config/auth (symlinked to ~/.config/dailybot)
+  dailybot_data: {}      # Dailybot CLI config/auth (~/.config/dailybot, config_local, config_custom)
   gh_data: {}
 
 networks:

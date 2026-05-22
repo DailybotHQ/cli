@@ -4,16 +4,18 @@ import json
 from typing import Any
 
 import click
+import questionary
 
 from dailybot_cli.api_client import APIError, DailyBotClient
 from dailybot_cli.commands.public_api_helpers import (
+    EXIT_USAGE_ERROR,
+    InteractiveAbort,
     confirm_write,
     emit_json,
     exit_for_api_error,
     find_pending_checkin,
     normalize_checkin_list_json,
     parse_answer_flags,
-    EXIT_USAGE_ERROR,
 )
 from dailybot_cli.display import (
     console,
@@ -31,8 +33,11 @@ from dailybot_cli.display import (
 def collect_checkin_answers(
     questions: list[dict[str, Any]],
     answer_flags: tuple[str, ...],
+    *,
+    interactive: bool = False,
 ) -> list[Any]:
     """Collect answers from flags or interactive prompts."""
+    collected: list[Any] = []
     if answer_flags:
         try:
             indexed: dict[int, str] = parse_answer_flags(answer_flags)
@@ -40,22 +45,23 @@ def collect_checkin_answers(
             print_error(str(exc))
             raise SystemExit(EXIT_USAGE_ERROR) from exc
 
-        answers: list[Any] = []
         for index, question in enumerate(questions):
             if index not in indexed:
                 print_error(
                     f'Missing answer for question {index}: "{question.get("question", "")}"'
                 )
                 raise SystemExit(EXIT_USAGE_ERROR)
-            answers.append(indexed[index])
-        return answers
+            collected.append(indexed[index])
+        return collected
 
-    answers: list[Any] = []
     for index, question in enumerate(questions):
         prompt_text: str = str(question.get("question", f"Question {index + 1}"))
-        answer: str = click.prompt(prompt_text, type=str)
-        answers.append(answer)
-    return answers
+        if interactive:
+            collected.append(_prompt_form_answer(question, prompt_text, interactive=True))
+        else:
+            answer: str = click.prompt(prompt_text, type=str)
+            collected.append(answer)
+    return collected
 
 
 def build_checkin_responses(
@@ -75,32 +81,240 @@ def build_checkin_responses(
     return responses
 
 
-def collect_form_content_interactive() -> dict[str, Any]:
-    """Collect question UUID → answer pairs via prompts."""
-    print_info("Enter answers as question UUID → value pairs. Leave UUID empty when done.")
-    content: dict[str, Any] = {}
+FORM_QUESTION_TYPES_TEXT: frozenset[str] = frozenset(
+    {"text", "text_field", "short_text", "long_text", "textarea", "string"}
+)
+FORM_QUESTION_TYPES_NUMERIC: frozenset[str] = frozenset(
+    {"number", "numeric", "integer", "int", "float", "decimal"}
+)
+FORM_QUESTION_TYPES_BOOLEAN: frozenset[str] = frozenset(
+    {"boolean", "bool", "yes_no", "yes/no", "toggle"}
+)
+FORM_QUESTION_TYPES_CHOICE: frozenset[str] = frozenset(
+    {
+        "choice",
+        "choices",
+        "multiple_choice",
+        "single_choice",
+        "select",
+        "dropdown",
+        "radio",
+    }
+)
+
+
+def filter_submittable_forms(forms: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Return forms that have an ID and can be submitted."""
+    return [form for form in forms if form.get("id")]
+
+
+def extract_form_questions(form_data: dict[str, Any]) -> list[dict[str, Any]]:
+    """Return question definitions from a form detail payload."""
+    for key in ("questions", "template_questions", "fields"):
+        raw: Any = form_data.get(key)
+        if isinstance(raw, list) and raw:
+            return raw
+    return []
+
+
+def _form_question_uuid(question: dict[str, Any]) -> str | None:
+    for key in ("uuid", "id", "question_uuid"):
+        value: Any = question.get(key)
+        if value:
+            return str(value)
+    return None
+
+
+def _form_question_label(question: dict[str, Any], index: int) -> str:
+    for key in ("question", "text", "label", "name", "title"):
+        value: Any = question.get(key)
+        if value:
+            return str(value)
+    return f"Question {index + 1}"
+
+
+def _form_question_choices(question: dict[str, Any]) -> list[str]:
+    raw: Any = question.get("choices") or question.get("options") or []
+    if not isinstance(raw, list):
+        return []
+
+    choices: list[str] = []
+    for item in raw:
+        if isinstance(item, str):
+            choices.append(item)
+        elif isinstance(item, dict):
+            label: Any = item.get("label") or item.get("text") or item.get("value")
+            if label:
+                choices.append(str(label))
+    return choices
+
+
+def _classify_form_question_type(question: dict[str, Any]) -> str:
+    """Map API question_type values to a supported prompt strategy."""
+    raw_type: Any = question.get("question_type") or question.get("type") or ""
+    normalized: str = str(raw_type).strip().lower().replace("-", "_").replace(" ", "_")
+
+    if normalized in FORM_QUESTION_TYPES_CHOICE or _form_question_choices(question):
+        return "choice"
+    if normalized in FORM_QUESTION_TYPES_BOOLEAN:
+        return "boolean"
+    if normalized in FORM_QUESTION_TYPES_NUMERIC:
+        return "numeric"
+    return "text"
+
+
+def _prompt_choice_answer(
+    prompt_text: str,
+    choices: list[str],
+    *,
+    interactive: bool = False,
+) -> str:
+    """Prompt for a single-choice answer."""
+    if not choices:
+        print_error("Choice question is missing options.")
+        raise SystemExit(EXIT_USAGE_ERROR)
+
+    selected: str | None = questionary.select(prompt_text, choices=choices).ask()
+    if selected is not None:
+        return selected
+    if interactive:
+        raise InteractiveAbort()
+
+    print_info("Select by number:")
+    for index, choice in enumerate(choices, start=1):
+        click.echo(f"  {index}. {choice}")
+
     while True:
-        question_uuid: str = click.prompt(
-            "Question UUID",
-            default="",
-            show_default=False,
-        ).strip()
+        choice_index: int = click.prompt("Number", type=int)
+        if 1 <= choice_index <= len(choices):
+            return choices[choice_index - 1]
+        print_error(f"Enter a number between 1 and {len(choices)}.")
+
+
+def _prompt_boolean_answer(prompt_text: str, *, interactive: bool = False) -> bool:
+    """Prompt for a yes/no answer."""
+    selected: bool | None = questionary.confirm(prompt_text, default=False).ask()
+    if selected is not None:
+        return selected
+    if interactive:
+        raise InteractiveAbort()
+
+    while True:
+        raw: str = click.prompt(f"{prompt_text} (yes/no)", type=str).strip().lower()
+        if raw in {"y", "yes", "true", "1"}:
+            return True
+        if raw in {"n", "no", "false", "0"}:
+            return False
+        print_error('Enter "yes" or "no".')
+
+
+def _prompt_numeric_answer(prompt_text: str, *, interactive: bool = False) -> int | float:
+    """Prompt for a numeric answer."""
+    while True:
+        if interactive:
+            raw_interactive: str | None = questionary.text(prompt_text).ask()
+            if raw_interactive is None:
+                raise InteractiveAbort()
+            raw = raw_interactive.strip()
+        else:
+            raw = click.prompt(prompt_text, type=str).strip()
+        try:
+            if "." in raw:
+                return float(raw)
+            return int(raw)
+        except ValueError:
+            print_error("Enter a valid number.")
+
+
+def _prompt_text_answer(prompt_text: str, *, interactive: bool = False) -> str:
+    """Prompt for a free-text answer."""
+    if interactive:
+        raw: str | None = questionary.text(prompt_text).ask()
+        if raw is None:
+            raise InteractiveAbort()
+        return raw
+    return click.prompt(prompt_text, type=str)
+
+
+def _prompt_form_answer(
+    question: dict[str, Any],
+    prompt_text: str,
+    *,
+    interactive: bool = False,
+) -> Any:
+    """Prompt once for a form question according to its type."""
+    question_type: str = _classify_form_question_type(question)
+
+    if question_type == "choice":
+        return _prompt_choice_answer(
+            prompt_text,
+            _form_question_choices(question),
+            interactive=interactive,
+        )
+    if question_type == "boolean":
+        return _prompt_boolean_answer(prompt_text, interactive=interactive)
+    if question_type == "numeric":
+        return _prompt_numeric_answer(prompt_text, interactive=interactive)
+    return _prompt_text_answer(prompt_text, interactive=interactive)
+
+
+def collect_form_answers_by_label(
+    questions: list[dict[str, Any]],
+    *,
+    interactive: bool = False,
+) -> dict[str, Any]:
+    """Prompt for each form question in order and build the content map."""
+    content: dict[str, Any] = {}
+    for index, question in enumerate(questions):
+        question_uuid: str | None = _form_question_uuid(question)
         if not question_uuid:
-            break
-        answer: str = click.prompt("Answer", type=str)
-        content[question_uuid] = answer
+            continue
+
+        prompt_text: str = _form_question_label(question, index)
+        content[question_uuid] = _prompt_form_answer(
+            question,
+            prompt_text,
+            interactive=interactive,
+        )
 
     if not content:
-        print_error("No answers provided.")
+        print_error("This form has no answerable questions.")
         raise SystemExit(EXIT_USAGE_ERROR)
     return content
 
 
-def parse_form_content(raw_content: str | None) -> dict[str, Any]:
-    """Parse --content JSON or prompt interactively when omitted."""
-    if not raw_content:
-        return collect_form_content_interactive()
+def collect_form_content_guided(
+    client: DailyBotClient,
+    form_uuid: str,
+    *,
+    interactive: bool = False,
+) -> dict[str, Any]:
+    """Load form questions from the API and collect answers interactively."""
+    try:
+        with console.status("Loading form questions..."):
+            form_data: dict[str, Any] = client.get_form(form_uuid)
+    except APIError as exc:
+        if exc.status_code == 404:
+            print_error(
+                "Form question definitions are not available. "
+                "The API must expose GET /v1/forms/{uuid}/ with a questions list."
+            )
+            raise SystemExit(EXIT_USAGE_ERROR) from exc
+        exit_for_api_error(exc, json_mode=False)
 
+    questions: list[dict[str, Any]] = extract_form_questions(form_data)
+    if not questions:
+        print_error(
+            "This form returned no question definitions. "
+            "GET /v1/forms/{uuid}/ must include a questions array."
+        )
+        raise SystemExit(EXIT_USAGE_ERROR)
+
+    return collect_form_answers_by_label(questions, interactive=interactive)
+
+
+def parse_form_content_json(raw_content: str) -> dict[str, Any]:
+    """Parse a --content JSON map."""
     try:
         parsed: Any = json.loads(raw_content)
     except json.JSONDecodeError as exc:
@@ -112,6 +326,17 @@ def parse_form_content(raw_content: str | None) -> dict[str, Any]:
         raise SystemExit(EXIT_USAGE_ERROR)
 
     return parsed
+
+
+def resolve_form_content(
+    client: DailyBotClient,
+    form_uuid: str,
+    raw_content: str | None,
+) -> dict[str, Any]:
+    """Parse --content JSON or prompt for each question when omitted."""
+    if raw_content:
+        return parse_form_content_json(raw_content)
+    return collect_form_content_guided(client, form_uuid)
 
 
 def find_form_name(forms: list[dict[str, Any]], form_uuid: str) -> str:
@@ -154,6 +379,7 @@ def execute_checkin_complete(
     assume_yes: bool = False,
     json_mode: bool = False,
     status_data: dict[str, Any] | None = None,
+    interactive: bool = False,
 ) -> None:
     """Complete a pending check-in."""
     if status_data is None:
@@ -183,7 +409,11 @@ def execute_checkin_complete(
         print_error("This check-in has no questions to answer.")
         raise SystemExit(EXIT_USAGE_ERROR)
 
-    answers: list[Any] = collect_checkin_answers(questions, answer_flags)
+    answers: list[Any] = collect_checkin_answers(
+        questions,
+        answer_flags,
+        interactive=interactive,
+    )
     responses: list[dict[str, Any]] = build_checkin_responses(questions, answers)
     last_question_index: int = len(responses) - 1
     followup_name: str = str(checkin_data.get("followup_name", followup_uuid))
@@ -223,10 +453,10 @@ def execute_form_list(
     *,
     json_mode: bool = False,
 ) -> list[dict[str, Any]] | None:
-    """Fetch and display forms visible to the user."""
+    """Fetch and display forms visible to the user (with question counts)."""
     try:
         with console.status("Fetching forms..."):
-            forms: list[dict[str, Any]] = client.list_forms()
+            forms: list[dict[str, Any]] = client.list_forms(include_questions=True)
     except APIError as exc:
         exit_for_api_error(exc, json_mode)
 
@@ -234,7 +464,7 @@ def execute_form_list(
         emit_json(forms)
         return forms
 
-    print_forms_table(forms)
+    print_forms_table(filter_submittable_forms(forms))
     return forms
 
 

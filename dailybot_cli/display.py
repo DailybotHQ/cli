@@ -383,15 +383,22 @@ def print_forms_table(forms: list[dict[str, Any]]) -> None:
     table: Table = Table(title="Forms", border_style="cyan")
     table.add_column("Name", style="bold")
     table.add_column("Form UUID", style="dim")
-    table.add_column("Active")
-    table.add_column("Privacy", style="dim")
+    table.add_column("Questions", style="dim", justify="right")
     for form in forms:
-        active: str = "[green]yes[/green]" if form.get("is_active") else "[dim]no[/dim]"
+        form_id: str = str(form.get("id") or "")
+        if not form_id:
+            continue
+        question_count: int = len(
+            form.get("questions")
+            or form.get("template_questions")
+            or form.get("fields")
+            or []
+        )
+        count_str: str = str(question_count) if question_count else "—"
         table.add_row(
             str(form.get("name", "")),
-            str(form.get("id", "")),
-            active,
-            str(form.get("privacy", "")),
+            form_id,
+            count_str,
         )
     console.print(table)
 
@@ -419,11 +426,9 @@ def print_users_table(users: list[dict[str, Any]]) -> None:
     table: Table = Table(title="Team members", border_style="cyan")
     table.add_column("Name", style="bold")
     table.add_column("User UUID", style="dim")
-    table.add_column("Email", style="dim")
     for user in users:
         table.add_row(
             str(user.get("full_name") or user.get("uuid") or ""),
             str(user.get("uuid") or ""),
-            str(user.get("email") or ""),
         )
     console.print(table)

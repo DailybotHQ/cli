@@ -1,55 +1,80 @@
 """Interactive mode for Dailybot CLI."""
 
 import readline  # noqa: F401 — enables arrow-key editing in input()
+import sys
 from typing import Any
 
 import click
 import httpx
 import questionary
+from questionary import Choice, Separator
 
 from dailybot_cli import __version__
 from dailybot_cli.api_client import APIError, DailyBotClient
 from dailybot_cli.commands.auth import _do_login
 from dailybot_cli.commands.kudos import execute_kudos_give
-from dailybot_cli.commands.public_api_helpers import get_current_user_uuid, pick_from_list
+from dailybot_cli.commands.public_api_helpers import (
+    InteractiveAbort,
+    get_current_user_uuid,
+    pick_from_list,
+)
 from dailybot_cli.commands.user_scoped_actions import (
-    collect_form_content_interactive,
+    collect_form_content_guided,
     execute_checkin_complete,
     execute_form_list,
     execute_form_submit,
     execute_user_list,
+    filter_submittable_forms,
 )
 from dailybot_cli.config import get_api_url, get_token, load_credentials
 from dailybot_cli.display import (
     console,
-    print_checkin_list_overview,
     print_error,
     print_info,
-    print_pending_checkins,
     print_success,
     print_update_result,
     print_warning,
 )
 
-MENU_PENDING_CHECKINS: str = "Fill in pending check-ins"
-MENU_LIST_FORMS: str = "List forms"
-MENU_SUBMIT_FORM: str = "Submit a form"
-MENU_LIST_MEMBERS: str = "List team members"
-MENU_GIVE_KUDOS: str = "Give kudos"
-MENU_SEND_UPDATE: str = "Send free-text update"
-MENU_AUTH_STATUS: str = "Auth status"
-MENU_QUIT: str = "Quit"
+# Stable action IDs — dispatch is keyed on these, never on display strings.
+ACTION_CHECKIN_COMPLETE: str = "checkin.complete"
+ACTION_CHECKIN_UPDATE: str = "checkin.update"
+ACTION_FORM_LIST: str = "form.list"
+ACTION_FORM_SUBMIT: str = "form.submit"
+ACTION_TEAM_LIST: str = "team.list"
+ACTION_TEAM_KUDOS: str = "team.kudos"
+ACTION_SESSION_INFO: str = "session.info"
+ACTION_EXIT: str = "exit"
 
-MENU_CHOICES: list[str] = [
-    MENU_PENDING_CHECKINS,
-    MENU_LIST_FORMS,
-    MENU_SUBMIT_FORM,
-    MENU_LIST_MEMBERS,
-    MENU_GIVE_KUDOS,
-    MENU_SEND_UPDATE,
-    MENU_AUTH_STATUS,
-    MENU_QUIT,
+# Build the grouped menu once.  Separators are section headers (non-selectable).
+_I: str = "  "  # indent for action items — 2 spaces under each section header
+
+MENU_CHOICES: list[Choice | Separator] = [
+    Separator("Check-ins"),
+    Choice(_I + "Complete pending check-ins", value=ACTION_CHECKIN_COMPLETE),
+    Choice(_I + "Send free-text update", value=ACTION_CHECKIN_UPDATE),
+    Separator("Forms"),
+    Choice(_I + "List forms", value=ACTION_FORM_LIST),
+    Choice(_I + "Submit a form", value=ACTION_FORM_SUBMIT),
+    Separator("Team"),
+    Choice(_I + "List team members", value=ACTION_TEAM_LIST),
+    Choice(_I + "Give kudos", value=ACTION_TEAM_KUDOS),
+    Separator("Session"),
+    Choice(_I + "View session info", value=ACTION_SESSION_INFO),
+    Separator(""),
+    Choice("Exit", value=ACTION_EXIT),
 ]
+
+# Action → handler lookup — keeps run_interactive() free of long if/elif chains.
+_HANDLER_MAP: dict[str, str] = {
+    ACTION_CHECKIN_COMPLETE: "_fill_pending_checkins",
+    ACTION_CHECKIN_UPDATE: "_send_update",
+    ACTION_FORM_LIST: "_list_forms",
+    ACTION_FORM_SUBMIT: "_submit_form",
+    ACTION_TEAM_LIST: "_list_members",
+    ACTION_TEAM_KUDOS: "_give_kudos",
+    ACTION_SESSION_INFO: "_show_auth",
+}
 
 
 def _checkin_label(checkin: dict[str, Any]) -> str:
@@ -67,6 +92,11 @@ def _form_label(form: dict[str, Any]) -> str:
 
 def _user_label(user: dict[str, Any]) -> str:
     return str(user.get("full_name") or user.get("uuid") or "Unknown")
+
+
+def _return_to_menu() -> None:
+    """Abort the current action and return to the main menu (Esc)."""
+    print_info("Cancelled.")
 
 
 def run_interactive() -> None:
@@ -108,7 +138,11 @@ def run_interactive() -> None:
         else:
             email = creds.get("email", "") if creds else ""
             org_stored: Any = creds.get("organization", "") if creds else ""
-            org: str = org_stored.get("name", "") if isinstance(org_stored, dict) else str(org_stored)
+            org: str = (
+                org_stored.get("name", "")
+                if isinstance(org_stored, dict)
+                else str(org_stored)
+            )
             org_uuid: str = creds.get("organization_uuid", "") if creds else ""
             console.print(f"Logged in as {email} ({org})")
             if org_uuid:
@@ -119,32 +153,33 @@ def run_interactive() -> None:
 
     while True:
         console.print()
-        choice: str | None = questionary.select(
+        action: str | None = questionary.select(
             "What would you like to do?",
             choices=MENU_CHOICES,
         ).ask()
 
-        if choice is None or choice == MENU_QUIT:
+        # None means the user pressed Esc/Ctrl-C at the top-level menu — stay in
+        # the loop so they can keep navigating (Quit is the explicit exit path).
+        if action is None:
+            continue
+
+        if action == ACTION_EXIT:
             print_info("Goodbye!")
             break
-        elif choice == MENU_PENDING_CHECKINS:
-            _fill_pending_checkins(client)
-        elif choice == MENU_LIST_FORMS:
-            _list_forms(client)
-        elif choice == MENU_SUBMIT_FORM:
-            _submit_form(client)
-        elif choice == MENU_LIST_MEMBERS:
-            _list_members(client)
-        elif choice == MENU_GIVE_KUDOS:
-            _give_kudos(client)
-        elif choice == MENU_SEND_UPDATE:
-            _send_update(client)
-        elif choice == MENU_AUTH_STATUS:
-            _show_auth(client)
+
+        handler_name: str | None = _HANDLER_MAP.get(action)
+        if handler_name is None:
+            continue
+
+        handler = getattr(sys.modules[__name__], handler_name)
+        try:
+            handler(client)
+        except InteractiveAbort:
+            _return_to_menu()
 
 
 def _fill_pending_checkins(client: DailyBotClient) -> None:
-    """Show pending check-ins, then guide the user through completing one."""
+    """Pick a pending check-in and guide the user through completing it."""
     try:
         with console.status("Fetching pending check-ins..."):
             status_data: dict[str, Any] = client.get_status()
@@ -153,30 +188,18 @@ def _fill_pending_checkins(client: DailyBotClient) -> None:
         return
 
     checkins: list[dict[str, Any]] = status_data.get("pending_checkins", [])
-    count: int = int(status_data.get("count", len(checkins)))
-    print_checkin_list_overview(count, checkins)
     if not checkins:
+        print_info("No pending check-ins.")
         return
 
-    print_pending_checkins(checkins)
-
-    if len(checkins) == 1:
-        should_complete: bool = questionary.confirm(
-            "Fill in this check-in now?",
-            default=True,
-        ).ask()
-        if not should_complete:
-            return
-        selected = checkins[0]
-    else:
-        selected = pick_from_list(
-            checkins,
-            "Which check-in do you want to fill in?",
-            _checkin_label,
-        )
-        if selected is None:
-            print_info("Cancelled.")
-            return
+    selected: dict[str, Any] | None = pick_from_list(
+        checkins,
+        "Which check-in do you want to complete?",
+        _checkin_label,
+        numbered_fallback=False,
+    )
+    if selected is None:
+        raise InteractiveAbort()
 
     followup_uuid: str = str(selected.get("followup_uuid", ""))
     if not followup_uuid:
@@ -188,6 +211,8 @@ def _fill_pending_checkins(client: DailyBotClient) -> None:
             client,
             followup_uuid,
             status_data=status_data,
+            interactive=True,
+            assume_yes=True,
         )
     except SystemExit:
         return
@@ -205,7 +230,9 @@ def _submit_form(client: DailyBotClient) -> None:
     """Pick a form and submit answers interactively."""
     try:
         with console.status("Fetching forms..."):
-            forms: list[dict[str, Any]] = client.list_forms()
+            forms: list[dict[str, Any]] = filter_submittable_forms(
+                client.list_forms(include_questions=False)
+            )
     except APIError as e:
         print_error(e.detail)
         return
@@ -218,10 +245,10 @@ def _submit_form(client: DailyBotClient) -> None:
         forms,
         "Which form do you want to submit?",
         _form_label,
+        numbered_fallback=False,
     )
     if selected is None:
-        print_info("Cancelled.")
-        return
+        raise InteractiveAbort()
 
     form_uuid: str = str(selected.get("id") or "")
     form_name: str = str(selected.get("name") or form_uuid)
@@ -229,12 +256,12 @@ def _submit_form(client: DailyBotClient) -> None:
         print_error("Selected form has no UUID.")
         return
 
-    print_info(
-        "Enter each answer by question UUID. "
-        "When the API exposes form question definitions, the CLI will prompt by label."
-    )
     try:
-        content_map: dict[str, Any] = collect_form_content_interactive()
+        content_map: dict[str, Any] = collect_form_content_guided(
+            client,
+            form_uuid,
+            interactive=True,
+        )
         execute_form_submit(
             client,
             form_uuid,
@@ -276,15 +303,14 @@ def _give_kudos(client: DailyBotClient) -> None:
         teammates,
         "Who should receive kudos?",
         _user_label,
+        numbered_fallback=False,
     )
     if selected_user is None:
-        print_info("Cancelled.")
-        return
+        raise InteractiveAbort()
 
     message: str | None = questionary.text("Kudos message (team-visible):").ask()
     if message is None:
-        print_info("Cancelled.")
-        return
+        raise InteractiveAbort()
     message = message.strip()
     if not message:
         print_error("Empty message. Nothing sent.")
@@ -300,6 +326,7 @@ def _give_kudos(client: DailyBotClient) -> None:
             receiver_name,
             message,
             current_uuid,
+            assume_yes=True,
         )
     except SystemExit:
         return

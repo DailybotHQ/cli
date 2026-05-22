@@ -23,6 +23,11 @@ EXIT_QUOTA_EXHAUSTED: int = 5
 EXIT_RATE_LIMITED: int = 6
 EXIT_USER_ABORTED: int = 7
 
+
+class InteractiveAbort(Exception):
+    """Raised when the user cancels an interactive prompt (e.g. Esc)."""
+
+
 UUID_PATTERN: re.Pattern[str] = re.compile(
     r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
     re.IGNORECASE,
@@ -184,6 +189,8 @@ def pick_from_list(
     items: list[Any],
     prompt: str,
     label_fn: Callable[[Any], str],
+    *,
+    numbered_fallback: bool = True,
 ) -> Any | None:
     """Pick an item with questionary, falling back to a numbered list."""
     if not items:
@@ -195,6 +202,8 @@ def pick_from_list(
     selected: Any | None = questionary.select(prompt, choices=choices).ask()
     if selected is not None:
         return selected
+    if not numbered_fallback:
+        return None
 
     print_info("Select by number:")
     for index, item in enumerate(items, start=1):

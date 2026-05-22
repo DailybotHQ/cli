@@ -6,6 +6,8 @@ import httpx
 
 from dailybot_cli.config import get_api_key, get_api_url, get_token
 
+_MAX_LIST_PAGES: int = 50  # safety cap for paginated list endpoints
+
 
 class APIError(Exception):
     """Raised when the API returns a non-success response."""
@@ -180,16 +182,27 @@ class DailyBotClient:
         )
         return self._handle_response(response)
 
-    def list_forms(self) -> list[dict[str, Any]]:
-        """GET /v1/forms/"""
+    def list_forms(self, *, include_questions: bool = False) -> list[dict[str, Any]]:
+        """GET /v1/forms/ — optionally expand question definitions per form."""
+        params: dict[str, str] = {"include": "questions"} if include_questions else {}
         response: httpx.Response = httpx.get(
             f"{self.api_url}/v1/forms/",
             headers=self._headers(),
+            params=params,
             timeout=self.timeout,
         )
         if response.status_code >= 400:
             self._handle_response(response)
         return response.json()
+
+    def get_form(self, form_uuid: str) -> dict[str, Any]:
+        """GET /v1/forms/<form_uuid>/ — form metadata and question definitions."""
+        response: httpx.Response = httpx.get(
+            f"{self.api_url}/v1/forms/{form_uuid}/",
+            headers=self._headers(),
+            timeout=self.timeout,
+        )
+        return self._handle_response(response)
 
     def submit_form_response(
         self,
@@ -209,7 +222,8 @@ class DailyBotClient:
         """GET /v1/users/ — fetch all pages and return the combined results list."""
         results: list[dict[str, Any]] = []
         url: str | None = f"{self.api_url}/v1/users/"
-        while url is not None:
+        pages_fetched: int = 0
+        while url is not None and pages_fetched < _MAX_LIST_PAGES:
             response: httpx.Response = httpx.get(
                 url,
                 headers=self._headers(),
@@ -220,6 +234,7 @@ class DailyBotClient:
             body: dict[str, Any] = response.json()
             results.extend(body.get("results", []))
             url = body.get("next")
+            pages_fetched += 1
         return results
 
     def give_kudos(

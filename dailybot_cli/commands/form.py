@@ -2,11 +2,11 @@
 
 import click
 
-from dailybot_cli.commands.public_api_helpers import USER_SCOPED_MODEL_HELP, require_bearer_auth
+from dailybot_cli.commands.public_api_helpers import require_bearer_auth
 from dailybot_cli.commands.user_scoped_actions import (
     execute_form_list,
     execute_form_submit,
-    parse_form_content,
+    resolve_form_content,
 )
 
 
@@ -25,13 +25,13 @@ def form_list(json_mode: bool) -> None:
     """List forms visible to you.
 
     \b
-    {help}
+    Acts as you. You can only see and act on what you could in the webapp.
 
     \b
     Examples:
       dailybot form list
       dailybot form list --json
-    """.format(help=USER_SCOPED_MODEL_HELP)
+    """
     client = require_bearer_auth()
     execute_form_list(client, json_mode=json_mode)
 
@@ -42,7 +42,7 @@ def form_list(json_mode: bool) -> None:
     "--content",
     "-c",
     default=None,
-    help='JSON map of question UUID to answer, e.g. \'{"<uuid>":"Yes"}\'. Prompts when omitted.',
+    help='JSON map of question UUID to answer. When omitted, prompts each question in order.',
 )
 @click.option("--yes", "-y", "assume_yes", is_flag=True, help="Skip the confirmation prompt.")
 @click.option("--json", "json_mode", is_flag=True, help="Emit machine-readable JSON to stdout.")
@@ -55,20 +55,19 @@ def form_submit(
     """Submit a form response.
 
     \b
-    {help}
+    Acts as you. You can only see and act on what you could in the webapp.
 
-    When --content is omitted, the CLI prompts for question UUID and answer pairs.
-    For guided prompts per question label, the API must expose form question
-    definitions (see GET /v1/forms/{{uuid}}/ in the CLI/API integration notes).
+    When --content is omitted, the CLI loads the form via GET /v1/forms/{uuid}/
+    and prompts each question one by one (same flow as completing a check-in).
 
     \b
     Examples:
       dailybot form submit <form_uuid>
-      dailybot form submit <form_uuid> --content '{{"<question_uuid>":"Yes"}}'
-      dailybot form submit <form_uuid> --content '{{"<uuid>":"Answer"}}' --yes
-    """.format(help=USER_SCOPED_MODEL_HELP)
+      dailybot form submit <form_uuid> --content '{"<question_uuid>":"Yes"}'
+      dailybot form submit <form_uuid> --content '{"<uuid>":"Answer"}' --yes
+    """
     client = require_bearer_auth()
-    content_map = parse_form_content(content)
+    content_map = resolve_form_content(client, form_uuid, content)
     execute_form_submit(
         client,
         form_uuid,

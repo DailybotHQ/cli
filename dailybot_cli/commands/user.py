@@ -2,7 +2,7 @@
 
 import click
 
-from dailybot_cli.commands.public_api_helpers import USER_SCOPED_MODEL_HELP, require_bearer_auth
+from dailybot_cli.commands.public_api_helpers import require_bearer_auth
 from dailybot_cli.commands.user_scoped_actions import execute_user_list
 
 
@@ -21,12 +21,12 @@ def user_list(json_mode: bool) -> None:
     """List team members in your organization.
 
     \b
-    {help}
+    Acts as you. You can only see and act on what you could in the webapp.
 
     \b
     Examples:
       dailybot user list
       dailybot user list --json
-    """.format(help=USER_SCOPED_MODEL_HELP)
+    """
     client = require_bearer_auth()
     execute_user_list(client, json_mode=json_mode)

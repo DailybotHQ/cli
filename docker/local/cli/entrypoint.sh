@@ -186,6 +186,8 @@ setup_dailybot_persistence_for_user() {
 
     # Ensure the persistent data directory exists
     mkdir -p "${DAILYBOT_DATA_DIR}"
+    mkdir -p "${DAILYBOT_DATA_DIR}/config_local"
+    mkdir -p "${DAILYBOT_DATA_DIR}/config_custom"
 
     # Handle .config/dailybot directory (auth tokens and config)
     mkdir -p "${USER_HOME}/.config"

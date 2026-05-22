@@ -241,6 +241,7 @@ function dev_install() {
 #
 # Subcommands:
 #   clitest [--env local] [--port N] [--api-url URL]  Build + activate (default: live).
+#   clitest refresh                                   Rebuild wheel + reinstall in active venv.
 #   clitest env                                       Show default/local/custom options.
 #   clitest-local [--port N]                          Shortcut for --env local.
 #
@@ -253,6 +254,10 @@ CLITEST_BASE_DIR="${CLITEST_BASE_DIR:-/tmp}"
 CLITEST_PREFIX="clitest"
 CLITEST_LATEST_LINK="${CLITEST_BASE_DIR}/${CLITEST_PREFIX}.latest"
 CLITEST_LIVE_API_URL="${CLITEST_LIVE_API_URL:-https://api.dailybot.com}"
+# Persistent credential stores (under the dailybot_data volume in the devcontainer).
+# Live clitest uses the CLI default (~/.config/dailybot → ~/.dailybot_data/config_dailybot).
+CLITEST_LOCAL_CONFIG_DIR="${CLITEST_LOCAL_CONFIG_DIR:-${HOME}/.dailybot_data/config_local}"
+CLITEST_CUSTOM_CONFIG_BASE="${CLITEST_CUSTOM_CONFIG_BASE:-${HOME}/.dailybot_data/config_custom}"
 CLITEST_API_URL=""
 CLITEST_ENV_NAME=""
 CLITEST_LOCAL_HOST_FLAG=""
@@ -366,6 +371,7 @@ function _clitest_resolve_api_target() {
         CLITEST_RESOLVED_ENV_NAME="local"
     elif [[ -n "$CLITEST_API_URL" ]]; then
         CLITEST_RESOLVED_API_URL="$CLITEST_API_URL"
+        CLITEST_RESOLVED_ENV_NAME="custom"
     else
         CLITEST_RESOLVED_API_URL="$CLITEST_LIVE_API_URL"
         CLITEST_RESOLVED_ENV_NAME="live"
@@ -381,18 +387,51 @@ function _clitest_normalize_api_url() {
     echo "$url"
 }
 
+function _clitest_resolve_config_dir() {
+    local env_name="${1:-}"
+    local api_url="${2:-}"
+    local normalized="" slug=""
+
+    case "$env_name" in
+        live)
+            # CLI default: ~/.config/dailybot (persistent via dailybot_data volume).
+            echo ""
+            ;;
+        local)
+            echo "$CLITEST_LOCAL_CONFIG_DIR"
+            ;;
+        custom)
+            normalized="$(_clitest_normalize_api_url "$api_url")" || return 1
+            slug="$(printf '%s' "$normalized" | sed 's|^https\?://||; s|[^a-zA-Z0-9._-]|_|g')"
+            echo "${CLITEST_CUSTOM_CONFIG_BASE}/${slug}"
+            ;;
+        *)
+            echo ""
+            ;;
+    esac
+}
+
 function _clitest_configure_environment() {
     local venv_dir="$1"
     local api_url="$2"
     local env_name="${3:-}"
     local activate_script="$venv_dir/bin/activate"
     local hook_marker="clitest dailybot api url hook"
+    local config_dir=""
 
     printf '%s\n' "$api_url" > "$venv_dir/.dailybot_api_url"
     if [[ -n "$env_name" ]]; then
         printf '%s\n' "$env_name" > "$venv_dir/.dailybot_env"
     else
         rm -f "$venv_dir/.dailybot_env"
+    fi
+
+    config_dir="$(_clitest_resolve_config_dir "$env_name" "$api_url")" || return 1
+    if [[ -n "$config_dir" ]]; then
+        mkdir -p "$config_dir"
+        printf '%s\n' "$config_dir" > "$venv_dir/.dailybot_config_dir"
+    else
+        rm -f "$venv_dir/.dailybot_config_dir"
     fi
 
     # Python 3.14 venv activate no longer sources bin/activate.d — append directly.
@@ -402,13 +441,19 @@ function _clitest_configure_environment() {
 # >>> clitest dailybot api url hook >>>
 if [[ -n "${VIRTUAL_ENV:-}" && -f "${VIRTUAL_ENV}/.dailybot_api_url" ]]; then
     export DAILYBOT_API_URL="$(tr -d '\n\r' < "${VIRTUAL_ENV}/.dailybot_api_url")"
+else
+    unset DAILYBOT_API_URL
 fi
 if [[ -n "${VIRTUAL_ENV:-}" && -f "${VIRTUAL_ENV}/.dailybot_env" ]]; then
     export CLITEST_DAILYBOT_ENV="$(tr -d '\n\r' < "${VIRTUAL_ENV}/.dailybot_env")"
+else
+    unset CLITEST_DAILYBOT_ENV
 fi
-if [[ -n "${VIRTUAL_ENV:-}" ]]; then
-    export DAILYBOT_CONFIG_DIR="${VIRTUAL_ENV}/.dailybot-config"
+if [[ -n "${VIRTUAL_ENV:-}" && -f "${VIRTUAL_ENV}/.dailybot_config_dir" ]]; then
+    export DAILYBOT_CONFIG_DIR="$(tr -d '\n\r' < "${VIRTUAL_ENV}/.dailybot_config_dir")"
     mkdir -p "${DAILYBOT_CONFIG_DIR}"
+else
+    unset DAILYBOT_CONFIG_DIR
 fi
 # <<< clitest dailybot api url hook <<<
 EOF
@@ -445,6 +490,11 @@ function _clitest_env_list() {
     echo "  --local-host HOST          default host: ${CLITEST_LOCAL_HOST:-djangovscode}"
     echo "  CLITEST_LOCAL_PORT / CLITEST_LOCAL_HOST in docker/local/cli/.env"
     echo ""
+    echo "Credential storage (persists across clitest re-runs):"
+    echo "  live         ~/.config/dailybot  (dailybot_data volume)"
+    echo "  local        ${CLITEST_LOCAL_CONFIG_DIR}"
+    echo "  custom URL   ${CLITEST_CUSTOM_CONFIG_BASE}/<api-slug>"
+    echo ""
     echo "Examples:"
     echo "  clitest                              # live (production API)"
     echo "  clitest-local                        # local Django in devcontainer"
@@ -480,6 +530,9 @@ function clitest() {
             ;;
         clean)
             _clitest_clean "${CLITEST_ARGS[@]:1}"
+            ;;
+        refresh|reload|update)
+            _clitest_refresh
             ;;
         exec|attach)
             _clitest_exec "${CLITEST_RESOLVED_API_URL:-}" "${CLITEST_RESOLVED_ENV_NAME:-}" \
@@ -523,6 +576,10 @@ Usage:
   clitest exec [--env local | --api-url URL] [--port N] [TARGET]
                         Re-attach to an existing sandbox (default: latest).
 
+  clitest refresh       Rebuild the wheel and reinstall into the active clitest
+                        venv (keeps credentials + API URL). Use this after code
+                        changes instead of running full 'clitest' again.
+
   clitest clean         Deactivate and delete the current sandbox.
   clitest clean --all   Remove every /tmp/clitest.* sandbox.
 
@@ -541,6 +598,9 @@ Typical flow:
 
   $ clitest-local                        # local Django (djangovscode:8000)
   (clitest.io98bF) $ dailybot login --email me@example.com
+
+  # After editing code while still in the clitest venv:
+  (clitest.io98bF) $ clitest refresh
 
   $ clitest --api-url https://your-api.example.com   # private/staging/dev
   ...
@@ -566,6 +626,55 @@ function _clitest_list_paths() {
         | grep -v "${CLITEST_PREFIX}\.latest$"
 }
 
+# clitest sandboxes only contain the installed wheel — packaging tools (build,
+# twine) live in the container dev env. Never use the active venv's python for
+# wheel builds (breaks `clitest refresh` while the sandbox is activated).
+function _clitest_host_python() {
+    if [[ -n "${CLITEST_BUILD_PYTHON:-}" ]]; then
+        echo "$CLITEST_BUILD_PYTHON"
+        return 0
+    fi
+
+    local path_without_venv="$PATH"
+    if [[ -n "${VIRTUAL_ENV:-}" ]]; then
+        path_without_venv="${PATH//$VIRTUAL_ENV\/bin:/}"
+        path_without_venv="${path_without_venv//:$VIRTUAL_ENV\/bin/}"
+        path_without_venv="${path_without_venv//$VIRTUAL_ENV\/bin/}"
+    fi
+
+    local candidate resolved=""
+    for candidate in python3 python; do
+        resolved="$(PATH="$path_without_venv" command -v "$candidate" 2>/dev/null || true)"
+        if [[ -n "$resolved" ]]; then
+            echo "$resolved"
+            return 0
+        fi
+    done
+
+    print.error "Could not find a host Python outside the clitest venv."
+    echo "  Set CLITEST_BUILD_PYTHON to a python with 'build' installed."
+    return 1
+}
+
+function _clitest_build_wheel() {
+    local project_root="$1"
+    local build_python=""
+    build_python="$(_clitest_host_python)" || return 1
+
+    if ! "$build_python" -c "import build" 2>/dev/null; then
+        print.error "Host Python is missing the 'build' package: $build_python"
+        echo "  Run 'dev_install' or 'pip install build' in the container dev env."
+        return 1
+    fi
+
+    (cd "$project_root" && rm -rf dist/ build/ && "$build_python" -m build)
+}
+
+function _clitest_find_wheel() {
+    local project_root="$1"
+    ls "$project_root"/dist/dailybot_cli-*-py3-none-any.whl 2>/dev/null | head -n1
+}
+
 function _clitest_create() {
     local api_url="${1:-}"
     local env_name="${2:-}"
@@ -588,7 +697,7 @@ function _clitest_create() {
     venv_dir="$(mktemp -d -t "${CLITEST_PREFIX}.XXXXXX")"
 
     print.success "1/5 — Building sdist + wheel..."
-    (cd "$project_root" && rm -rf dist/ build/ && python -m build) || {
+    _clitest_build_wheel "$project_root" || {
         print.error "⚠️  Build failed."
         rm -rf "$venv_dir"
         return 1
@@ -602,9 +711,11 @@ function _clitest_create() {
     }
 
     print.success "3/5 — Creating clean venv at $venv_dir ..."
-    python -m venv "$venv_dir" || { rm -rf "$venv_dir"; return 1; }
+    local host_python=""
+    host_python="$(_clitest_host_python)" || { rm -rf "$venv_dir"; return 1; }
+    "$host_python" -m venv "$venv_dir" || { rm -rf "$venv_dir"; return 1; }
 
-    wheel="$(ls "$project_root"/dist/dailybot_cli-*-py3-none-any.whl 2>/dev/null | head -n1)"
+    wheel="$(_clitest_find_wheel "$project_root")"
     if [ -z "$wheel" ]; then
         print.error "⚠️  No wheel found under dist/."
         rm -rf "$venv_dir"
@@ -656,8 +767,13 @@ function _clitest_create() {
     if [[ -n "$normalized_api_url" ]]; then
         echo "    API URL:        $normalized_api_url"
         echo "    dailybot uses DAILYBOT_API_URL automatically in this venv."
-        echo "    Credentials:    isolated in \$VIRTUAL_ENV/.dailybot-config"
-        echo "                    Run: dailybot login  (sandbox session, not live)"
+        local creds_path=""
+        creds_path="$(_clitest_resolve_config_dir "$env_name" "$normalized_api_url")"
+        if [[ -n "$creds_path" ]]; then
+            echo "    Credentials:    $creds_path"
+        else
+            echo "    Credentials:    ~/.config/dailybot (persistent)"
+        fi
     fi
     echo ""
     echo "    Run 'clitest clean' when done, or 'clitest list' to see all envs."
@@ -666,6 +782,54 @@ function _clitest_create() {
     # Activate in the caller's interactive shell.
     # shellcheck disable=SC1091
     source "$venv_dir/bin/activate"
+}
+
+function _clitest_refresh() {
+    local venv_dir project_root wheel
+    if ! venv_dir="$(_clitest_active_venv)"; then
+        print.error "Not in a clitest venv."
+        echo "  Run 'clitest' or 'clitest-local' first, or 'clitest exec' to re-attach."
+        echo "  For instant code reload without a sandbox, use: dev_install  (pip install -e \".[dev]\")"
+        return 1
+    fi
+
+    project_root="$(git rev-parse --show-toplevel 2>/dev/null || echo "$PWD")"
+
+    print.success "1/3 — Building wheel..."
+    _clitest_build_wheel "$project_root" || {
+        print.error "⚠️  Build failed."
+        return 1
+    }
+
+    wheel="$(_clitest_find_wheel "$project_root")"
+    if [[ -z "$wheel" ]]; then
+        print.error "⚠️  No wheel found under dist/."
+        return 1
+    fi
+
+    print.success "2/3 — Reinstalling into $venv_dir ..."
+    "$venv_dir/bin/pip" install --force-reinstall "$wheel" --quiet || {
+        print.error "⚠️  Wheel reinstall failed."
+        return 1
+    }
+
+    print.success "3/3 — Verifying..."
+    if ! "$venv_dir/bin/dailybot" --version >/dev/null 2>&1; then
+        print.error "⚠️  dailybot --version failed after refresh."
+        return 1
+    fi
+
+    echo ""
+    print.success "✅ Refreshed — same venv, same login session."
+    echo "    Path:     $venv_dir"
+    echo "    Version:  $("$venv_dir/bin/dailybot" --version 2>&1 | head -1)"
+    if [[ -n "${DAILYBOT_API_URL:-}" ]]; then
+        echo "    API URL:  $DAILYBOT_API_URL"
+    fi
+    if [[ -n "${DAILYBOT_CONFIG_DIR:-}" ]]; then
+        echo "    Config:   $DAILYBOT_CONFIG_DIR"
+    fi
+    echo ""
 }
 
 function _clitest_clean() {
@@ -996,6 +1160,7 @@ function show_welcome() {
     echo "  • clitest env              - show live/local/custom targets"
     echo "  • clitest list             - table of sandboxes (#, env, API URL, tags)"
     echo "  • clitest exec [N|PATH]    - re-attach to an existing sandbox"
+    echo "  • clitest refresh          - rebuild wheel + reinstall in active venv"
     echo "  • clitest clean            - deactivate + remove the current sandbox"
     echo "  • clitest clean --all      - remove every /tmp/clitest.*"
     echo "  • clitest help             - detailed help"

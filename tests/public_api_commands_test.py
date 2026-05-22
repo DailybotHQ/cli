@@ -257,6 +257,83 @@ class TestFormCommand:
 
     @patch("dailybot_cli.commands.public_api_helpers.get_token")
     @patch("dailybot_cli.commands.public_api_helpers.DailyBotClient")
+    def test_form_submit_guided_prompts(
+        self,
+        mock_client_cls: MagicMock,
+        mock_get_token: MagicMock,
+        runner: CliRunner,
+    ) -> None:
+        mock_get_token.return_value = "tok"
+        mock_client: MagicMock = mock_client_cls.return_value
+        mock_client.get_form.return_value = {
+            "id": "form-uuid-1",
+            "name": "Team feedback",
+            "questions": [
+                {"uuid": "question-uuid-1", "question": "How was your week?"},
+                {"uuid": "question-uuid-2", "question": "Any blockers?"},
+            ],
+        }
+        mock_client.submit_form_response.return_value = {"uuid": "response-uuid"}
+
+        result = runner.invoke(
+            cli,
+            ["form", "submit", "form-uuid-1", "--yes"],
+            input="Great week\nNone\n",
+        )
+        assert result.exit_code == 0
+        mock_client.get_form.assert_called_once_with("form-uuid-1")
+        mock_client.submit_form_response.assert_called_once_with(
+            form_uuid="form-uuid-1",
+            content={
+                "question-uuid-1": "Great week",
+                "question-uuid-2": "None",
+            },
+        )
+
+    @patch("dailybot_cli.commands.user_scoped_actions._prompt_form_answer")
+    @patch("dailybot_cli.commands.public_api_helpers.get_token")
+    @patch("dailybot_cli.commands.public_api_helpers.DailyBotClient")
+    def test_form_submit_guided_question_types(
+        self,
+        mock_client_cls: MagicMock,
+        mock_get_token: MagicMock,
+        mock_prompt_answer: MagicMock,
+        runner: CliRunner,
+    ) -> None:
+        mock_get_token.return_value = "tok"
+        mock_client: MagicMock = mock_client_cls.return_value
+        mock_client.get_form.return_value = {
+            "id": "form-uuid-1",
+            "questions": [
+                {"uuid": "q-text", "question": "Comments?", "question_type": "text_field"},
+                {"uuid": "q-num", "question": "Score?", "question_type": "numeric"},
+                {"uuid": "q-bool", "question": "Recommend?", "question_type": "boolean"},
+                {
+                    "uuid": "q-choice",
+                    "question": "Pick one",
+                    "question_type": "choice",
+                    "choices": ["A", "B"],
+                },
+            ],
+        }
+        mock_client.submit_form_response.return_value = {"uuid": "response-uuid"}
+        mock_prompt_answer.side_effect = ["Looks good", 9, True, "A"]
+
+        result = runner.invoke(cli, ["form", "submit", "form-uuid-1", "--yes"])
+        assert result.exit_code == 0
+        assert mock_prompt_answer.call_count == 4
+        mock_client.submit_form_response.assert_called_once_with(
+            form_uuid="form-uuid-1",
+            content={
+                "q-text": "Looks good",
+                "q-num": 9,
+                "q-bool": True,
+                "q-choice": "A",
+            },
+        )
+
+    @patch("dailybot_cli.commands.public_api_helpers.get_token")
+    @patch("dailybot_cli.commands.public_api_helpers.DailyBotClient")
     def test_form_submit_quota_exhausted(
         self,
         mock_client_cls: MagicMock,

@@ -1031,8 +1031,8 @@ class TestInteractiveLogin:
             None,
             {"token": "tok", "email": "u@t.com", "organization": "Org"},
         ]
-        # Mock questionary.select to return "Quit"
-        mock_questionary.select.return_value.ask.return_value = "Quit"
+        # Mock questionary.select to return the exit action ID
+        mock_questionary.select.return_value.ask.return_value = "exit"
         # Provide email for the prompt (code is handled inside _do_login which is mocked)
         runner.invoke(cli, [], input="u@t.com\n")
         mock_do_login.assert_called_once_with("u@t.com")
@@ -1070,15 +1070,16 @@ class TestInteractiveMenu:
             {"uuid": "self-uuid", "full_name": "Me"},
             {"uuid": "peer-uuid", "full_name": "Jane Doe"},
         ]
-        mock_questionary.select.return_value.ask.side_effect = ["Give kudos", "Quit"]
+        mock_questionary.select.return_value.ask.side_effect = ["team.kudos", "exit"]
         mock_pick_from_list.return_value = {"uuid": "peer-uuid", "full_name": "Jane Doe"}
         mock_questionary.text.return_value.ask.return_value = "Great work!"
 
-        result = runner.invoke(cli, [], input="y\n")
+        result = runner.invoke(cli, [])
         assert result.exit_code == 0
         mock_execute_kudos.assert_called_once()
         assert mock_execute_kudos.call_args.args[1] == "peer-uuid"
         assert mock_execute_kudos.call_args.args[3] == "Great work!"
+        assert mock_execute_kudos.call_args.kwargs["assume_yes"] is True
 
 
 class TestAgentCommand:

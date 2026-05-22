@@ -2,8 +2,10 @@
 
 import click
 
-from dailybot_cli.commands.public_api_helpers import USER_SCOPED_MODEL_HELP, require_bearer_auth
+from dailybot_cli.commands.public_api_helpers import require_bearer_auth
 from dailybot_cli.commands.user_scoped_actions import execute_checkin_complete, execute_checkin_list
+
+_HELP: str = "Acts as you. You can only see and act on what you could in the webapp."
 
 
 @click.group()
@@ -21,13 +23,13 @@ def checkin_list(json_mode: bool) -> None:
     """List pending check-ins for today.
 
     \b
-    {help}
+    Acts as you. You can only see and act on what you could in the webapp.
 
     \b
     Examples:
       dailybot checkin list
       dailybot checkin list --json
-    """.format(help=USER_SCOPED_MODEL_HELP)
+    """
     client = require_bearer_auth()
     execute_checkin_list(client, json_mode=json_mode)
 
@@ -57,14 +59,14 @@ def checkin_complete(
     """Complete a pending check-in.
 
     \b
-    {help}
+    Acts as you. You can only see and act on what you could in the webapp.
 
     \b
     Examples:
       dailybot checkin complete <followup_uuid>
       dailybot checkin complete <followup_uuid> -a 0="Shipped auth" -a 1="Reviewing migrations"
       dailybot checkin complete <followup_uuid> --yes
-    """.format(help=USER_SCOPED_MODEL_HELP)
+    """
     client = require_bearer_auth()
     execute_checkin_complete(
         client,

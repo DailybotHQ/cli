@@ -147,6 +147,42 @@ class TestDailyBotClientPublicApi:
 
         assert result[0]["id"] == "form-uuid"
         assert "Bearer test-token" in mock_get.call_args[1]["headers"]["Authorization"]
+        assert mock_get.call_args[1].get("params", {}) == {}
+
+    def test_list_forms_with_questions(self, client: DailyBotClient) -> None:
+        mock_response: MagicMock = MagicMock(spec=httpx.Response)
+        mock_response.status_code = 200
+        mock_response.json.return_value = [
+            {
+                "id": "form-uuid",
+                "name": "Feedback",
+                "questions": [{"uuid": "q1", "question": "How was it?"}],
+            }
+        ]
+
+        with patch("httpx.get", return_value=mock_response) as mock_get:
+            result: list[dict[str, Any]] = client.list_forms(include_questions=True)
+
+        assert result[0]["questions"][0]["uuid"] == "q1"
+        assert mock_get.call_args[1]["params"] == {"include": "questions"}
+
+    def test_get_form(self, client: DailyBotClient) -> None:
+        mock_response: MagicMock = MagicMock(spec=httpx.Response)
+        mock_response.status_code = 200
+        mock_response.json.return_value = {
+            "id": "form-uuid",
+            "name": "Feedback",
+            "questions": [
+                {"uuid": "question-uuid", "question": "How was your week?"},
+            ],
+        }
+
+        with patch("httpx.get", return_value=mock_response) as mock_get:
+            result: dict[str, Any] = client.get_form("form-uuid")
+
+        assert result["id"] == "form-uuid"
+        assert mock_get.call_args[0][0].endswith("/v1/forms/form-uuid/")
+        assert "Bearer test-token" in mock_get.call_args[1]["headers"]["Authorization"]
 
     def test_submit_form_response(self, client: DailyBotClient) -> None:
         mock_response: MagicMock = MagicMock(spec=httpx.Response)
@@ -180,6 +216,23 @@ class TestDailyBotClientPublicApi:
 
         assert len(result) == 2
         assert mock_get.call_count == 2
+
+    def test_list_users_page_cap(self, client: DailyBotClient) -> None:
+        """Pagination must stop at _MAX_LIST_PAGES even if the backend keeps returning next."""
+        from dailybot_cli.api_client import _MAX_LIST_PAGES
+
+        infinite_page: MagicMock = MagicMock(spec=httpx.Response)
+        infinite_page.status_code = 200
+        infinite_page.json.return_value = {
+            "results": [{"uuid": "user-x"}],
+            "next": "http://test-api.example.com/v1/users/?page=999",
+        }
+
+        with patch("httpx.get", return_value=infinite_page) as mock_get:
+            result: list[dict[str, Any]] = client.list_users()
+
+        assert mock_get.call_count == _MAX_LIST_PAGES
+        assert len(result) == _MAX_LIST_PAGES
 
     def test_give_kudos(self, client: DailyBotClient) -> None:
         mock_response: MagicMock = MagicMock(spec=httpx.Response)
