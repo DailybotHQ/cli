@@ -9,6 +9,14 @@ Do not edit it by hand — your edits will be overwritten on the next release.
 
 <!-- version list -->
 
+## v1.10.1 (2026-05-26)
+
+### Bug Fixes
+
+- **user**: List active org members by default
+  ([`2d9bc2c`](https://github.com/DailybotHQ/cli/commit/2d9bc2c43fa5b81d4b725454fd91fcedb97a9338))
+
+
 ## v1.10.0 (2026-05-26)
 
 ### Documentation
