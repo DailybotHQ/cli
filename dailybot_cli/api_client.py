@@ -309,8 +309,13 @@ class DailyBotClient:
         )
         return self._handle_response(response)
 
-    def list_users(self) -> list[dict[str, Any]]:
-        """GET /v1/users/ — fetch all pages and return the combined results list."""
+    def list_users(self, *, include_inactive: bool = False) -> list[dict[str, Any]]:
+        """GET /v1/users/ — fetch all pages and return the combined results list.
+
+        By default returns only members with ``is_active`` truthy. Pass
+        ``include_inactive=True`` to get the unfiltered server response (useful
+        for admin / audit flows that need to surface deactivated accounts).
+        """
         results: list[dict[str, Any]] = []
         url: str | None = f"{self.api_url}/v1/users/"
         pages_fetched: int = 0
@@ -326,7 +331,9 @@ class DailyBotClient:
             results.extend(body.get("results", []))
             url = body.get("next")
             pages_fetched += 1
-        return results
+        if include_inactive:
+            return results
+        return [u for u in results if u.get("is_active", True)]
 
     def give_kudos(
         self,

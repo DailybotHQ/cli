@@ -428,6 +428,23 @@ class TestUserCommand:
         assert result.exit_code == 0
         payload: list[dict[str, Any]] = json.loads(result.output)
         assert payload[0]["uuid"] == "user-uuid-1"
+        mock_client.list_users.assert_called_once_with(include_inactive=False)
+
+    @patch("dailybot_cli.commands.public_api_helpers.get_token")
+    @patch("dailybot_cli.commands.public_api_helpers.DailyBotClient")
+    def test_user_list_include_inactive_flag(
+        self,
+        mock_client_cls: MagicMock,
+        mock_get_token: MagicMock,
+        runner: CliRunner,
+    ) -> None:
+        mock_get_token.return_value = "tok"
+        mock_client: MagicMock = mock_client_cls.return_value
+        mock_client.list_users.return_value = []
+
+        result = runner.invoke(cli, ["user", "list", "--include-inactive", "--json"])
+        assert result.exit_code == 0
+        mock_client.list_users.assert_called_once_with(include_inactive=True)
 
 
 class TestKudosCommand:

@@ -16,17 +16,25 @@ def user() -> None:
 
 
 @user.command("list")
+@click.option(
+    "--include-inactive",
+    is_flag=True,
+    help="Also include deactivated members (default: active members only).",
+)
 @click.option("--json", "json_mode", is_flag=True, help="Emit machine-readable JSON to stdout.")
-def user_list(json_mode: bool) -> None:
+def user_list(include_inactive: bool, json_mode: bool) -> None:
     """List team members in your organization.
 
     \b
     Acts as you. You can only see and act on what you could in the webapp.
+    By default only active members are listed; pass --include-inactive to
+    include deactivated accounts (useful for admin / audit flows).
 
     \b
     Examples:
       dailybot user list
+      dailybot user list --include-inactive
       dailybot user list --json
     """
     client = require_bearer_auth()
-    execute_user_list(client, json_mode=json_mode)
+    execute_user_list(client, json_mode=json_mode, include_inactive=include_inactive)
