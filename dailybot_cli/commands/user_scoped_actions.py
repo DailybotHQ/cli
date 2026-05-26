@@ -516,11 +516,16 @@ def execute_user_list(
     client: DailyBotClient,
     *,
     json_mode: bool = False,
+    include_inactive: bool = False,
 ) -> list[dict[str, Any]] | None:
-    """Fetch and display organization members."""
+    """Fetch and display organization members.
+
+    By default only active members are returned; pass ``include_inactive=True``
+    to include deactivated accounts.
+    """
     try:
         with console.status("Fetching team members..."):
-            users: list[dict[str, Any]] = client.list_users()
+            users: list[dict[str, Any]] = client.list_users(include_inactive=include_inactive)
     except APIError as exc:
         exit_for_api_error(exc, json_mode)
 

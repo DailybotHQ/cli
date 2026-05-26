@@ -201,13 +201,13 @@ class TestDailyBotClientPublicApi:
         first_response: MagicMock = MagicMock(spec=httpx.Response)
         first_response.status_code = 200
         first_response.json.return_value = {
-            "results": [{"uuid": "user-1", "full_name": "Jane Doe"}],
+            "results": [{"uuid": "user-1", "full_name": "Jane Doe", "is_active": True}],
             "next": "http://test-api.example.com/v1/users/?page=2",
         }
         second_response: MagicMock = MagicMock(spec=httpx.Response)
         second_response.status_code = 200
         second_response.json.return_value = {
-            "results": [{"uuid": "user-2", "full_name": "John Doe"}],
+            "results": [{"uuid": "user-2", "full_name": "John Doe", "is_active": True}],
             "next": None,
         }
 
@@ -216,6 +216,42 @@ class TestDailyBotClientPublicApi:
 
         assert len(result) == 2
         assert mock_get.call_count == 2
+
+    def test_list_users_filters_inactive_by_default(self, client: DailyBotClient) -> None:
+        page: MagicMock = MagicMock(spec=httpx.Response)
+        page.status_code = 200
+        page.json.return_value = {
+            "results": [
+                {"uuid": "u1", "full_name": "Active Alice", "is_active": True},
+                {"uuid": "u2", "full_name": "Deactivated Dan", "is_active": False},
+                {"uuid": "u3", "full_name": "Missing-flag User"},
+            ],
+            "next": None,
+        }
+
+        with patch("httpx.get", return_value=page):
+            result: list[dict[str, Any]] = client.list_users()
+
+        uuids: set[str] = {u["uuid"] for u in result}
+        assert "u1" in uuids
+        assert "u2" not in uuids  # is_active=False dropped
+        assert "u3" in uuids  # missing flag defaults to active for forward-compat
+
+    def test_list_users_include_inactive(self, client: DailyBotClient) -> None:
+        page: MagicMock = MagicMock(spec=httpx.Response)
+        page.status_code = 200
+        page.json.return_value = {
+            "results": [
+                {"uuid": "u1", "full_name": "Active Alice", "is_active": True},
+                {"uuid": "u2", "full_name": "Deactivated Dan", "is_active": False},
+            ],
+            "next": None,
+        }
+
+        with patch("httpx.get", return_value=page):
+            result: list[dict[str, Any]] = client.list_users(include_inactive=True)
+
+        assert len(result) == 2
 
     def test_list_users_page_cap(self, client: DailyBotClient) -> None:
         """Pagination must stop at _MAX_LIST_PAGES even if the backend keeps returning next."""
