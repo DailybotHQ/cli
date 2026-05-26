@@ -111,7 +111,24 @@ You're running the non-interactive step 2 (`--code --org=<uuid>`) without having
 
 ### My form response renders as one wall of text in the webapp
 
-- The webapp renders Markdown. The CLI sends `--content` answers verbatim — if you submit `"line 1 line 2 line 3"`, that's what's stored. Embed real `\n` newlines (and Markdown `**bold**`, `### Heading`, `- bullet`, fenced code blocks, etc.) inside each answer string. The CLI doesn't auto-format.
+- The webapp renders Markdown. The CLI sends `--content` answers verbatim — if you submit `"line 1 line 2 line 3"`, that's what's stored. Embed real `\n` newlines (and Markdown `**bold**`, `# Heading`, `- bullet`, fenced code blocks, tables, etc.) inside each answer string. The CLI doesn't auto-format.
+
+### Form-response Markdown: supported subset
+
+The form-response webapp renders a **constrained Markdown subset**. When authoring `--content` for `form submit` / `form update`, stick to:
+
+- **Single-level headings only** — use `# Heading`. **Do NOT use `##` or `###`** — only one title level is supported; nested heading levels render as plain text. To group sub-sections, use a `# Heading` followed by paragraphs / lists.
+- **Real line breaks** — embed actual `\n` characters between paragraphs and list items. Two `\n` for a paragraph break, one `\n` between bullet rows. A single literal newline in a JSON string is `"\n"`.
+- **Inline:** `**bold**`, `*italic*`, `` `code` ``, `[link](url)`.
+- **Blocks:** `- bullet` lists, `1. numbered` lists, fenced ``` ```code``` ``` blocks, Markdown `|` tables.
+
+Quick smoke-check from the CLI side after a `submit` / `update`:
+
+```bash
+dailybot form response get <form_uuid> <resp_uuid> --json | jq -r '.content[]' | head -20
+```
+
+If the printed output has real line breaks (not `\n` literals) and uses `#` rather than `##` / `###`, the webapp will render it correctly.
 
 ## Teams & Kudos
 
