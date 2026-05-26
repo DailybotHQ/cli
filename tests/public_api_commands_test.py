@@ -1,7 +1,7 @@
 """Tests for user-scoped public API commands (checkin, form, kudos)."""
 
 import json
-from typing import Any
+from typing import Any, ClassVar
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -463,8 +463,9 @@ class TestKudosCommand:
         )
         assert result.exit_code == 0
         mock_client.give_kudos.assert_called_once_with(
-            receivers=["user-uuid-1"],
             content="Great work!",
+            user_uuid_receivers=["user-uuid-1"],
+            team_uuid_receivers=None,
             company_value=None,
         )
 
@@ -563,3 +564,484 @@ class TestKudosCommand:
             ],
         )
         assert result.exit_code == 2
+
+    @patch("dailybot_cli.commands.kudos.get_current_user_uuid")
+    @patch("dailybot_cli.commands.public_api_helpers.get_token")
+    @patch("dailybot_cli.commands.public_api_helpers.DailyBotClient")
+    def test_kudos_give_team_success(
+        self,
+        mock_client_cls: MagicMock,
+        mock_get_token: MagicMock,
+        mock_current_uuid: MagicMock,
+        runner: CliRunner,
+    ) -> None:
+        mock_get_token.return_value = "tok"
+        mock_current_uuid.return_value = "self-uuid"
+        mock_client: MagicMock = mock_client_cls.return_value
+        mock_client.list_teams.return_value = [
+            {"uuid": "team-uuid-1", "name": "Engineering"},
+        ]
+        mock_client.give_kudos.return_value = {"uuid": "kudos-uuid"}
+
+        result = runner.invoke(
+            cli,
+            [
+                "kudos",
+                "give",
+                "--team",
+                "Engineering",
+                "--message",
+                "Shipped flawlessly",
+                "--yes",
+            ],
+        )
+        assert result.exit_code == 0
+        mock_client.give_kudos.assert_called_once_with(
+            content="Shipped flawlessly",
+            user_uuid_receivers=None,
+            team_uuid_receivers=["team-uuid-1"],
+            company_value=None,
+        )
+
+    @patch("dailybot_cli.commands.kudos.get_current_user_uuid")
+    @patch("dailybot_cli.commands.public_api_helpers.get_token")
+    @patch("dailybot_cli.commands.public_api_helpers.DailyBotClient")
+    def test_kudos_give_user_and_team(
+        self,
+        mock_client_cls: MagicMock,
+        mock_get_token: MagicMock,
+        mock_current_uuid: MagicMock,
+        runner: CliRunner,
+    ) -> None:
+        mock_get_token.return_value = "tok"
+        mock_current_uuid.return_value = "self-uuid"
+        mock_client: MagicMock = mock_client_cls.return_value
+        mock_client.list_users.return_value = [
+            {"uuid": "user-uuid-1", "full_name": "Alice"},
+        ]
+        mock_client.list_teams.return_value = [
+            {"uuid": "team-uuid-1", "name": "QA"},
+        ]
+        mock_client.give_kudos.return_value = {"uuid": "kudos-uuid"}
+
+        result = runner.invoke(
+            cli,
+            [
+                "kudos",
+                "give",
+                "--to",
+                "Alice",
+                "--team",
+                "QA",
+                "--message",
+                "Both nailed it",
+                "--yes",
+            ],
+        )
+        assert result.exit_code == 0
+        mock_client.give_kudos.assert_called_once_with(
+            content="Both nailed it",
+            user_uuid_receivers=["user-uuid-1"],
+            team_uuid_receivers=["team-uuid-1"],
+            company_value=None,
+        )
+
+    @patch("dailybot_cli.commands.public_api_helpers.get_token")
+    @patch("dailybot_cli.commands.public_api_helpers.DailyBotClient")
+    def test_kudos_give_unseen_team(
+        self,
+        mock_client_cls: MagicMock,
+        mock_get_token: MagicMock,
+        runner: CliRunner,
+    ) -> None:
+        mock_get_token.return_value = "tok"
+        mock_client: MagicMock = mock_client_cls.return_value
+        mock_client.list_teams.return_value = [
+            {"uuid": "team-uuid-1", "name": "Engineering"},
+        ]
+
+        result = runner.invoke(
+            cli,
+            [
+                "kudos",
+                "give",
+                "--team",
+                "Marketing",
+                "--message",
+                "Nice",
+                "--yes",
+            ],
+        )
+        assert result.exit_code == 2
+        assert "Marketing" in result.output or "Marketing" in result.stderr_bytes.decode()
+        mock_client.give_kudos.assert_not_called()
+
+    @patch("dailybot_cli.commands.public_api_helpers.get_token")
+    @patch("dailybot_cli.commands.public_api_helpers.DailyBotClient")
+    def test_kudos_give_requires_to_or_team(
+        self,
+        mock_client_cls: MagicMock,
+        mock_get_token: MagicMock,
+        runner: CliRunner,
+    ) -> None:
+        mock_get_token.return_value = "tok"
+
+        result = runner.invoke(
+            cli,
+            ["kudos", "give", "--message", "Nice", "--yes"],
+        )
+        assert result.exit_code == 2
+
+
+class TestTeamCommand:
+    @patch("dailybot_cli.commands.public_api_helpers.get_token")
+    @patch("dailybot_cli.commands.public_api_helpers.DailyBotClient")
+    def test_team_list_success(
+        self,
+        mock_client_cls: MagicMock,
+        mock_get_token: MagicMock,
+        runner: CliRunner,
+    ) -> None:
+        mock_get_token.return_value = "tok"
+        mock_client: MagicMock = mock_client_cls.return_value
+        mock_client.list_teams.return_value = [
+            {"uuid": "team-uuid-1", "name": "General", "active": True, "members_count": 12},
+        ]
+
+        result = runner.invoke(cli, ["team", "list"])
+        assert result.exit_code == 0
+        assert "General" in result.output
+        assert "team-uuid-1" in result.output
+
+    @patch("dailybot_cli.commands.public_api_helpers.get_token")
+    @patch("dailybot_cli.commands.public_api_helpers.DailyBotClient")
+    def test_team_list_json(
+        self,
+        mock_client_cls: MagicMock,
+        mock_get_token: MagicMock,
+        runner: CliRunner,
+    ) -> None:
+        mock_get_token.return_value = "tok"
+        mock_client: MagicMock = mock_client_cls.return_value
+        mock_client.list_teams.return_value = [
+            {"uuid": "team-uuid-1", "name": "General"},
+        ]
+
+        result = runner.invoke(cli, ["team", "list", "--json"])
+        assert result.exit_code == 0
+        payload: list[dict[str, Any]] = json.loads(result.output)
+        assert payload[0]["uuid"] == "team-uuid-1"
+
+    @patch("dailybot_cli.commands.public_api_helpers.get_token")
+    @patch("dailybot_cli.commands.public_api_helpers.DailyBotClient")
+    def test_team_get_by_name(
+        self,
+        mock_client_cls: MagicMock,
+        mock_get_token: MagicMock,
+        runner: CliRunner,
+    ) -> None:
+        mock_get_token.return_value = "tok"
+        mock_client: MagicMock = mock_client_cls.return_value
+        mock_client.list_teams.return_value = [
+            {"uuid": "team-uuid-1", "name": "Engineering"},
+        ]
+        mock_client.get_team.return_value = {"uuid": "team-uuid-1", "name": "Engineering"}
+
+        result = runner.invoke(cli, ["team", "get", "Engineering"])
+        assert result.exit_code == 0
+        mock_client.get_team.assert_called_once_with("team-uuid-1")
+
+    @patch("dailybot_cli.commands.public_api_helpers.get_token")
+    @patch("dailybot_cli.commands.public_api_helpers.DailyBotClient")
+    def test_team_get_with_members(
+        self,
+        mock_client_cls: MagicMock,
+        mock_get_token: MagicMock,
+        runner: CliRunner,
+    ) -> None:
+        mock_get_token.return_value = "tok"
+        mock_client: MagicMock = mock_client_cls.return_value
+        team_uuid: str = "13883b5b-7066-47aa-ad0c-63bbc89eb986"
+        mock_client.list_teams.return_value = [
+            {"uuid": team_uuid, "name": "Engineering"},
+        ]
+        mock_client.get_team.return_value = {"uuid": team_uuid, "name": "Engineering"}
+        mock_client.list_team_members.return_value = [
+            {"uuid": "u1", "full_name": "Jane"},
+        ]
+
+        result = runner.invoke(cli, ["team", "get", team_uuid, "--with-members", "--json"])
+        assert result.exit_code == 0
+        payload: dict[str, Any] = json.loads(result.output)
+        assert payload["members"][0]["full_name"] == "Jane"
+
+
+class TestFormLifecycle:
+    FORM_PAYLOAD: ClassVar[dict[str, Any]] = {
+        "id": "form-uuid-1",
+        "name": "Code Release",
+        "slug": "code-release-form",
+        "workflow_enabled": True,
+        "workflow_config": {
+            "states": [
+                {"key": "pre_release", "label": "Pre Release", "order": 0},
+                {"key": "qa", "label": "QA", "order": 1},
+                {"key": "released", "label": "Released", "order": 2},
+            ]
+        },
+        "questions": [
+            {"uuid": "q-1", "question": "PR?", "question_type": "text"},
+        ],
+    }
+
+    @patch("dailybot_cli.commands.public_api_helpers.get_token")
+    @patch("dailybot_cli.commands.public_api_helpers.DailyBotClient")
+    def test_form_get(
+        self,
+        mock_client_cls: MagicMock,
+        mock_get_token: MagicMock,
+        runner: CliRunner,
+    ) -> None:
+        mock_get_token.return_value = "tok"
+        mock_client: MagicMock = mock_client_cls.return_value
+        mock_client.get_form.return_value = self.FORM_PAYLOAD
+
+        result = runner.invoke(cli, ["form", "get", "form-uuid-1", "--json"])
+        assert result.exit_code == 0
+        payload: dict[str, Any] = json.loads(result.output)
+        assert payload["slug"] == "code-release-form"
+
+    @patch("dailybot_cli.commands.public_api_helpers.get_token")
+    @patch("dailybot_cli.commands.public_api_helpers.DailyBotClient")
+    def test_form_responses_latest(
+        self,
+        mock_client_cls: MagicMock,
+        mock_get_token: MagicMock,
+        runner: CliRunner,
+    ) -> None:
+        mock_get_token.return_value = "tok"
+        mock_client: MagicMock = mock_client_cls.return_value
+        mock_client.list_form_responses.return_value = [
+            {"id": "r1", "current_state": "qa"},
+            {"id": "r0", "current_state": "pre_release"},
+        ]
+
+        result = runner.invoke(cli, ["form", "responses", "form-uuid-1", "--latest", "--json"])
+        assert result.exit_code == 0
+        payload: list[dict[str, Any]] = json.loads(result.output)
+        assert len(payload) == 1
+        assert payload[0]["id"] == "r1"
+        mock_client.list_form_responses.assert_called_once_with("form-uuid-1", state=None)
+
+    @patch("dailybot_cli.commands.public_api_helpers.get_token")
+    @patch("dailybot_cli.commands.public_api_helpers.DailyBotClient")
+    def test_form_responses_state_filter(
+        self,
+        mock_client_cls: MagicMock,
+        mock_get_token: MagicMock,
+        runner: CliRunner,
+    ) -> None:
+        mock_get_token.return_value = "tok"
+        mock_client: MagicMock = mock_client_cls.return_value
+        mock_client.list_form_responses.return_value = []
+
+        result = runner.invoke(cli, ["form", "responses", "form-uuid-1", "--state", "qa", "--json"])
+        assert result.exit_code == 0
+        mock_client.list_form_responses.assert_called_once_with("form-uuid-1", state="qa")
+
+    @patch("dailybot_cli.commands.public_api_helpers.get_token")
+    @patch("dailybot_cli.commands.public_api_helpers.DailyBotClient")
+    def test_form_response_get(
+        self,
+        mock_client_cls: MagicMock,
+        mock_get_token: MagicMock,
+        runner: CliRunner,
+    ) -> None:
+        mock_get_token.return_value = "tok"
+        mock_client: MagicMock = mock_client_cls.return_value
+        mock_client.get_form_response.return_value = {
+            "id": "r1",
+            "current_state": "qa",
+            "content": {"q-1": "PR #4242"},
+        }
+
+        result = runner.invoke(cli, ["form", "response", "get", "f1", "r1", "--json"])
+        assert result.exit_code == 0
+        payload: dict[str, Any] = json.loads(result.output)
+        assert payload["id"] == "r1"
+
+    @patch("dailybot_cli.commands.public_api_helpers.get_token")
+    @patch("dailybot_cli.commands.public_api_helpers.DailyBotClient")
+    def test_form_response_get_not_found(
+        self,
+        mock_client_cls: MagicMock,
+        mock_get_token: MagicMock,
+        runner: CliRunner,
+    ) -> None:
+        mock_get_token.return_value = "tok"
+        mock_client: MagicMock = mock_client_cls.return_value
+        mock_client.get_form_response.side_effect = APIError(
+            404, "Form response not found.", code="form_response_not_found"
+        )
+
+        result = runner.invoke(cli, ["form", "response", "get", "f1", "r1", "--json"])
+        assert result.exit_code == 5
+        payload: dict[str, Any] = json.loads(result.output)
+        assert payload["code"] == "form_response_not_found"
+
+    @patch("dailybot_cli.commands.public_api_helpers.get_token")
+    @patch("dailybot_cli.commands.public_api_helpers.DailyBotClient")
+    def test_form_update(
+        self,
+        mock_client_cls: MagicMock,
+        mock_get_token: MagicMock,
+        runner: CliRunner,
+    ) -> None:
+        mock_get_token.return_value = "tok"
+        mock_client: MagicMock = mock_client_cls.return_value
+        mock_client.update_form_response.return_value = {
+            "id": "r1",
+            "current_state": "qa",
+            "allowed_transitions": [{"to_state": "released", "label": "Released"}],
+        }
+
+        result = runner.invoke(
+            cli,
+            [
+                "form",
+                "update",
+                "f1",
+                "r1",
+                "--content",
+                '{"q-1": "PR #4242"}',
+                "--yes",
+                "--json",
+            ],
+        )
+        assert result.exit_code == 0
+        mock_client.update_form_response.assert_called_once_with(
+            form_uuid="f1",
+            response_uuid="r1",
+            content={"q-1": "PR #4242"},
+        )
+
+    @patch("dailybot_cli.commands.public_api_helpers.get_token")
+    @patch("dailybot_cli.commands.public_api_helpers.DailyBotClient")
+    def test_form_transition(
+        self,
+        mock_client_cls: MagicMock,
+        mock_get_token: MagicMock,
+        runner: CliRunner,
+    ) -> None:
+        mock_get_token.return_value = "tok"
+        mock_client: MagicMock = mock_client_cls.return_value
+        mock_client.transition_form_response.return_value = {
+            "id": "r1",
+            "current_state": "qa",
+            "allowed_transitions": [],
+            "can_change_state": True,
+            "state_history": [
+                {"from_state": "pre_release", "to_state": "qa", "note": "QA assigned"}
+            ],
+        }
+
+        result = runner.invoke(
+            cli,
+            [
+                "form",
+                "transition",
+                "f1",
+                "r1",
+                "qa",
+                "--note",
+                "QA assigned",
+                "--yes",
+                "--json",
+            ],
+        )
+        assert result.exit_code == 0
+        mock_client.transition_form_response.assert_called_once_with(
+            form_uuid="f1",
+            response_uuid="r1",
+            to_state="qa",
+            note="QA assigned",
+        )
+
+    @patch("dailybot_cli.commands.public_api_helpers.get_token")
+    @patch("dailybot_cli.commands.public_api_helpers.DailyBotClient")
+    def test_form_transition_forbidden(
+        self,
+        mock_client_cls: MagicMock,
+        mock_get_token: MagicMock,
+        runner: CliRunner,
+    ) -> None:
+        mock_get_token.return_value = "tok"
+        mock_client: MagicMock = mock_client_cls.return_value
+        mock_client.transition_form_response.side_effect = APIError(
+            403,
+            "You don't have permission",
+            code="form_response_change_state_forbidden",
+        )
+
+        result = runner.invoke(cli, ["form", "transition", "f1", "r1", "qa", "--yes", "--json"])
+        assert result.exit_code == 4
+        payload: dict[str, Any] = json.loads(result.output)
+        assert payload["code"] == "form_response_change_state_forbidden"
+
+    @patch("dailybot_cli.commands.public_api_helpers.get_token")
+    @patch("dailybot_cli.commands.public_api_helpers.DailyBotClient")
+    def test_form_transition_final_state_locked(
+        self,
+        mock_client_cls: MagicMock,
+        mock_get_token: MagicMock,
+        runner: CliRunner,
+    ) -> None:
+        mock_get_token.return_value = "tok"
+        mock_client: MagicMock = mock_client_cls.return_value
+        mock_client.transition_form_response.side_effect = APIError(
+            403, "Locked", code="final_state_locked"
+        )
+
+        result = runner.invoke(
+            cli, ["form", "transition", "f1", "r1", "released", "--yes", "--json"]
+        )
+        assert result.exit_code == 4
+        payload: dict[str, Any] = json.loads(result.output)
+        assert payload["code"] == "final_state_locked"
+
+    @patch("dailybot_cli.commands.public_api_helpers.get_token")
+    @patch("dailybot_cli.commands.public_api_helpers.DailyBotClient")
+    def test_form_delete(
+        self,
+        mock_client_cls: MagicMock,
+        mock_get_token: MagicMock,
+        runner: CliRunner,
+    ) -> None:
+        mock_get_token.return_value = "tok"
+        mock_client: MagicMock = mock_client_cls.return_value
+        mock_client.delete_form_response.return_value = {}
+
+        result = runner.invoke(cli, ["form", "delete", "f1", "r1", "--yes", "--json"])
+        assert result.exit_code == 0
+        payload: dict[str, Any] = json.loads(result.output)
+        assert payload["deleted"] is True
+        mock_client.delete_form_response.assert_called_once_with(form_uuid="f1", response_uuid="r1")
+
+    @patch("dailybot_cli.commands.public_api_helpers.get_token")
+    @patch("dailybot_cli.commands.public_api_helpers.DailyBotClient")
+    def test_form_delete_forbidden(
+        self,
+        mock_client_cls: MagicMock,
+        mock_get_token: MagicMock,
+        runner: CliRunner,
+    ) -> None:
+        mock_get_token.return_value = "tok"
+        mock_client: MagicMock = mock_client_cls.return_value
+        mock_client.delete_form_response.side_effect = APIError(
+            403, "Forbidden", code="form_response_delete_forbidden"
+        )
+
+        result = runner.invoke(cli, ["form", "delete", "f1", "r1", "--yes", "--json"])
+        assert result.exit_code == 4
+        payload: dict[str, Any] = json.loads(result.output)
+        assert payload["code"] == "form_response_delete_forbidden"

@@ -135,6 +135,9 @@ dailybot checkin complete <followup_uuid> -a 0="Done" --yes --json
 # List all forms visible to you (includes question count)
 dailybot form list
 
+# Get a form's full payload (questions + workflow states + permissions)
+dailybot form get <form_uuid>
+
 # Submit a form — guided mode (prompts each question by label and type)
 dailybot form submit <form_uuid>
 
@@ -143,10 +146,35 @@ dailybot form submit <form_uuid> \
   --content '{"<question-uuid>":"Great week!", "<question-uuid-2>":"No blockers"}' \
   --yes
 
+# List your own responses on a form
+dailybot form responses <form_uuid>
+dailybot form responses <form_uuid> --state qa --json
+dailybot form responses <form_uuid> --latest --json   # continue where you left off
+
+# Operate on a single response
+dailybot form response get <form_uuid> <response_uuid>
+dailybot form update <form_uuid> <response_uuid> --content '{"<q-uuid>":"PR #4242"}'
+dailybot form transition <form_uuid> <response_uuid> qa --note "QA assigned"
+dailybot form delete <form_uuid> <response_uuid>
+
 # Machine-readable JSON output
 dailybot form list --json
 dailybot form submit <form_uuid> --content '{"<q-uuid>":"Yes"}' --yes --json
 ```
+
+### Workflow-enabled forms
+
+When a form has `workflow_enabled: true`, every response carries a workflow-state surface that the CLI prints after every mutating call:
+
+| Field | Meaning |
+|---|---|
+| `current_state` | The effective current state. |
+| `allowed_transitions` | List of `{to_state, label}` for every reachable next state. |
+| `can_change_state` | Whether the caller is in the form's `state_change_permission` audience. |
+| `allow_reopen_from_final_state` | Form-level — `false` (default) means the terminal state is sticky. |
+| `state_history` | Append-only audit trail of every transition. |
+
+The form's `state_change_permission` audience is the sole gate for `dailybot form transition` — there is no response-author short-circuit. If you're not in the audience, the API returns 403 with `code: form_response_change_state_forbidden`.
 
 Guided mode (`form submit` without `--content`) fetches the form's question list from the API and prompts each question one by one, with type-aware inputs:
 
@@ -170,8 +198,14 @@ Guided mode (`form submit` without `--content`) fetches the form's question list
 ## Kudos
 
 ```bash
-# Give kudos — receiver resolved by full name against your org directory
+# Give kudos to a user — receiver resolved by full name against your org directory
 dailybot kudos give --to "Jane Doe" --message "Shipped the auth refactor cleanly, great work!"
+
+# Give kudos to an entire team (resolved against GET /v1/teams/)
+dailybot kudos give --team "Engineering" --message "Shipped flawlessly"
+
+# Combine both — single message goes to one user and a whole team
+dailybot kudos give --to "Alice" --team "QA" --message "Both nailed it"
 
 # Resolve by UUID instead
 dailybot kudos give --to <user-uuid> --message "Thanks for the PR review." --yes
@@ -183,13 +217,16 @@ dailybot kudos give --to "Jane Doe" --message "Great!" --value <company-value-uu
 dailybot kudos give --to "Jane Doe" --message "Great!" --yes --json
 ```
 
-If `--to` matches more than one name partially, the CLI lists the ambiguous matches and exits — it never guesses. Pass the full name or a UUID to be precise.
+If `--to` or `--team` matches more than one name partially, the CLI lists the ambiguous matches and exits — it never guesses. Pass the full name or a UUID to be precise. At least one of `--to` or `--team` is required.
+
+Team kudos pass through the backend's team manager, which expands the team into its active members and excludes the caller — so giving kudos to a team you belong to is valid (you credit your teammates, not yourself).
 
 ### `dailybot kudos give` options
 
 | Flag | Short | Description |
 |------|-------|-------------|
-| `--to` | `-t` | Receiver full name or UUID. Required. |
+| `--to` | `-t` | User full name or UUID. Optional when `--team` is provided. |
+| `--team` | | Team name or UUID. Optional when `--to` is provided. |
 | `--message` | `-m` | Kudos message (team-visible). Required. |
 | `--value` | | Optional company value UUID. |
 | `--yes` | `-y` | Skip the confirmation prompt. |
@@ -205,25 +242,36 @@ dailybot user list
 
 # Machine-readable
 dailybot user list --json
+
+# List teams visible to you (scoped server-side by your role)
+dailybot team list
+
+# Get a single team by UUID or name; optionally include members
+dailybot team get "Engineering"
+dailybot team get <team_uuid> --with-members --json
 ```
 
-The table shows **Name** and **User UUID**. You can copy a UUID directly into `dailybot kudos give --to <uuid>` for precise targeting.
+The `user list` table shows **Name** and **User UUID**. You can copy a UUID directly into `dailybot kudos give --to <uuid>` for precise targeting.
+
+`team list` is **role-scoped server-side**: org admins see all teams in the organization; members see only the teams they belong to. The CLI never client-filters — it shows the server response verbatim. If `dailybot kudos give --team "X"` errors with a "not visible to you" message, the team either doesn't exist or you're not a member.
 
 ---
 
 ## User-scoped exit codes
 
-All user-scoped commands (`checkin`, `form`, `kudos`, `user`) use structured exit codes for scripting:
+All user-scoped commands (`checkin`, `form`, `kudos`, `user`, `team`) use structured exit codes for scripting:
 
 | Code | Meaning |
 |------|---------|
 | `0` | Success |
-| `2` | Invalid input (bad format, ambiguous receiver) |
+| `2` | Invalid input (bad format, ambiguous receiver, 400 from server) |
 | `3` | Not logged in — run `dailybot login` |
-| `4` | Permission denied (403), self-kudos, or daily kudos limit reached |
-| `5` | Form response quota exhausted |
+| `4` | Permission denied (403), self-kudos, daily kudos limit, or `final_state_locked` |
+| `5` | Resource not found (404) or form response quota exhausted (402) |
 | `6` | Rate limited — wait and retry |
 | `7` | User declined the confirmation prompt |
+
+`--json` output for any 4xx surfaces both `detail` (server-provided text) and the structured `code` field — chat-agent consumers can pattern-match on the code (`form_response_change_state_forbidden`, `final_state_locked`, `form_response_not_found`, `no_valid_team`, etc.) without parsing prose.
 
 ## For agents
 
@@ -491,19 +539,27 @@ Replies to agent emails land as messages retrievable via `dailybot agent message
 | Command | Description |
 |---------|-------------|
 | `dailybot form list` | List forms visible to you (includes question count) |
+| `dailybot form get <uuid>` | Show the form's full payload (questions + workflow states) |
 | `dailybot form submit <uuid>` | Submit a form (guided prompts or `--content` JSON) |
+| `dailybot form responses <uuid>` | List your own responses on a form (`--state`, `--latest`) |
+| `dailybot form response get <uuid> <resp_uuid>` | Show a single response (state + history + answers) |
+| `dailybot form update <uuid> <resp_uuid>` | Patch new answers into an in-progress response |
+| `dailybot form transition <uuid> <resp_uuid> <state>` | Advance a response through the workflow |
+| `dailybot form delete <uuid> <resp_uuid>` | Delete a response (author / owner / admin) |
 
 ### Kudos
 
 | Command | Description |
 |---------|-------------|
-| `dailybot kudos give` | Give kudos to a teammate by name or UUID |
+| `dailybot kudos give` | Give kudos to a user (`--to`), a team (`--team`), or both |
 
 ### Team
 
 | Command | Description |
 |---------|-------------|
 | `dailybot user list` | List all members in your organization |
+| `dailybot team list` | List teams visible to you (scoped server-side by role) |
+| `dailybot team get <uuid_or_name>` | Show a team; add `--with-members` for the member list |
 
 ### Agent commands
 

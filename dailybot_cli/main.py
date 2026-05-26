@@ -13,6 +13,7 @@ from dailybot_cli.commands.form import form
 from dailybot_cli.commands.interactive import run_interactive
 from dailybot_cli.commands.kudos import kudos
 from dailybot_cli.commands.status import status
+from dailybot_cli.commands.team import team
 from dailybot_cli.commands.uninstall import uninstall
 from dailybot_cli.commands.update import update
 from dailybot_cli.commands.upgrade import upgrade
@@ -70,6 +71,7 @@ cli.add_command(status)
 cli.add_command(checkin)
 cli.add_command(form)
 cli.add_command(kudos)
+cli.add_command(team)
 cli.add_command(user)
 cli.add_command(agent)
 cli.add_command(config)

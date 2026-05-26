@@ -414,6 +414,250 @@ def print_kudos_result(receiver_name: str, data: dict[str, Any]) -> None:
     print_info(f"Kudos ID: {kudos_id}")
 
 
+def _state_label_lookup(form_data: dict[str, Any]) -> dict[str, str]:
+    """Map workflow state key → human label using the form's workflow_config."""
+    config: Any = form_data.get("workflow_config") or {}
+    states: Any = config.get("states") if isinstance(config, dict) else []
+    if not isinstance(states, list):
+        return {}
+    return {str(s.get("key")): str(s.get("label") or s.get("key")) for s in states if s.get("key")}
+
+
+def print_form_detail(form_data: dict[str, Any]) -> None:
+    """Render a form payload — metadata, workflow config, and questions."""
+    table: Table = Table(show_header=False, box=None, padding=(0, 2))
+    table.add_column(style="bold")
+    table.add_column()
+    table.add_row("Name", str(form_data.get("name", "")))
+    table.add_row("UUID", str(form_data.get("id", "")))
+    slug: str = str(form_data.get("slug", "") or "")
+    if slug:
+        table.add_row("Slug", slug)
+    workflow_enabled: bool = bool(form_data.get("workflow_enabled"))
+    table.add_row("Workflow", "[green]enabled[/green]" if workflow_enabled else "disabled")
+    if workflow_enabled:
+        table.add_row(
+            "Reopen from final",
+            "yes" if form_data.get("allow_reopen_from_final_state") else "no",
+        )
+    console.print(Panel(table, title="[bold]Form[/bold]", border_style="cyan"))
+
+    if workflow_enabled:
+        states_table: Table = Table(title="Workflow States", border_style="cyan")
+        states_table.add_column("Order", style="dim", justify="right")
+        states_table.add_column("Key", style="bold")
+        states_table.add_column("Label")
+        states_table.add_column("Color", style="dim")
+        config: Any = form_data.get("workflow_config") or {}
+        states: list[dict[str, Any]] = (
+            list(config.get("states", [])) if isinstance(config, dict) else []
+        )
+        for state in states:
+            states_table.add_row(
+                str(state.get("order", "")),
+                str(state.get("key", "")),
+                str(state.get("label", "")),
+                str(state.get("color", "")),
+            )
+        console.print(states_table)
+
+    questions: list[dict[str, Any]] = list(form_data.get("questions", []) or [])
+    if questions:
+        q_table: Table = Table(title="Questions", border_style="cyan")
+        q_table.add_column("#", justify="right", style="dim")
+        q_table.add_column("UUID", style="dim")
+        q_table.add_column("Question", style="bold")
+        q_table.add_column("Type", style="dim")
+        for index, question in enumerate(questions, start=1):
+            q_table.add_row(
+                str(index),
+                str(question.get("uuid") or question.get("id") or ""),
+                str(question.get("question") or question.get("text") or ""),
+                str(question.get("question_type") or question.get("type") or ""),
+            )
+        console.print(q_table)
+
+
+def print_form_response_state(
+    data: dict[str, Any], form_data: dict[str, Any] | None = None
+) -> None:
+    """Render the workflow-state surface of a form response after a mutation."""
+    response_id: str = str(data.get("id") or data.get("uuid") or "")
+    current_state: str = str(data.get("current_state") or "")
+    state_history: list[dict[str, Any]] = list(data.get("state_history") or [])
+    previous_state: str = ""
+    last_note: str = ""
+    if state_history:
+        last_entry: dict[str, Any] = state_history[-1]
+        previous_state = str(last_entry.get("from_state") or "")
+        last_note = str(last_entry.get("note") or "")
+
+    allowed: list[dict[str, Any]] = list(data.get("allowed_transitions") or [])
+    can_change: Any = data.get("can_change_state")
+
+    labels: dict[str, str] = _state_label_lookup(form_data or {})
+
+    def label_for(key: str) -> str:
+        return labels.get(key, key) if key else ""
+
+    table: Table = Table(show_header=False, box=None, padding=(0, 2))
+    table.add_column(style="bold")
+    table.add_column()
+    table.add_row("Response", response_id)
+
+    state_cell: str = label_for(current_state) or current_state or "(none)"
+    if previous_state and previous_state != current_state:
+        state_cell = (
+            f"{state_cell}  [dim](from {label_for(previous_state) or previous_state})[/dim]"
+        )
+    table.add_row("Current state", state_cell)
+
+    if last_note:
+        table.add_row("Note", last_note)
+
+    if allowed:
+        next_states: str = ", ".join(
+            str(entry.get("label") or label_for(str(entry.get("to_state") or "")))
+            for entry in allowed
+        )
+        table.add_row("Next states", f"{next_states}  [dim](use `dailybot form transition`)[/dim]")
+
+    if can_change is not None:
+        table.add_row("You can change", "yes" if can_change else "no")
+
+    console.print(Panel(table, title="[bold]Form Response[/bold]", border_style="green"))
+
+
+def print_form_responses_table(
+    form_uuid: str,
+    responses: list[dict[str, Any]],
+    form_data: dict[str, Any] | None = None,
+) -> None:
+    """Render the response list for a form."""
+    if not responses:
+        print_info(f"No responses on form {form_uuid}.")
+        return
+
+    labels: dict[str, str] = _state_label_lookup(form_data or {})
+    table: Table = Table(title="Form Responses", border_style="cyan")
+    table.add_column("Response UUID", style="dim")
+    table.add_column("Current state")
+    table.add_column("Edited")
+    table.add_column("Created", style="dim")
+    for response in responses:
+        state_key: str = str(response.get("current_state") or "")
+        state_display: str = labels.get(state_key, state_key) if state_key else "—"
+        edited_flag: bool = bool(response.get("edited"))
+        table.add_row(
+            str(response.get("id") or response.get("uuid") or ""),
+            state_display,
+            "yes" if edited_flag else "no",
+            str(response.get("created_at") or ""),
+        )
+    console.print(table)
+
+
+def print_form_response_detail(
+    data: dict[str, Any],
+    form_data: dict[str, Any] | None = None,
+) -> None:
+    """Render a single response payload — workflow surface + answers + history."""
+    print_form_response_state(data, form_data)
+
+    content: Any = data.get("content")
+    if isinstance(content, dict) and content:
+        ans_table: Table = Table(title="Answers", border_style="cyan")
+        ans_table.add_column("Question UUID", style="dim")
+        ans_table.add_column("Answer")
+        for question_uuid, answer in content.items():
+            ans_table.add_row(str(question_uuid), str(answer))
+        console.print(ans_table)
+
+    history: list[dict[str, Any]] = list(data.get("state_history") or [])
+    if history:
+        labels: dict[str, str] = _state_label_lookup(form_data or {})
+        hist_table: Table = Table(title="State History", border_style="dim")
+        hist_table.add_column("When", style="dim")
+        hist_table.add_column("From")
+        hist_table.add_column("To")
+        hist_table.add_column("Actor")
+        hist_table.add_column("Note")
+        for entry in history:
+            from_key: str = str(entry.get("from_state") or "")
+            to_key: str = str(entry.get("to_state") or "")
+            hist_table.add_row(
+                str(entry.get("at") or ""),
+                labels.get(from_key, from_key) if from_key else "—",
+                labels.get(to_key, to_key) if to_key else "—",
+                str(entry.get("actor_name") or ""),
+                str(entry.get("note") or ""),
+            )
+        console.print(hist_table)
+
+
+def print_form_response_deleted(form_uuid: str, response_uuid: str) -> None:
+    """Confirmation after a successful response delete."""
+    print_success(f"Response {response_uuid} deleted (form {form_uuid}).")
+
+
+def print_teams_table(teams: list[dict[str, Any]]) -> None:
+    """Display teams visible to the caller."""
+    if not teams:
+        print_info("No teams visible to you. Org admins see all teams; members see only their own.")
+        return
+
+    table: Table = Table(title="Teams", border_style="cyan")
+    table.add_column("Name", style="bold")
+    table.add_column("Team UUID", style="dim")
+    table.add_column("Members", justify="right")
+    table.add_column("Active")
+    for team in teams:
+        active_value: Any = team.get("active")
+        active_display: str = "yes" if active_value or active_value is None else "no"
+        members_count: Any = team.get("members_count")
+        if members_count is None:
+            members_raw: Any = team.get("members") or team.get("memberships")
+            members_count = len(members_raw) if isinstance(members_raw, list) else "—"
+        table.add_row(
+            str(team.get("name") or team.get("uuid") or ""),
+            str(team.get("uuid") or ""),
+            str(members_count),
+            active_display,
+        )
+    console.print(table)
+
+
+def print_team_detail(team: dict[str, Any], members: list[dict[str, Any]] | None = None) -> None:
+    """Display a single team with optional member list."""
+    table: Table = Table(show_header=False, box=None, padding=(0, 2))
+    table.add_column(style="bold")
+    table.add_column()
+    table.add_row("Name", str(team.get("name") or ""))
+    table.add_row("UUID", str(team.get("uuid") or ""))
+    active_value: Any = team.get("active")
+    if active_value is not None:
+        table.add_row("Active", "yes" if active_value else "no")
+    if team.get("is_default") is not None:
+        table.add_row("Default team", "yes" if team.get("is_default") else "no")
+    console.print(Panel(table, title="[bold]Team[/bold]", border_style="cyan"))
+
+    if members is not None:
+        if not members:
+            print_info("No members on this team.")
+            return
+        m_table: Table = Table(title="Members", border_style="cyan")
+        m_table.add_column("Name", style="bold")
+        m_table.add_column("User UUID", style="dim")
+        m_table.add_column("Email", style="dim")
+        for member in members:
+            m_table.add_row(
+                str(member.get("full_name") or member.get("name") or member.get("uuid") or ""),
+                str(member.get("uuid") or ""),
+                str(member.get("email") or ""),
+            )
+        console.print(m_table)
+
+
 def print_users_table(users: list[dict[str, Any]]) -> None:
     """Display organization members in a table."""
     if not users:

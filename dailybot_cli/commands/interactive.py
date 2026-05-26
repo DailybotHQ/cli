@@ -318,10 +318,9 @@ def _give_kudos(client: DailyBotClient) -> None:
     try:
         execute_kudos_give(
             client,
-            receiver_uuid,
-            receiver_name,
             message,
-            current_uuid,
+            user_receivers=[(receiver_uuid, receiver_name)],
+            current_uuid=current_uuid,
             assume_yes=True,
         )
     except SystemExit:
