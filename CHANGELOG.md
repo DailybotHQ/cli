@@ -9,6 +9,22 @@ Do not edit it by hand — your edits will be overwritten on the next release.
 
 <!-- version list -->
 
+## v1.10.0 (2026-05-26)
+
+### Documentation
+
+- Document forms lifecycle + teams + team-aware kudos surface
+  ([`9e3e474`](https://github.com/DailybotHQ/cli/commit/9e3e47412922f6f4adf24bf84499863d4ddf06a6))
+
+- **troubleshooting**: Document form-response Markdown subset
+  ([`fa25062`](https://github.com/DailybotHQ/cli/commit/fa25062872bec82955271740e97e48a259159655))
+
+### Features
+
+- **form,team,kudos**: Forms lifecycle + team-aware kudos
+  ([`4119e76`](https://github.com/DailybotHQ/cli/commit/4119e7614ebae063c339b64552948b116b900624))
+
+
 ## v1.9.0 (2026-05-22)
 
 ### Bug Fixes
