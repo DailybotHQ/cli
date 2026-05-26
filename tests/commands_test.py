@@ -1077,9 +1077,10 @@ class TestInteractiveMenu:
         result = runner.invoke(cli, [])
         assert result.exit_code == 0
         mock_execute_kudos.assert_called_once()
-        assert mock_execute_kudos.call_args.args[1] == "peer-uuid"
-        assert mock_execute_kudos.call_args.args[3] == "Great work!"
-        assert mock_execute_kudos.call_args.kwargs["assume_yes"] is True
+        call_args = mock_execute_kudos.call_args
+        assert call_args.args[1] == "Great work!"
+        assert call_args.kwargs["user_receivers"] == [("peer-uuid", "Jane Doe")]
+        assert call_args.kwargs["assume_yes"] is True
 
 
 class TestAgentCommand:

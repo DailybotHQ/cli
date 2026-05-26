@@ -19,9 +19,38 @@ USER_SCOPED_MODEL_HELP: str = (
 EXIT_USAGE_ERROR: int = 2
 EXIT_NOT_AUTHENTICATED: int = 3
 EXIT_PERMISSION_DENIED: int = 4
+EXIT_NOT_FOUND: int = 5
 EXIT_QUOTA_EXHAUSTED: int = 5
 EXIT_RATE_LIMITED: int = 6
 EXIT_USER_ABORTED: int = 7
+
+# Server-side error codes from {detail, code} responses. Kept here so command
+# handlers and tests share a single source of truth.
+ERROR_CODE_MESSAGES: dict[str, str] = {
+    "form_response_change_state_forbidden": (
+        "You don't have permission to change the state of this submission. "
+        "The form's audience may restrict transitions to specific users / teams. "
+        "Ask the form owner."
+    ),
+    "final_state_locked": (
+        "This response is in the final workflow state and the form doesn't allow "
+        "reopening. Ask the form owner to enable `allow_reopen_from_final_state`."
+    ),
+    "form_response_delete_forbidden": (
+        "You can't delete this response (you're not the author, form owner, or org admin)."
+    ),
+    "user_can_not_see_form_responses": (
+        "You don't have permission to read responses on this form."
+    ),
+    "form_response_not_found": "Response not found.",
+    "form_does_not_exists": "Form not found.",
+    "payload_too_large": "Payload too large.",
+    "no_valid_team": "Team not found. Check `dailybot team list`.",
+    "no_valid_users": (
+        "Empty receiver set — `--to` or `--team` must resolve to at least one valid receiver."
+    ),
+    "no_users_found": "Some users not found or duplicated.",
+}
 
 
 class InteractiveAbort(Exception):
@@ -55,12 +84,18 @@ def emit_json_error(message: str, status: int) -> None:
 
 def exit_for_api_error(exc: APIError, json_mode: bool) -> NoReturn:
     """Map API failures to user-facing messages and process exit codes."""
+    code: str | None = getattr(exc, "code", None)
+    mapped_message: str | None = ERROR_CODE_MESSAGES.get(code) if code else None
+
     if exc.status_code == 401:
         message: str = "Session expired. Run: dailybot login"
         exit_code: int = EXIT_NOT_AUTHENTICATED
     elif exc.status_code == 403:
-        message = exc.detail
+        message = mapped_message or exc.detail
         exit_code = EXIT_PERMISSION_DENIED
+    elif exc.status_code == 404:
+        message = mapped_message or exc.detail
+        exit_code = EXIT_NOT_FOUND
     elif exc.status_code == 402:
         message = "Form response quota exhausted for your organization."
         exit_code = EXIT_QUOTA_EXHAUSTED
@@ -70,12 +105,20 @@ def exit_for_api_error(exc: APIError, json_mode: bool) -> NoReturn:
     elif exc.status_code == 429:
         message = "Rate limit exceeded (60 requests/minute). Wait and try again."
         exit_code = EXIT_RATE_LIMITED
+    elif exc.status_code == 400:
+        message = mapped_message or exc.detail
+        exit_code = EXIT_USAGE_ERROR
     else:
-        message = exc.detail
+        message = mapped_message or exc.detail
         exit_code = 1
 
     if json_mode:
-        emit_json_error(message, exc.status_code)
+        payload: dict[str, Any] = {"error": message, "status": exc.status_code}
+        if code:
+            payload["code"] = code
+        if exc.detail and exc.detail != message:
+            payload["detail"] = exc.detail
+        emit_json(payload)
     else:
         print_error(message)
     raise SystemExit(exit_code)
@@ -168,6 +211,50 @@ def resolve_user_by_name_or_uuid(
         raise ValueError(f'Ambiguous receiver "{identifier}". Matches: {names}')
 
     raise ValueError(f'No user found matching "{identifier}".')
+
+
+def resolve_team_by_name_or_uuid(
+    teams: list[dict[str, Any]],
+    identifier: str,
+) -> tuple[str, str]:
+    """Resolve a team UUID and name from a UUID or case-insensitive name match.
+
+    The scoping is enforced server-side by GET /v1/teams/ — admins see all org
+    teams, members see only their own. The CLI never client-filters.
+    """
+    if UUID_PATTERN.match(identifier):
+        for team in teams:
+            if str(team.get("uuid")) == identifier:
+                name: str = str(team.get("name") or identifier)
+                return identifier, name
+        return identifier, identifier
+
+    target: str = identifier.lower()
+    exact_matches: list[dict[str, Any]] = [
+        team for team in teams if str(team.get("name", "")).lower() == target
+    ]
+    if len(exact_matches) == 1:
+        match: dict[str, Any] = exact_matches[0]
+        return str(match["uuid"]), str(match.get("name") or match["uuid"])
+    if len(exact_matches) > 1:
+        names: str = ", ".join(str(team.get("name", "")) for team in exact_matches)
+        raise ValueError(f'Ambiguous team "{identifier}". Matches: {names}')
+
+    partial_matches: list[dict[str, Any]] = [
+        team for team in teams if target in str(team.get("name", "")).lower()
+    ]
+    if len(partial_matches) == 1:
+        match = partial_matches[0]
+        return str(match["uuid"]), str(match.get("name") or match["uuid"])
+    if len(partial_matches) > 1:
+        names = ", ".join(str(team.get("name", "")) for team in partial_matches)
+        raise ValueError(f'Ambiguous team "{identifier}". Matches: {names}')
+
+    raise ValueError(
+        f"No team named '{identifier}' visible to you. You may not be a member, "
+        "or it doesn't exist. Org admins see all teams; members see only their "
+        "own. Run `dailybot team list` to confirm."
+    )
 
 
 def get_current_user_uuid(client: DailyBotClient) -> str | None:

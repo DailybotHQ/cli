@@ -35,9 +35,17 @@ It is a **public, open-source product** distributed through PyPI, Homebrew, and 
 | List pending check-ins | `dailybot checkin list` | Pending follow-ups for today with question details |
 | Complete a check-in | `dailybot checkin complete <uuid>` | Interactive or `--answer` flags; type-aware prompts |
 | List forms | `dailybot form list` | All visible forms with question count |
+| Get a form | `dailybot form get <uuid>` | Full payload: questions, workflow states, permissions |
 | Submit a form | `dailybot form submit <uuid>` | Guided per-question prompts or `--content` JSON |
-| Give kudos | `dailybot kudos give --to "Name"` | Resolves receiver by name or UUID; team-visible |
-| List team members | `dailybot user list` | Name + UUID; emails not exposed |
+| List own responses | `dailybot form responses <uuid> [--state] [--latest]` | Resume "where you left off" |
+| Get one response | `dailybot form response get <uuid> <resp_uuid>` | Includes `current_state`, `allowed_transitions`, `state_history` |
+| Update a response | `dailybot form update <uuid> <resp_uuid> --content '{...}'` | Strict own-only; patches new answers in |
+| Transition state | `dailybot form transition <uuid> <resp_uuid> <state> [--note]` | Gated by form's `state_change_permission` audience |
+| Delete a response | `dailybot form delete <uuid> <resp_uuid>` | Author / form owner / org admin |
+| Give kudos | `dailybot kudos give --to "Name" \| --team "Engineering"` | Both flags optional; either or both. Receivers go in `user_uuid_receivers` / `team_uuid_receivers` |
+| List org members | `dailybot user list` | Name + UUID; emails not exposed |
+| List teams | `dailybot team list` | Role-scoped server-side (admin sees all, member sees own) |
+| Get one team | `dailybot team get <uuid_or_name> [--with-members]` | Name resolves to UUID; `--with-members` fetches the roster |
 | Interactive TUI | `dailybot` (no args) | Grouped menu: Check-ins, Forms, Team, Session |
 
 ### Agent-Facing

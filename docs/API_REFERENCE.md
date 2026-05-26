@@ -100,6 +100,10 @@ Interactive path: prompts each question using type-aware inputs (text, numeric, 
 
 Lists forms visible to the user. Calls `GET /v1/forms/?include=questions` to include question definitions.
 
+#### `dailybot form get <form_uuid> [--json]`
+
+Fetches a form's full payload via `GET /v1/forms/<uuid>/` — questions, workflow states, and permissions surface (`workflow_enabled`, `workflow_config.states`, `state_change_permission`, `view_reports_permission`, `edit_permission`, `allow_reopen_from_final_state`).
+
 #### `dailybot form submit <form_uuid> [--content JSON] [--yes] [--json]`
 
 Submits a form response. When `--content` is omitted, calls `GET /v1/forms/<uuid>/` to load questions and prompts each one interactively with type-aware inputs.
@@ -110,23 +114,46 @@ Submits a form response. When `--content` is omitted, calls `GET /v1/forms/<uuid
 | `--yes` | `-y` | Skip confirmation prompt. |
 | `--json` | | Machine-readable JSON output. |
 
+#### `dailybot form responses <form_uuid> [--state STATE] [--latest] [--json]`
+
+Lists the caller's own responses (`GET /v1/forms/<uuid>/responses/`). `--state` filters by `current_state` (workflow forms only). `--latest` returns only the most recent — useful for "continue where I left off".
+
+#### `dailybot form response get <form_uuid> <response_uuid> [--json]`
+
+Fetches a single response (`GET /v1/forms/<uuid>/responses/<resp_uuid>/`) including `current_state`, `allowed_transitions`, `can_change_state`, and `state_history`. A 404 returns `{code: form_response_not_found}` (the API never leaks existence to callers without read permission).
+
+#### `dailybot form update <form_uuid> <response_uuid> --content JSON [--yes] [--json]`
+
+Merges new answers into an in-progress response via `PATCH /v1/forms/<uuid>/responses/<resp_uuid>/`. Strict own-only — admins are not elevated to other users' responses on this endpoint.
+
+#### `dailybot form transition <form_uuid> <response_uuid> <to_state> [--note ...] [--yes] [--json]`
+
+Advances a response to `to_state` via `POST /v1/forms/<uuid>/responses/<resp_uuid>/transition/`. The form's `state_change_permission` audience is the sole gate — there is no response-author short-circuit. `--note` is recorded on the audit trail. 403 / `final_state_locked` fires when the response is in the final state and the form's `allow_reopen_from_final_state` is `false`.
+
+#### `dailybot form delete <form_uuid> <response_uuid> [--yes] [--json]`
+
+Deletes a response via `DELETE /v1/forms/<uuid>/responses/<resp_uuid>/`. Allowed for the response author, the form owner, or an org admin (403 / `form_response_delete_forbidden` otherwise).
+
 ---
 
 ### `dailybot kudos` (group) — user-scoped, Bearer auth
 
-#### `dailybot kudos give --to <name_or_uuid> --message <text> [--value <uuid>] [--yes] [--json]`
+#### `dailybot kudos give [--to <user>] [--team <team>] --message <text> [--value <uuid>] [--yes] [--json]`
 
-Gives kudos to a teammate. Resolves receivers by name (exact then partial match) against `GET /v1/users/`.
+Gives kudos to a user, a team, or both. Users are resolved by name (exact then partial match) against `GET /v1/users/`. Teams are resolved by name against `GET /v1/teams/` (server-scoped by role). At least one of `--to` / `--team` is required.
+
+The POST `/v1/kudos/` payload uses `user_uuid_receivers` and `team_uuid_receivers` (both list-of-string fields); the backend manager expands team UUIDs into their active members and excludes the caller, so giving kudos to a team you belong to is valid.
 
 | Flag | Short | Notes |
 |------|-------|-------|
-| `--to` | `-t` | Receiver full name or UUID. Required. |
+| `--to` | `-t` | User full name or UUID. Optional when `--team` is provided. |
+| `--team` | | Team name or UUID. Optional when `--to` is provided. |
 | `--message` | `-m` | Kudos message. Required. |
 | `--value` | | Optional company value UUID. |
 | `--yes` | `-y` | Skip confirmation prompt. |
 | `--json` | | Machine-readable JSON output. |
 
-Self-kudos is rejected client-side (exit code 4). Ambiguous name matches return exit code 2.
+Self-kudos via `--to` is rejected client-side (exit code 4). Ambiguous name matches return exit code 2.
 
 ---
 
@@ -138,19 +165,48 @@ Lists organization members. Calls `GET /v1/users/` with automatic pagination (ca
 
 ---
 
+### `dailybot team` (group) — user-scoped, Bearer auth
+
+#### `dailybot team list [--json]`
+
+Lists teams visible to the caller via `GET /v1/teams/`. **Visibility is scoped server-side**: admins see all org teams, members see only their own (via `teammembership_set`). The CLI never client-filters — it renders the server response verbatim.
+
+#### `dailybot team get <team_uuid_or_name> [--with-members] [--json]`
+
+Fetches a team via `GET /v1/teams/<uuid>/`. A name argument is resolved to UUID by calling `GET /v1/teams/` first (case-insensitive; ambiguous matches exit 2). `--with-members` adds a second call to `GET /v1/teams/<uuid>/members/`.
+
+---
+
 ### User-scoped exit codes
 
-All user-scoped commands (`checkin`, `form`, `kudos`, `user`) share these exit codes:
+All user-scoped commands (`checkin`, `form`, `kudos`, `user`, `team`) share these exit codes:
 
 | Code | Constant | Meaning |
 |------|----------|---------|
 | `0` | — | Success |
-| `2` | `EXIT_USAGE_ERROR` | Invalid input |
+| `2` | `EXIT_USAGE_ERROR` | Invalid input / 400 from server |
 | `3` | `EXIT_NOT_AUTHENTICATED` | Not logged in |
-| `4` | `EXIT_PERMISSION_DENIED` | Forbidden / self-kudos / daily limit |
-| `5` | `EXIT_QUOTA_EXHAUSTED` | Form quota (402) |
+| `4` | `EXIT_PERMISSION_DENIED` | Forbidden, self-kudos, daily limit, `final_state_locked` |
+| `5` | `EXIT_NOT_FOUND` / `EXIT_QUOTA_EXHAUSTED` | 404 from server, or form quota (402) |
 | `6` | `EXIT_RATE_LIMITED` | Rate limited (429) |
 | `7` | `EXIT_USER_ABORTED` | Confirmation declined |
+
+`--json` output for any 4xx includes `error`, `status`, and (when present) `code` + `detail` — pattern-match on `code` rather than prose.
+
+Server-side `code` values mapped to messages (see `ERROR_CODE_MESSAGES` in `commands/public_api_helpers.py`):
+
+| Code | Surfaced as |
+|------|-------------|
+| `form_response_change_state_forbidden` | 403 → exit 4 |
+| `final_state_locked` | 403 → exit 4 |
+| `form_response_delete_forbidden` | 403 → exit 4 |
+| `user_can_not_see_form_responses` | 403 → exit 4 |
+| `form_response_not_found` | 404 → exit 5 |
+| `form_does_not_exists` | 404 → exit 5 |
+| `payload_too_large` | 400 → exit 2 |
+| `no_valid_team` | 400 → exit 2 |
+| `no_valid_users` | 400 → exit 2 |
+| `no_users_found` | 400 → exit 2 |
 
 ---
 
@@ -246,11 +302,19 @@ All endpoints are POSTed to `{api_url}/v1/...`. The default `api_url` is `https:
 | Method | Path | Request | Response | Notes |
 |--------|------|---------|----------|-------|
 | `GET` | `/v1/forms/` | `?include=questions` (optional) | `[{ id, name, questions?: [...] }]` | |
-| `GET` | `/v1/forms/<uuid>/` | — | `{ id, name, questions: [{ uuid, question, question_type, choices? }] }` | Used by guided form submit |
-| `POST` | `/v1/forms/<uuid>/responses/` | `{ content: { "<q_uuid>": "<answer>" } }` | `{ uuid }` | 402 = quota exhausted |
+| `GET` | `/v1/forms/<uuid>/` | — | `{ id, name, slug, workflow_enabled, workflow_config, questions: [...] }` | Used by guided form submit + `form get` |
+| `POST` | `/v1/forms/<uuid>/responses/` | `{ content: { "<q_uuid>": "<answer>" } }` | `{ id, current_state?, allowed_transitions?, can_change_state? }` | 402 = quota exhausted |
+| `GET` | `/v1/forms/<uuid>/responses/` | `?state=<key>` (optional) | `[{ id, current_state, allowed_transitions, can_change_state, state_history, content, edited, created_at }]` | Caller's own responses |
+| `GET` | `/v1/forms/<uuid>/responses/<resp_uuid>/` | — | Same shape as above | 404 = `form_response_not_found` |
+| `PATCH` | `/v1/forms/<uuid>/responses/<resp_uuid>/` | `{ content: { ... } }` | Updated response | Strict own-only |
+| `POST` | `/v1/forms/<uuid>/responses/<resp_uuid>/transition/` | `{ to_state, note? }` | Updated response | 403 = `form_response_change_state_forbidden` or `final_state_locked` |
+| `DELETE` | `/v1/forms/<uuid>/responses/<resp_uuid>/` | — | 204 | Author / owner / admin |
 | `POST` | `/v1/checkins/<followup_uuid>/responses/` | `{ responses: [{ uuid, index, response }], last_question_index?, response_date? }` | `{ uuid }` | |
 | `GET` | `/v1/users/` | — | `{ results: [{ uuid, full_name }], next: url\|null }` | Paginated |
-| `POST` | `/v1/kudos/` | `{ receivers: ["<uuid>"], content, company_value? }` | `{ uuid }` | 406 = daily limit |
+| `GET` | `/v1/teams/` | — | `{ results: [{ uuid, name, active, members_count, is_default }], next? }` | Server-scoped: admins see all, members see own |
+| `GET` | `/v1/teams/<uuid>/` | — | `{ uuid, name, active, ... }` | Same scoping |
+| `GET` | `/v1/teams/<uuid>/members/` | — | `[{ uuid, full_name, email }]` | Members of a team the caller can see |
+| `POST` | `/v1/kudos/` | `{ content, user_uuid_receivers?: [...], team_uuid_receivers?: [...], company_value? }` | `{ uuid }` | At least one receiver list required; 406 = daily limit |
 
 ### Agent (X-API-KEY *or* Bearer)
 

@@ -85,6 +85,69 @@ You're running the non-interactive step 2 (`--code --org=<uuid>`) without having
 
 - Per-org hourly throttle. Wait an hour or rotate to a different agent profile if you have a higher-quota one configured.
 
+## Forms & Workflow
+
+### `dailybot form transition` → 403 / `form_response_change_state_forbidden`
+
+- The form's `state_change_permission` audience excludes you. **There is no response-author short-circuit** — even on your own response, only users in the audience can transition. Ask the form owner to add you (or your team) to the audience, or to transition on your behalf.
+- Inspect the response: `dailybot form response get <form_uuid> <resp_uuid>` and look at `can_change_state` (`false` means the server already told you).
+
+### `dailybot form transition` → 403 / `final_state_locked`
+
+- The response is in the workflow's **final state** and the form has `allow_reopen_from_final_state: false` (the default). Once `released` (or whatever the final state is), the response is sticky.
+- Resolution: ask the form owner to enable reopening, or create a fresh response with `dailybot form submit`.
+
+### `dailybot form update` → 404 / `form_response_not_found`
+
+- The response UUID doesn't exist, **or** it belongs to another user. `update` is strict own-only; admins are *not* elevated to other users' responses on this endpoint (unlike `delete`).
+
+### `dailybot form delete` → 403 / `form_response_delete_forbidden`
+
+- You're not the response author, the form owner, or an org admin. No CLI workaround — ask one of them to delete it.
+
+### `dailybot form responses --latest` returns nothing
+
+- You haven't submitted a response on this form yet. The endpoint scopes by author server-side. `form list` shows all forms visible to you; `form responses` only shows responses you authored.
+
+### My form response renders as one wall of text in the webapp
+
+- The webapp renders Markdown. The CLI sends `--content` answers verbatim — if you submit `"line 1 line 2 line 3"`, that's what's stored. Embed real `\n` newlines (and Markdown `**bold**`, `# Heading`, `- bullet`, fenced code blocks, tables, etc.) inside each answer string. The CLI doesn't auto-format.
+
+### Form-response Markdown: supported subset
+
+The form-response webapp renders a **constrained Markdown subset**. When authoring `--content` for `form submit` / `form update`, stick to:
+
+- **Single-level headings only** — use `# Heading`. **Do NOT use `##` or `###`** — only one title level is supported; nested heading levels render as plain text. To group sub-sections, use a `# Heading` followed by paragraphs / lists.
+- **Real line breaks** — embed actual `\n` characters between paragraphs and list items. Two `\n` for a paragraph break, one `\n` between bullet rows. A single literal newline in a JSON string is `"\n"`.
+- **Inline:** `**bold**`, `*italic*`, `` `code` ``, `[link](url)`.
+- **Blocks:** `- bullet` lists, `1. numbered` lists, fenced ``` ```code``` ``` blocks, Markdown `|` tables.
+
+Quick smoke-check from the CLI side after a `submit` / `update`:
+
+```bash
+dailybot form response get <form_uuid> <resp_uuid> --json | jq -r '.content[]' | head -20
+```
+
+If the printed output has real line breaks (not `\n` literals) and uses `#` rather than `##` / `###`, the webapp will render it correctly.
+
+## Teams & Kudos
+
+### `dailybot team list` shows fewer teams than I expect
+
+- Visibility is **server-scoped by role**. Org admins see all org teams; members see only the teams they belong to (via `teammembership_set`). This is not a bug. If you should be in a team but aren't, ask an admin to add you — the CLI never client-filters.
+
+### `dailybot kudos give --team "X"` → "No team named 'X' visible to you"
+
+- The team either doesn't exist or you're not a member (and you're not an admin). Run `dailybot team list` to see exactly what the server returns for your role.
+
+### Can I give kudos to my own team?
+
+- Yes — the backend `kudos_manager` expands a team UUID into its active members and **excludes the caller**. So `kudos give --team "MyTeam"` where you belong to MyTeam is valid; you credit your teammates, not yourself.
+
+### `kudos give` → 400 / `no_valid_users` or `no_valid_team`
+
+- At least one of `--to` / `--team` must resolve to a valid receiver. Empty receiver lists are rejected server-side. Double-check the names with `dailybot user list` and `dailybot team list`.
+
 ## Output / Display
 
 ### `dailybot agent message list | jq ...` fails with "parse error"
