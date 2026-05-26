@@ -60,6 +60,8 @@ Anything that doesn't fit this shape is either:
 
 Pick the same short alias every time you re-use the same long name. If you need a new short alias, check the list above first to avoid collisions inside the same command.
 
+**Short aliases are scoped per command, not globally unique.** `-m` legitimately means `--milestone` on `dailybot agent update` and `--message` on `dailybot kudos give`; `-c` is `--co-authors` on `agent update` and `--content` on `form submit / update`. Click resolves each command's flags independently, so there is no parsing conflict — the rule is "consistent **inside** a group". When extending an existing command, prefer the alias the surrounding subcommands already use rather than introducing a new one.
+
 ### Help Text Style
 
 - One-line summary: imperative, capitalized, no trailing period.

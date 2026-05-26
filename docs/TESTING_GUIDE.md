@@ -26,18 +26,34 @@ pytest -s                                # don't capture stdout (debugging)
 ```
 tests/
 ├── __init__.py                    # empty, just makes the dir importable
-├── api_client_test.py             # DailyBotClient + APIError
+├── api_client_test.py             # DailyBotClient + APIError (every HTTP method)
 ├── commands_test.py               # Click commands via CliRunner (auth, agent, interactive)
 ├── config_test.py                 # ~/.config/dailybot/ file management
-├── public_api_commands_test.py    # User-scoped commands (checkin, form, kudos, user)
-└── form_question_types_test.py    # Type-aware form prompt logic
+├── public_api_commands_test.py    # User-scoped commands: checkin, form (full
+│                                  #   lifecycle — get/responses/update/transition/delete),
+│                                  #   team (list/get), kudos (--to / --team / both), user
+├── form_question_types_test.py    # Type-aware form prompt logic
+├── repo_profile_test.py           # `.dailybot/profile.json` resolution
+├── agent_init_test.py             # `dailybot agent init` wizard
+└── uninstall_test.py              # install-method detection + remove paths
 ```
 
 When adding a new module, mirror it in `tests/`. New test files **MUST** end in `_test.py`.
 
 ### User-scoped command tests
 
-The user-scoped commands (`checkin`, `form`, `kudos`, `user`) are tested in `public_api_commands_test.py`. The pattern follows the same approach as `commands_test.py` but patches `dailybot_cli.commands.public_api_helpers.get_token` and `dailybot_cli.commands.public_api_helpers.DailyBotClient` (since the auth resolution for these commands goes through `require_bearer_auth()`).
+The user-scoped commands (`checkin`, `form`, `team`, `kudos`, `user`) are tested in `public_api_commands_test.py`. The pattern follows the same approach as `commands_test.py` but patches `dailybot_cli.commands.public_api_helpers.get_token` and `dailybot_cli.commands.public_api_helpers.DailyBotClient` (since the auth resolution for these commands goes through `require_bearer_auth()`).
+
+**Forms-lifecycle coverage expectations.** New `form` subcommands (`get`, `responses`, `response get`, `update`, `transition`, `delete`) must include:
+
+1. **Happy path** — assert the client method is called with the right args, and (for mutating calls) that the workflow surface is rendered after success.
+2. **Error path** for every server `code` the command can surface. At minimum:
+   - `form transition` → `form_response_change_state_forbidden` (403, exit 4) **and** `final_state_locked` (403, exit 4).
+   - `form delete` → `form_response_delete_forbidden` (403, exit 4).
+   - `form response get` / `form update` → `form_response_not_found` (404, exit 5).
+3. **JSON mode** — assert `--json` emits the `code` and `detail` fields alongside `status`, so chat-agent consumers can pattern-match without parsing prose.
+
+**Teams + team-kudos coverage:** `team list` / `team get` exercise the new resolver; `kudos give --team` and `--to + --team` must assert that the POST payload uses `user_uuid_receivers` / `team_uuid_receivers` (the legacy `receivers` key MUST NOT appear).
 
 ## Mocking HTTP
 

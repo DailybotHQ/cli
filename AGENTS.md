@@ -32,10 +32,10 @@
 
 **Dailybot CLI** is a Python command-line tool that bridges **humans** and **agents** with the [Dailybot](https://www.dailybot.com) platform. It provides:
 
-- **For humans** — email-OTP login, viewing pending check-ins, submitting structured/free-text updates, interactive TUI mode.
-- **For agents (AI assistants, CI jobs, deploy scripts, bots)** — progress reports, milestone tracking, agent health, webhook registration, agent-to-agent messaging, transactional email, and standalone agent registration (creates an org without a human Dailybot account).
+- **For humans** — email-OTP login, viewing pending check-ins, submitting structured/free-text updates, **filling out forms** (one-shot or driven through a workflow state machine: `pre_release → qa → code_review → ready_to_release → released`), **browsing teams** (role-scoped server-side), **giving kudos to users or whole teams**, interactive TUI mode.
+- **For agents (AI assistants, CI jobs, deploy scripts, bots)** — progress reports, milestone tracking, agent health, webhook registration, agent-to-agent messaging, transactional email, standalone agent registration (creates an org without a human Dailybot account), **and the full forms-response lifecycle** (`get / responses / response get / update / transition / delete`) so an agent can drive any form — including workflow-enabled ones — end-to-end after `dailybot login`.
 
-It talks exclusively to the Dailybot HTTP API under `/v1/cli/*` and `/v1/agent*/*` endpoints. There is no local database; all state is either in `~/.config/dailybot/` (credentials, agent profiles, config) or fetched from the API.
+It talks exclusively to the Dailybot HTTP API under `/v1/cli/*`, `/v1/agent*/*`, `/v1/forms/*`, `/v1/teams/*`, `/v1/kudos/`, `/v1/users/`, and `/v1/checkins/*` endpoints. There is no local database; all state is either in `~/.config/dailybot/` (credentials, agent profiles, config) or fetched from the API.
 
 **Stack:** Python 3.10+, [Click](https://click.palletsprojects.com/) 8.3+, [httpx](https://www.python-httpx.org/) 0.28+, [questionary](https://questionary.readthedocs.io/) 2.1+, [rich](https://rich.readthedocs.io/) 15+. Tested with `pytest`. Built and packaged with `setuptools`; distributed via PyPI, Homebrew tap (`dailybothq/tap`), a PyInstaller-built Linux x86_64 binary, and a PowerShell installer (`install.ps1`) that wraps `pipx`/`uv`/`pip` for native Windows users.
 
@@ -55,6 +55,15 @@ dailybot_cli/                # Source package
     ├── status.py            # pending check-ins + --auth status
     ├── update.py            # submit human check-in update
     ├── config.py            # get/set/remove stored settings (api_key)
+    ├── checkin.py           # `checkin` group: list / complete (user-scoped)
+    ├── form.py              # `form` group: list / get / submit / responses /
+    │                        #   response get / update / transition / delete
+    ├── team.py              # `team` group: list / get (server-scoped by role)
+    ├── kudos.py             # `kudos give` (to a user, a team, or both)
+    ├── user.py              # `user list` (org directory)
+    ├── public_api_helpers.py  # require_bearer_auth, exit_for_api_error,
+    │                        #   ERROR_CODE_MESSAGES, resolve_user_/team_by_name_or_uuid
+    ├── user_scoped_actions.py # shared handlers for checkin + form (used by CLI + TUI)
     ├── interactive.py       # questionary-based TUI when run with no args
     ├── version.py           # `dailybot version` — install info + PyPI update check
     ├── upgrade.py           # `dailybot upgrade` — auto-detect install method + self-update
@@ -63,8 +72,12 @@ dailybot_cli/                # Source package
                              #   update, health, webhook, message, email
 
 tests/                       # pytest suite (file naming: *_test.py)
-├── api_client_test.py       # HTTP client mocking
-├── commands_test.py         # Click CliRunner invocations
+├── api_client_test.py       # HTTP client mocking (all DailyBotClient methods)
+├── commands_test.py         # Click CliRunner — agent + interactive + auth flows
+├── public_api_commands_test.py  # Click CliRunner — checkin, form (lifecycle),
+│                            #   team, kudos, user (all Bearer-token paths)
+├── form_question_types_test.py  # guided-prompt type classifier
+├── repo_profile_test.py     # `.dailybot/profile.json` resolution
 └── config_test.py           # Config/credential file management
 
 .github/workflows/release.yml  # Tag-triggered: PyPI + Linux binary + Homebrew

@@ -59,9 +59,16 @@ Don't reinvent panels and tables in command code. The existing helpers cover mos
 | `print_update_result(data)` | Update receipt with attached follow-ups |
 | `print_users_table(users)` | Team members table (Name + UUID, no email) |
 | `print_forms_table(forms)` | Forms table (Name + UUID + Questions count) |
+| `print_form_detail(form_data)` | Form payload panel + workflow-states table + questions table |
 | `print_checkin_list(checkins)` | Pending check-ins table with question count |
 | `print_kudos_result(name, data)` | Kudos sent confirmation panel |
 | `print_form_submit_result(data)` | Form submission confirmation panel |
+| `print_form_response_state(data, form_data)` | Workflow-state panel printed after `submit` / `update` / `transition`: current state, previous state, note, next reachable states, "you can change" |
+| `print_form_responses_table(form_uuid, responses, form_data)` | Response list table — UUID, current_state (humanized), edited, created_at |
+| `print_form_response_detail(data, form_data)` | Single-response view — workflow surface + answers table + state-history table |
+| `print_form_response_deleted(form_uuid, response_uuid)` | Delete confirmation |
+| `print_teams_table(teams)` | Teams table (Name + UUID + Members + Active). Empty-state message surfaces the role-scoping rule |
+| `print_team_detail(team, members)` | Team panel; with `--with-members` adds a members table |
 | `print_checkin_complete_result(data)` | Check-in completion confirmation panel |
 
 If you need a new shape, add a helper here rather than building it inline.
