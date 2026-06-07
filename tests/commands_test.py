@@ -1099,6 +1099,38 @@ class TestAgentCommand:
 
     @patch("dailybot_cli.commands.agent.get_agent_auth")
     @patch("dailybot_cli.commands.agent.DailyBotClient")
+    def test_agent_update_shows_placement_url(
+        self, mock_client_cls: MagicMock, mock_get_auth: MagicMock, runner: CliRunner
+    ) -> None:
+        mock_get_auth.return_value = "api_key"
+        mock_client: MagicMock = mock_client_cls.return_value
+        mock_client.submit_agent_report.return_value = {
+            "id": 1,
+            "uuid": "abc",
+            "url": "https://app.dailybot.com/agents/report/abc",
+        }
+
+        result = runner.invoke(cli, ["agent", "update", "Deployed v2.1", "--name", "Claude Code"])
+        assert result.exit_code == 0
+        assert "Report submitted" in result.output
+        assert "https://app.dailybot.com/agents/report/abc" in result.output
+
+    @patch("dailybot_cli.commands.agent.get_agent_auth")
+    @patch("dailybot_cli.commands.agent.DailyBotClient")
+    def test_agent_update_without_url_omits_link(
+        self, mock_client_cls: MagicMock, mock_get_auth: MagicMock, runner: CliRunner
+    ) -> None:
+        mock_get_auth.return_value = "api_key"
+        mock_client: MagicMock = mock_client_cls.return_value
+        mock_client.submit_agent_report.return_value = {"id": 1, "uuid": "abc"}
+
+        result = runner.invoke(cli, ["agent", "update", "Deployed v2.1", "--name", "Claude Code"])
+        assert result.exit_code == 0
+        assert "Report submitted" in result.output
+        assert "View:" not in result.output
+
+    @patch("dailybot_cli.commands.agent.get_agent_auth")
+    @patch("dailybot_cli.commands.agent.DailyBotClient")
     def test_agent_update_with_metadata(
         self, mock_client_cls: MagicMock, mock_get_auth: MagicMock, runner: CliRunner
     ) -> None:

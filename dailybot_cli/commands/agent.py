@@ -29,6 +29,7 @@ from dailybot_cli.display import (
     print_agent_message_sent,
     print_agent_messages,
     print_agent_profiles,
+    print_agent_report_result,
     print_error,
     print_info,
     print_pending_agent_messages,
@@ -624,14 +625,7 @@ def agent_update(
                 is_milestone=milestone,
                 co_authors=co_author_list or None,
             )
-        msg: str = f"Report submitted (id: {result.get('id', 'N/A')})"
-        if result.get("is_milestone"):
-            msg += " [Milestone]"
-        co: list[dict[str, Any]] | None = result.get("co_authors")
-        if co:
-            names: str = ", ".join(a.get("name", a.get("uuid", "?")) for a in co)
-            msg += f"\n  Co-authors: {names}"
-        print_success(msg)
+        print_agent_report_result(result)
         pending: list[dict[str, Any]] = result.get("pending_messages", [])
         if pending:
             print_pending_agent_messages(pending)
