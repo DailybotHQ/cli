@@ -9,6 +9,14 @@ Do not edit it by hand — your edits will be overwritten on the next release.
 
 <!-- version list -->
 
+## v1.11.0 (2026-06-09)
+
+### Features
+
+- **agent**: Show report placement link after agent update
+  ([`70c1c59`](https://github.com/DailybotHQ/cli/commit/70c1c591963f01c5c1e4454b4627a47793b41761))
+
+
 ## v1.10.1 (2026-05-26)
 
 ### Bug Fixes
