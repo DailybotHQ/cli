@@ -255,6 +255,27 @@ def print_agent_email_sent(data: dict[str, Any]) -> None:
     console.print(Panel(table, title="[bold]Email Sent[/bold]", border_style="green"))
 
 
+def print_agent_report_result(result: dict[str, Any]) -> None:
+    """Display the result of submitting an agent activity report.
+
+    Surfaces the report ID, milestone flag, the web-app placement link
+    (when the backend returns one), and any co-authors.
+    """
+    msg: str = f"Report submitted (id: {result.get('id', 'N/A')})"
+    if result.get("is_milestone"):
+        msg += " [Milestone]"
+    print_success(msg)
+
+    url: str = result.get("url") or ""
+    if url:
+        console.print(f"  [cyan]View:[/cyan] {url}")
+
+    co_authors: list[dict[str, Any]] | None = result.get("co_authors")
+    if co_authors:
+        names: str = ", ".join(a.get("name", a.get("uuid", "?")) for a in co_authors)
+        console.print(f"  Co-authors: {names}")
+
+
 def print_agent_profiles(profiles: list[dict[str, Any]]) -> None:
     """Display agent profiles in a table."""
     if not profiles:
