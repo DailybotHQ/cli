@@ -9,6 +9,19 @@ Do not edit it by hand — your edits will be overwritten on the next release.
 
 <!-- version list -->
 
+## v1.12.0 (2026-06-10)
+
+### Code Style
+
+- **cli**: Apply ruff format to hook, ledger, and ledger tests
+  ([`e33862f`](https://github.com/DailybotHQ/cli/commit/e33862fa4261c2513dd4bb986f929f6905dd62fd))
+
+### Features
+
+- **cli**: Add dailybot hook lifecycle commands and local report ledger
+  ([`ca3efe9`](https://github.com/DailybotHQ/cli/commit/ca3efe9171f99346dae12acd7cbbe630e2b42137))
+
+
 ## v1.11.0 (2026-06-09)
 
 ### Features
