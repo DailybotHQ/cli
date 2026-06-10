@@ -423,9 +423,7 @@ def evaluate_session_start(cwd: Path | None = None) -> dict[str, Any] | None:
         state: dict[str, Any] = _load_global_state()
         last_nudge: datetime | None = _parse_iso(state.get("last_login_nudge_at"))
         now: datetime = _now()
-        if last_nudge is None or now - last_nudge >= timedelta(
-            hours=LOGIN_NUDGE_INTERVAL_HOURS
-        ):
+        if last_nudge is None or now - last_nudge >= timedelta(hours=LOGIN_NUDGE_INTERVAL_HOURS):
             login_needed = True
             state["last_login_nudge_at"] = _iso(now)
             _save_global_state(state)

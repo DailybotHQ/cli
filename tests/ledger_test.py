@@ -230,9 +230,7 @@ class TestEvaluateStop:
         result: dict | None = ledger.evaluate_stop(repo)
         assert result is not None and result["kind"] == "soft"
 
-    def test_disabled_repo_is_silent(
-        self, config_dir: Path, repo: Path, frozen_now: dict
-    ) -> None:
+    def test_disabled_repo_is_silent(self, config_dir: Path, repo: Path, frozen_now: dict) -> None:
         ledger.evaluate_stop(repo)
         _commit(repo)
         (repo / ".dailybot").mkdir(exist_ok=True)
@@ -245,9 +243,7 @@ class TestEvaluateStop:
         ledger.evaluate_stop(repo)
         _commit(repo)
         (repo / ".dailybot").mkdir(exist_ok=True)
-        (repo / ".dailybot" / "profile.json").write_text(
-            json.dumps({"report": {"nudge": False}})
-        )
+        (repo / ".dailybot" / "profile.json").write_text(json.dumps({"report": {"nudge": False}}))
         assert ledger.evaluate_stop(repo) is None
 
     def test_repo_policy_custom_interval(
@@ -280,9 +276,7 @@ class TestEvaluateSessionStart:
         assert result is not None
         assert result["login_needed"] is True
 
-    def test_login_nudge_rate_limited(
-        self, config_dir: Path, repo: Path, frozen_now: dict
-    ) -> None:
+    def test_login_nudge_rate_limited(self, config_dir: Path, repo: Path, frozen_now: dict) -> None:
         assert ledger.evaluate_session_start(repo) is not None
         assert ledger.evaluate_session_start(repo) is None  # same day → silent
         frozen_now["now"] = NOW + timedelta(hours=ledger.LOGIN_NUDGE_INTERVAL_HOURS + 1)
@@ -314,9 +308,7 @@ class TestEvaluateSessionStart:
         assert result["login_needed"] is False
         assert result["unreported_commit_count"] == 1
 
-    def test_disabled_repo_silent(
-        self, config_dir: Path, repo: Path, frozen_now: dict
-    ) -> None:
+    def test_disabled_repo_silent(self, config_dir: Path, repo: Path, frozen_now: dict) -> None:
         (repo / ".dailybot").mkdir()
         (repo / ".dailybot" / "disabled").touch()
         assert ledger.evaluate_session_start(repo) is None

@@ -133,9 +133,7 @@ def hook_session_start(fmt: str) -> None:
     if result["login_needed"]:
         parts.append(_LOGIN_NUDGE_MESSAGE)
     if result["unreported_commit_count"] > 0:
-        parts.append(
-            _LEFTOVER_WORK_TEMPLATE.format(count=result["unreported_commit_count"])
-        )
+        parts.append(_LEFTOVER_WORK_TEMPLATE.format(count=result["unreported_commit_count"]))
     elif result["work_pending"]:
         parts.append(_LEFTOVER_PENDING_MESSAGE)
     if parts:
