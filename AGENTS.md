@@ -17,6 +17,7 @@
 | Display & Output Best Practices | [docs/DISPLAY_OUTPUT_BEST_PRACTICES.md](docs/DISPLAY_OUTPUT_BEST_PRACTICES.md) |
 | Security | [docs/SECURITY.md](docs/SECURITY.md) |
 | Configuration & Credentials | [docs/CONFIGURATION.md](docs/CONFIGURATION.md) |
+| Agent Hooks & Report Ledger | [docs/AGENT_HOOKS.md](docs/AGENT_HOOKS.md) |
 | Release & Distribution | [docs/RELEASE_AND_DISTRIBUTION.md](docs/RELEASE_AND_DISTRIBUTION.md) |
 | Repository Standards | [docs/STANDARDS.md](docs/STANDARDS.md) |
 | Python Guidelines | [docs/DEVELOPMENT_GUIDELINES.md](docs/DEVELOPMENT_GUIDELINES.md) |
@@ -49,6 +50,7 @@ dailybot_cli/                # Source package
 ├── config.py                # Credentials, agent profiles, config files in ~/.config/dailybot/
 ├── display.py               # Rich console output helpers (panels, tables, status)
 ├── install_method.py        # Install-method detection shared by upgrade + uninstall
+├── ledger.py                # Local report ledger (per-repo work signals) for `hook`
 └── commands/
     ├── __init__.py
     ├── auth.py              # login / logout (email OTP, multi-org)
@@ -58,6 +60,8 @@ dailybot_cli/                # Source package
     ├── checkin.py           # `checkin` group: list / complete (user-scoped)
     ├── form.py              # `form` group: list / get / submit / responses /
     │                        #   response get / update / transition / delete
+    ├── hook.py              # `hook` group: session-start / post-commit / activity /
+    │                        #   stop / dismiss (agent harness lifecycle hooks)
     ├── team.py              # `team` group: list / get (server-scoped by role)
     ├── kudos.py             # `kudos give` (to a user, a team, or both)
     ├── user.py              # `user list` (org directory)
@@ -78,6 +82,8 @@ tests/                       # pytest suite (file naming: *_test.py)
 │                            #   team, kudos, user (all Bearer-token paths)
 ├── form_question_types_test.py  # guided-prompt type classifier
 ├── repo_profile_test.py     # `.dailybot/profile.json` resolution
+├── ledger_test.py           # Report ledger (signals, nudge decisions, policy)
+├── hook_commands_test.py    # `hook` group (formats, silence, exit-0 contract)
 └── config_test.py           # Config/credential file management
 
 .github/workflows/release.yml  # Tag-triggered: PyPI + Linux binary + Homebrew
@@ -190,7 +196,7 @@ Tests MUST NEVER hit the real Dailybot API. Patch `httpx.get` / `httpx.post` / `
 
 ### 9. Output Through `display.py` Only
 
-Never use raw `print(...)` or `click.echo(...)` for user-facing output (one exception: `_print_org_list` uses `click.echo` for plain UUID/name lines that must remain unstyled and machine-pipeable). All success/error/info/warning text and all tables/panels go through helpers in `dailybot_cli/display.py`. Errors print to **stderr** (`error_console`); everything else to **stdout** (`console`). See [docs/DISPLAY_OUTPUT_BEST_PRACTICES.md](docs/DISPLAY_OUTPUT_BEST_PRACTICES.md).
+Never use raw `print(...)` or `click.echo(...)` for user-facing output (two exceptions: `_print_org_list` uses `click.echo` for plain UUID/name lines that must remain unstyled and machine-pipeable, and the `hook` command group emits raw JSON/plain lines via `click.echo` because its consumer is an agent harness parsing stdout — see [docs/AGENT_HOOKS.md](docs/AGENT_HOOKS.md)). All success/error/info/warning text and all tables/panels go through helpers in `dailybot_cli/display.py`. Errors print to **stderr** (`error_console`); everything else to **stdout** (`console`). See [docs/DISPLAY_OUTPUT_BEST_PRACTICES.md](docs/DISPLAY_OUTPUT_BEST_PRACTICES.md).
 
 ### 10. HTTP Errors Through `APIError`
 

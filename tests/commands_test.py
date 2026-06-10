@@ -1097,6 +1097,43 @@ class TestAgentCommand:
         assert result.exit_code == 0
         assert "Report submitted" in result.output
 
+    @patch("dailybot_cli.commands.agent.ledger")
+    @patch("dailybot_cli.commands.agent.get_agent_auth")
+    @patch("dailybot_cli.commands.agent.DailyBotClient")
+    def test_agent_update_marks_report_ledger(
+        self,
+        mock_client_cls: MagicMock,
+        mock_get_auth: MagicMock,
+        mock_ledger: MagicMock,
+        runner: CliRunner,
+    ) -> None:
+        mock_get_auth.return_value = "api_key"
+        mock_client: MagicMock = mock_client_cls.return_value
+        mock_client.submit_agent_report.return_value = {"id": 1, "uuid": "abc"}
+
+        result = runner.invoke(cli, ["agent", "update", "Deployed v2.1", "--name", "Claude Code"])
+        assert result.exit_code == 0
+        mock_ledger.mark_reported.assert_called_once_with(reported_by="Claude Code")
+
+    @patch("dailybot_cli.commands.agent.ledger")
+    @patch("dailybot_cli.commands.agent.get_agent_auth")
+    @patch("dailybot_cli.commands.agent.DailyBotClient")
+    def test_agent_update_succeeds_when_ledger_fails(
+        self,
+        mock_client_cls: MagicMock,
+        mock_get_auth: MagicMock,
+        mock_ledger: MagicMock,
+        runner: CliRunner,
+    ) -> None:
+        mock_get_auth.return_value = "api_key"
+        mock_client: MagicMock = mock_client_cls.return_value
+        mock_client.submit_agent_report.return_value = {"id": 1, "uuid": "abc"}
+        mock_ledger.mark_reported.side_effect = RuntimeError("disk full")
+
+        result = runner.invoke(cli, ["agent", "update", "Deployed v2.1", "--name", "Claude Code"])
+        assert result.exit_code == 0
+        assert "Report submitted" in result.output
+
     @patch("dailybot_cli.commands.agent.get_agent_auth")
     @patch("dailybot_cli.commands.agent.DailyBotClient")
     def test_agent_update_shows_placement_url(

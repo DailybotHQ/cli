@@ -578,6 +578,22 @@ Replies to agent emails land as messages retrievable via `dailybot agent message
 | `dailybot agent message claim-all` | Mark all pending messages as delivered |
 | `dailybot agent email send` | Send an email through an agent |
 
+### Hook commands (agent harness integration)
+
+Local-only lifecycle commands that agent harnesses (Claude Code, Cursor,
+Codex, Copilot, Gemini CLI, …) invoke from their hook configs so agents
+**proactively** send progress reports — no human reminders needed. They
+never call the network, always exit `0`, and stay silent when there is
+nothing to do. Full guide: [docs/AGENT_HOOKS.md](docs/AGENT_HOOKS.md).
+
+| Command | Description |
+|---------|-------------|
+| `dailybot hook session-start` | Inject session context: login nudge + leftover unreported work |
+| `dailybot hook post-commit` | Record a commit signal in the local report ledger |
+| `dailybot hook activity` | Record a file-activity signal (covers non-commit work) |
+| `dailybot hook stop` | End-of-turn check — remind the model when unreported work exists |
+| `dailybot hook dismiss` | Snooze reminders for this repo (model judged nothing significant) |
+
 ### `dailybot agent update`
 
 ```
