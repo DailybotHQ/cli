@@ -9,6 +9,14 @@ Do not edit it by hand — your edits will be overwritten on the next release.
 
 <!-- version list -->
 
+## v1.12.1 (2026-06-10)
+
+### Chores
+
+- **cli**: Enable autonomous Dailybot report hooks for this repo
+  ([`4149810`](https://github.com/DailybotHQ/cli/commit/4149810f300dcff7411ba70e2736b0882ab3eddd))
+
+
 ## v1.12.0 (2026-06-10)
 
 ### Code Style
