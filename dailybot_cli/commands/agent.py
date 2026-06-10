@@ -1,11 +1,13 @@
 """Agent commands for Dailybot CLI (API key or login session)."""
 
+import contextlib
 import re
 from pathlib import Path
 from typing import Any
 
 import click
 
+from dailybot_cli import ledger
 from dailybot_cli.api_client import APIError, DailyBotClient
 from dailybot_cli.config import (
     RepoProfileError,
@@ -626,6 +628,11 @@ def agent_update(
                 co_authors=co_author_list or None,
             )
         print_agent_report_result(result)
+        # Best-effort: reset the local report ledger so lifecycle hooks
+        # (`dailybot hook stop`) stop reminding about already-reported work.
+        # Ledger issues must never fail a successfully submitted report.
+        with contextlib.suppress(Exception):
+            ledger.mark_reported(reported_by=agent_name)
         pending: list[dict[str, Any]] = result.get("pending_messages", [])
         if pending:
             print_pending_agent_messages(pending)

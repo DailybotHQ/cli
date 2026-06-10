@@ -277,6 +277,26 @@ Sends transactional email through the agent's `@mail.dailybot.co` inbox. `--to` 
 
 ---
 
+### `dailybot hook <subcommand>` (local-only — no HTTP)
+
+Lifecycle commands for agent harness hooks. They read/write only the local
+report ledger (`<config dir>/ledger/`) and git — **never** the Dailybot API —
+and always exit `0` so a failure can't break the calling agent session.
+Full guide with diagrams: [AGENT_HOOKS.md](AGENT_HOOKS.md).
+
+| Subcommand | Flags | Output |
+|------------|-------|--------|
+| `session-start` | `--format/-f claude\|cursor\|generic` | Login nudge + leftover-work context in the harness's hook dialect, or nothing |
+| `post-commit` | — | Silent; records a strong work signal |
+| `activity` | — | Silent; records a soft (non-commit) work signal |
+| `stop` | `--format/-f claude\|cursor\|generic` | Report reminder when unreported work exists, or nothing |
+| `dismiss` | `--minutes/-m INT` (default 60) | Confirmation line; snoozes reminders for the repo |
+
+`dailybot agent update` resets the ledger on success (`mark_reported`), which
+is what stops the reminders after the model reports.
+
+---
+
 ## HTTP Endpoints
 
 All endpoints are POSTed to `{api_url}/v1/...`. The default `api_url` is `https://api.dailybot.com`.

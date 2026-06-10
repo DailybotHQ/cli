@@ -292,7 +292,7 @@ def list_profiles() -> list[dict[str, Any]]:
 REPO_PROFILE_DIRNAME: str = ".dailybot"
 REPO_PROFILE_FILENAME: str = "profile.json"
 _VALID_REPO_PROFILE_KEYS: frozenset[str] = frozenset(
-    {"name", "profile", "default_metadata", "vars"}
+    {"name", "profile", "default_metadata", "vars", "report"}
 )
 _REPO_PROFILE_PATH_KEY: str = "_path"
 

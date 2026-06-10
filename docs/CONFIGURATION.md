@@ -10,7 +10,9 @@ The Dailybot CLI persists state in `~/.config/dailybot/` by default. The path ca
 | `config.json` | `dailybot config` | `{ api_key }` (and any future settings) | `0o600` |
 | `agents.json` | `dailybot agent configure` / `register` | `{ default, profiles: { <slug>: { agent_name, api_key?, agent_email? } } }` | `0o600` |
 | `org_cache.json` | `dailybot login --email` (step 1) | `{ email, organizations: [...] }` | (no chmod — non-secret) |
-| `<repo>/.dailybot/profile.json` | hand-authored, committed to git | `{ name?, profile?, default_metadata?, vars? }` | (no chmod — must be readable by team) |
+| `ledger/<repo-slug>.json` | `dailybot hook ...` / `dailybot agent update` | Per-repo report ledger: `{ repo, first_seen_at, last_report_at, last_reported_commit, last_nudge_at, last_activity_at, work_pending, snoozed_until, turns_since_report, reported_by }` | `0o600` (dir `0o700`) |
+| `ledger/_global.json` | `dailybot hook session-start` | Cross-repo hook state: `{ last_login_nudge_at }` | `0o600` |
+| `<repo>/.dailybot/profile.json` | hand-authored, committed to git | `{ name?, profile?, default_metadata?, vars?, report? }` | (no chmod — must be readable by team) |
 
 ### Schema notes
 
@@ -22,6 +24,8 @@ The Dailybot CLI persists state in `~/.config/dailybot/` by default. The path ca
 
 **`org_cache.json`** — written during step 1 of non-interactive multi-org login (`--email` only). Read during step 2 (`--code --org=<uuid>`) to resolve a UUID → integer ID **without** re-issuing `request_code`, which would invalidate the OTP. Cleared after a successful verification.
 
+**`ledger/`** — the local report ledger backing the `dailybot hook` lifecycle commands (added in the same release as the `hook` group; older CLIs simply never create the directory). One JSON file per repository, keyed by a slug derived from the `origin` remote, plus `_global.json` for cross-repo state. It stores bookkeeping only (timestamps, one commit SHA, a counter) — never report content or secrets. The ledger is a recoverable cache: deleting any file is safe and merely re-anchors the repo's baseline. Written atomically (temp file + rename). Full semantics: [AGENT_HOOKS.md](AGENT_HOOKS.md).
+
 **`<repo>/.dailybot/profile.json`** — repo-level agent profile, intended to be committed so every contributor signs reports under the same identity. Discovery walks up from `$PWD` to `/`; the first ancestor that contains the file wins. All keys are optional:
 
 | Key | Type | Purpose |
@@ -30,6 +34,7 @@ The Dailybot CLI persists state in `~/.config/dailybot/` by default. The path ca
 | `profile` | string slug | Selects an entry in the global `agents.json` for credentials |
 | `default_metadata` | object | Shallow-merged into every report's `--metadata` (inline keys win per-key) |
 | `vars` | object | Free-form repo variables for scripts, skills, and automation. The CLI carries this key but never sends it in reports or warnings. |
+| `report` | object | Per-repo policy for the `dailybot hook` reminders: `{ "min_interval_minutes": 30, "nudge": true }`. `nudge: false` silences end-of-turn report reminders for the repo. See [AGENT_HOOKS.md](AGENT_HOOKS.md). |
 
 **Security rule:** a `key` field is rejected with a hard error — credentials must never be committed. The file is plain text and lives in the repo, so it must remain free of secrets. Unknown future keys log a one-line warning and are ignored (forward compatibility). Malformed JSON falls back to the global config with a warning.
 
