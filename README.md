@@ -561,6 +561,45 @@ Replies to agent emails land as messages retrievable via `dailybot agent message
 | `dailybot team list` | List teams visible to you (scoped server-side by role) |
 | `dailybot team get <uuid_or_name>` | Show a team; add `--with-members` for the member list |
 
+### Chat (send bot messages to Slack/Teams/Discord/Google Chat)
+
+Sends a **Dailybot bot** message to your connected chat platform — to user
+DMs, channels, or teams. Org-API-key auth (`dailybot config key=...`).
+Distinct from `agent message` (inter-agent inbox) and `agent update`
+(progress reports). Works headless for agents (`--json` prints the
+`bot_message_id`).
+
+| Command | Description |
+|---------|-------------|
+| `dailybot chat send` | Send a bot message to users (`-u`), channels (`-c`), and/or teams (`-t`) |
+| `dailybot chat update <bot_message_id>` | Edit a previously sent message |
+
+```bash
+# To a channel
+dailybot chat send -c C0123456789 -m "Deploy finished 🚀"
+
+# DM several users (UUID / email / external id)
+dailybot chat send -u ana@co.com -u luis@co.com -m "Standup in 10 min"
+
+# To a whole team (expanded to members as DMs)
+dailybot chat send -t <team-uuid> -m "Survey is open until Friday"
+
+# Custom Slack bot identity + an interactive/link button
+dailybot chat send -c C0123 -m "Build #421 ✅" \
+  --bot-name "Release Bot" --bot-icon-emoji ":rocket:" \
+  --link-button "Open report::https://app.company.com/report"
+
+# Ephemeral (Slack; only the recipient sees it — needs a user target)
+dailybot chat send -u ana@co.com -m "Heads up" --ephemeral
+
+# Headless for agents: capture the id, then edit the message later
+ID=$(dailybot chat send -c C0123 -m "Deploying…" --json | jq -r .bot_message_id)
+dailybot chat update "$ID" -c C0123 -m "Deploy done ✅"
+
+# Full API control (multi-part, future fields) via the raw-body escape hatch
+dailybot chat send --payload-json '{"target_channels":["C0"],"messages":[{"message":"Hi"}]}'
+```
+
 ### Agent commands
 
 | Command | Description |

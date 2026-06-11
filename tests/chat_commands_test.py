@@ -1,0 +1,217 @@
+"""Tests for the `dailybot chat` command group and payload builder."""
+
+from unittest.mock import MagicMock, patch
+
+import pytest
+from click.testing import CliRunner
+
+from dailybot_cli.api_client import APIError
+from dailybot_cli.commands.chat import ChatPayloadError, build_chat_payload
+from dailybot_cli.main import cli
+
+
+@pytest.fixture
+def runner() -> CliRunner:
+    return CliRunner()
+
+
+# --- build_chat_payload (pure helper) ---
+
+
+class TestBuildChatPayload:
+    def test_minimal_channel_message(self) -> None:
+        payload = build_chat_payload(text="hi", channels=["C0"])
+        assert payload == {"message": "hi", "target_channels": ["C0"]}
+
+    def test_users_and_teams(self) -> None:
+        payload = build_chat_payload(text="hi", users=["a@co.com"], teams=["uuid-1"])
+        assert payload["target_users"] == ["a@co.com"]
+        assert payload["target_teams"] == ["uuid-1"]
+
+    def test_channel_object_when_thread_given(self) -> None:
+        payload = build_chat_payload(text="hi", channels=["C0"], thread="123.45")
+        assert payload["target_channels"] == [{"id": "C0", "thread": "123.45"}]
+
+    def test_channel_object_with_type(self) -> None:
+        payload = build_chat_payload(text="hi", channels=["C0"], channel_type="private_channel")
+        assert payload["target_channels"] == [{"id": "C0", "channel_type": "private_channel"}]
+
+    def test_buttons(self) -> None:
+        payload = build_chat_payload(
+            text="hi",
+            channels=["C0"],
+            link_buttons=[("Open", "https://x.com")],
+            action_buttons=[("Approve", "approve")],
+        )
+        assert payload["buttons"] == [
+            {"label": "Open", "button_type": "link", "url": "https://x.com"},
+            {"label": "Approve", "button_type": "interactive", "value": "approve"},
+        ]
+
+    def test_platform_settings_identity(self) -> None:
+        payload = build_chat_payload(
+            text="hi", channels=["C0"], bot_name="Release Bot", bot_icon_emoji=":rocket:"
+        )
+        assert payload["platform_settings"] == {
+            "bot_username": "Release Bot",
+            "bot_icon_emoji": ":rocket:",
+        }
+
+    def test_ephemeral_and_skip_time_off(self) -> None:
+        payload = build_chat_payload(
+            text="hi", users=["a@co.com"], ephemeral=True, skip_time_off=True
+        )
+        assert payload["platform_settings"]["is_ephemeral"] is True
+        assert payload["skip_users_on_time_off"] is True
+
+    def test_no_target_raises(self) -> None:
+        with pytest.raises(ChatPayloadError, match="At least one target"):
+            build_chat_payload(text="hi")
+
+    def test_icon_mutual_exclusivity(self) -> None:
+        with pytest.raises(ChatPayloadError, match="mutually exclusive"):
+            build_chat_payload(
+                text="hi",
+                channels=["C0"],
+                bot_icon_url="https://x/y.png",
+                bot_icon_emoji=":x:",
+            )
+
+    def test_icon_url_must_be_https(self) -> None:
+        with pytest.raises(ChatPayloadError, match="https://"):
+            build_chat_payload(text="hi", channels=["C0"], bot_icon_url="http://x/y.png")
+
+    def test_bot_name_length(self) -> None:
+        with pytest.raises(ChatPayloadError, match="at most 80"):
+            build_chat_payload(text="hi", channels=["C0"], bot_name="x" * 81)
+
+    def test_invalid_channel_type(self) -> None:
+        with pytest.raises(ChatPayloadError, match="Invalid --channel-type"):
+            build_chat_payload(text="hi", channels=["C0"], channel_type="bogus")
+
+    def test_bot_message_id_included(self) -> None:
+        payload = build_chat_payload(text="x", channels=["C0"], bot_message_id="m1")
+        assert payload["bot_message_id"] == "m1"
+
+
+# --- chat send / update commands ---
+
+
+def _mock_resolve(mock_resolve: MagicMock) -> MagicMock:
+    client: MagicMock = MagicMock()
+    client.send_chat_message.return_value = {"bot_message_id": "999"}
+    mock_resolve.return_value = ("CLI Agent", client, {})
+    return client
+
+
+class TestChatSendCommand:
+    @patch("dailybot_cli.commands.chat._resolve_agent_context")
+    def test_send_to_channel(self, mock_resolve: MagicMock, runner: CliRunner) -> None:
+        client = _mock_resolve(mock_resolve)
+        result = runner.invoke(cli, ["chat", "send", "-c", "C0", "-m", "Deploy done"])
+        assert result.exit_code == 0
+        client.send_chat_message.assert_called_once_with(
+            {"message": "Deploy done", "target_channels": ["C0"]}
+        )
+        assert "Message Sent" in result.output
+
+    @patch("dailybot_cli.commands.chat._resolve_agent_context")
+    def test_send_to_user(self, mock_resolve: MagicMock, runner: CliRunner) -> None:
+        client = _mock_resolve(mock_resolve)
+        result = runner.invoke(cli, ["chat", "send", "-u", "ana@co.com", "-m", "Standup"])
+        assert result.exit_code == 0
+        assert client.send_chat_message.call_args[0][0]["target_users"] == ["ana@co.com"]
+
+    @patch("dailybot_cli.commands.chat._resolve_agent_context")
+    def test_send_json_mode_emits_id(self, mock_resolve: MagicMock, runner: CliRunner) -> None:
+        _mock_resolve(mock_resolve)
+        result = runner.invoke(cli, ["chat", "send", "-c", "C0", "-m", "hi", "--json"])
+        assert result.exit_code == 0
+        assert '"bot_message_id": "999"' in result.output
+
+    @patch("dailybot_cli.commands.chat._resolve_agent_context")
+    def test_send_identity_and_button(self, mock_resolve: MagicMock, runner: CliRunner) -> None:
+        client = _mock_resolve(mock_resolve)
+        result = runner.invoke(
+            cli,
+            [
+                "chat",
+                "send",
+                "-c",
+                "C0",
+                "-m",
+                "x",
+                "--bot-name",
+                "Release Bot",
+                "--link-button",
+                "Open::https://app/r",
+            ],
+        )
+        assert result.exit_code == 0
+        sent = client.send_chat_message.call_args[0][0]
+        assert sent["platform_settings"]["bot_username"] == "Release Bot"
+        assert sent["buttons"][0]["url"] == "https://app/r"
+
+    @patch("dailybot_cli.commands.chat._resolve_agent_context")
+    def test_send_payload_json_passthrough(
+        self, mock_resolve: MagicMock, runner: CliRunner
+    ) -> None:
+        client = _mock_resolve(mock_resolve)
+        result = runner.invoke(
+            cli,
+            [
+                "chat",
+                "send",
+                "--payload-json",
+                '{"target_channels":["C0"],"messages":[{"message":"a"}]}',
+            ],
+        )
+        assert result.exit_code == 0
+        sent = client.send_chat_message.call_args[0][0]
+        assert sent["messages"] == [{"message": "a"}]
+
+    @patch("dailybot_cli.commands.chat._resolve_agent_context")
+    def test_send_no_target_fails(self, mock_resolve: MagicMock, runner: CliRunner) -> None:
+        _mock_resolve(mock_resolve)
+        result = runner.invoke(cli, ["chat", "send", "-m", "orphan"])
+        assert result.exit_code == 1
+        assert "At least one target" in result.output
+
+    @patch("dailybot_cli.commands.chat._resolve_agent_context")
+    def test_send_bad_button_fails(self, mock_resolve: MagicMock, runner: CliRunner) -> None:
+        _mock_resolve(mock_resolve)
+        result = runner.invoke(
+            cli, ["chat", "send", "-c", "C0", "-m", "x", "--link-button", "no-separator"]
+        )
+        assert result.exit_code == 1
+        assert "Invalid link button" in result.output
+
+    @patch("dailybot_cli.commands.chat._resolve_agent_context")
+    def test_send_auth_error_hints_api_key(
+        self, mock_resolve: MagicMock, runner: CliRunner
+    ) -> None:
+        client = _mock_resolve(mock_resolve)
+        client.send_chat_message.side_effect = APIError(status_code=403, detail="API Key Not Valid")
+        result = runner.invoke(cli, ["chat", "send", "-c", "C0", "-m", "x"])
+        assert result.exit_code == 1
+        # Rich may hard-wrap the hint; collapse whitespace before asserting.
+        assert "dailybot config" in result.output.replace("\n", " ")
+        assert "key=" in result.output
+
+    @patch("dailybot_cli.commands.chat._resolve_agent_context")
+    def test_ephemeral_channel_only_warns(self, mock_resolve: MagicMock, runner: CliRunner) -> None:
+        _mock_resolve(mock_resolve)
+        result = runner.invoke(cli, ["chat", "send", "-c", "C0", "-m", "x", "--ephemeral"])
+        assert result.exit_code == 0
+        assert "Ephemeral" in result.output
+
+
+class TestChatUpdateCommand:
+    @patch("dailybot_cli.commands.chat._resolve_agent_context")
+    def test_update_includes_message_id(self, mock_resolve: MagicMock, runner: CliRunner) -> None:
+        client = _mock_resolve(mock_resolve)
+        result = runner.invoke(cli, ["chat", "update", "m-123", "-c", "C0", "-m", "DONE"])
+        assert result.exit_code == 0
+        sent = client.send_chat_message.call_args[0][0]
+        assert sent["bot_message_id"] == "m-123"
+        assert "Message Updated" in result.output

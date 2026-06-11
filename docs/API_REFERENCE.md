@@ -277,6 +277,47 @@ Sends transactional email through the agent's `@mail.dailybot.co` inbox. `--to` 
 
 ---
 
+### `dailybot chat send` / `dailybot chat update <bot_message_id>`
+
+Sends a Dailybot **bot** message to the org's connected chat platform
+(Slack/Teams/Discord/Google Chat) via `POST /v1/send-message/`. Org API-key
+auth (`X-API-KEY`) — a login Bearer token is **not** accepted by this
+endpoint. `update` is the same call with `bot_message_id` set, which edits
+the existing message.
+
+At least one target is required. Targets:
+
+| Flag | Repeatable | Accepts |
+|------|-----------|---------|
+| `--user` / `-u` | yes | user UUID, email, or chat external id (delivered as DM) |
+| `--channel` / `-c` | yes | channel id |
+| `--team` / `-t` | yes | team UUID (expanded to members as DMs) |
+
+Content & options: `--text/-m`, `--image-url/-i`, `--link-button "Label::url"`
+(repeatable), `--button "Label::value"` (interactive, repeatable),
+`--thread`, `--channel-type` (`channel`/`private_channel`/`group_chat`/`direct_message`),
+`--bot-name`, `--bot-icon-url`, `--bot-icon-emoji`, `--ephemeral`,
+`--skip-time-off`, `--metadata/-d JSON`, `--profile/-p`.
+
+- `--payload-json '<body>'` — raw request body escape hatch for full API
+  control (multi-part `messages`, any future field); bypasses the building
+  flags. Forward-compatible by design.
+- `--json` — emit the raw API response (`{ "bot_message_id": ... }`) to
+  stdout for headless/agent use; capture it to edit the message later.
+
+Slack-only `platform_settings` (custom identity + ephemeral) are silently
+ignored on other platforms. `--bot-icon-url` and `--bot-icon-emoji` are
+mutually exclusive; `--ephemeral` needs a `--user` target (a channel-only
+ephemeral send is skipped by the platform). On update, the chat platform
+keeps the message's original name/avatar, so identity flags are ignored.
+
+Resolving a person by **name** (e.g. "send to Sergio Florez") is done at the
+caller layer: list the directory with `dailybot user list`, match the name to
+a UUID/email, then pass it to `--user`. The endpoint itself only accepts
+ids/emails, never free-form names.
+
+---
+
 ### `dailybot hook <subcommand>` (local-only — no HTTP)
 
 Lifecycle commands for agent harness hooks. They read/write only the local
@@ -348,6 +389,7 @@ All endpoints are POSTed to `{api_url}/v1/...`. The default `api_url` is `https:
 | `POST` | `/v1/agent-email/send/` | `{ agent_name, to, subject, body_html, metadata? }` | `{ sent_count, total_recipients, reply_to? }` | 429 = hourly limit |
 | `POST` | `/v1/agent-messages/` | `{ agent_name, content, message_type?, metadata?, expires_at?, sender_type?, sender_name? }` | `{ id, agent_name, sender_name, sender_type, message_type, content }` | |
 | `GET` | `/v1/agent-messages/?agent_name=...&delivered=true|false` | — | `[{ id, message_type, sender_type, sender_name, content, delivered, created_at }]` | Returns a bare array, not a wrapped object |
+| `POST` | `/v1/send-message/` | `{ message?/messages?, image_url?, buttons?, target_users?/target_channels?/target_teams?, platform_settings?, metadata?, skip_users_on_time_off?, bot_message_id? }` | `{ bot_message_id }` | X-API-KEY only (no Bearer); ≥1 target required; `bot_message_id` in → edits that message |
 | `PATCH` | `/v1/agent-messages/read/` | `{ message_ids: [...] }` | `{ updated }` | |
 
 ### Standalone Agent Registration (no auth)

@@ -486,6 +486,41 @@ class TestDailyBotClientAgent:
         assert "co_authors" not in call_kwargs["json"]
 
 
+class TestDailyBotClientChat:
+    def test_send_chat_message_passes_payload_through(self, client: DailyBotClient) -> None:
+        mock_response: MagicMock = MagicMock(spec=httpx.Response)
+        mock_response.status_code = 200
+        mock_response.json.return_value = {"bot_message_id": "123"}
+
+        payload: dict[str, Any] = {
+            "message": "Deploy finished",
+            "target_channels": ["C0123"],
+            "platform_settings": {"bot_username": "Release Bot"},
+        }
+        with patch("httpx.post", return_value=mock_response) as mock_post:
+            result: dict[str, Any] = client.send_chat_message(payload)
+
+        call_args = mock_post.call_args
+        assert call_args[0][0] == "http://test-api.example.com/v1/send-message/"
+        # Body is passed through verbatim — future fields need no client change.
+        assert call_args[1]["json"] == payload
+        assert call_args[1]["headers"]["X-API-KEY"] == "test-api-key"
+        assert result["bot_message_id"] == "123"
+
+    def test_send_chat_message_returns_update_id(self, client: DailyBotClient) -> None:
+        mock_response: MagicMock = MagicMock(spec=httpx.Response)
+        mock_response.status_code = 200
+        mock_response.json.return_value = {"bot_message_id": "task-uuid"}
+
+        with patch("httpx.post", return_value=mock_response) as mock_post:
+            result: dict[str, Any] = client.send_chat_message(
+                {"bot_message_id": "task-uuid", "message": "DONE", "target_channels": ["C0"]}
+            )
+
+        assert mock_post.call_args[1]["json"]["bot_message_id"] == "task-uuid"
+        assert result["bot_message_id"] == "task-uuid"
+
+
 class TestAPIError:
     def test_api_error_raised(self, client: DailyBotClient) -> None:
         mock_response: MagicMock = MagicMock(spec=httpx.Response)

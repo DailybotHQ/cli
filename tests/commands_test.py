@@ -1082,6 +1082,41 @@ class TestInteractiveMenu:
         assert call_args.kwargs["user_receivers"] == [("peer-uuid", "Jane Doe")]
         assert call_args.kwargs["assume_yes"] is True
 
+    @patch("dailybot_cli.commands.interactive.get_api_key")
+    @patch("dailybot_cli.commands.interactive.questionary")
+    @patch("dailybot_cli.commands.interactive.load_credentials")
+    @patch("dailybot_cli.commands.interactive.get_token")
+    @patch("dailybot_cli.commands.interactive.DailyBotClient")
+    def test_interactive_send_chat_to_channel(
+        self,
+        mock_client_cls: MagicMock,
+        mock_get_token: MagicMock,
+        mock_load_creds: MagicMock,
+        mock_questionary: MagicMock,
+        mock_get_api_key: MagicMock,
+        runner: CliRunner,
+    ) -> None:
+        mock_get_token.return_value = "tok"
+        mock_load_creds.return_value = {
+            "token": "tok",
+            "email": "me@example.com",
+            "organization": "Org",
+            "api_url": "https://api.dailybot.com",
+        }
+        mock_get_api_key.return_value = "org-key"
+        mock_client: MagicMock = mock_client_cls.return_value
+        mock_client.send_chat_message.return_value = {"bot_message_id": "555"}
+        # Menu: chat.send then exit; target select: channel; confirm: True
+        mock_questionary.select.return_value.ask.side_effect = ["chat.send", "channel", "exit"]
+        mock_questionary.text.return_value.ask.side_effect = ["C0123", "Deploy done", ""]
+        mock_questionary.confirm.return_value.ask.return_value = True
+
+        result = runner.invoke(cli, [])
+        assert result.exit_code == 0
+        mock_client.send_chat_message.assert_called_once_with(
+            {"message": "Deploy done", "target_channels": ["C0123"]}
+        )
+
 
 class TestAgentCommand:
     @patch("dailybot_cli.commands.agent.get_agent_auth")
