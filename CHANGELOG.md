@@ -9,6 +9,17 @@ Do not edit it by hand — your edits will be overwritten on the next release.
 
 <!-- version list -->
 
+## v1.13.0 (2026-06-12)
+
+### Features
+
+- **chat**: Add `dailybot chat send`/`update` for bot messages to chat platforms
+  ([`f7ac99e`](https://github.com/DailybotHQ/cli/commit/f7ac99e8aefd7b786ca9d69d1b69e889d82a141d))
+
+- **chat**: Thread replies, login auth, role scoping, reply editing
+  ([`7f502b9`](https://github.com/DailybotHQ/cli/commit/7f502b94bf5ac14ed0e7dc70b216360659bd933c))
+
+
 ## v1.12.1 (2026-06-10)
 
 ### Chores
