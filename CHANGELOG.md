@@ -9,6 +9,14 @@ Do not edit it by hand — your edits will be overwritten on the next release.
 
 <!-- version list -->
 
+## v1.13.1 (2026-06-12)
+
+### Chores
+
+- **skills**: Sync vendored dailybot pack to v1.7.0 (adds chat + teams)
+  ([`3eece18`](https://github.com/DailybotHQ/cli/commit/3eece183be0bbe82768400d1bd41772c6a332a09))
+
+
 ## v1.13.0 (2026-06-12)
 
 ### Features
