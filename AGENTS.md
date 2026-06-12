@@ -270,13 +270,37 @@ The implementation lives in `dailybot_cli/commands/agent.py::_resolve_agent_cont
 - The CLI version is read at runtime from installed package metadata (`importlib.metadata.version("dailybot-cli")`) — see `dailybot_cli/__init__.py`.
 - The single source of truth is `pyproject.toml::project.version`. **Never** hardcode the version anywhere else.
 - **Default release path: merge a PR to `main` — that's it.** Every PR is gated by `code_check.yml` (ruff + mypy + pytest matrix on Python 3.10 / 3.12 + a `python -m build` smoke-test). Once that passes and the PR is merged, `auto-release.yml` (powered by `python-semantic-release`) cuts a release **unconditionally**. The bump level is decided by the conventional-commit prefixes when present, but they are **not required** — devs who forget the prefix still ship a PATCH automatically:
-  - `feat:` → MINOR (e.g. `1.0.1 → 1.1.0`)
-  - `fix:` / `perf:` → PATCH (e.g. `1.0.1 → 1.0.2`)
-  - `feat!:` or `BREAKING CHANGE:` in the body → MAJOR (e.g. `1.0.1 → 2.0.0`)
-  - any other prefix or no prefix at all → PATCH (because `default_bump_level = 2` in `pyproject.toml` — PSR 10's LevelBump value for PATCH)
+ - `feat:` → MINOR (e.g. `1.0.1 → 1.1.0`)
+ - `fix:` / `perf:` → PATCH (e.g. `1.0.1 → 1.0.2`)
+ - `feat!:` or `BREAKING CHANGE:` in the body → MAJOR (e.g. `1.0.1 → 2.0.0`)
+ - any other prefix or no prefix at all → PATCH (because `default_bump_level = 2` in `pyproject.toml` — PSR 10's LevelBump value for PATCH)
 
-  PSR then updates `pyproject.toml::version` + `CHANGELOG.md`, commits as `DailyBot Automations`, tags `vX.Y.Z`, and pushes. The tag push triggers `release.yml`, which fans out to PyPI, the Linux binary, the GitHub Release, and the Homebrew tap.
+ PSR then updates `pyproject.toml::version` + `CHANGELOG.md`, commits as `DailyBot Automations`, tags `vX.Y.Z`, and pushes. The tag push triggers `release.yml`, which fans out to PyPI, the Linux binary, the GitHub Release, and the Homebrew tap.
 - Do **NOT** hand-edit `pyproject.toml::version` or `CHANGELOG.md` for normal work — let the automation own them. The two fallback flows (manual `git tag`, local `twine`) are documented for emergencies. See [docs/RELEASE_AND_DISTRIBUTION.md](docs/RELEASE_AND_DISTRIBUTION.md).
+
+#### 15.a Opt-in release skip — `[skip release]` marker
+
+> **TL;DR — every PR releases by default. The only way to suppress it is to type `[skip release]` into the squash-commit body in the GitHub merge dialog yourself, on a PR that meets the single accepted use case below.**
+
+There is **one** narrow situation in which auto-releasing the CLI is actively harmful: syncing the in-repo vendored copy of the Dailybot agent skill pack at `.agents/skills/dailybot/` to a newly published `DailybotHQ/agent-skill` release. The skill pack pins a `dailybot-cli >= X.Y.Z` floor, so if the dogfood-sync PR triggered a release, the CLI would advance past that floor, the freshly synced skill pack would go stale instantly, and we would enter an infinite loop:
+
+```
+sync skill pack → merge → CLI auto-bumps → skill pack now references old CLI
+   → resync skill pack → merge → CLI auto-bumps → … forever
+```
+
+To break the loop without changing the default behaviour for any other PR, `auto-release.yml` honours a `[skip release]` token anywhere in the body of the head commit on `main` (i.e. the squash-merge commit GitHub creates when the PR is merged). When the marker is present, PSR is **not** invoked, no `v*` tag is created, and `release.yml` is **not** dispatched.
+
+**Rules — read this carefully, deviating is a bug:**
+
+1. **Default is always release.** Forgetting the marker on a dogfood PR is *not* a critical problem (the next dogfood PR can correct course); using the marker when you should not have is a *real* problem (the change goes unreleased and users never see it).
+2. **The marker is opt-in only.** No workflow, hook, label, or path filter ever applies it automatically. A human (or an agent on explicit human request) must type it into the squash-commit body in the GitHub merge dialog, or pass it via `gh pr merge --body "..."`. Commits inside the PR branch carrying the marker do **not** trigger the skip — only the squash commit's body is checked, because PRs are squash-merged.
+3. **Allowed scope: exactly one use case.** A PR whose entire diff is the synchronisation of `.agents/skills/dailybot/` (plus the minimal catalog / `AGENTS.md` updates that reference it) to a newly published upstream `DailybotHQ/agent-skill` release. Any other use is treated as a bug. In particular: doc-only PRs, CI tweaks, refactors, and dependency bumps **must** release a PATCH so that the change is reflected in `pyproject.toml` and the changelog.
+4. **The marker is exact, literal text:** `[skip release]` — lowercase, square brackets included. Matched with `grep -F` (no regex). Place it on its own line in the squash-commit body for readability.
+5. **Auditability.** The marker stays in `git log` forever, so `git log --grep '\[skip release\]'` always reproduces the full list of intentionally-suppressed releases.
+6. **Escape hatch from the escape hatch.** If you applied the marker by mistake, manually dispatch a release with `gh workflow run auto-release.yml --ref main` — it will re-run, see no marker on the *next* head commit (because nothing new was committed), and exit without releasing. The recovery is therefore to make any qualifying follow-up PR (no marker) which will cut the suppressed release as part of its own bump.
+
+Implementation lives in `.github/workflows/auto-release.yml::Detect [skip release] marker on head commit`. The header comment of that workflow re-states this policy.
 
 ### 16. Backward Compatibility for Stored Files
 

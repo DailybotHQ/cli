@@ -148,6 +148,71 @@ If `auto-release.yml` was skipped (e.g. CI was down at merge time), you can re-r
 
 If you need a release for commits that don't qualify (e.g. an emergency `chore`-only release), fall back to the tag-triggered flow below.
 
+### Opt-in release skip — the `[skip release]` marker
+
+> Every PR releases by default. This is the **only** way to suppress it.
+
+`auto-release.yml` honours a literal `[skip release]` token in the body of the head commit on `main` (i.e. the squash-merge commit GitHub creates when the PR is merged). When the marker is present, the workflow logs an `::notice` line, writes a dedicated step summary explaining the skip, and exits 0 — PSR is never invoked, no `v*` tag is created, and `release.yml` is **not** dispatched.
+
+#### When (and only when) to use it
+
+There is **one** accepted use case: a PR whose entire diff is the synchronisation of the in-repo Dailybot agent skill pack at `.agents/skills/dailybot/` to a newly published [`DailybotHQ/agent-skill`](https://github.com/DailybotHQ/agent-skill) release (plus the minimal catalog / `AGENTS.md` updates that reference it). Without the marker, that PR would auto-bump the CLI, which in turn would push the skill pack out of sync with the CLI version it just pinned, creating an infinite sync→bump→resync loop. See [AGENTS.md Rule 15.a](../AGENTS.md#15a-opt-in-release-skip--skip-release-marker) for the full rationale.
+
+Any other use of the marker is a bug. In particular, do **not** apply it to:
+
+- Doc-only PRs (let the PATCH go out — the changelog entry is the record that the doc shipped).
+- CI-only or workflow-only PRs (same reason).
+- Dependency-bump PRs (downstream users need to see the bump).
+- Refactors, test-only PRs, comment-only PRs — same.
+
+If you are not sure, **don't apply it**. The penalty for releasing-when-you-shouldn't-have is essentially zero (one tiny PATCH version); the penalty for not-releasing-when-you-should-have is silent drift between the published CLI and what users get from `pip install`.
+
+#### How to apply it
+
+In the GitHub merge dialog, after clicking **Squash and merge**, edit the commit body so the final line looks like:
+
+```
+[skip release]
+```
+
+Or, from the command line:
+
+```bash
+gh pr merge <number> --squash \
+  --subject "chore(skills): sync vendored dailybot pack to v1.8.0" \
+  --body "Mirrors DailybotHQ/agent-skill release v1.8.0 into .agents/skills/dailybot/.
+
+[skip release]
+"
+```
+
+The match is **exact, case-sensitive, literal text** — `[skip release]`, square brackets included, no flexibility. Internal whitespace and surrounding lines do not matter. The check uses `grep -F` so regex metacharacters in the rest of the body are safe.
+
+#### How to verify it worked
+
+After the merge, `gh run watch` will show `auto-release.yml` finishing in ~5 seconds with a step summary that reads:
+
+```
+⏭️  Release skipped on author request.
+The head commit on `main` contains the `[skip release]` marker, so:
+  - python-semantic-release was not invoked
+  - no new v* tag was created
+  - release.yml was not dispatched (no PyPI / binary / Homebrew publish)
+```
+
+You can re-derive the full history of suppressed releases at any time with:
+
+```bash
+git log --grep '\[skip release\]' --oneline
+```
+
+#### Recovering from a misapplied marker
+
+If you set the marker by mistake and the release should have happened, you have two options:
+
+1. **Preferred**: open any trivial follow-up PR (a typo fix, a doc tweak, anything) without the marker. The next merge will trigger `auto-release.yml` normally and PSR will look at *all* commits since the last tag — including the dogfood commit — and produce a single PATCH that covers both.
+2. **Workaround**: dispatch `auto-release.yml` manually from the Actions tab (`workflow_dispatch`). It re-checks out `main`, looks at the *current* head commit body, sees the marker is still there, and exits — so this option is mostly useful when option 1 is impractical and you need to first push a no-op commit (e.g. a CHANGELOG comment) without the marker, then dispatch.
+
 ---
 
 ## Manual Flow

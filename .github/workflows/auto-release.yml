@@ -13,6 +13,35 @@ name: Auto Release
 #   - chore/docs/refactor/style/test/ci/build -> no release
 #
 # Configuration lives in pyproject.toml under [tool.semantic_release].
+#
+# OPT-IN ESCAPE HATCH — the `[skip release]` marker:
+#
+# A `[skip release]` token anywhere in the body of the head commit on `main`
+# (typically the squash-merge commit GitHub creates when a PR is merged) will
+# short-circuit this workflow: PSR is never invoked, no tag is created, and
+# `release.yml` is not dispatched. The default behaviour for every other PR is
+# unchanged — a release is always cut, even for docs-only or chore-only PRs
+# (because of `default_bump_level = 2` in pyproject.toml).
+#
+# WHEN TO USE IT — narrow, single, vetted use case:
+#
+#   * Syncing the in-repo copy of the Dailybot agent skill pack at
+#     `.agents/skills/dailybot/` to a newly published `DailybotHQ/agent-skill`
+#     release. The skill pack pins a `dailybot-cli >= X.Y.Z` floor; if the
+#     dogfood-sync PR triggered an auto-release here, the CLI version would
+#     advance past that floor, the skill pack would immediately go stale, and
+#     we would loop forever (sync skill → bump CLI → resync skill → bump
+#     CLI → …). The marker breaks the loop.
+#
+# Any other use of `[skip release]` is considered a bug. If a doc fix, CI
+# tweak, or refactor genuinely should not produce a release, the answer is
+# almost always "let it produce a PATCH" — that PATCH is the source of truth
+# that the change shipped. See AGENTS.md Rule 15 and
+# docs/RELEASE_AND_DISTRIBUTION.md for the full policy.
+#
+# THE MARKER IS NEVER INJECTED AUTOMATICALLY. A human (or an agent acting on
+# explicit human request) must type it into the squash-commit body in the
+# GitHub merge dialog, or pass it via `gh pr merge --body "..."`.
 
 on:
   pull_request:
@@ -53,12 +82,52 @@ jobs:
           token: ${{ secrets.AUTOMATION_GITHUB_TOKEN }}
           persist-credentials: true
 
+      - name: Detect [skip release] marker on head commit
+        # Opt-in escape hatch. See header comment for the full policy. The
+        # match is anchored to the **head commit of main after the merge**
+        # (i.e. the squash commit GitHub created from the PR), so the marker
+        # has to be typed into the squash-commit body in the merge dialog —
+        # individual commits inside the PR branch cannot trigger it.
+        #
+        # The pattern is intentionally literal `[skip release]` (no regex
+        # flexibility): exact text, square brackets included, case-sensitive.
+        # Using `grep -F` to avoid surprises from regex metachars inside the
+        # commit body.
+        id: skip_check
+        run: |
+          HEAD_SUBJECT="$(git log -1 --format=%s)"
+          HEAD_BODY="$(git log -1 --format=%B)"
+          if printf '%s' "$HEAD_BODY" | grep -qF '[skip release]'; then
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+            echo "## Auto Release Summary" >> "$GITHUB_STEP_SUMMARY"
+            echo "" >> "$GITHUB_STEP_SUMMARY"
+            echo "⏭️  **Release skipped on author request.**" >> "$GITHUB_STEP_SUMMARY"
+            echo "" >> "$GITHUB_STEP_SUMMARY"
+            echo "The head commit on \`main\` contains the \`[skip release]\` marker, so:" >> "$GITHUB_STEP_SUMMARY"
+            echo "- python-semantic-release was **not** invoked" >> "$GITHUB_STEP_SUMMARY"
+            echo "- no new \`v*\` tag was created" >> "$GITHUB_STEP_SUMMARY"
+            echo "- \`release.yml\` was **not** dispatched (no PyPI / binary / Homebrew publish)" >> "$GITHUB_STEP_SUMMARY"
+            echo "" >> "$GITHUB_STEP_SUMMARY"
+            echo "Commit: \`$HEAD_SUBJECT\`" >> "$GITHUB_STEP_SUMMARY"
+            echo "" >> "$GITHUB_STEP_SUMMARY"
+            echo "If this was a mistake, manually dispatch a release with:" >> "$GITHUB_STEP_SUMMARY"
+            echo "\`\`\`bash" >> "$GITHUB_STEP_SUMMARY"
+            echo "gh workflow run auto-release.yml --ref main" >> "$GITHUB_STEP_SUMMARY"
+            echo "\`\`\`" >> "$GITHUB_STEP_SUMMARY"
+            echo "::notice title=Release skipped::Head commit on main has [skip release] marker — auto-release was skipped on author request. Subject: $HEAD_SUBJECT"
+          else
+            echo "skip=false" >> "$GITHUB_OUTPUT"
+            echo "No [skip release] marker on head commit — proceeding with normal release flow."
+          fi
+
       - name: Set up Python
+        if: steps.skip_check.outputs.skip != 'true'
         uses: actions/setup-python@v6
         with:
           python-version: "3.12"
 
       - name: Configure git identity
+        if: steps.skip_check.outputs.skip != 'true'
         # Use the PR author's GitHub identity for the bump commit so it shows
         # in `git log` as authored by the human who triggered the release,
         # not by an opaque bot. Falls back to ${{ github.actor }} for
@@ -78,9 +147,11 @@ jobs:
           git config user.email "${PR_AUTHOR_ID}+${PR_AUTHOR_LOGIN}@users.noreply.github.com"
 
       - name: Install python-semantic-release
+        if: steps.skip_check.outputs.skip != 'true'
         run: pip install "python-semantic-release>=10,<11"
 
       - name: Capture latest tag (before)
+        if: steps.skip_check.outputs.skip != 'true'
         # Used to detect whether semantic-release actually created a new tag
         # in the next step (so we know whether to fire release.yml).
         id: tag_before
@@ -90,6 +161,7 @@ jobs:
           echo "Latest tag before semantic-release: $LATEST"
 
       - name: Bump version, update changelog, tag, and push
+        if: steps.skip_check.outputs.skip != 'true'
         env:
           GH_TOKEN: ${{ secrets.AUTOMATION_GITHUB_TOKEN }}
         run: |
@@ -104,6 +176,7 @@ jobs:
           semantic-release version --push --changelog --commit --tag
 
       - name: Capture latest tag (after) and detect new release
+        if: steps.skip_check.outputs.skip != 'true'
         id: tag_after
         run: |
           LATEST="$(git tag --sort=-creatordate | head -n1 || echo none)"
@@ -137,7 +210,10 @@ jobs:
           echo "Watch: https://github.com/${{ github.repository }}/actions/workflows/release.yml"
 
       - name: Summarize result
-        if: always()
+        # Skipped when the `[skip release]` marker fired: that step already
+        # wrote its own dedicated summary block, and the `tag_before` /
+        # `tag_after` outputs this step relies on never ran.
+        if: always() && steps.skip_check.outputs.skip != 'true'
         run: |
           echo "## Auto Release Summary" >> "$GITHUB_STEP_SUMMARY"
           LATEST="$(git tag --sort=-creatordate | head -n1 || echo none)"
