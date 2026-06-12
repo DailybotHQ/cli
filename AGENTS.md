@@ -15,6 +15,8 @@
 | API Reference | [docs/API_REFERENCE.md](docs/API_REFERENCE.md) |
 | CLI Command Best Practices | [docs/CLI_COMMAND_BEST_PRACTICES.md](docs/CLI_COMMAND_BEST_PRACTICES.md) |
 | Display & Output Best Practices | [docs/DISPLAY_OUTPUT_BEST_PRACTICES.md](docs/DISPLAY_OUTPUT_BEST_PRACTICES.md) |
+| Terminal Design System | [docs/DESIGN.md](docs/DESIGN.md) |
+| Performance Budgets | [docs/PERFORMANCE.md](docs/PERFORMANCE.md) |
 | Security | [docs/SECURITY.md](docs/SECURITY.md) |
 | Configuration & Credentials | [docs/CONFIGURATION.md](docs/CONFIGURATION.md) |
 | Agent Hooks & Report Ledger | [docs/AGENT_HOOKS.md](docs/AGENT_HOOKS.md) |
@@ -199,7 +201,7 @@ Tests MUST NEVER hit the real Dailybot API. Patch `httpx.get` / `httpx.post` / `
 
 ### 9. Output Through `display.py` Only
 
-Never use raw `print(...)` or `click.echo(...)` for user-facing output (two exceptions: `_print_org_list` uses `click.echo` for plain UUID/name lines that must remain unstyled and machine-pipeable, and the `hook` command group emits raw JSON/plain lines via `click.echo` because its consumer is an agent harness parsing stdout — see [docs/AGENT_HOOKS.md](docs/AGENT_HOOKS.md)). All success/error/info/warning text and all tables/panels go through helpers in `dailybot_cli/display.py`. Errors print to **stderr** (`error_console`); everything else to **stdout** (`console`). See [docs/DISPLAY_OUTPUT_BEST_PRACTICES.md](docs/DISPLAY_OUTPUT_BEST_PRACTICES.md).
+Never use raw `print(...)` or `click.echo(...)` for user-facing output (two exceptions: `_print_org_list` uses `click.echo` for plain UUID/name lines that must remain unstyled and machine-pipeable, and the `hook` command group emits raw JSON/plain lines via `click.echo` because its consumer is an agent harness parsing stdout — see [docs/AGENT_HOOKS.md](docs/AGENT_HOOKS.md)). All success/error/info/warning text and all tables/panels go through helpers in `dailybot_cli/display.py`. Errors print to **stderr** (`error_console`); everything else to **stdout** (`console`). The operational rules live in [docs/DISPLAY_OUTPUT_BEST_PRACTICES.md](docs/DISPLAY_OUTPUT_BEST_PRACTICES.md); the design language (semantic color palette, panel border roles, voice & intent, degradation rules, do's & don'ts) lives in [docs/DESIGN.md](docs/DESIGN.md) — the `cli-output` profile of the DWP design-system addon.
 
 ### 10. HTTP Errors Through `APIError`
 
@@ -491,9 +493,11 @@ When applying bot feedback on a PR, agents **must** skip `isMinimized == true` c
 
 Reusable **Skills** (slash commands) and **Agents** (specialized personas) live under [`.agents/`](.agents/) — the vendor-neutral standard adopted by most coding agents (Claude Code, Cursor, Codex, Gemini, Copilot, …):
 
-- [`.agents/skills/`](.agents/skills/) — slash commands (e.g., `/quick-fix`, `/release-prep`, `/cli-command-add`, plus the vendored Dailybot pack at `.agents/skills/dailybot/` with `/dailybot-report`, `/dailybot-chat`, `/dailybot-kudos`, `/dailybot-teams`, `/dailybot-forms`, `/dailybot-checkin`, `/dailybot-email`, `/dailybot-health`, `/dailybot-messages`)
+- [`.agents/skills/`](.agents/skills/) — slash-command procedures (e.g., `/quick-fix`, `/release-prep`, `/cli-command-add`, plus the vendored Dailybot pack at `.agents/skills/dailybot/` with `/dailybot-report`, `/dailybot-chat`, `/dailybot-kudos`, `/dailybot-teams`, `/dailybot-forms`, `/dailybot-checkin`, `/dailybot-email`, `/dailybot-health`, `/dailybot-messages`, and the vendored Deep Work Plan pack at `.agents/skills/deepworkplan/` with `/deepworkplan-create`, `/deepworkplan-execute`, `/deepworkplan-refine`, `/deepworkplan-resume`, `/deepworkplan-status`, `/deepworkplan-verify`, `/deepworkplan-onboard`)
 - [`.agents/agents/`](.agents/agents/) — agent personas (e.g., `cli-developer`, `release-manager`, `docs-writer`, `test-engineer`)
-- [`.agents/docs/skills_agents_catalog.md`](.agents/docs/skills_agents_catalog.md) — full index
+- [`.agents/commands/`](.agents/commands/) — thin slash-command delegators that route to a sub-skill (the `dwp-*` short aliases, `/skill-create`, `/agent-create`, `/deepworkplan-onboard`)
+- [`.agents/docs/skills_agents_catalog.md`](.agents/docs/skills_agents_catalog.md) — full skill + persona index
+- [`.agents/docs/COMMANDS_REFERENCE.md`](.agents/docs/COMMANDS_REFERENCE.md) — slash-command catalog (what each `/` command does and where it routes)
 
 > `.claude/` at the repo root is a git-tracked **symlink to `.agents/`**, kept so tools that still default to the legacy Claude-specific path keep working unchanged. Edit content under `.agents/` only — never under `.claude/`. **This includes Claude-specific assets** (e.g. `settings.json`, `commands/`, hook scripts): put them in `.agents/` and the symlink will route Claude Code to them. Windows users without `core.symlinks = true` should reference `.agents/` directly.
 
@@ -505,6 +509,47 @@ Reusable **Skills** (slash commands) and **Agents** (specialized personas) live 
 | Codex / Cursor / Gemini | `#` | `#quick-fix` |
 
 When invoked: look up in `.agents/docs/skills_agents_catalog.md`, READ the procedure file, FOLLOW it exactly. Do not improvise.
+
+## Working with Deep Work Plans (DWP)
+
+For any non-trivial change (more than ~3 files, more than one logical step, anything spanning auth + API client + commands + docs, anything you'd otherwise want a TodoList for), **drive the work through a Deep Work Plan** instead of free-form coding. The repo ships the [DWP skill pack](.agents/skills/deepworkplan/) (vendored at v2.15.0) and the matching `dwp-*` slash commands.
+
+### The loop
+
+| Step | Slash command | What it does |
+|---|---|---|
+| 1. Plan | `/dwp-create` | Decompose the goal into a structured plan (numbered tasks, per-task validation gate, success criteria). Output lands in [`.dwp/plans/`](.dwp/plans/). |
+| 2. Execute | `/dwp-execute` | Task-by-task execution with the per-task gate enforced before advancing. State persists in `.dwp/`. |
+| 3. Verify | `/dwp-verify` | Objective CONFORMANT / NOT CONFORMANT check against the [DWP specification](https://deepworkplan.com/spec). |
+
+Mid-flight aids: `/dwp-status` (progress at any point, no writes), `/dwp-resume` (pick up after an interrupted session), `/dwp-refine` (add/remove/reorder tasks without losing completed work). Re-onboarding (after a methodology upgrade) is `/deepworkplan-onboard` — non-destructive by design.
+
+The full command catalog (including `/skill-create` and `/agent-create` for extending the kit itself) is in [`.agents/docs/COMMANDS_REFERENCE.md`](.agents/docs/COMMANDS_REFERENCE.md).
+
+### Where plans live
+
+```
+.dwp/
+├── plans/        # finalized plans (one per goal, as PLAN_{name}/ directories)
+├── drafts/       # the create flow's single reviewable refined draft
+└── …             # execution state files (managed by the skill)
+```
+
+The entire `.dwp/` tree is **fully gitignored** — plans and drafts are runtime artifacts, not source. The skill recreates `.dwp/` on demand the first time `/dwp-create` or `/dwp-execute` runs in a fresh clone. Do not commit a plan unless the user explicitly asks. (Contrast with `tmp/` which is for *unstructured* scratch and has a tracked `.gitkeep`; `.dwp/` is the *structured* plan output area governed by the spec — see [`.agents/skills/deepworkplan/shared/dwp-paths.md`](.agents/skills/deepworkplan/shared/dwp-paths.md).)
+
+### Mandatory plan tail
+
+Every Deep Work Plan ends with three mandatory final tasks (per the DWP spec):
+
+1. **Security Review** of the plan's own changes — a critical finding blocks completion.
+2. **Skills & Agents Discovery** pass — surface any reusable skill/agent the work suggests.
+3. **Executive Report** — a one-page summary written to `.dwp/<plan>/REPORT.md`.
+
+You do not need to author these manually; `/dwp-create` adds them to every plan.
+
+### Updating the kit
+
+To upgrade the vendored DWP skill pack: re-run `/deepworkplan-onboard` (reconciles non-destructively against the latest spec). To author a new repo-specific skill/agent: `/skill-create` or `/agent-create` (both delegate to the DWP `author` sub-skill, which keeps `.agents/docs/skills_agents_catalog.md` and `COMMANDS_REFERENCE.md` in sync).
 
 ## Documentation Maintenance
 

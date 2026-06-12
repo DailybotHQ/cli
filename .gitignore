@@ -56,10 +56,20 @@ pip-delete-this-directory.txt
 .vscode
 .devcontainer
 
-# Dailybot repo profile (local-only, not committed)
-.dailybot/
+# Dailybot repo profile — broad-ignore the folder, but the per-repo
+# `profile.json` itself MUST be tracked (it pins the agent identity for
+# everyone working in this repo). Any other on-disk state Dailybot stores
+# here (caches, transient OTP scratch, etc.) is correctly ignored.
+.dailybot/*
+!.dailybot/profile.json
 
 # Scratchpad for AI agents and humans — see AGENTS.md.
 # Anything dropped here is ignored except for the placeholder .gitkeep file.
 tmp/*
 !tmp/.gitkeep
+
+# Deep Work Plan output area — fully gitignored per the DWP spec
+# (`.agents/skills/deepworkplan/shared/dwp-paths.md`). Plans and drafts are
+# runtime artifacts, not source: the create-flow re-creates `.dwp/` on
+# demand. See also `AGENTS.md` "Working with Deep Work Plans".
+.dwp/
