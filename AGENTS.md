@@ -57,6 +57,8 @@ dailybot_cli/                # Source package
     ├── status.py            # pending check-ins + --auth status
     ├── update.py            # submit human check-in update
     ├── config.py            # get/set/remove stored settings (api_key)
+    ├── chat.py              # `chat` group: send / update (bot messages to
+    │                        #   Slack/Teams/Discord/Google Chat via /v1/send-message/)
     ├── checkin.py           # `checkin` group: list / complete (user-scoped)
     ├── form.py              # `form` group: list / get / submit / responses /
     │                        #   response get / update / transition / delete
@@ -84,6 +86,7 @@ tests/                       # pytest suite (file naming: *_test.py)
 ├── repo_profile_test.py     # `.dailybot/profile.json` resolution
 ├── ledger_test.py           # Report ledger (signals, nudge decisions, policy)
 ├── hook_commands_test.py    # `hook` group (formats, silence, exit-0 contract)
+├── chat_commands_test.py    # `chat` group (payload builder, send/update, headless)
 └── config_test.py           # Config/credential file management
 
 .github/workflows/release.yml  # Tag-triggered: PyPI + Linux binary + Homebrew

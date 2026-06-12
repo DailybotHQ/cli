@@ -536,6 +536,37 @@ class DailyBotClient:
         )
         return self._handle_response(response)
 
+    # --- Chat platform messaging (send-message) ---
+
+    def send_chat_message(self, payload: dict[str, Any]) -> dict[str, Any]:
+        """POST /v1/send-message/ — send a Dailybot bot message to the chat platform.
+
+        Delivers to users (DM), channels, and/or teams on the org's connected
+        chat platform (Slack/Teams/Discord/Google Chat). Authenticated via the
+        shared agent header logic: an org API key (``X-API-KEY``) is preferred,
+        otherwise the login Bearer token is sent (role-scoped to what the caller
+        can reach in their org).
+
+        *payload* is passed through to the API verbatim, so every current and
+        future request field (``message``, ``messages``, ``image_url``,
+        ``buttons``, ``thread_responses``, ``target_users``,
+        ``target_channels``, ``target_teams``, ``platform_settings``,
+        ``metadata``, ``skip_users_on_time_off``, ``bot_message_id``, …) is
+        supported without changing this method. The caller is responsible for
+        assembling and validating the body.
+
+        Returns the API response, which carries a ``bot_message_id`` for the
+        parent and — when ``thread_responses`` was sent — one id per reply, all
+        of which can be fed back in a later call to edit the same message.
+        """
+        response: httpx.Response = httpx.post(
+            f"{self.api_url}/v1/send-message/",
+            json=payload,
+            headers=self._agent_headers(),
+            timeout=self.timeout,
+        )
+        return self._handle_response(response)
+
     # --- Agent message endpoints ---
 
     def send_agent_message(

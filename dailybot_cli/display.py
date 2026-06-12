@@ -255,6 +255,31 @@ def print_agent_email_sent(data: dict[str, Any]) -> None:
     console.print(Panel(table, title="[bold]Email Sent[/bold]", border_style="green"))
 
 
+def print_chat_message_result(data: dict[str, Any], *, updated: bool = False) -> None:
+    """Display the result of sending (or updating) a chat platform message."""
+    bot_message_id: str = str(data.get("bot_message_id", ""))
+    thread_ids: list[Any] = data.get("thread_responses") or []
+    title: str = "Message Updated" if updated else "Message Sent"
+    table: Table = Table(show_header=False, box=None, padding=(0, 2))
+    table.add_column(style="bold")
+    table.add_column()
+    if bot_message_id:
+        table.add_row("Message ID", bot_message_id)
+        for i, reply_id in enumerate(thread_ids, start=1):
+            table.add_row(f"Thread reply {i}", str(reply_id))
+        table.add_row(
+            "",
+            Text(
+                "Reuse any id with 'dailybot chat update <id>' to edit that "
+                "message (parent or reply).",
+                style="dim",
+            ),
+        )
+    else:
+        table.add_row("Status", "Enqueued")
+    console.print(Panel(table, title=f"[bold]{title}[/bold]", border_style="green"))
+
+
 def print_agent_report_result(result: dict[str, Any]) -> None:
     """Display the result of submitting an agent activity report.
 

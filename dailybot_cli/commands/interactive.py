@@ -12,6 +12,7 @@ from questionary import Choice, Separator
 from dailybot_cli import __version__
 from dailybot_cli.api_client import APIError, DailyBotClient
 from dailybot_cli.commands.auth import _do_login
+from dailybot_cli.commands.chat import ChatPayloadError, build_chat_payload
 from dailybot_cli.commands.kudos import execute_kudos_give
 from dailybot_cli.commands.public_api_helpers import (
     InteractiveAbort,
@@ -26,9 +27,10 @@ from dailybot_cli.commands.user_scoped_actions import (
     execute_user_list,
     filter_submittable_forms,
 )
-from dailybot_cli.config import get_api_url, get_token, load_credentials
+from dailybot_cli.config import get_api_key, get_api_url, get_token, load_credentials
 from dailybot_cli.display import (
     console,
+    print_chat_message_result,
     print_error,
     print_info,
     print_success,
@@ -43,6 +45,7 @@ ACTION_FORM_LIST: str = "form.list"
 ACTION_FORM_SUBMIT: str = "form.submit"
 ACTION_TEAM_LIST: str = "team.list"
 ACTION_TEAM_KUDOS: str = "team.kudos"
+ACTION_CHAT_SEND: str = "chat.send"
 ACTION_SESSION_INFO: str = "session.info"
 ACTION_EXIT: str = "exit"
 
@@ -59,6 +62,8 @@ MENU_CHOICES: list[Choice | Separator] = [
     Separator("Team"),
     Choice(_I + "List team members", value=ACTION_TEAM_LIST),
     Choice(_I + "Give kudos", value=ACTION_TEAM_KUDOS),
+    Separator("Chat"),
+    Choice(_I + "Send a message to chat (users/channels)", value=ACTION_CHAT_SEND),
     Separator("Session"),
     Choice(_I + "View session info", value=ACTION_SESSION_INFO),
     Separator(""),
@@ -73,6 +78,7 @@ _HANDLER_MAP: dict[str, str] = {
     ACTION_FORM_SUBMIT: "_submit_form",
     ACTION_TEAM_LIST: "_list_members",
     ACTION_TEAM_KUDOS: "_give_kudos",
+    ACTION_CHAT_SEND: "_send_chat_message",
     ACTION_SESSION_INFO: "_show_auth",
 }
 
@@ -354,6 +360,101 @@ def _send_update(client: DailyBotClient) -> None:
             "The request timed out. Dailybot may be processing your update — "
             "please check your check-ins before retrying."
         )
+    except APIError as e:
+        print_error(e.detail)
+
+
+def _send_chat_message(client: DailyBotClient) -> None:
+    """Send a Dailybot bot message to chat — pick users (suggested) or a channel id.
+
+    The send-message endpoint is org-API-key scoped, so this builds a dedicated
+    API-key client; the interactive login Bearer session is not accepted there.
+    """
+    api_key: str | None = get_api_key()
+    if not api_key:
+        print_error(
+            "Sending chat messages needs an org API key (the login session is not "
+            "accepted by this endpoint).\n  Set one with: dailybot config key=<API_KEY>"
+        )
+        return
+    send_client: DailyBotClient = DailyBotClient(api_key=api_key)
+
+    target_kind: str | None = questionary.select(
+        "Send to:",
+        choices=[
+            Choice("Users (direct message)", value="users"),
+            Choice("A channel (by id)", value="channel"),
+        ],
+    ).ask()
+    if target_kind is None:
+        raise InteractiveAbort()
+
+    users: list[str] = []
+    channels: list[str] = []
+    if target_kind == "users":
+        try:
+            with console.status("Loading users..."):
+                directory: list[dict[str, Any]] = client.list_users()
+        except APIError as e:
+            print_error(e.detail)
+            return
+        if not directory:
+            print_error("No users found in your organization.")
+            return
+        choices: list[Choice] = [
+            Choice(_user_label(u), value=str(u.get("uuid") or u.get("email") or ""))
+            for u in directory
+            if u.get("uuid") or u.get("email")
+        ]
+        picked: list[str] | None = questionary.checkbox(
+            "Pick recipients (space to select, enter to confirm):", choices=choices
+        ).ask()
+        if picked is None:
+            raise InteractiveAbort()
+        users = [p for p in picked if p]
+        if not users:
+            print_error("No recipients selected. Nothing sent.")
+            return
+    else:
+        channel_raw: str | None = questionary.text("Channel id (e.g. C0123456789):").ask()
+        if channel_raw is None:
+            raise InteractiveAbort()
+        channels = [c.strip() for c in channel_raw.split(",") if c.strip()]
+        if not channels:
+            print_error("No channel id provided. Nothing sent.")
+            return
+
+    text: str | None = questionary.text("Message:").ask()
+    if text is None:
+        raise InteractiveAbort()
+    text = text.strip()
+    if not text:
+        print_error("Empty message. Nothing sent.")
+        return
+
+    image_url: str | None = questionary.text("Image URL (optional, press enter to skip):").ask()
+    image_url = (image_url or "").strip() or None
+
+    try:
+        payload: dict[str, Any] = build_chat_payload(
+            text=text,
+            users=users or None,
+            channels=channels or None,
+            image_url=image_url,
+        )
+    except ChatPayloadError as exc:
+        print_error(str(exc))
+        return
+
+    target_summary: str = f"{len(users)} user(s)" if users else f"channel {', '.join(channels)}"
+    if not questionary.confirm(f"Send to {target_summary}?", default=True).ask():
+        print_info("Cancelled.")
+        return
+
+    try:
+        with console.status("Sending message..."):
+            result: dict[str, Any] = send_client.send_chat_message(payload)
+        print_chat_message_result(result)
     except APIError as e:
         print_error(e.detail)
 

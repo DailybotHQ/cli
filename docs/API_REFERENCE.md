@@ -277,6 +277,66 @@ Sends transactional email through the agent's `@mail.dailybot.co` inbox. `--to` 
 
 ---
 
+### `dailybot chat send` / `dailybot chat update <bot_message_id>`
+
+Sends a Dailybot **bot** message to the org's connected chat platform
+(Slack/Teams/Discord/Google Chat) via `POST /v1/send-message/`. The CLI
+authenticates with the login **Bearer** token automatically when no API key is
+configured, so this works after `dailybot login` (sends **as you**, role-scoped
+— see below); an org `X-API-KEY` also works and is org-wide. `update` is the
+same call with `bot_message_id` set, which edits the existing message.
+
+At least one target is required. Targets:
+
+| Flag | Repeatable | Accepts |
+|------|-----------|---------|
+| `--user` / `-u` | yes | user UUID, email, or chat external id (delivered as DM) |
+| `--channel` / `-c` | yes | channel id |
+| `--team` / `-t` | yes | team UUID (expanded to members as DMs) |
+
+Content & options: `--text/-m`, `--image-url/-i`, `--link-button "Label::url"`
+(repeatable), `--button "Label::value"` (interactive, repeatable),
+`--thread-message` (repeatable, max 10 — posts a reply in the parent's thread),
+`--thread` (reply into an existing platform thread id),
+`--channel-type` (`channel`/`private_channel`/`group_chat`/`direct_message`),
+`--bot-name`, `--bot-icon-url`, `--bot-icon-emoji`, `--ephemeral`,
+`--skip-time-off`, `--metadata/-d JSON`, `--profile/-p`.
+
+- `--payload-json '<body>'` — raw request body escape hatch for full API
+  control (multi-part `messages`, rich `thread_responses`, any future field);
+  bypasses the building flags. Forward-compatible by design.
+- `--json` — emit the raw API response to stdout for headless/agent use:
+  `{ "bot_message_id": "<parent>", "thread_responses": ["<reply1>", …] }`.
+
+**Threads.** `--thread-message` builds the request's `thread_responses` array:
+a short parent message plus its replies, posted inside the parent's thread in
+one call. The response returns the parent `bot_message_id` plus one
+server-minted id per reply, so `chat update <id>` edits the **parent or any
+reply** in place. Threads render natively on Slack (channels + DMs); on
+Teams/Discord/Google Chat they thread in channels and deliver flat in DMs (the
+replies always arrive, never dropped).
+
+**Identity & ephemeral (Slack only).** `platform_settings` (`--bot-name`,
+`--bot-icon-url`/`--bot-icon-emoji`, `--ephemeral`) are silently ignored on
+other platforms. `--bot-icon-url` and `--bot-icon-emoji` are mutually
+exclusive; `--ephemeral` needs a `--user` target. Custom name/avatar needs the
+Slack `chat:write.customize` scope — without it Slack uses the default identity
+(`ok: true`, no error). On **update**, the platform keeps the message's
+original name/avatar, so identity flags are ignored when editing.
+
+**Send by name.** Targeting flags only accept ids/emails, never free-form
+names. To message "Sergio Florez", resolve the name first with
+`dailybot user list` (gives each member's UUID), then pass it to `--user`.
+
+**Role scope (login path).** A logged-in caller reaches only what their role
+allows in their own org: admins/managers → anyone/any channel/any team;
+team members → teammates, public channels, and teams they belong to; guests →
+self only. Out-of-scope → `403 cli_send_message_target_not_allowed`; CLI sends
+are rate-limited per token (`429`). The `X-API-KEY` path is org-wide and not
+scoped/throttled this way.
+
+---
+
 ### `dailybot hook <subcommand>` (local-only — no HTTP)
 
 Lifecycle commands for agent harness hooks. They read/write only the local
@@ -348,6 +408,7 @@ All endpoints are POSTed to `{api_url}/v1/...`. The default `api_url` is `https:
 | `POST` | `/v1/agent-email/send/` | `{ agent_name, to, subject, body_html, metadata? }` | `{ sent_count, total_recipients, reply_to? }` | 429 = hourly limit |
 | `POST` | `/v1/agent-messages/` | `{ agent_name, content, message_type?, metadata?, expires_at?, sender_type?, sender_name? }` | `{ id, agent_name, sender_name, sender_type, message_type, content }` | |
 | `GET` | `/v1/agent-messages/?agent_name=...&delivered=true|false` | — | `[{ id, message_type, sender_type, sender_name, content, delivered, created_at }]` | Returns a bare array, not a wrapped object |
+| `POST` | `/v1/send-message/` | `{ message?/messages?, image_url?, buttons?, thread_responses?, target_users?/target_channels?/target_teams?, platform_settings?, metadata?, skip_users_on_time_off?, bot_message_id? }` | `{ bot_message_id, thread_responses?: [ids] }` | **X-API-KEY or Bearer** (login, role-scoped); ≥1 target; `thread_responses` posts replies in the parent thread (≤10); `bot_message_id` in → edits that message (parent or reply) |
 | `PATCH` | `/v1/agent-messages/read/` | `{ message_ids: [...] }` | `{ updated }` | |
 
 ### Standalone Agent Registration (no auth)

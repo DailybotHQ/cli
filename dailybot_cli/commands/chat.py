@@ -1,0 +1,532 @@
+"""Chat platform messaging commands (``dailybot chat send`` / ``update``).
+
+Sends Dailybot **bot** messages to the organization's connected chat platform
+(Slack, Microsoft Teams, Discord, Google Chat) — to user DMs, channels, and
+teams — via ``POST /v1/send-message/``. Authenticated with the login Bearer
+token (``dailybot login``, sends *as you*, role-scoped) or an org API key
+(``dailybot config key=...``, org-wide). The two auth modes are interchangeable
+at the call site; the client picks API key first, then falls back to Bearer.
+
+This is distinct from the agent surfaces:
+
+- ``agent update``  → progress reports to the Dailybot dashboard
+- ``agent message`` → inter-agent inbox messages
+- ``chat send``     → a bot message delivered to the real chat platform
+
+The request body is assembled by :func:`build_chat_payload` (a pure,
+well-tested helper) so the CLI command, the interactive TUI, and any future
+caller produce identical payloads. Power users and agents can bypass the
+flags entirely with ``--payload-json`` for the raw API body, which keeps the
+command forward-compatible with every current and future API field.
+"""
+
+import json
+from typing import Any
+
+import click
+
+from dailybot_cli.api_client import APIError, DailyBotClient
+from dailybot_cli.commands.agent import _merge_repo_metadata, _resolve_agent_context
+from dailybot_cli.commands.public_api_helpers import emit_json
+from dailybot_cli.display import (
+    console,
+    print_chat_message_result,
+    print_error,
+    print_warning,
+)
+
+CHANNEL_TYPES: tuple[str, ...] = (
+    "channel",
+    "private_channel",
+    "group_chat",
+    "direct_message",
+)
+BUTTON_SEPARATOR: str = "::"
+MAX_BOT_USERNAME_CHARS: int = 80
+MAX_THREAD_RESPONSES: int = 10
+
+
+class ChatPayloadError(ValueError):
+    """Raised when chat message inputs are invalid (friendly, user-facing)."""
+
+
+def _parse_button(raw: str, *, kind: str) -> tuple[str, str]:
+    """Split a ``"Label::value"`` button spec into ``(label, value)``."""
+    label, sep, value = raw.partition(BUTTON_SEPARATOR)
+    label = label.strip()
+    value = value.strip()
+    if not sep or not label or not value:
+        target: str = "URL" if kind == "link" else "value"
+        raise ChatPayloadError(
+            f"Invalid {kind} button '{raw}'. Expected 'Label{BUTTON_SEPARATOR}{target}' "
+            f"(e.g. 'Open docs{BUTTON_SEPARATOR}https://example.com')."
+        )
+    return label, value
+
+
+def build_chat_payload(
+    *,
+    text: str | None = None,
+    users: list[str] | None = None,
+    channels: list[str] | None = None,
+    teams: list[str] | None = None,
+    image_url: str | None = None,
+    link_buttons: list[tuple[str, str]] | None = None,
+    action_buttons: list[tuple[str, str]] | None = None,
+    thread: str | None = None,
+    channel_type: str | None = None,
+    bot_name: str | None = None,
+    bot_icon_url: str | None = None,
+    bot_icon_emoji: str | None = None,
+    ephemeral: bool = False,
+    skip_time_off: bool = False,
+    metadata: dict[str, Any] | None = None,
+    bot_message_id: str | None = None,
+    thread_responses: list[dict[str, Any]] | None = None,
+) -> dict[str, Any]:
+    """Assemble and validate a ``/v1/send-message/`` request body.
+
+    Only set keys are included, so the payload stays minimal. Raises
+    :class:`ChatPayloadError` on invalid combinations the API would reject —
+    surfacing a friendly message before the network call.
+
+    *thread_responses* posts follow-up messages inside the parent's thread in
+    the same call (each reply inherits the parent's recipients). The API mints
+    one id per reply in the response, so each is independently editable.
+    """
+    if thread_responses and len(thread_responses) > MAX_THREAD_RESPONSES:
+        raise ChatPayloadError(
+            f"At most {MAX_THREAD_RESPONSES} thread replies are allowed per message."
+        )
+    if channel_type is not None and channel_type not in CHANNEL_TYPES:
+        raise ChatPayloadError(
+            f"Invalid --channel-type '{channel_type}'. Choose one of: {', '.join(CHANNEL_TYPES)}."
+        )
+    if bot_icon_url and bot_icon_emoji:
+        raise ChatPayloadError(
+            "Use only one of --bot-icon-url / --bot-icon-emoji (they are mutually exclusive)."
+        )
+    if bot_name is not None and len(bot_name) > MAX_BOT_USERNAME_CHARS:
+        raise ChatPayloadError(f"--bot-name must be at most {MAX_BOT_USERNAME_CHARS} characters.")
+    if bot_icon_url and not bot_icon_url.startswith("https://"):
+        raise ChatPayloadError("--bot-icon-url must start with 'https://'.")
+
+    payload: dict[str, Any] = {}
+
+    if text:
+        payload["message"] = text
+    if image_url:
+        payload["image_url"] = image_url
+
+    buttons: list[dict[str, Any]] = []
+    for label, url in link_buttons or []:
+        buttons.append({"label": label, "button_type": "link", "url": url})
+    for label, value in action_buttons or []:
+        buttons.append({"label": label, "button_type": "interactive", "value": value})
+    if buttons:
+        payload["buttons"] = buttons
+
+    if users:
+        payload["target_users"] = list(users)
+    if channels:
+        if thread or channel_type:
+            payload["target_channels"] = [
+                _channel_object(cid, thread=thread, channel_type=channel_type) for cid in channels
+            ]
+        else:
+            payload["target_channels"] = list(channels)
+    if teams:
+        payload["target_teams"] = list(teams)
+
+    platform_settings: dict[str, Any] = {}
+    if bot_name:
+        platform_settings["bot_username"] = bot_name
+    if bot_icon_url:
+        platform_settings["bot_icon_url"] = bot_icon_url
+    if bot_icon_emoji:
+        platform_settings["bot_icon_emoji"] = bot_icon_emoji
+    if ephemeral:
+        platform_settings["is_ephemeral"] = True
+    if platform_settings:
+        payload["platform_settings"] = platform_settings
+
+    if skip_time_off:
+        payload["skip_users_on_time_off"] = True
+    if metadata:
+        payload["metadata"] = metadata
+    if bot_message_id:
+        payload["bot_message_id"] = bot_message_id
+    if thread_responses:
+        payload["thread_responses"] = thread_responses
+
+    _validate_targets(payload)
+    return payload
+
+
+def _channel_object(
+    channel_id: str, *, thread: str | None, channel_type: str | None
+) -> dict[str, Any]:
+    obj: dict[str, Any] = {"id": channel_id}
+    if channel_type:
+        obj["channel_type"] = channel_type
+    if thread:
+        obj["thread"] = thread
+    return obj
+
+
+def _validate_targets(payload: dict[str, Any]) -> None:
+    """Enforce the API's 'at least one target' rule before sending."""
+    if not (
+        payload.get("target_users") or payload.get("target_channels") or payload.get("target_teams")
+    ):
+        raise ChatPayloadError("At least one target is required: --user, --channel, or --team.")
+
+
+def _resolved_client(profile_flag: str | None) -> tuple[DailyBotClient, dict[str, Any]]:
+    """Build an API-key-preferring client and the repo default metadata.
+
+    Reuses the agent context resolver (send-message is org-API-key scoped, the
+    same auth surface as agent reports). The agent display name is irrelevant
+    here, so it is discarded.
+    """
+    _agent_name, client, repo_default_metadata = _resolve_agent_context(profile_flag, None)
+    return client, repo_default_metadata
+
+
+def _send(
+    client: DailyBotClient, payload: dict[str, Any], *, updated: bool, json_mode: bool
+) -> None:
+    """Run a single send/update call and render the result (used by `update`)."""
+    result: dict[str, Any] = _execute_send(client, payload, status="Sending message...")
+    if json_mode:
+        emit_json(result)
+        return
+    print_chat_message_result(result, updated=updated)
+
+
+def _execute_send(
+    client: DailyBotClient, payload: dict[str, Any], *, status: str
+) -> dict[str, Any]:
+    """Call the API with friendly error translation; return the result or exit 1."""
+    if payload.get("platform_settings", {}).get("is_ephemeral") and not payload.get("target_users"):
+        # The API silently skips an ephemeral message with no resolvable user.
+        print_warning(
+            "Ephemeral messages need a --user target; a channel-only ephemeral send is skipped "
+            "by the platform."
+        )
+    try:
+        with console.status(status):
+            return client.send_chat_message(payload)
+    except APIError as e:
+        if e.code == "cli_send_message_target_not_allowed":
+            print_error(
+                f"{e.detail}\n  Your role can only reach teammates, public channels, and teams "
+                "you belong to. Use an allowed target, or an org API key for org-wide reach."
+            )
+        elif e.code == "invalid_thread_responses":
+            print_error(
+                f"{e.detail}\n  Thread replies allow at most 10 items, one level deep, with no "
+                "targeting of their own (they inherit the parent's recipients)."
+            )
+        elif e.status_code in (401, 403):
+            print_error(
+                f"{e.detail}\n  Authenticate first: run 'dailybot login' (sends as you) or set an "
+                "org API key with 'dailybot config key=<API_KEY>'."
+            )
+        elif e.status_code == 429:
+            print_error("Rate limit exceeded for chat sends. Wait a bit and retry.")
+        else:
+            print_error(e.detail)
+        raise SystemExit(1)
+
+
+# --- chat group ---
+
+
+@click.group(name="chat")
+@click.option("--profile", "-p", default=None, help="Agent profile name from agents.json.")
+@click.pass_context
+def chat(ctx: click.Context, profile: str | None) -> None:
+    """Send Dailybot bot messages to your chat platform (Slack/Teams/Discord/Google Chat).
+
+    \b
+    Targets users (DM), channels, and teams. Authenticated with your login
+    session ('dailybot login' — sends as you, role-scoped) or an org API key
+    ('dailybot config key=...', org-wide). Distinct from 'agent message'
+    (inter-agent inbox) and 'agent update' (progress reports).
+    """
+    ctx.ensure_object(dict)
+    ctx.obj["profile"] = profile
+
+
+def _target_options(fn: Any) -> Any:
+    """Shared targeting + content + identity options for send and update."""
+    decorators = [
+        click.option(
+            "--user",
+            "-u",
+            "users",
+            multiple=True,
+            help="Target user by UUID, email, or external id (repeatable).",
+        ),
+        click.option(
+            "--channel", "-c", "channels", multiple=True, help="Target channel id (repeatable)."
+        ),
+        click.option(
+            "--team",
+            "-t",
+            "teams",
+            multiple=True,
+            help="Target team UUID; expanded to members as DMs (repeatable).",
+        ),
+        click.option("--text", "-m", default=None, help="Message text (markdown where supported)."),
+        click.option("--image-url", "-i", default=None, help="Public image URL to attach."),
+        click.option(
+            "--link-button",
+            "link_buttons_raw",
+            multiple=True,
+            help="Link button 'Label::https://url' (repeatable).",
+        ),
+        click.option(
+            "--button",
+            "action_buttons_raw",
+            multiple=True,
+            help="Interactive button 'Label::value' (repeatable).",
+        ),
+        click.option("--thread", default=None, help="Thread id to reply inside (channels)."),
+        click.option(
+            "--channel-type",
+            default=None,
+            help=f"Channel type: {', '.join(CHANNEL_TYPES)} (default channel).",
+        ),
+        click.option("--bot-name", default=None, help="Custom bot display name (Slack only)."),
+        click.option("--bot-icon-url", default=None, help="Custom bot avatar URL, https (Slack)."),
+        click.option("--bot-icon-emoji", default=None, help="Custom bot avatar emoji (Slack)."),
+        click.option(
+            "--ephemeral",
+            is_flag=True,
+            default=False,
+            help="Send ephemerally — only the recipient sees it (Slack; needs --user).",
+        ),
+        click.option(
+            "--skip-time-off",
+            is_flag=True,
+            default=False,
+            help="Skip users flagged as away / on time-off.",
+        ),
+        click.option("--metadata", "-d", default=None, help="JSON metadata to attach."),
+        click.option(
+            "--payload-json",
+            default=None,
+            help="Raw request body JSON (full API control; ignores the building flags).",
+        ),
+        click.option(
+            "--json",
+            "json_mode",
+            is_flag=True,
+            default=False,
+            help="Emit the raw API response as JSON to stdout (headless).",
+        ),
+    ]
+    for decorator in reversed(decorators):
+        fn = decorator(fn)
+    return fn
+
+
+def _assemble_payload(
+    *,
+    payload_json: str | None,
+    metadata: str | None,
+    repo_default_metadata: dict[str, Any],
+    bot_message_id: str | None,
+    json_mode: bool,
+    **build_kwargs: Any,
+) -> dict[str, Any]:
+    """Build the request body from --payload-json (raw) or the structured flags.
+
+    Centralizes the flag→payload mapping and validation so send/update share
+    it. Exits with a friendly error on any invalid input.
+    """
+    metadata_dict: dict[str, Any] | None = None
+    if metadata:
+        try:
+            metadata_dict = json.loads(metadata)
+        except json.JSONDecodeError:
+            print_error("Invalid JSON in --metadata.")
+            raise SystemExit(1)
+    metadata_dict = _merge_repo_metadata(metadata_dict, repo_default_metadata)
+
+    if payload_json is not None:
+        try:
+            raw: Any = json.loads(payload_json)
+        except json.JSONDecodeError:
+            print_error("Invalid JSON in --payload-json.")
+            raise SystemExit(1)
+        if not isinstance(raw, dict):
+            print_error("--payload-json must be a JSON object.")
+            raise SystemExit(1)
+        if metadata_dict and "metadata" not in raw:
+            raw["metadata"] = metadata_dict
+        if bot_message_id:
+            raw["bot_message_id"] = bot_message_id
+        try:
+            _validate_targets(raw)
+        except ChatPayloadError as exc:
+            print_error(str(exc))
+            raise SystemExit(1)
+        return raw
+
+    link_buttons: list[tuple[str, str]] = []
+    action_buttons: list[tuple[str, str]] = []
+    thread_messages: tuple[str, ...] = build_kwargs.pop("thread_messages_raw", ())
+    thread_responses: list[dict[str, Any]] = [{"message": t} for t in thread_messages if t]
+    try:
+        for raw_btn in build_kwargs.pop("link_buttons_raw", ()):
+            link_buttons.append(_parse_button(raw_btn, kind="link"))
+        for raw_btn in build_kwargs.pop("action_buttons_raw", ()):
+            action_buttons.append(_parse_button(raw_btn, kind="interactive"))
+        return build_chat_payload(
+            link_buttons=link_buttons,
+            action_buttons=action_buttons,
+            metadata=metadata_dict,
+            bot_message_id=bot_message_id,
+            thread_responses=thread_responses or None,
+            **build_kwargs,
+        )
+    except ChatPayloadError as exc:
+        print_error(str(exc))
+        raise SystemExit(1)
+
+
+@chat.command(name="send")
+@_target_options
+@click.option(
+    "--thread-message",
+    "thread_messages_raw",
+    multiple=True,
+    help="Reply posted inside the parent message's thread (repeatable; max 10).",
+)
+@click.pass_context
+def chat_send(
+    ctx: click.Context,
+    users: tuple[str, ...],
+    channels: tuple[str, ...],
+    teams: tuple[str, ...],
+    text: str | None,
+    image_url: str | None,
+    link_buttons_raw: tuple[str, ...],
+    action_buttons_raw: tuple[str, ...],
+    thread: str | None,
+    channel_type: str | None,
+    bot_name: str | None,
+    bot_icon_url: str | None,
+    bot_icon_emoji: str | None,
+    ephemeral: bool,
+    skip_time_off: bool,
+    metadata: str | None,
+    payload_json: str | None,
+    json_mode: bool,
+    thread_messages_raw: tuple[str, ...],
+) -> None:
+    """Send a bot message to users, channels, or teams.
+
+    \b
+      dailybot chat send -c C0123456789 -m "Deploy finished 🚀"
+      dailybot chat send -u ana@co.com -u luis@co.com -m "Standup in 10 min"
+      dailybot chat send -t <team-uuid> -m "Survey is open until Friday"
+      dailybot chat send -c C0123 -m "Build #421 ✅" --bot-name "Release Bot" \\
+        --bot-icon-emoji ":rocket:"
+      dailybot chat send -c C0123 -m "Actions:" --link-button "Open report::https://app/r"
+      dailybot chat send -u ana@co.com -m "Heads up" --ephemeral
+      dailybot chat send --payload-json '{"target_channels":["C0"],"messages":[...]}' --json
+
+    \b
+    Report style — a short headline plus the detail inside its thread:
+      dailybot chat send -c C0123 -m "🚀 Release v2.4 shipped" \\
+        --thread-message "Changelog: ..." \\
+        --thread-message "Rollout: 100% at 14:30 UTC"
+    """
+    profile_flag: str | None = ctx.obj.get("profile")
+    client, repo_default_metadata = _resolved_client(profile_flag)
+    payload: dict[str, Any] = _assemble_payload(
+        payload_json=payload_json,
+        metadata=metadata,
+        repo_default_metadata=repo_default_metadata,
+        bot_message_id=None,
+        json_mode=json_mode,
+        text=text,
+        users=list(users),
+        channels=list(channels),
+        teams=list(teams),
+        image_url=image_url,
+        link_buttons_raw=link_buttons_raw,
+        action_buttons_raw=action_buttons_raw,
+        thread_messages_raw=thread_messages_raw,
+        thread=thread,
+        channel_type=channel_type,
+        bot_name=bot_name,
+        bot_icon_url=bot_icon_url,
+        bot_icon_emoji=bot_icon_emoji,
+        ephemeral=ephemeral,
+        skip_time_off=skip_time_off,
+    )
+    _send(client, payload, updated=False, json_mode=json_mode)
+
+
+@chat.command(name="update")
+@click.argument("bot_message_id")
+@_target_options
+@click.pass_context
+def chat_update(
+    ctx: click.Context,
+    bot_message_id: str,
+    users: tuple[str, ...],
+    channels: tuple[str, ...],
+    teams: tuple[str, ...],
+    text: str | None,
+    image_url: str | None,
+    link_buttons_raw: tuple[str, ...],
+    action_buttons_raw: tuple[str, ...],
+    thread: str | None,
+    channel_type: str | None,
+    bot_name: str | None,
+    bot_icon_url: str | None,
+    bot_icon_emoji: str | None,
+    ephemeral: bool,
+    skip_time_off: bool,
+    metadata: str | None,
+    payload_json: str | None,
+    json_mode: bool,
+) -> None:
+    """Edit a previously sent message by its bot_message_id.
+
+    \b
+      dailybot chat update <bot_message_id> -c C0123 -m "Status: DONE ✅"
+
+    Note: the chat platform keeps the message's original bot name/avatar on an
+    edit, so identity flags are ignored when updating.
+    """
+    profile_flag: str | None = ctx.obj.get("profile")
+    client, repo_default_metadata = _resolved_client(profile_flag)
+    payload: dict[str, Any] = _assemble_payload(
+        payload_json=payload_json,
+        metadata=metadata,
+        repo_default_metadata=repo_default_metadata,
+        bot_message_id=bot_message_id,
+        json_mode=json_mode,
+        text=text,
+        users=list(users),
+        channels=list(channels),
+        teams=list(teams),
+        image_url=image_url,
+        link_buttons_raw=link_buttons_raw,
+        action_buttons_raw=action_buttons_raw,
+        thread=thread,
+        channel_type=channel_type,
+        bot_name=bot_name,
+        bot_icon_url=bot_icon_url,
+        bot_icon_emoji=bot_icon_emoji,
+        ephemeral=ephemeral,
+        skip_time_off=skip_time_off,
+    )
+    _send(client, payload, updated=True, json_mode=json_mode)
