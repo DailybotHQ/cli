@@ -9,6 +9,25 @@ Do not edit it by hand — your edits will be overwritten on the next release.
 
 <!-- version list -->
 
+## v1.13.2 (2026-06-12)
+
+### Chores
+
+- **agents**: Adopt Deep Work Plan (deepworkplan-skill v2.12.0)
+  ([`0151776`](https://github.com/DailybotHQ/cli/commit/01517763c1616c93308e2a9c71a43493cadff0d6))
+
+- **agents**: Bump deepworkplan-skill vendored copy v2.12.0 → v2.15.0
+  ([`e122d5e`](https://github.com/DailybotHQ/cli/commit/e122d5e692d1e89641c7aa96af8d02bd23f9725f))
+
+- **skills**: Sync vendored dailybot pack to v1.7.1 (CLI 1.13.1 pin bump)
+  ([`c19a20a`](https://github.com/DailybotHQ/cli/commit/c19a20a2210ad6d0a596b43b9e1eb1b57d3d0269))
+
+### Documentation
+
+- **design**: Adopt design-system addon — cli-output profile
+  ([`f99e899`](https://github.com/DailybotHQ/cli/commit/f99e89925f578aae3a14ef6ca5935268a2d38f31))
+
+
 ## v1.13.1 (2026-06-12)
 
 ### Chores
