@@ -1,7 +1,7 @@
 ---
 name: dailybot
 description: Official Dailybot agent skill pack — report progress, check messages, send emails, announce agent status, complete check-ins, give kudos (to users or teams), resolve teams, run the full forms lifecycle (list, submit, update, transition between workflow states), and send/edit chat messages on the team's Slack/Teams/Discord/Google Chat (including report-style threads). Routes to the right sub-skill based on intent. Use when the developer mentions Dailybot or wants to interact with their team.
-version: "1.7.0"
+version: "1.7.1"
 documentation_url: https://api.dailybot.com/skill.md
 user-invocable: true
 metadata: {"openclaw":{"emoji":"📡","homepage":"https://dailybot.com","requires":{"anyBins":["dailybot","curl"]},"primaryEnv":"DAILYBOT_API_KEY","install":[{"id":"cli-install-script","kind":"download","url":"https://cli.dailybot.com/install.sh","label":"Install Dailybot CLI (official script — preferred on Linux/macOS)"},{"id":"pip","kind":"pip","package":"dailybot-cli","bins":["dailybot"],"label":"Install Dailybot CLI via pip (fallback if binary fails)"}]}}
@@ -66,14 +66,14 @@ fallback). Full guide: [`docs/INSTALLATION.md`](https://github.com/DailybotHQ/ag
 > [`report/hooks.md`](report/hooks.md) and the
 > [CLI hook docs](https://github.com/DailybotHQ/cli/blob/main/docs/AGENT_HOOKS.md).
 >
-> **`1.13.0` floor for `dailybot-chat`** ([PyPI](https://pypi.org/project/dailybot-cli/1.13.0/),
+> **`1.13.0` floor for `dailybot-chat`** ([release notes](https://github.com/DailybotHQ/cli/releases/tag/v1.13.0),
 > released **2026-06-12**): the `dailybot chat send` / `chat update`
 > command group first ships in 1.13.0, together with login-Bearer auth on
 > `/v1/send-message/` (so the developer doesn't need an org API key to
 > send a chat message), report-style threads via `--thread-message`
 > (≤10 per call), and individually-editable thread reply ids. The
 > `dailybot-chat` sub-skill requires this minimum; the other sub-skills
-> are unaffected. See [`chat/SKILL.md`](chat/SKILL.md).
+> are unaffected. **Current published version: [`dailybot-cli 1.13.1`](https://pypi.org/project/dailybot-cli/1.13.1/)** — what `pip install --upgrade dailybot-cli` resolves to today; functionally identical to 1.13.0 for chat purposes. See [`chat/SKILL.md`](chat/SKILL.md).
 
 ### Why this minimum
 
