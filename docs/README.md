@@ -38,6 +38,8 @@
 | [DEVELOPMENT_GUIDELINES.md](DEVELOPMENT_GUIDELINES.md) | Python style: type hints, error handling, idioms |
 | [CLI_COMMAND_BEST_PRACTICES.md](CLI_COMMAND_BEST_PRACTICES.md) | Click conventions, layering, error handling |
 | [DISPLAY_OUTPUT_BEST_PRACTICES.md](DISPLAY_OUTPUT_BEST_PRACTICES.md) | `display.py` rules: stdout vs stderr, masking, panels |
+| [DESIGN.md](DESIGN.md) | Terminal-output design system (semantic colors, components, voice, degradation) — the `cli-output` profile of the DWP design-system addon |
+| [PERFORMANCE.md](PERFORMANCE.md) | Cold-start, HTTP, terminal-render, and hook budgets |
 | [TESTING_GUIDE.md](TESTING_GUIDE.md) | pytest conventions, mocking patterns, CliRunner usage |
 | [SECURITY.md](SECURITY.md) | Credential handling, file permissions, secret masking |
 | [DOCUMENTATION_GUIDE.md](DOCUMENTATION_GUIDE.md) | How to keep docs/, AGENTS.md, and README.md in sync |

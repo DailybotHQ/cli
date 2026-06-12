@@ -21,6 +21,7 @@ The full plan-execute-verify loop, delegating to the vendored `deepworkplan` ski
 | `/deepworkplan-onboard` | `../skills/deepworkplan/onboard/SKILL.md` | Re-run the 9-phase onboard flow as a reconciliation pass — non-destructive by design. | "Re-onboard against the latest DWP spec" |
 | `/skill-create` | `../skills/deepworkplan/author/SKILL.md` | Create a new skill in `.agents/skills/<slug>/`. | "Create a skill for the cherry-pick release workflow" |
 | `/agent-create` | `../skills/deepworkplan/author/SKILL.md` | Create a new agent persona in `.agents/agents/<slug>.md`. | "Create an agent persona for the CI investigator role" |
+| `/design-system` | `../skills/deepworkplan/addons/design-system/SKILL.md` | Refresh `docs/DESIGN.md` from the real design source (`display.py` + `DISPLAY_OUTPUT_BEST_PRACTICES.md`) via the DWP design-system addon. | "Re-sync DESIGN.md after refactoring `display.py`" |
 
 Every plan ends with three mandatory final tasks (per the DWP spec): a **Security Review** of the plan's own changes (a critical finding blocks completion), a **Skills & Agents Discovery** pass, and an **Executive Report**.
 

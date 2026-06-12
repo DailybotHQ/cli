@@ -15,6 +15,8 @@
 | API Reference | [docs/API_REFERENCE.md](docs/API_REFERENCE.md) |
 | CLI Command Best Practices | [docs/CLI_COMMAND_BEST_PRACTICES.md](docs/CLI_COMMAND_BEST_PRACTICES.md) |
 | Display & Output Best Practices | [docs/DISPLAY_OUTPUT_BEST_PRACTICES.md](docs/DISPLAY_OUTPUT_BEST_PRACTICES.md) |
+| Terminal Design System | [docs/DESIGN.md](docs/DESIGN.md) |
+| Performance Budgets | [docs/PERFORMANCE.md](docs/PERFORMANCE.md) |
 | Security | [docs/SECURITY.md](docs/SECURITY.md) |
 | Configuration & Credentials | [docs/CONFIGURATION.md](docs/CONFIGURATION.md) |
 | Agent Hooks & Report Ledger | [docs/AGENT_HOOKS.md](docs/AGENT_HOOKS.md) |
@@ -199,7 +201,7 @@ Tests MUST NEVER hit the real Dailybot API. Patch `httpx.get` / `httpx.post` / `
 
 ### 9. Output Through `display.py` Only
 
-Never use raw `print(...)` or `click.echo(...)` for user-facing output (two exceptions: `_print_org_list` uses `click.echo` for plain UUID/name lines that must remain unstyled and machine-pipeable, and the `hook` command group emits raw JSON/plain lines via `click.echo` because its consumer is an agent harness parsing stdout — see [docs/AGENT_HOOKS.md](docs/AGENT_HOOKS.md)). All success/error/info/warning text and all tables/panels go through helpers in `dailybot_cli/display.py`. Errors print to **stderr** (`error_console`); everything else to **stdout** (`console`). See [docs/DISPLAY_OUTPUT_BEST_PRACTICES.md](docs/DISPLAY_OUTPUT_BEST_PRACTICES.md).
+Never use raw `print(...)` or `click.echo(...)` for user-facing output (two exceptions: `_print_org_list` uses `click.echo` for plain UUID/name lines that must remain unstyled and machine-pipeable, and the `hook` command group emits raw JSON/plain lines via `click.echo` because its consumer is an agent harness parsing stdout — see [docs/AGENT_HOOKS.md](docs/AGENT_HOOKS.md)). All success/error/info/warning text and all tables/panels go through helpers in `dailybot_cli/display.py`. Errors print to **stderr** (`error_console`); everything else to **stdout** (`console`). The operational rules live in [docs/DISPLAY_OUTPUT_BEST_PRACTICES.md](docs/DISPLAY_OUTPUT_BEST_PRACTICES.md); the design language (semantic color palette, panel border roles, voice & intent, degradation rules, do's & don'ts) lives in [docs/DESIGN.md](docs/DESIGN.md) — the `cli-output` profile of the DWP design-system addon.
 
 ### 10. HTTP Errors Through `APIError`
 

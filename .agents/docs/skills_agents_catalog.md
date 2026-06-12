@@ -47,6 +47,7 @@ The full pack lives under [`.agents/skills/deepworkplan/`](../skills/deepworkpla
 | `deepworkplan-onboard` | [`skills/deepworkplan/onboard/SKILL.md`](../skills/deepworkplan/onboard/SKILL.md) | Re-running the onboard flow as a reconciliation pass (non-destructive) |
 | `skill-create` | [`skills/deepworkplan/author/SKILL.md`](../skills/deepworkplan/author/SKILL.md) | Creating a new skill in `.agents/skills/<slug>/` |
 | `agent-create` | [`skills/deepworkplan/author/SKILL.md`](../skills/deepworkplan/author/SKILL.md) | Creating a new agent persona in `.agents/agents/<slug>.md` |
+| `design-system` | [`skills/deepworkplan/addons/design-system/SKILL.md`](../skills/deepworkplan/addons/design-system/SKILL.md) | Refreshing [`docs/DESIGN.md`](../../docs/DESIGN.md) from the real design source (`display.py` + `DISPLAY_OUTPUT_BEST_PRACTICES.md`) — the `cli-output` profile of the DWP design-system addon |
 
 Plans and drafts persist under [`.dwp/`](../../.dwp/) which is gitignored — only the `plans/.gitkeep` and `drafts/.gitkeep` placeholders are tracked. Full command catalog in [`COMMANDS_REFERENCE.md`](COMMANDS_REFERENCE.md), and the rationale in [`../../AGENTS.md`](../../AGENTS.md) "Working with Deep Work Plans".
 
