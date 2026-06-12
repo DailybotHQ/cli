@@ -86,7 +86,23 @@ dailybot agent update --name "Claude Code" \
   --metadata '{"model":"claude-opus-4-7","repo":"cli"}'
 ```
 
-See [`.agents/skills/dailybot-progress-report/SKILL.md`](../.agents/skills/dailybot-progress-report/SKILL.md) for the full reporting philosophy and what to skip.
+See [`.agents/skills/dailybot/report/SKILL.md`](../.agents/skills/dailybot/report/SKILL.md) for the full reporting philosophy and what to skip.
+
+## The Plan-Execute-Verify Loop (Deep Work Plans)
+
+For any non-trivial multi-agent collaboration, drive the work through a Deep Work Plan instead of free-form coding. The loop is:
+
+1. **`/dwp-create`** — one agent decomposes the goal into a structured plan (numbered tasks, validation gates, success criteria) and writes it to [`.dwp/plans/`](../.dwp/plans/).
+2. **`/dwp-execute`** — the same or a different agent executes the plan task-by-task, updating state in `.dwp/` so the next agent (or the next session of the same agent) can pick up.
+3. **`/dwp-verify`** — at any milestone, run the objective CONFORMANT / NOT CONFORMANT check (no judgement calls, just the [DWP spec](https://deepworkplan.com/spec)).
+
+Three operational properties make DWP a strong collaboration substrate:
+
+- **State persists in `.dwp/`, not in chat history.** A second agent (or a re-spawned session of the first) can `/dwp-resume` and know exactly what's done, what's next, what's blocked.
+- **Plans are reviewable like code.** They are markdown files in the repo; a reviewer can read the plan before any execution starts.
+- **Validation gates are explicit.** Each task lists what "done" means before execution, so two agents can't disagree about completion criteria mid-stream.
+
+Full command catalog: [`.agents/docs/COMMANDS_REFERENCE.md`](../.agents/docs/COMMANDS_REFERENCE.md). The DWP skill pack lives at [`.agents/skills/deepworkplan/`](../.agents/skills/deepworkplan/) and is vendored at v2.12.0 — to upgrade, re-run `/deepworkplan-onboard`, which reconciles non-destructively.
 
 ## Handing Off Mid-Task
 

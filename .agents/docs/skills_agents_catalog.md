@@ -32,6 +32,24 @@ The full pack lives under [`.agents/skills/dailybot/`](../skills/dailybot/) (rou
 | `dailybot-forms` | [`skills/dailybot/forms/SKILL.md`](../skills/dailybot/forms/SKILL.md) | Listing, submitting, updating, or transitioning form responses |
 | `dailybot-chat` | [`skills/dailybot/chat/SKILL.md`](../skills/dailybot/chat/SKILL.md) | Sending / editing Dailybot bot messages on Slack / Teams / Discord / Google Chat (DMs, channels, teams; report-style threads; in-place edits). Requires `dailybot-cli >= 1.13.0` |
 
+### Deep Work Plan skill pack (vendored from [`DailybotHQ/deepworkplan-skill`](https://github.com/DailybotHQ/deepworkplan-skill))
+
+The full pack lives under [`.agents/skills/deepworkplan/`](../skills/deepworkplan/) (router + 9 sub-skills + addons). Vendored at **v2.12.0**. The router auto-routes by intent — read [`skills/deepworkplan/SKILL.md`](../skills/deepworkplan/SKILL.md) and let it pick the right sub-skill. Each sub-skill is independently invocable, and each has a short `dwp-*` alias in [`.agents/commands/`](../commands/) for ergonomic typing.
+
+| Slug | Procedure | Use when |
+|------|-----------|----------|
+| `deepworkplan-create` (`/dwp-create`) | [`skills/deepworkplan/create/SKILL.md`](../skills/deepworkplan/create/SKILL.md) | Decomposing a goal into a structured plan with per-task validation gates |
+| `deepworkplan-execute` (`/dwp-execute`) | [`skills/deepworkplan/execute/SKILL.md`](../skills/deepworkplan/execute/SKILL.md) | Executing the current plan task-by-task |
+| `deepworkplan-refine` (`/dwp-refine`) | [`skills/deepworkplan/refine/SKILL.md`](../skills/deepworkplan/refine/SKILL.md) | Adding / removing / reordering tasks without losing completed work |
+| `deepworkplan-resume` (`/dwp-resume`) | [`skills/deepworkplan/resume/SKILL.md`](../skills/deepworkplan/resume/SKILL.md) | Picking up an interrupted plan from `.dwp/` state |
+| `deepworkplan-status` (`/dwp-status`) | [`skills/deepworkplan/status/SKILL.md`](../skills/deepworkplan/status/SKILL.md) | Reporting plan progress at any time without making changes |
+| `deepworkplan-verify` (`/dwp-verify`) | [`skills/deepworkplan/verify/SKILL.md`](../skills/deepworkplan/verify/SKILL.md) | Objective CONFORMANT / NOT CONFORMANT check against the [DWP spec](https://deepworkplan.com/spec) |
+| `deepworkplan-onboard` | [`skills/deepworkplan/onboard/SKILL.md`](../skills/deepworkplan/onboard/SKILL.md) | Re-running the onboard flow as a reconciliation pass (non-destructive) |
+| `skill-create` | [`skills/deepworkplan/author/SKILL.md`](../skills/deepworkplan/author/SKILL.md) | Creating a new skill in `.agents/skills/<slug>/` |
+| `agent-create` | [`skills/deepworkplan/author/SKILL.md`](../skills/deepworkplan/author/SKILL.md) | Creating a new agent persona in `.agents/agents/<slug>.md` |
+
+Plans and drafts persist under [`.dwp/`](../../.dwp/) which is gitignored — only the `plans/.gitkeep` and `drafts/.gitkeep` placeholders are tracked. Full command catalog in [`COMMANDS_REFERENCE.md`](COMMANDS_REFERENCE.md), and the rationale in [`../../AGENTS.md`](../../AGENTS.md) "Working with Deep Work Plans".
+
 ## Agents
 
 Persona definitions. Use these as the system prompt / role when spawning a sub-agent or asking the user to "act as".
@@ -54,6 +72,10 @@ Persona definitions. Use these as the system prompt / role when spawning a sub-a
 | Update README / docs only | `doc-edit` | `docs-writer` |
 | Add `httpx-retries` to deps | `dependency-add` | `cli-developer` |
 | Cut v0.4.13 | `release-prep` | `release-manager` |
+| Plan a non-trivial multi-step change | `/dwp-create` then `/dwp-execute` | `cli-developer` |
+| Pick up a plan after an interrupted session | `/dwp-resume` | `cli-developer` |
+| Check repo conformance against the DWP spec | `/dwp-verify` | (any) |
+| Create a new repo-specific skill or persona | `/skill-create` or `/agent-create` | (any) |
 | Report what you just shipped | `dailybot-report` | (any) |
 | Send a Slack/Teams/Discord/Google Chat message (DM, channel, team; report-style threads) | `dailybot-chat` | (any) |
 | Recognize a teammate or a whole team | `dailybot-kudos` | (any) |

@@ -113,7 +113,22 @@ dailybot agent update --name "Claude Code" \
   --metadata '{"model":"claude-opus-4-7","repo":"cli"}'
 ```
 
-For DWP-style multi-task work, use `--milestone` + `--json-data`. See [`.agents/skills/dailybot-progress-report/SKILL.md`](../.agents/skills/dailybot-progress-report/SKILL.md) for the full philosophy.
+For DWP-style multi-task work, use `--milestone` + `--json-data`. See [`.agents/skills/dailybot/report/SKILL.md`](../.agents/skills/dailybot/report/SKILL.md) for the full philosophy.
+
+## Step 9 — Working with Deep Work Plans (DWP)
+
+For any non-trivial change (more than ~3 files, more than one logical step, anything spanning auth + API client + commands + docs), do not skip straight to coding — drive the work through a Deep Work Plan. The repo ships the [DWP skill pack](../.agents/skills/deepworkplan/) and the matching `dwp-*` slash commands.
+
+```bash
+/dwp-create          # decompose the goal into a structured plan in .dwp/plans/
+/dwp-execute         # task-by-task execution with per-task validation gates
+/dwp-status          # report progress at any point
+/dwp-resume          # pick up after an interrupted session
+/dwp-refine          # add / remove / reorder tasks mid-flight
+/dwp-verify          # objective CONFORMANT / NOT CONFORMANT check on this repo
+```
+
+Plans and drafts persist under [`.dwp/`](../.dwp/) which is gitignored. The full command catalog (including `/skill-create` and `/agent-create` for extending the kit) lives in [`.agents/docs/COMMANDS_REFERENCE.md`](../.agents/docs/COMMANDS_REFERENCE.md). The plan-execute-verify loop and its rationale are spelled out in [`AI_AGENT_COLLAB.md`](AI_AGENT_COLLAB.md) and [`../AGENTS.md`](../AGENTS.md) "Working with Deep Work Plans".
 
 ## Repo Quick Facts
 
