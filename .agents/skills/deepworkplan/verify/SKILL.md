@@ -1,7 +1,7 @@
 ---
 name: deepworkplan-verify
 description: Verify that a repository is DeepWorkPlan-conformant (AI-first) and that its plans are well-formed, producing an objective pass/fail report. Use when the developer asks to verify, audit, or check conformance of a repo or a plan.
-version: "2.12.0"
+version: "2.15.0"
 documentation_url: https://deepworkplan.com
 user-invocable: true
 allowed-tools: Bash, Read, Grep, Glob
@@ -102,8 +102,9 @@ For each plan under `.dwp/plans/PLAN_{name}/`:
 
 - Every task file declares an explicit scope, **acceptance criteria**, and at least one **validation gate** (a runnable command or check).
 - **Test discipline.** Tasks that add new core functionality or change product behavior require automated test coverage in their Acceptance Criteria and run the repo's tests + lint/type-check in their Validation (`DWP_SPECIFICATION.md` §5.1.1). A behavior-changing plan with zero test work is a finding, not a pass.
+- **Security discipline.** Tasks that touch auth, input handling, secrets/config, network surface, or dependencies carry security expectations in their Acceptance Criteria (`DWP_SPECIFICATION.md` §5.1.2); where the plan has a dedicated security-hardening task, it is ordered before the comprehensive-tests task.
 - `PROGRESS.md` exists and is updated, so the plan is resumable.
-- The two mandatory final tasks are present — Skills & Agents Discovery and the Executive Report.
+- The three mandatory final tasks are present — Security Review, Skills & Agents Discovery, and the Executive Report. On a completed plan, `analysis_results/SECURITY_REVIEW.md` exists and reports no unresolved critical finding.
 - Tasks re-anchor to the plan goal before executing.
 - **State layer (when present).** `state.json` and `manifest.json` parse, and
   `state.json` agrees with the README checkboxes — on desync the markdown wins
