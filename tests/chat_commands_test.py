@@ -93,6 +93,25 @@ class TestBuildChatPayload:
         payload = build_chat_payload(text="x", channels=["C0"], bot_message_id="m1")
         assert payload["bot_message_id"] == "m1"
 
+    def test_thread_responses_included(self) -> None:
+        payload = build_chat_payload(
+            text="headline",
+            channels=["C0"],
+            thread_responses=[{"message": "detail 1"}, {"message": "detail 2"}],
+        )
+        assert payload["thread_responses"] == [
+            {"message": "detail 1"},
+            {"message": "detail 2"},
+        ]
+
+    def test_too_many_thread_responses_raises(self) -> None:
+        with pytest.raises(ChatPayloadError, match="At most 10"):
+            build_chat_payload(
+                text="x",
+                channels=["C0"],
+                thread_responses=[{"message": str(i)} for i in range(11)],
+            )
+
 
 # --- chat send / update commands ---
 
@@ -205,6 +224,65 @@ class TestChatSendCommand:
         assert result.exit_code == 0
         assert "Ephemeral" in result.output
 
+    @patch("dailybot_cli.commands.chat._resolve_agent_context")
+    def test_send_with_thread_messages(self, mock_resolve: MagicMock, runner: CliRunner) -> None:
+        client = _mock_resolve(mock_resolve)
+        client.send_chat_message.return_value = {
+            "bot_message_id": "parent-id",
+            "thread_responses": ["$db/r1", "$db/r2"],
+        }
+        result = runner.invoke(
+            cli,
+            [
+                "chat",
+                "send",
+                "-c",
+                "C0",
+                "-m",
+                "Headline",
+                "--thread-message",
+                "detail 1",
+                "--thread-message",
+                "detail 2",
+            ],
+        )
+        assert result.exit_code == 0
+        sent = client.send_chat_message.call_args[0][0]
+        assert sent["thread_responses"] == [{"message": "detail 1"}, {"message": "detail 2"}]
+        # Reply ids are surfaced so they can be edited.
+        assert "$db/r1" in result.output
+        assert "$db/r2" in result.output
+
+    @patch("dailybot_cli.commands.chat._resolve_agent_context")
+    def test_too_many_thread_messages_fails(
+        self, mock_resolve: MagicMock, runner: CliRunner
+    ) -> None:
+        _mock_resolve(mock_resolve)
+        args = ["chat", "send", "-c", "C0", "-m", "x"]
+        for i in range(11):
+            args += ["--thread-message", f"r{i}"]
+        result = runner.invoke(cli, args)
+        assert result.exit_code == 1
+        assert "At most 10" in result.output
+
+    @patch("dailybot_cli.commands.chat._resolve_agent_context")
+    def test_role_scope_error(self, mock_resolve: MagicMock, runner: CliRunner) -> None:
+        client = _mock_resolve(mock_resolve)
+        client.send_chat_message.side_effect = APIError(
+            status_code=403, detail="Not allowed", code="cli_send_message_target_not_allowed"
+        )
+        result = runner.invoke(cli, ["chat", "send", "-c", "C0", "-m", "x"])
+        assert result.exit_code == 1
+        assert "role can only reach" in result.output
+
+    @patch("dailybot_cli.commands.chat._resolve_agent_context")
+    def test_rate_limit_error(self, mock_resolve: MagicMock, runner: CliRunner) -> None:
+        client = _mock_resolve(mock_resolve)
+        client.send_chat_message.side_effect = APIError(status_code=429, detail="too many")
+        result = runner.invoke(cli, ["chat", "send", "-c", "C0", "-m", "x"])
+        assert result.exit_code == 1
+        assert "Rate limit" in result.output
+
 
 class TestChatUpdateCommand:
     @patch("dailybot_cli.commands.chat._resolve_agent_context")
@@ -215,3 +293,11 @@ class TestChatUpdateCommand:
         sent = client.send_chat_message.call_args[0][0]
         assert sent["bot_message_id"] == "m-123"
         assert "Message Updated" in result.output
+
+    @patch("dailybot_cli.commands.chat._resolve_agent_context")
+    def test_update_a_thread_reply_id(self, mock_resolve: MagicMock, runner: CliRunner) -> None:
+        # A reply id from thread_responses is just a bot_message_id — editable too.
+        client = _mock_resolve(mock_resolve)
+        result = runner.invoke(cli, ["chat", "update", "$db/r2", "-c", "C0", "-m", "rolled back"])
+        assert result.exit_code == 0
+        assert client.send_chat_message.call_args[0][0]["bot_message_id"] == "$db/r2"

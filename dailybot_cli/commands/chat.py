@@ -2,7 +2,10 @@
 
 Sends Dailybot **bot** messages to the organization's connected chat platform
 (Slack, Microsoft Teams, Discord, Google Chat) — to user DMs, channels, and
-teams — via ``POST /v1/send-message/`` (org API-key auth).
+teams — via ``POST /v1/send-message/``. Authenticated with the login Bearer
+token (``dailybot login``, sends *as you*, role-scoped) or an org API key
+(``dailybot config key=...``, org-wide). The two auth modes are interchangeable
+at the call site; the client picks API key first, then falls back to Bearer.
 
 This is distinct from the agent surfaces:
 
@@ -40,6 +43,7 @@ CHANNEL_TYPES: tuple[str, ...] = (
 )
 BUTTON_SEPARATOR: str = "::"
 MAX_BOT_USERNAME_CHARS: int = 80
+MAX_THREAD_RESPONSES: int = 10
 
 
 class ChatPayloadError(ValueError):
@@ -78,13 +82,22 @@ def build_chat_payload(
     skip_time_off: bool = False,
     metadata: dict[str, Any] | None = None,
     bot_message_id: str | None = None,
+    thread_responses: list[dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
     """Assemble and validate a ``/v1/send-message/`` request body.
 
     Only set keys are included, so the payload stays minimal. Raises
     :class:`ChatPayloadError` on invalid combinations the API would reject —
     surfacing a friendly message before the network call.
+
+    *thread_responses* posts follow-up messages inside the parent's thread in
+    the same call (each reply inherits the parent's recipients). The API mints
+    one id per reply in the response, so each is independently editable.
     """
+    if thread_responses and len(thread_responses) > MAX_THREAD_RESPONSES:
+        raise ChatPayloadError(
+            f"At most {MAX_THREAD_RESPONSES} thread replies are allowed per message."
+        )
     if channel_type is not None and channel_type not in CHANNEL_TYPES:
         raise ChatPayloadError(
             f"Invalid --channel-type '{channel_type}'. Choose one of: {', '.join(CHANNEL_TYPES)}."
@@ -143,6 +156,8 @@ def build_chat_payload(
         payload["metadata"] = metadata
     if bot_message_id:
         payload["bot_message_id"] = bot_message_id
+    if thread_responses:
+        payload["thread_responses"] = thread_responses
 
     _validate_targets(payload)
     return payload
@@ -181,7 +196,18 @@ def _resolved_client(profile_flag: str | None) -> tuple[DailyBotClient, dict[str
 def _send(
     client: DailyBotClient, payload: dict[str, Any], *, updated: bool, json_mode: bool
 ) -> None:
-    """Run the send/update call and render the result (shared by both commands)."""
+    """Run a single send/update call and render the result (used by `update`)."""
+    result: dict[str, Any] = _execute_send(client, payload, status="Sending message...")
+    if json_mode:
+        emit_json(result)
+        return
+    print_chat_message_result(result, updated=updated)
+
+
+def _execute_send(
+    client: DailyBotClient, payload: dict[str, Any], *, status: str
+) -> dict[str, Any]:
+    """Call the API with friendly error translation; return the result or exit 1."""
     if payload.get("platform_settings", {}).get("is_ephemeral") and not payload.get("target_users"):
         # The API silently skips an ephemeral message with no resolvable user.
         print_warning(
@@ -189,22 +215,29 @@ def _send(
             "by the platform."
         )
     try:
-        with console.status("Sending message..."):
-            result: dict[str, Any] = client.send_chat_message(payload)
+        with console.status(status):
+            return client.send_chat_message(payload)
     except APIError as e:
-        if e.status_code in (401, 403):
+        if e.code == "cli_send_message_target_not_allowed":
             print_error(
-                f"{e.detail}\n  This endpoint needs an org API key. Set one with: "
-                "dailybot config key=<API_KEY>"
+                f"{e.detail}\n  Your role can only reach teammates, public channels, and teams "
+                "you belong to. Use an allowed target, or an org API key for org-wide reach."
             )
+        elif e.code == "invalid_thread_responses":
+            print_error(
+                f"{e.detail}\n  Thread replies allow at most 10 items, one level deep, with no "
+                "targeting of their own (they inherit the parent's recipients)."
+            )
+        elif e.status_code in (401, 403):
+            print_error(
+                f"{e.detail}\n  Authenticate first: run 'dailybot login' (sends as you) or set an "
+                "org API key with 'dailybot config key=<API_KEY>'."
+            )
+        elif e.status_code == 429:
+            print_error("Rate limit exceeded for chat sends. Wait a bit and retry.")
         else:
             print_error(e.detail)
         raise SystemExit(1)
-
-    if json_mode:
-        emit_json(result)
-        return
-    print_chat_message_result(result, updated=updated)
 
 
 # --- chat group ---
@@ -217,9 +250,10 @@ def chat(ctx: click.Context, profile: str | None) -> None:
     """Send Dailybot bot messages to your chat platform (Slack/Teams/Discord/Google Chat).
 
     \b
-    Targets users (DM), channels, and teams. Authenticated with the org API
-    key (dailybot config key=...). Distinct from 'agent message' (inter-agent
-    inbox) and 'agent update' (progress reports).
+    Targets users (DM), channels, and teams. Authenticated with your login
+    session ('dailybot login' — sends as you, role-scoped) or an org API key
+    ('dailybot config key=...', org-wide). Distinct from 'agent message'
+    (inter-agent inbox) and 'agent update' (progress reports).
     """
     ctx.ensure_object(dict)
     ctx.obj["profile"] = profile
@@ -344,6 +378,8 @@ def _assemble_payload(
 
     link_buttons: list[tuple[str, str]] = []
     action_buttons: list[tuple[str, str]] = []
+    thread_messages: tuple[str, ...] = build_kwargs.pop("thread_messages_raw", ())
+    thread_responses: list[dict[str, Any]] = [{"message": t} for t in thread_messages if t]
     try:
         for raw_btn in build_kwargs.pop("link_buttons_raw", ()):
             link_buttons.append(_parse_button(raw_btn, kind="link"))
@@ -354,6 +390,7 @@ def _assemble_payload(
             action_buttons=action_buttons,
             metadata=metadata_dict,
             bot_message_id=bot_message_id,
+            thread_responses=thread_responses or None,
             **build_kwargs,
         )
     except ChatPayloadError as exc:
@@ -363,6 +400,12 @@ def _assemble_payload(
 
 @chat.command(name="send")
 @_target_options
+@click.option(
+    "--thread-message",
+    "thread_messages_raw",
+    multiple=True,
+    help="Reply posted inside the parent message's thread (repeatable; max 10).",
+)
 @click.pass_context
 def chat_send(
     ctx: click.Context,
@@ -383,6 +426,7 @@ def chat_send(
     metadata: str | None,
     payload_json: str | None,
     json_mode: bool,
+    thread_messages_raw: tuple[str, ...],
 ) -> None:
     """Send a bot message to users, channels, or teams.
 
@@ -395,6 +439,12 @@ def chat_send(
       dailybot chat send -c C0123 -m "Actions:" --link-button "Open report::https://app/r"
       dailybot chat send -u ana@co.com -m "Heads up" --ephemeral
       dailybot chat send --payload-json '{"target_channels":["C0"],"messages":[...]}' --json
+
+    \b
+    Report style — a short headline plus the detail inside its thread:
+      dailybot chat send -c C0123 -m "🚀 Release v2.4 shipped" \\
+        --thread-message "Changelog: ..." \\
+        --thread-message "Rollout: 100% at 14:30 UTC"
     """
     profile_flag: str | None = ctx.obj.get("profile")
     client, repo_default_metadata = _resolved_client(profile_flag)
@@ -411,6 +461,7 @@ def chat_send(
         image_url=image_url,
         link_buttons_raw=link_buttons_raw,
         action_buttons_raw=action_buttons_raw,
+        thread_messages_raw=thread_messages_raw,
         thread=thread,
         channel_type=channel_type,
         bot_name=bot_name,

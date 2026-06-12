@@ -564,15 +564,15 @@ Replies to agent emails land as messages retrievable via `dailybot agent message
 ### Chat (send bot messages to Slack/Teams/Discord/Google Chat)
 
 Sends a **Dailybot bot** message to your connected chat platform — to user
-DMs, channels, or teams. Org-API-key auth (`dailybot config key=...`).
-Distinct from `agent message` (inter-agent inbox) and `agent update`
-(progress reports). Works headless for agents (`--json` prints the
-`bot_message_id`).
+DMs, channels, or teams. Works with **either** your `dailybot login` session
+**or** an org API key — no API key required to send as yourself. Distinct from
+`agent message` (inter-agent inbox) and `agent update` (progress reports).
+Works headless for agents (`--json` prints the `bot_message_id`).
 
 | Command | Description |
 |---------|-------------|
 | `dailybot chat send` | Send a bot message to users (`-u`), channels (`-c`), and/or teams (`-t`) |
-| `dailybot chat update <bot_message_id>` | Edit a previously sent message |
+| `dailybot chat update <bot_message_id>` | Edit a previously sent message (parent **or** a thread reply) |
 
 ```bash
 # To a channel
@@ -584,6 +584,12 @@ dailybot chat send -u ana@co.com -u luis@co.com -m "Standup in 10 min"
 # To a whole team (expanded to members as DMs)
 dailybot chat send -t <team-uuid> -m "Survey is open until Friday"
 
+# Report style: a short headline + the detail inside its thread (one call).
+# The response returns the parent id plus one id per reply — all editable.
+dailybot chat send -c C0123 -m "🚀 Release v2.4 shipped" \
+  --thread-message "Changelog: …" \
+  --thread-message "Rollout: 100% at 14:30 UTC"
+
 # Custom Slack bot identity + an interactive/link button
 dailybot chat send -c C0123 -m "Build #421 ✅" \
   --bot-name "Release Bot" --bot-icon-emoji ":rocket:" \
@@ -592,13 +598,32 @@ dailybot chat send -c C0123 -m "Build #421 ✅" \
 # Ephemeral (Slack; only the recipient sees it — needs a user target)
 dailybot chat send -u ana@co.com -m "Heads up" --ephemeral
 
-# Headless for agents: capture the id, then edit the message later
+# Headless for agents: capture an id, then edit the parent or a reply
 ID=$(dailybot chat send -c C0123 -m "Deploying…" --json | jq -r .bot_message_id)
 dailybot chat update "$ID" -c C0123 -m "Deploy done ✅"
 
 # Full API control (multi-part, future fields) via the raw-body escape hatch
 dailybot chat send --payload-json '{"target_channels":["C0"],"messages":[{"message":"Hi"}]}'
 ```
+
+**Send by name:** the targeting flags take a UUID, email, or chat external id
+(never a free-form name). To message "Sergio Florez", resolve the name first —
+`dailybot user list` gives each member's UUID — then pass it to `-u`. The
+interactive mode (`dailybot` with no args) does this for you: it lists people
+to pick from. Channels are always given by id.
+
+**Threads & editing:** `--thread-message` (repeatable, max 10) posts replies
+inside the parent's thread in a single call. Each reply gets its own
+`bot_message_id` in the response, so `chat update <id>` edits the parent or any
+reply in place. Threads render natively where the platform supports it (Slack
+channels + DMs; Teams/Discord/Google Chat thread in channels, deliver flat in
+DMs).
+
+**Auth & scope:** with a login session the message is sent **as you**, limited
+to what your role can reach in your org (teammates, public channels, teams you
+belong to); an org API key (`dailybot config key=...`) is org-wide. A target
+outside your role's reach returns a clear error, as does the per-token CLI rate
+limit.
 
 ### Agent commands
 
