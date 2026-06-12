@@ -1,7 +1,7 @@
 ---
 name: dailybot-report
 description: Report work progress to Dailybot. Activate after completing a discrete task or subtask, or after any batch of edits that modifies 3 or more files. Compose a standup-style update describing what changed and why.
-version: "1.3.0"
+version: "1.7.0"
 documentation_url: https://api.dailybot.com/skill.md
 user-invocable: true
 metadata: {"openclaw":{"emoji":"📡","homepage":"https://dailybot.com","requires":{"anyBins":["dailybot","curl"]},"primaryEnv":"DAILYBOT_API_KEY","install":[{"id":"cli-install-script","kind":"download","url":"https://cli.dailybot.com/install.sh","label":"Install Dailybot CLI (official script — preferred on Linux/macOS)"},{"id":"pip","kind":"pip","package":"dailybot-cli","bins":["dailybot"],"label":"Install Dailybot CLI via pip (fallback if binary fails)"}]}}
@@ -41,7 +41,21 @@ to a global agent config file (`CLAUDE.md`, `AGENTS.md`, etc.) affects every
 future session in every repository, including unrelated work — so the
 developer must explicitly approve it the first time.
 
-### Check if the trigger is already installed
+There are **two independent opt-ins**, and you should consider both every
+first run:
+
+- **Step 0a — Prompt trigger** (works on every agent): a standing
+  instruction in the global config file.
+- **Step 0b — Hook enforcement** (CLI >= 1.12.0, harnesses with a hook
+  system): deterministic, harness-driven reminders.
+
+Check each one separately. **Having the trigger installed does NOT mean
+hooks are installed** — a returning developer who accepted the trigger in
+an older version still needs the hook offer. Never skip Step 0b just because
+Step 0a is already done; only skip an opt-in whose own check shows it is
+present.
+
+### Step 0a — Check if the prompt trigger is already installed
 
 Identify which agent you are and run the corresponding check:
 
@@ -56,9 +70,10 @@ Identify which agent you are and run the corresponding check:
 | Cline | `grep -q "dailybot-auto-activation" ~/.cline/.clinerules 2>/dev/null && echo "installed"` |
 | Gemini CLI | `grep -q "dailybot-auto-activation" ~/.gemini/GEMINI.md 2>/dev/null && echo "installed"` |
 
-If output says "installed" — skip to Step 1.
+If output says "installed" — the prompt trigger is set; **skip the rest of
+Step 0a and go to Step 0b** (do not skip to Step 1).
 
-### If missing — ask before creating
+#### If missing — ask before creating
 
 Read [`triggers.md`](triggers.md) for the exact file path and content for the
 current agent.
@@ -83,16 +98,73 @@ Otherwise, show the developer this prompt **before writing anything**:
 
 - **Yes** — write the trigger block exactly as shown, including the
   `dailybot-auto-activation` opening and closing markers from `triggers.md`,
-  then continue to Step 1.
-- **No / not now** — skip auto-activation for this session and continue to
-  Step 1. Do not re-ask in the same session.
+  then continue to Step 0b.
+- **No / not now** — skip the trigger for this session and continue to
+  Step 0b (hooks are a separate opt-in worth offering even if the trigger
+  was declined). Do not re-ask about the trigger in the same session.
 
 If the developer accepts, briefly confirm:
 
 > "Added. From your next session onward, Dailybot reporting fires
 > automatically. Remove the marked block in `<file path>` to disable."
 
-Then proceed to Step 1.
+Then continue to **Step 0b** (do not skip to Step 1 — hooks are a separate
+opt-in).
+
+### Step 0b — Hook enforcement (recommended, CLI >= 1.12.0)
+
+Trigger blocks are advisory — the model can forget them in long sessions.
+Since `dailybot-cli` **1.12.0**, the CLI ships a `dailybot hook` command
+group that the harness itself invokes at session start, after file edits,
+and at the end of every turn, making the reminders **deterministic**. This
+is what makes reporting truly autonomous, so offer it whenever it is
+available — including to developers who already accepted the Step 0a
+trigger in a previous session.
+
+#### Check whether hooks apply, and whether they are already installed
+
+1. **CLI version.** Run `dailybot --version`. If it reports below `1.12.0`
+   (or the CLI is absent), the `dailybot hook` group does not exist — skip
+   Step 0b silently and continue to Step 1. The Step 0a trigger alone still
+   works.
+2. **Harness support.** If the current harness has no lifecycle-hook system
+   (e.g. Cline today), skip Step 0b silently — Step 0a covers it.
+3. **Already installed?** Check whether the hook config already references
+   `dailybot hook`, and skip to Step 1 if so:
+
+   | Agent | Check |
+   |-------|-------|
+   | Claude Code | `grep -rq "dailybot hook" ~/.claude/settings.json .claude/settings.json 2>/dev/null && echo "installed"` |
+   | Cursor | `grep -rq "dailybot hook" ~/.cursor/hooks.json .cursor/hooks.json 2>/dev/null && echo "installed"` |
+   | Codex | `grep -rq "dailybot hook" ~/.codex/hooks.json .codex/hooks.json 2>/dev/null && echo "installed"` |
+   | Copilot | `grep -rq "dailybot hook" .github/hooks/ 2>/dev/null && echo "installed"` |
+   | Gemini CLI | `grep -rq "dailybot hook" ~/.gemini/settings.json .gemini/settings.json 2>/dev/null && echo "installed"` |
+
+   If output says "installed" — hooks are already set; continue to Step 1.
+
+#### If missing — ask before creating
+
+Read [`hooks.md`](hooks.md) for the current harness's exact config file path,
+content, merge rules, and uninstall path. The **same consent rules as Step
+0a apply**: show the file path and exact content before writing, merge
+(never overwrite) existing config, and `DAILYBOT_AUTO_YES=1` counts as
+consent. A repo-level config (`.claude/settings.json`, `.cursor/hooks.json`,
+…) committed to the repository gives the whole team autonomous reporting on
+clone — offer that when the developer is in a shared project.
+
+If the developer declines, continue to Step 1 and do not re-ask in the same
+session. The Step 0a trigger still provides (probabilistic) coverage.
+
+### Responding to injected Dailybot reminders
+
+When a hook injects a reminder ("commits have landed since the last
+report…" / "sustained work without a progress report…") into your context:
+
+- **Meaningful unit complete** (including non-commit work — research,
+  analysis, documents) → compose and send the report now (Steps 3–7).
+- **Nothing significant / still mid-stream** → run `dailybot hook dismiss`
+  to snooze for an hour. Either report or dismiss — never ignore the
+  reminder silently.
 
 ---
 
@@ -271,6 +343,24 @@ curl -s -X POST https://api.dailybot.com/v1/agent-reports/ \
   }'
 ```
 
+### Response
+
+A successful request returns `201` with the created report, including a
+`url` field that points to where the report landed in Dailybot:
+
+```json
+{
+  "id": "<uuid>",
+  "url": "https://app.dailybot.com/agents/report/<uuid>",
+  "...": "..."
+}
+```
+
+Capture that `url` and surface it when you confirm (see Step 7). The CLI
+prints the same link automatically as a `View:` line **from `dailybot-cli`
+1.11.0 onward**; on earlier CLIs the printed output omits it, but the HTTP
+`201` body above always carries the `url` — read it from there.
+
 ---
 
 ## Step 5 — Trigger Check
@@ -362,7 +452,7 @@ For side-by-side examples, see [`examples.md`](examples.md).
 
 After the command runs:
 
-- **Success** — briefly confirm what was reported. Example: *"Reported to Dailybot: Built the notification preferences system with full test coverage."*
+- **Success** — briefly confirm what was reported, and include the placement link the response returns (the `url` field, printed by the CLI as `View:` from `dailybot-cli` 1.11.0 onward, and always present in the HTTP `201` body) so the developer can jump straight to where it landed. Example: *"Reported to Dailybot: Built the notification preferences system with full test coverage — view it at https://app.dailybot.com/agents/report/<uuid>."* If no `url` is surfaced (an older backend, or a CLI below 1.11.0 where you only see the printed output), just confirm the report without a link.
 - **Failure** — warn briefly. Do not retry in a loop. Suggest `dailybot status --auth` for auth issues, or `dailybot logout` + `dailybot login` if the session seems stale.
 - **Skipped** — say nothing. Complete silence is the correct response.
 
@@ -382,6 +472,7 @@ Reporting must **never block your primary work**. If the CLI is missing, auth fa
 ## Additional Resources
 
 - [`triggers.md`](triggers.md) — auto-activation trigger templates for each supported agent
+- [`hooks.md`](hooks.md) — deterministic hook enforcement (CLI >= 1.12.0): per-harness configs, reminder handling, `dismiss`
 - [`significance.md`](significance.md) — when to report and when to stay silent, with edge cases
 - [`writing-guide.md`](writing-guide.md) — writing templates by work type, action verbs, rate limiting
 - [`examples.md`](examples.md) — 15 side-by-side good vs bad comparisons

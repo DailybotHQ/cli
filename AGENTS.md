@@ -436,7 +436,7 @@ dailybot agent update --name "Claude Code" --milestone \
   --metadata '{"model":"claude-opus-4-7","plan":"PLAN_agent_profiles","repo":"cli"}'
 ```
 
-Full philosophy, what to report, and what to skip: [.agents/skills/dailybot-progress-report/SKILL.md](.agents/skills/dailybot-progress-report/SKILL.md). Key rules:
+Full philosophy, what to report, and what to skip: [.agents/skills/dailybot/report/SKILL.md](.agents/skills/dailybot/report/SKILL.md) (part of the vendored Dailybot agent skill pack at `.agents/skills/dailybot/`, v1.7.0, which also ships the new `chat`, `kudos`, `teams`, `forms`, `checkin` sub-skills). Key rules:
 
 - 1–3 sentences, **always in English**
 - Focus on WHAT + WHY, never "Agent completed…"
@@ -467,7 +467,7 @@ When applying bot feedback on a PR, agents **must** skip `isMinimized == true` c
 
 Reusable **Skills** (slash commands) and **Agents** (specialized personas) live under [`.agents/`](.agents/) — the vendor-neutral standard adopted by most coding agents (Claude Code, Cursor, Codex, Gemini, Copilot, …):
 
-- [`.agents/skills/`](.agents/skills/) — slash commands (e.g., `/quick-fix`, `/release-prep`, `/cli-command-add`, `/dailybot-progress-report`)
+- [`.agents/skills/`](.agents/skills/) — slash commands (e.g., `/quick-fix`, `/release-prep`, `/cli-command-add`, plus the vendored Dailybot pack at `.agents/skills/dailybot/` with `/dailybot-report`, `/dailybot-chat`, `/dailybot-kudos`, `/dailybot-teams`, `/dailybot-forms`, `/dailybot-checkin`, `/dailybot-email`, `/dailybot-health`, `/dailybot-messages`)
 - [`.agents/agents/`](.agents/agents/) — agent personas (e.g., `cli-developer`, `release-manager`, `docs-writer`, `test-engineer`)
 - [`.agents/docs/skills_agents_catalog.md`](.agents/docs/skills_agents_catalog.md) — full index
 
