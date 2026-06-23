@@ -13,6 +13,7 @@ from dailybot_cli.commands.config import config
 from dailybot_cli.commands.form import form
 from dailybot_cli.commands.hook import hook
 from dailybot_cli.commands.interactive import run_interactive
+from dailybot_cli.commands.interactive_chat import interactive
 from dailybot_cli.commands.kudos import kudos
 from dailybot_cli.commands.status import status
 from dailybot_cli.commands.team import team
@@ -77,6 +78,7 @@ cli.add_command(team)
 cli.add_command(user)
 cli.add_command(agent)
 cli.add_command(chat)
+cli.add_command(interactive)
 cli.add_command(config)
 cli.add_command(hook)
 cli.add_command(version)
