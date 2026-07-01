@@ -8,6 +8,7 @@ from rich.markdown import Markdown
 from rich.panel import Panel
 from rich.text import Text
 from textual.app import App, ComposeResult
+from textual.binding import BindingType
 from textual.containers import Container, Vertical
 from textual.events import Key
 from textual.widgets import Input, RichLog, Static
@@ -105,7 +106,7 @@ class DailybotChatApp(App[None]):
     }
     """
 
-    BINDINGS: ClassVar[list[tuple[str, str, str]]] = [
+    BINDINGS: ClassVar[list[BindingType]] = [
         ("ctrl+c", "quit", "Quit"),
         ("ctrl+l", "clear", "Clear"),
     ]
@@ -252,9 +253,7 @@ class DailybotChatApp(App[None]):
 
         actions: list[dict[str, Any]] = response.get("actions") or []
         if actions:
-            action_names: str = ", ".join(
-                str(action.get("name", "action")) for action in actions
-            )
+            action_names: str = ", ".join(str(action.get("name", "action")) for action in actions)
             self._write_system(f"Suggested action: {action_names}")
 
     async def _show_status(self) -> None:
@@ -274,7 +273,9 @@ class DailybotChatApp(App[None]):
         )
         org_raw: Any = data.get("organization", "")
         org_name: str = org_raw.get("name", "") if isinstance(org_raw, dict) else str(org_raw)
-        self._write_dailybot(f"**Session status**\n\n- User: {email or 'Unknown'}\n- Org: {org_name}")
+        self._write_dailybot(
+            f"**Session status**\n\n- User: {email or 'Unknown'}\n- Org: {org_name}"
+        )
 
     async def _show_checkins(self) -> None:
         self._set_loading(True)
@@ -293,7 +294,9 @@ class DailybotChatApp(App[None]):
         for checkin in checkins:
             name = str(checkin.get("followup_name") or "Check-in")
             question_count = len(checkin.get("template_questions", []))
-            lines.append(f"- {name} ({question_count} question{'s' if question_count != 1 else ''})")
+            lines.append(
+                f"- {name} ({question_count} question{'s' if question_count != 1 else ''})"
+            )
         self._write_dailybot("\n".join(lines))
 
     async def _submit_report(self, message: str) -> None:
@@ -419,7 +422,9 @@ class DailybotChatApp(App[None]):
         email = str(user.get("email") or data.get("email") or "").strip()
         if "@" in email:
             local_part = email.split("@", maxsplit=1)[0]
-            words = [word for word in local_part.replace("_", ".").replace("-", ".").split(".") if word]
+            words = [
+                word for word in local_part.replace("_", ".").replace("-", ".").split(".") if word
+            ]
             if words:
                 return " ".join(word.capitalize() for word in words)
         return None
