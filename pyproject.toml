@@ -30,8 +30,13 @@ dependencies = [
     # `pip_update` so requirements/{base,dev}.txt match the new resolution.
     "click==8.3.3",
     "httpx==0.28.1",
+    "linkify-it-py==2.1.0",
+    "mdit-py-plugins==0.6.1",
+    "platformdirs==4.10.0",
     "questionary==2.1.1",
     "rich==15.0.0",
+    "textual==8.2.7",
+    "uc-micro-py==2.0.0",
 ]
 
 [project.optional-dependencies]

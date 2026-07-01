@@ -1038,6 +1038,25 @@ class TestInteractiveLogin:
         mock_do_login.assert_called_once_with("u@t.com")
 
 
+class TestInteractiveChatCommand:
+    @patch("dailybot_cli.tui.app.run_chat_app")
+    @patch("dailybot_cli.commands.interactive_chat.require_bearer_auth")
+    def test_interactive_chat_launches_textual_app(
+        self,
+        mock_require_auth: MagicMock,
+        mock_run_chat_app: MagicMock,
+        runner: CliRunner,
+    ) -> None:
+        mock_client: MagicMock = MagicMock()
+        mock_require_auth.return_value = mock_client
+
+        result = runner.invoke(cli, ["interactive"])
+
+        assert result.exit_code == 0
+        mock_require_auth.assert_called_once_with()
+        mock_run_chat_app.assert_called_once_with(mock_client)
+
+
 class TestInteractiveMenu:
     @patch("dailybot_cli.commands.interactive.pick_from_list")
     @patch("dailybot_cli.commands.interactive.questionary")
