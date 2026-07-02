@@ -550,7 +550,9 @@ class DailybotChatApp(App[None]):
             return {"checkin": checkin_detail, "questions": [], "existing_responses": []}
         template = self.client.get_template(template_uuid, followup_uuid=followup_uuid)
         questions: list[dict[str, Any]] = (template.get("questions") or {}).get("fields") or []
-        existing_responses: list[dict[str, Any]] = selected.get("response", {}).get("responses") or []
+        existing_responses: list[dict[str, Any]] = (
+            selected.get("response", {}).get("responses") or []
+        )
         return {
             "checkin": checkin_detail,
             "questions": questions,
@@ -592,7 +594,9 @@ class DailybotChatApp(App[None]):
         if not template_uuid:
             return checkin.get("template_questions") or []
         template = self.client.get_template(template_uuid, followup_uuid=followup_uuid)
-        rendered_questions: list[dict[str, Any]] = (template.get("questions") or {}).get("fields") or []
+        rendered_questions: list[dict[str, Any]] = (template.get("questions") or {}).get(
+            "fields"
+        ) or []
         return rendered_questions or checkin.get("template_questions") or []
 
     async def _answer_checkin_question(self, raw_value: str) -> None:
@@ -693,7 +697,9 @@ class DailybotChatApp(App[None]):
             "teams": teams,
             "current_uuid": current_uuid,
         }
-        self._write_dailybot("Who should receive kudos?\n1. One or more users\n2. One or more teams")
+        self._write_dailybot(
+            "Who should receive kudos?\n1. One or more users\n2. One or more teams"
+        )
         self._set_prompt_hint("Type 1 or 2, or `cancel`.")
 
     async def _start_kudos_flow(self, intent: KudosIntent) -> None:
@@ -872,7 +878,9 @@ class DailybotChatApp(App[None]):
             "message": message,
             "current_uuid": current_uuid,
         }
-        self._write_dailybot("Optional: type a company value for this kudos, or press Enter to skip.")
+        self._write_dailybot(
+            "Optional: type a company value for this kudos, or press Enter to skip."
+        )
         self._set_prompt_hint("Type a value, press Enter to skip, or `cancel`.")
 
     async def _set_kudos_value(self, raw_value: str) -> None:
@@ -898,7 +906,11 @@ class DailybotChatApp(App[None]):
         message: str = str(self.pending_flow.get("message") or "")
         company_value: str | None = self.pending_flow.get("company_value")
         user_uuids: list[str] = [str(user.get("uuid") or "") for user in users if user.get("uuid")]
-        team_uuids: list[str] = [str(team.get("uuid") or team.get("id") or "") for team in teams if team.get("uuid") or team.get("id")]
+        team_uuids: list[str] = [
+            str(team.get("uuid") or team.get("id") or "")
+            for team in teams
+            if team.get("uuid") or team.get("id")
+        ]
         self.pending_flow = None
         self._set_prompt_hint()
         self._set_loading(True)
@@ -1164,7 +1176,9 @@ class DailybotChatApp(App[None]):
         index: int = int(self.pending_flow["index"])
         question: dict[str, Any] = questions[index]
         existing_value: Any = self._existing_form_response_value(question)
-        answer: Any = existing_value if raw_value == "" else self._parse_question_answer(raw_value, question)
+        answer: Any = (
+            existing_value if raw_value == "" else self._parse_question_answer(raw_value, question)
+        )
         if answer is None:
             return
         self.pending_flow["answers"].append(answer)
@@ -1312,7 +1326,9 @@ class DailybotChatApp(App[None]):
         questions: list[dict[str, Any]] = self.pending_flow["questions"]
         index: int = int(self.pending_flow["index"])
         question: dict[str, Any] = questions[index]
-        lines: list[str] = [f"Question {index + 1}/{len(questions)}: {self._question_label(question, index)}"]
+        lines: list[str] = [
+            f"Question {index + 1}/{len(questions)}: {self._question_label(question, index)}"
+        ]
         choices: list[str] = self._question_choices(question)
         if self._question_type(question) == "boolean":
             lines.extend(["1. Yes", "2. No"])
@@ -1350,7 +1366,9 @@ class DailybotChatApp(App[None]):
     def _existing_form_response_value(self, question: dict[str, Any]) -> Any:
         assert self.pending_flow is not None
         response: dict[str, Any] = self.pending_flow.get("response") or {}
-        content: dict[str, Any] = response.get("content") if isinstance(response.get("content"), dict) else {}
+        content: dict[str, Any] = (
+            response.get("content") if isinstance(response.get("content"), dict) else {}
+        )
         question_uuid: str = str(question.get("uuid") or question.get("id") or "")
         return content.get(question_uuid, "")
 
@@ -1378,7 +1396,16 @@ class DailybotChatApp(App[None]):
     def _form_label(cls, form: dict[str, Any]) -> str:
         questions_count: int = len(cls._form_questions(form))
         suffix: str = f" ({questions_count} question{'s' if questions_count != 1 else ''})"
-        return str(form.get("name") or form.get("title") or form.get("uuid") or form.get("id") or "Form") + suffix
+        return (
+            str(
+                form.get("name")
+                or form.get("title")
+                or form.get("uuid")
+                or form.get("id")
+                or "Form"
+            )
+            + suffix
+        )
 
     @classmethod
     def _form_response_label(cls, response: dict[str, Any]) -> str:
@@ -1513,12 +1540,7 @@ class DailybotChatApp(App[None]):
     async def _start_mood_flow(self) -> None:
         self.pending_flow = {"type": "mood_select"}
         self._write_dailybot(
-            "How is your mood today?\n"
-            "1. Very low\n"
-            "2. Low\n"
-            "3. Okay\n"
-            "4. Good\n"
-            "5. Great"
+            "How is your mood today?\n1. Very low\n2. Low\n3. Okay\n4. Good\n5. Great"
         )
         self._set_prompt_hint("Type a number from 1 to 5, or `cancel`.")
 
@@ -1604,7 +1626,9 @@ class DailybotChatApp(App[None]):
             return
         finally:
             self._set_loading(False)
-        self._write_dailybot(f"Done — deleted today's response for **{self._checkin_name(checkin)}**.")
+        self._write_dailybot(
+            f"Done — deleted today's response for **{self._checkin_name(checkin)}**."
+        )
 
     async def _handle_terminal_action_intent(self, intent: TerminalActionIntent) -> None:
         await self._start_terminal_flow_by_name(intent.action, {"args": list(intent.args)})
@@ -1619,9 +1643,7 @@ class DailybotChatApp(App[None]):
                     "flow": flow_name,
                     "params": action.get("params") or {},
                 }
-                self._write_dailybot(
-                    f"Start the **{flow_name}** terminal flow?\n1. Yes\n2. No"
-                )
+                self._write_dailybot(f"Start the **{flow_name}** terminal flow?\n1. Yes\n2. No")
                 self._set_prompt_hint("Type 1 to start, 2 to skip.")
                 return
         action_names: str = ", ".join(str(action.get("name", "action")) for action in actions)
@@ -1657,7 +1679,9 @@ class DailybotChatApp(App[None]):
             receiver_query: str = str(params.get("receiver_query") or params.get("receivers") or "")
             message: str = str(params.get("message") or "")
             if receiver_query:
-                await self._start_kudos_flow(KudosIntent(receiver_query=receiver_query, message=message))
+                await self._start_kudos_flow(
+                    KudosIntent(receiver_query=receiver_query, message=message)
+                )
             else:
                 await self._start_kudos_menu()
             return
@@ -2168,10 +2192,9 @@ class DailybotChatApp(App[None]):
     def _can_cycle_completion(self, value: str, cursor_position: int) -> bool:
         if self.completion_state is None:
             return False
-        return (
-            value == self.completion_state.get("last_value")
-            and cursor_position == self.completion_state.get("last_cursor")
-        )
+        return value == self.completion_state.get(
+            "last_value"
+        ) and cursor_position == self.completion_state.get("last_cursor")
 
     def _cycle_completion(self, prompt: Input, *, reverse: bool = False) -> None:
         assert self.completion_state is not None

@@ -147,9 +147,7 @@ def matching_users(users: list[dict[str, Any]], query: str) -> list[dict[str, An
     if not normalized_query:
         return []
 
-    query_parts: list[str] = [
-        part for part in re.split(r"\s+", normalized_query) if part
-    ]
+    query_parts: list[str] = [part for part in re.split(r"\s+", normalized_query) if part]
     matches: list[dict[str, Any]] = []
     for user in users:
         if not user.get("is_active", True):

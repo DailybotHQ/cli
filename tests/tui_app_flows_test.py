@@ -45,8 +45,7 @@ def test_checkins_flow_submits_answers_after_numbered_selection() -> None:
                     {
                         "uuid": "q1",
                         "question": (
-                            "Previous plan ({previous_response_date}): "
-                            "{previous_response_#2}"
+                            "Previous plan ({previous_response_date}): {previous_response_#2}"
                         ),
                     },
                     {"uuid": "q2", "question": "Blocked?", "question_type": "boolean"},
