@@ -1366,9 +1366,8 @@ class DailybotChatApp(App[None]):
     def _existing_form_response_value(self, question: dict[str, Any]) -> Any:
         assert self.pending_flow is not None
         response: dict[str, Any] = self.pending_flow.get("response") or {}
-        content: dict[str, Any] = (
-            response.get("content") if isinstance(response.get("content"), dict) else {}
-        )
+        raw_content: Any = response.get("content")
+        content: dict[str, Any] = raw_content if isinstance(raw_content, dict) else {}
         question_uuid: str = str(question.get("uuid") or question.get("id") or "")
         return content.get(question_uuid, "")
 
