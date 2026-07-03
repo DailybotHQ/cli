@@ -1424,7 +1424,9 @@ class TestAgentCommand:
         The renderer disables wrapping so the label and URL stay together.
         """
         mock_get_auth.return_value = "api_key"
-        long_url: str = "https://app.dailybot.com/agents/report/b59abb71-fdb6-4d4f-b0f2-1bf5399b15e4"
+        long_url: str = (
+            "https://app.dailybot.com/agents/report/b59abb71-fdb6-4d4f-b0f2-1bf5399b15e4"
+        )
         mock_client: MagicMock = mock_client_cls.return_value
         mock_client.submit_agent_report.return_value = {"id": 1, "uuid": "abc", "url": long_url}
 
