@@ -89,7 +89,9 @@ def checkin_complete(
 
 
 @checkin.command("status")
-@click.option("--date", "date", default=None, help="Target a specific day (YYYY-MM-DD). Defaults to today.")
+@click.option(
+    "--date", "date", default=None, help="Target a specific day (YYYY-MM-DD). Defaults to today."
+)
 @click.option("--json", "json_mode", is_flag=True, help="Emit machine-readable JSON to stdout.")
 def checkin_status(date: str | None, json_mode: bool) -> None:
     """Show pending/completed status for your check-ins on a date.
@@ -179,7 +181,9 @@ def checkin_reset(
 
 @checkin.command("edit")
 @click.argument("followup_uuid")
-@click.option("--answer", "-a", multiple=True, help='Override an answer as "index=response" (0-based).')
+@click.option(
+    "--answer", "-a", multiple=True, help='Override an answer as "index=response" (0-based).'
+)
 @click.option("--date", "response_date", default=None, help="Target a specific day (YYYY-MM-DD).")
 @click.option("--yes", "-y", "assume_yes", is_flag=True, help="Skip the confirmation prompt.")
 @click.option("--json", "json_mode", is_flag=True, help="Emit machine-readable JSON to stdout.")

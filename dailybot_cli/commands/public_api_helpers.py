@@ -58,9 +58,7 @@ ERROR_CODE_MESSAGES: dict[str, str] = {
     "previous_responses_are_not_allowed": (
         "Backfilling past responses is disabled for this check-in."
     ),
-    "future_responses_are_not_allowed": (
-        "Future-dated responses are disabled for this check-in."
-    ),
+    "future_responses_are_not_allowed": ("Future-dated responses are disabled for this check-in."),
     "followup_not_allow_responses_before_trigger_time": (
         "It's too early — this check-in isn't open yet (before its trigger time)."
     ),

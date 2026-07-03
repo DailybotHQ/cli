@@ -1095,7 +1095,9 @@ class TestGetCurrentUserUuid:
         from dailybot_cli.commands.public_api_helpers import get_current_user_uuid
 
         client: MagicMock = MagicMock()
-        client.auth_status.side_effect = APIError(401, "Authentication credentials were not provided.")
+        client.auth_status.side_effect = APIError(
+            401, "Authentication credentials were not provided."
+        )
         assert get_current_user_uuid(client) is None
 
 
@@ -1111,7 +1113,12 @@ class TestCheckinExtendedCommands:
     ) -> None:
         client: MagicMock = self._client(mock_client_cls, mock_get_auth)
         client.list_checkins.return_value = [
-            {"uuid": "f1", "name": "Standup", "response_completed": False, "template_questions": [{}]}
+            {
+                "uuid": "f1",
+                "name": "Standup",
+                "response_completed": False,
+                "template_questions": [{}],
+            }
         ]
         result = runner.invoke(cli, ["checkin", "status", "--json"])
         assert result.exit_code == 0
@@ -1125,7 +1132,11 @@ class TestCheckinExtendedCommands:
         self, mock_client_cls: MagicMock, mock_get_auth: MagicMock, runner: CliRunner
     ) -> None:
         client: MagicMock = self._client(mock_client_cls, mock_get_auth)
-        client.get_checkin.return_value = {"uuid": "f1", "name": "Standup", "template": {"uuid": "t1"}}
+        client.get_checkin.return_value = {
+            "uuid": "f1",
+            "name": "Standup",
+            "template": {"uuid": "t1"},
+        }
         client.get_template.return_value = {
             "questions": [{"uuid": "q1", "question": "Done?", "question_type": "text_field"}]
         }

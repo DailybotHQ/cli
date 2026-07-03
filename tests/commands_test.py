@@ -962,9 +962,7 @@ class TestStatusCommand:
         assert result.exit_code == 0
 
     @patch("dailybot_cli.commands.status.get_agent_auth")
-    def test_status_not_authenticated(
-        self, mock_get_auth: MagicMock, runner: CliRunner
-    ) -> None:
+    def test_status_not_authenticated(self, mock_get_auth: MagicMock, runner: CliRunner) -> None:
         mock_get_auth.return_value = None
         result = runner.invoke(cli, ["status"])
         assert result.exit_code == 1
@@ -1166,9 +1164,7 @@ class TestAskCommand:
         mock_client.create_chat_completion.assert_not_called()
 
     @patch("dailybot_cli.commands.ask.require_auth")
-    def test_ask_reads_piped_stdin(
-        self, mock_require_auth: MagicMock, runner: CliRunner
-    ) -> None:
+    def test_ask_reads_piped_stdin(self, mock_require_auth: MagicMock, runner: CliRunner) -> None:
         mock_client: MagicMock = MagicMock()
         mock_client.create_chat_completion.return_value = {"message": {"content": "ok"}}
         mock_require_auth.return_value = mock_client

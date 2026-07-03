@@ -212,9 +212,7 @@ class DailybotChatApp(App[None]):
         if event.key in {"shift+tab", "shift_tab", "backtab"}:
             event.prevent_default()
             event.stop()
-            self.run_worker(
-                self._complete_prompt(reverse=True), exclusive=True, group="completion"
-            )
+            self.run_worker(self._complete_prompt(reverse=True), exclusive=True, group="completion")
 
     async def on_input_submitted(self, event: Input.Submitted) -> None:
         prompt = self.query_one("#prompt", Input)
@@ -1843,7 +1841,9 @@ class DailybotChatApp(App[None]):
         question_uuid: str = str(question.get("uuid") or question.get("id") or "")
         if question_uuid:
             for response in existing_responses:
-                response_uuid: str = str(response.get("uuid") or response.get("question_uuid") or "")
+                response_uuid: str = str(
+                    response.get("uuid") or response.get("question_uuid") or ""
+                )
                 if response_uuid == question_uuid:
                     return response.get("response")
         # Fallback: index-aligned (older responses without per-answer UUIDs).

@@ -648,7 +648,9 @@ def execute_checkin_reset(
     """Delete (reset) the caller's own check-in response for a date."""
     target: str = response_date or "today"
     if not json_mode:
-        confirm_write([f"Delete your check-in response for {target}? This cannot be undone."], assume_yes)
+        confirm_write(
+            [f"Delete your check-in response for {target}? This cannot be undone."], assume_yes
+        )
     try:
         with console.status("Deleting response..."):
             result: dict[str, Any] = client.delete_checkin_response(
@@ -687,7 +689,9 @@ def execute_checkin_edit(
         exit_for_api_error(exc, json_mode)
 
     if not existing:
-        message: str = "No existing response to edit. Use `dailybot checkin complete` to create one."
+        message: str = (
+            "No existing response to edit. Use `dailybot checkin complete` to create one."
+        )
         if json_mode:
             emit_json({"error": message, "status": 0})
         else:
@@ -717,16 +721,16 @@ def execute_checkin_edit(
             value = reply
         else:
             value = current
-        new_responses.append(
-            {"uuid": answer.get("uuid"), "index": index, "response": value}
-        )
+        new_responses.append({"uuid": answer.get("uuid"), "index": index, "response": value})
 
     if not new_responses:
         print_error("This response has no answers to edit.")
         raise SystemExit(EXIT_USAGE_ERROR)
 
     if not json_mode and not interactive:
-        confirm_write([f"Update your check-in response for {response_date or 'today'}?"], assume_yes)
+        confirm_write(
+            [f"Update your check-in response for {response_date or 'today'}?"], assume_yes
+        )
 
     try:
         with console.status("Updating response..."):
