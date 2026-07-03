@@ -1,5 +1,6 @@
 """Tests for CLI commands."""
 
+import json
 from pathlib import Path
 from typing import Any
 from unittest.mock import MagicMock, patch
@@ -1055,6 +1056,92 @@ class TestInteractiveChatCommand:
         assert result.exit_code == 0
         mock_require_auth.assert_called_once_with()
         mock_run_chat_app.assert_called_once_with(mock_client)
+
+
+class TestAskCommand:
+    @patch("dailybot_cli.commands.ask.require_bearer_auth")
+    def test_ask_headless_prints_answer(
+        self, mock_require_auth: MagicMock, runner: CliRunner
+    ) -> None:
+        mock_client: MagicMock = MagicMock()
+        mock_client.create_chat_completion.return_value = {
+            "message": {"role": "assistant", "content": "You have 1 pending check-in."},
+        }
+        mock_require_auth.return_value = mock_client
+
+        result = runner.invoke(cli, ["ask", "What are my check-ins?"])
+
+        assert result.exit_code == 0
+        assert "You have 1 pending check-in." in result.output
+        mock_client.create_chat_completion.assert_called_once_with(
+            message="What are my check-ins?", session_id=None
+        )
+
+    @patch("dailybot_cli.commands.ask.require_bearer_auth")
+    def test_ask_json_output(self, mock_require_auth: MagicMock, runner: CliRunner) -> None:
+        mock_client: MagicMock = MagicMock()
+        mock_client.create_chat_completion.return_value = {
+            "message": {"content": "Done."},
+            "actions": [{"name": "open_form"}],
+            "classification": "action",
+            "session_id": "sess-1",
+        }
+        mock_require_auth.return_value = mock_client
+
+        result = runner.invoke(cli, ["ask", "do it", "--json", "--session-id", "sess-1"])
+
+        assert result.exit_code == 0
+        payload: dict[str, Any] = json.loads(result.output)
+        assert payload["message"] == "Done."
+        assert payload["actions"] == [{"name": "open_form"}]
+        assert payload["session_id"] == "sess-1"
+        mock_client.create_chat_completion.assert_called_once_with(
+            message="do it", session_id="sess-1"
+        )
+
+    @patch("dailybot_cli.commands.ask.launch_chat_tui")
+    @patch("dailybot_cli.commands.ask.require_bearer_auth")
+    def test_ask_without_message_launches_tui(
+        self, mock_require_auth: MagicMock, mock_launch_tui: MagicMock, runner: CliRunner
+    ) -> None:
+        mock_client: MagicMock = MagicMock()
+        mock_require_auth.return_value = mock_client
+
+        result = runner.invoke(cli, ["ask"])
+
+        assert result.exit_code == 0
+        mock_launch_tui.assert_called_once_with(mock_client)
+        mock_client.create_chat_completion.assert_not_called()
+
+    @patch("dailybot_cli.commands.ask.require_bearer_auth")
+    def test_ask_reads_piped_stdin(
+        self, mock_require_auth: MagicMock, runner: CliRunner
+    ) -> None:
+        mock_client: MagicMock = MagicMock()
+        mock_client.create_chat_completion.return_value = {"message": {"content": "ok"}}
+        mock_require_auth.return_value = mock_client
+
+        result = runner.invoke(cli, ["ask"], input="draft my standup\n")
+
+        assert result.exit_code == 0
+        mock_client.create_chat_completion.assert_called_once_with(
+            message="draft my standup", session_id=None
+        )
+
+    @patch("dailybot_cli.commands.public_api_helpers.get_token")
+    def test_ask_not_authenticated(self, mock_get_token: MagicMock, runner: CliRunner) -> None:
+        mock_get_token.return_value = None
+        result = runner.invoke(cli, ["ask", "hello"])
+        assert result.exit_code == 3
+
+    @patch("dailybot_cli.commands.ask.require_bearer_auth")
+    def test_ask_api_error(self, mock_require_auth: MagicMock, runner: CliRunner) -> None:
+        mock_client: MagicMock = MagicMock()
+        mock_client.create_chat_completion.side_effect = APIError(401, "Unauthorized")
+        mock_require_auth.return_value = mock_client
+
+        result = runner.invoke(cli, ["ask", "hello"])
+        assert result.exit_code == 3
 
 
 class TestInteractiveMenu:

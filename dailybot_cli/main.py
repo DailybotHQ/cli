@@ -6,6 +6,7 @@ import click
 
 from dailybot_cli import __version__
 from dailybot_cli.commands.agent import agent
+from dailybot_cli.commands.ask import ask
 from dailybot_cli.commands.auth import login, logout
 from dailybot_cli.commands.chat import chat
 from dailybot_cli.commands.checkin import checkin
@@ -78,6 +79,7 @@ cli.add_command(team)
 cli.add_command(user)
 cli.add_command(agent)
 cli.add_command(chat)
+cli.add_command(ask)
 cli.add_command(interactive)
 cli.add_command(config)
 cli.add_command(hook)

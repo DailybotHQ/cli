@@ -23,7 +23,21 @@ dailybot [--api-url URL] [--version] [<command> …]
 
 Run with no subcommand → drops into the menu-driven interactive TUI (`commands/interactive.py`).
 
-### `dailybot interactive`
+### `dailybot ask [MESSAGE] [--json] [--session-id ID]`
+
+Talk to the Dailybot AI. The mode is chosen by whether a message is supplied (same pattern as `psql`/`python`/`sqlite3`):
+
+- **`dailybot ask "question"`** — **headless one-shot**: sends the message to `POST /v1/cli/chat/completions/` and prints the assistant's answer to stdout, then exits. Ideal for agents, CI, and scripts. `--json` emits `{ message, actions, classification, session_id }`. A piped message also works: `echo "draft my standup" | dailybot ask`.
+- **`dailybot ask`** (no message, interactive terminal) — opens the full-screen Textual chat session (multi-turn).
+
+| Flag | Short | Notes |
+|------|-------|-------|
+| `--json` | | Machine-readable answer (headless mode). |
+| `--session-id` | `-s` | Continue an existing chat session by id. |
+
+### `dailybot interactive` (deprecated alias)
+
+Deprecated alias for `dailybot ask` with no message (opens the chat session). Retained for backward-compatibility with CLI 1.14.0; prints a deprecation notice. New code should use `dailybot ask`.
 
 Starts a Claude-style full-screen Textual chat session. Natural-language turns are sent to Dailybot via `POST /v1/cli/chat/completions/`; the Textual UI is lazy-loaded only when this command runs.
 
