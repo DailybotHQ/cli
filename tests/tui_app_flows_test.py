@@ -356,3 +356,12 @@ class _FakePrompt:
     def __init__(self, *, value: str, cursor_position: int) -> None:
         self.value = value
         self.cursor_position = cursor_position
+
+
+def test_web_base_url_maps_api_host_to_app_host() -> None:
+    # Regression: the old `.replace("/api", "")` corrupted the default host.
+    assert DailybotChatApp._web_base_url("https://api.dailybot.com") == "https://app.dailybot.com"
+
+
+def test_web_base_url_leaves_custom_host_unchanged() -> None:
+    assert DailybotChatApp._web_base_url("http://djangovscode:8000/") == "http://djangovscode:8000"

@@ -43,15 +43,21 @@ Deprecated alias for `dailybot ask` with no message (opens the chat session). Re
 
 Starts a Claude-style full-screen Textual chat session. Natural-language turns are sent to Dailybot via `POST /v1/cli/chat/completions/`; the Textual UI is lazy-loaded only when this command runs.
 
-Slash commands are handled locally unless they need an existing CLI endpoint:
+Slash commands run **terminal-native flows** locally (interactive numbered prompts / autocomplete) instead of going to the AI; anything else is natural language sent to Dailybot. The chat also recognizes some plain-language intents (e.g. "give kudos to Jane for the release", "show my check-ins") and routes them to the matching native flow — see `dailybot_cli/tui/intents.py`.
 
 | Command | Behavior |
 |---------|----------|
-| `/help` | Show chat-mode help. |
+| `/help` | Show the command catalog. |
 | `/clear` | Clear local transcript and start a new terminal session id. |
-| `/status` | Call `GET /v1/cli/auth/status/`. |
-| `/checkins` | Call `GET /v1/cli/status/`. |
-| `/report` | Submit a free-text update through `POST /v1/cli/updates/`. |
+| `/status` | Login status + pending check-ins (`GET /v1/cli/auth/status/`, `GET /v1/cli/status/`). |
+| `/dashboard` | Show the Dailybot dashboard URL. |
+| `/checkins` | Complete pending check-ins with numbered prompts. |
+| `/checkin edit` / `/checkin reset` | Edit or delete today's submitted response (`PUT` / `DELETE /v1/checkins/<uuid>/responses/`). |
+| `/kudos` | Send kudos to users or teams (`POST /v1/kudos/`). |
+| `/forms`, `/form submit\|responses\|update\|transition\|delete` | Full forms lifecycle (`/v1/forms/*`). |
+| `/users`, `/teams`, `/team <name>` | Browse the org directory and teams (`/v1/users/`, `/v1/teams/*`). |
+| `/mood` | Track today's mood (`GET` / `POST /v1/mood/track/`). |
+| `/report` | Submit a free-text update (`POST /v1/cli/updates/`). |
 | `/exit` | Leave the chat session. |
 
 ---
@@ -430,11 +436,19 @@ key, so all of these commands work with `DAILYBOT_API_KEY` set even without
 | `POST` | `/v1/forms/<uuid>/responses/<resp_uuid>/transition/` | `{ to_state, note? }` | Updated response | 403 = `form_response_change_state_forbidden` or `final_state_locked` |
 | `DELETE` | `/v1/forms/<uuid>/responses/<resp_uuid>/` | — | 204 | Author / owner / admin |
 | `POST` | `/v1/checkins/<followup_uuid>/responses/` | `{ responses: [{ uuid, index, response }], last_question_index?, response_date? }` | `{ uuid }` | |
+| `GET` | `/v1/checkins/` | — | `{ results: [{ id, name, ... }], next? }` (or bare list) | Paginated; terminal check-in flows |
+| `GET` | `/v1/checkins/<followup_uuid>/` | — | `{ ... }` | Check-in detail |
+| `GET` | `/v1/templates/<template_uuid>/` | `?render_special_vars=true&followup_id=<uuid>` | `{ questions: [...] }` | Question definitions for a check-in |
+| `GET` | `/v1/checkins/<followup_uuid>/responses/` | `?date_start&date_end` | `[{ ... }]` | Today's response (edit/reset) |
+| `PUT` | `/v1/checkins/<followup_uuid>/responses/` | `{ responses: [...], last_question_index? }` | Updated response | `/checkin edit` |
+| `DELETE` | `/v1/checkins/<followup_uuid>/responses/` | `?date_start&date_end` | 204 | `/checkin reset` |
+| `GET` | `/v1/mood/track/` | `?date` | `{ ... }` | Read today's mood |
+| `POST` | `/v1/mood/track/` | `{ score, date? }` | `{ ... }` | `/mood` |
 | `GET` | `/v1/users/` | — | `{ results: [{ uuid, full_name }], next: url\|null }` | Paginated |
 | `GET` | `/v1/teams/` | — | `{ results: [{ uuid, name, active, members_count, is_default }], next? }` | Server-scoped: admins see all, members see own |
 | `GET` | `/v1/teams/<uuid>/` | — | `{ uuid, name, active, ... }` | Same scoping |
 | `GET` | `/v1/teams/<uuid>/members/` | — | `[{ uuid, full_name, email }]` | Members of a team the caller can see |
-| `POST` | `/v1/kudos/` | `{ content, receivers: [...uuid], company_value? }` | `{ uuid }` | `receivers` merges users+teams; legacy `user_uuid_receivers`/`team_uuid_receivers` still accepted; 406 = daily limit |
+| `POST` | `/v1/kudos/` | `{ content, receivers: [...uuid], users_receivers?: [...], teams_receivers?: [...], company_value? }` | `{ uuid }` | `receivers` = users+teams merged (validation); `users_receivers`/`teams_receivers` drive team expansion. Payload contract is being reconciled server-side — see the integration prompt. 406 = daily limit |
 
 ### Agent (X-API-KEY *or* Bearer)
 

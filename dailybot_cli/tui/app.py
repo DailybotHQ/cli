@@ -64,6 +64,19 @@ DAILYBOT_PIXEL_LOGO: str = """
       ▀██████▀
 """.strip("\n")
 
+_CONFIRM_YES: frozenset[str] = frozenset({"1", "yes", "y"})
+_CONFIRM_NO: frozenset[str] = frozenset({"2", "no", "n"})
+
+
+def _parse_confirmation(raw_value: str, *, extra_yes: frozenset[str] = frozenset()) -> bool | None:
+    """Parse a yes/no reply: True = confirm, False = cancel, None = unrecognized."""
+    normalized: str = raw_value.strip().lower()
+    if normalized in _CONFIRM_YES or normalized in extra_yes:
+        return True
+    if normalized in _CONFIRM_NO:
+        return False
+    return None
+
 
 class DailybotChatApp(App[None]):
     """Claude-style terminal chat for talking directly to Dailybot."""
@@ -188,15 +201,20 @@ class DailybotChatApp(App[None]):
         if event.key == "tab":
             event.prevent_default()
             event.stop()
+            # Own worker group so Tab-cycling only cancels prior completions, not
+            # the startup user-label worker (shift+tab is handled separately below).
             self.run_worker(
-                self._complete_prompt(reverse=bool(getattr(event, "shift", False))),
+                self._complete_prompt(reverse=False),
                 exclusive=True,
+                group="completion",
             )
             return
         if event.key in {"shift+tab", "shift_tab", "backtab"}:
             event.prevent_default()
             event.stop()
-            self.run_worker(self._complete_prompt(reverse=True), exclusive=True)
+            self.run_worker(
+                self._complete_prompt(reverse=True), exclusive=True, group="completion"
+            )
 
     async def on_input_submitted(self, event: Input.Submitted) -> None:
         prompt = self.query_one("#prompt", Input)
@@ -395,7 +413,7 @@ class DailybotChatApp(App[None]):
         except httpx.TimeoutException:
             self._write_error("Dailybot took longer than expected to answer. Please try again.")
             return
-        except APIError as exc:
+        except (APIError, httpx.HTTPError) as exc:
             self._write_error(self._format_api_error(exc))
             return
         finally:
@@ -421,7 +439,7 @@ class DailybotChatApp(App[None]):
                 asyncio.to_thread(self.client.auth_status),
                 asyncio.to_thread(self.client.get_status),
             )
-        except APIError as exc:
+        except (APIError, httpx.HTTPError) as exc:
             self._write_error(self._format_api_error(exc))
             return
         finally:
@@ -453,7 +471,7 @@ class DailybotChatApp(App[None]):
         self._set_loading(True)
         try:
             data = await asyncio.to_thread(self.client.get_status)
-        except APIError as exc:
+        except (APIError, httpx.HTTPError) as exc:
             self._write_error(self._format_api_error(exc))
             return
         finally:
@@ -476,7 +494,7 @@ class DailybotChatApp(App[None]):
         self._set_loading(True)
         try:
             candidates = await asyncio.to_thread(self._load_editable_checkin_candidates)
-        except APIError as exc:
+        except (APIError, httpx.HTTPError) as exc:
             self._write_error(self._format_api_error(exc))
             return
         finally:
@@ -519,7 +537,7 @@ class DailybotChatApp(App[None]):
         self._set_loading(True)
         try:
             edit_context = await asyncio.to_thread(self._load_checkin_edit_context, selected)
-        except APIError as exc:
+        except (APIError, httpx.HTTPError) as exc:
             self._write_error(self._format_api_error(exc))
             return
         finally:
@@ -566,7 +584,7 @@ class DailybotChatApp(App[None]):
         self._set_loading(True)
         try:
             questions = await asyncio.to_thread(self._load_checkin_questions, selected)
-        except APIError as exc:
+        except (APIError, httpx.HTTPError) as exc:
             self._write_error(self._format_api_error(exc))
             return
         finally:
@@ -624,11 +642,11 @@ class DailybotChatApp(App[None]):
         try:
             await asyncio.to_thread(
                 self.client.complete_checkin,
-                str(checkin.get("followup_uuid") or ""),
+                str(checkin.get("followup_uuid") or checkin.get("id") or ""),
                 responses,
                 len(responses) - 1,
             )
-        except APIError as exc:
+        except (APIError, httpx.HTTPError) as exc:
             self._write_error(self._format_api_error(exc))
             return
         finally:
@@ -640,7 +658,7 @@ class DailybotChatApp(App[None]):
         questions: list[dict[str, Any]] = self.pending_flow["questions"]
         index: int = int(self.pending_flow["index"])
         question: dict[str, Any] = questions[index]
-        existing_value: Any = self._existing_response_value(index)
+        existing_value: Any = self._existing_response_value(question, index)
         answer: Any
         if raw_value == "":
             answer = existing_value
@@ -670,7 +688,7 @@ class DailybotChatApp(App[None]):
                 responses,
                 len(responses) - 1,
             )
-        except APIError as exc:
+        except (APIError, httpx.HTTPError) as exc:
             self._write_error(self._format_api_error(exc))
             return
         finally:
@@ -685,7 +703,7 @@ class DailybotChatApp(App[None]):
                 asyncio.to_thread(self.client.list_teams),
                 asyncio.to_thread(self._get_current_user_uuid),
             )
-        except APIError as exc:
+        except (APIError, httpx.HTTPError) as exc:
             self._write_error(self._format_api_error(exc))
             return
         finally:
@@ -710,7 +728,7 @@ class DailybotChatApp(App[None]):
                 asyncio.to_thread(self.client.list_teams),
                 asyncio.to_thread(self._get_current_user_uuid),
             )
-        except APIError as exc:
+        except (APIError, httpx.HTTPError) as exc:
             self._write_error(self._format_api_error(exc))
             return
         finally:
@@ -892,11 +910,11 @@ class DailybotChatApp(App[None]):
 
     async def _confirm_kudos(self, raw_value: str) -> None:
         assert self.pending_flow is not None
-        normalized: str = raw_value.strip().lower()
-        if normalized not in {"1", "yes", "y", "send", "2", "no", "n"}:
+        decision: bool | None = _parse_confirmation(raw_value, extra_yes=frozenset({"send"}))
+        if decision is None:
             self._write_error("Type 1 to send or 2 to cancel.")
             return
-        if normalized in {"2", "no", "n"}:
+        if not decision:
             self.pending_flow = None
             self._set_prompt_hint()
             self._write_system("Kudos cancelled.")
@@ -922,7 +940,7 @@ class DailybotChatApp(App[None]):
                 team_uuid_receivers=team_uuids or None,
                 company_value=company_value,
             )
-        except APIError as exc:
+        except (APIError, httpx.HTTPError) as exc:
             self._write_error(self._format_api_error(exc))
             return
         finally:
@@ -957,7 +975,7 @@ class DailybotChatApp(App[None]):
         self._set_loading(True)
         try:
             forms = await asyncio.to_thread(self.client.list_forms, include_questions=True)
-        except APIError as exc:
+        except (APIError, httpx.HTTPError) as exc:
             self._write_error(self._format_api_error(exc))
             return
         finally:
@@ -1074,7 +1092,7 @@ class DailybotChatApp(App[None]):
                 str(form.get("id") or form.get("uuid") or ""),
                 content,
             )
-        except APIError as exc:
+        except (APIError, httpx.HTTPError) as exc:
             self._write_error(self._format_api_error(exc))
             return
         finally:
@@ -1089,7 +1107,7 @@ class DailybotChatApp(App[None]):
                 asyncio.to_thread(self.client.get_form, form_uuid),
                 asyncio.to_thread(self.client.list_form_responses, form_uuid),
             )
-        except APIError as exc:
+        except (APIError, httpx.HTTPError) as exc:
             self._write_error(self._format_api_error(exc))
             return
         finally:
@@ -1128,7 +1146,7 @@ class DailybotChatApp(App[None]):
                 form_uuid,
                 response_uuid,
             )
-        except APIError as exc:
+        except (APIError, httpx.HTTPError) as exc:
             self._write_error(self._format_api_error(exc))
             return
         finally:
@@ -1200,7 +1218,7 @@ class DailybotChatApp(App[None]):
                 str(response.get("id") or response.get("uuid") or ""),
                 content,
             )
-        except APIError as exc:
+        except (APIError, httpx.HTTPError) as exc:
             self._write_error(self._format_api_error(exc))
             return
         finally:
@@ -1257,7 +1275,7 @@ class DailybotChatApp(App[None]):
                 to_state,
                 note,
             )
-        except APIError as exc:
+        except (APIError, httpx.HTTPError) as exc:
             self._write_error(self._format_api_error(exc))
             return
         finally:
@@ -1280,11 +1298,11 @@ class DailybotChatApp(App[None]):
 
     async def _confirm_form_delete(self, raw_value: str) -> None:
         assert self.pending_flow is not None
-        normalized: str = raw_value.strip().lower()
-        if normalized not in {"1", "yes", "y", "delete", "2", "no", "n"}:
+        decision: bool | None = _parse_confirmation(raw_value, extra_yes=frozenset({"delete"}))
+        if decision is None:
             self._write_error("Type 1 to delete or 2 to cancel.")
             return
-        if normalized in {"2", "no", "n"}:
+        if not decision:
             self.pending_flow = None
             self._set_prompt_hint()
             self._write_system("Delete cancelled.")
@@ -1298,7 +1316,7 @@ class DailybotChatApp(App[None]):
         self._set_loading(True)
         try:
             await asyncio.to_thread(self.client.delete_form_response, form_uuid, response_uuid)
-        except APIError as exc:
+        except (APIError, httpx.HTTPError) as exc:
             self._write_error(self._format_api_error(exc))
             return
         finally:
@@ -1315,7 +1333,7 @@ class DailybotChatApp(App[None]):
         self._set_loading(True)
         try:
             return await asyncio.to_thread(self.client.get_form, form_uuid)
-        except APIError as exc:
+        except (APIError, httpx.HTTPError) as exc:
             self._write_error(self._format_api_error(exc))
             return None
         finally:
@@ -1453,7 +1471,7 @@ class DailybotChatApp(App[None]):
         self._set_loading(True)
         try:
             users = await asyncio.to_thread(self.client.list_users)
-        except APIError as exc:
+        except (APIError, httpx.HTTPError) as exc:
             self._write_error(self._format_api_error(exc))
             return
         finally:
@@ -1473,7 +1491,7 @@ class DailybotChatApp(App[None]):
         self._set_loading(True)
         try:
             teams = await asyncio.to_thread(self.client.list_teams)
-        except APIError as exc:
+        except (APIError, httpx.HTTPError) as exc:
             self._write_error(self._format_api_error(exc))
             return
         finally:
@@ -1489,7 +1507,7 @@ class DailybotChatApp(App[None]):
         self._set_loading(True)
         try:
             teams = await asyncio.to_thread(self.client.list_teams)
-        except APIError as exc:
+        except (APIError, httpx.HTTPError) as exc:
             self._write_error(self._format_api_error(exc))
             return
         finally:
@@ -1517,7 +1535,7 @@ class DailybotChatApp(App[None]):
                 asyncio.to_thread(self.client.get_team, team_uuid),
                 asyncio.to_thread(self.client.list_team_members, team_uuid),
             )
-        except APIError as exc:
+        except (APIError, httpx.HTTPError) as exc:
             self._write_error(self._format_api_error(exc))
             return
         finally:
@@ -1531,10 +1549,18 @@ class DailybotChatApp(App[None]):
             f"**Members**\n{members_text}"
         )
 
+    @staticmethod
+    def _web_base_url(api_url: str) -> str:
+        """Map the API host to the web app host (api.dailybot.com -> app.dailybot.com).
+
+        Custom/local hosts (no "://api.") are left unchanged. A previous substring
+        replace of "/api" corrupted the default host into "https:/.dailybot.com".
+        """
+        return api_url.replace("://api.", "://app.").rstrip("/")
+
     def _show_dashboard(self) -> None:
-        self._write_dailybot(
-            f"Open your Dailybot dashboard: {self.client.api_url.replace('/api', '').rstrip('/')}/home"
-        )
+        dashboard_url: str = f"{self._web_base_url(self.client.api_url)}/home"
+        self._write_dailybot(f"Open your Dailybot dashboard: {dashboard_url}")
 
     async def _start_mood_flow(self) -> None:
         self.pending_flow = {"type": "mood_select"}
@@ -1557,7 +1583,7 @@ class DailybotChatApp(App[None]):
         self._set_loading(True)
         try:
             await asyncio.to_thread(self.client.track_mood, score)
-        except APIError as exc:
+        except (APIError, httpx.HTTPError) as exc:
             self._write_error(self._format_api_error(exc))
             return
         finally:
@@ -1568,7 +1594,7 @@ class DailybotChatApp(App[None]):
         self._set_loading(True)
         try:
             candidates = await asyncio.to_thread(self._load_editable_checkin_candidates)
-        except APIError as exc:
+        except (APIError, httpx.HTTPError) as exc:
             self._write_error(self._format_api_error(exc))
             return
         finally:
@@ -1599,11 +1625,11 @@ class DailybotChatApp(App[None]):
 
     async def _confirm_checkin_reset(self, raw_value: str) -> None:
         assert self.pending_flow is not None
-        normalized: str = raw_value.strip().lower()
-        if normalized not in {"1", "yes", "y", "delete", "2", "no", "n"}:
+        decision: bool | None = _parse_confirmation(raw_value, extra_yes=frozenset({"delete"}))
+        if decision is None:
             self._write_error("Type 1 to delete or 2 to cancel.")
             return
-        if normalized in {"2", "no", "n"}:
+        if not decision:
             self.pending_flow = None
             self._set_prompt_hint()
             self._write_system("Check-in delete cancelled.")
@@ -1620,7 +1646,7 @@ class DailybotChatApp(App[None]):
                 followup_uuid,
                 response_date=date.today().isoformat(),
             )
-        except APIError as exc:
+        except (APIError, httpx.HTTPError) as exc:
             self._write_error(self._format_api_error(exc))
             return
         finally:
@@ -1650,15 +1676,15 @@ class DailybotChatApp(App[None]):
 
     async def _confirm_terminal_action(self, raw_value: str) -> None:
         assert self.pending_flow is not None
-        normalized: str = raw_value.strip().lower()
-        if normalized not in {"1", "yes", "y", "2", "no", "n"}:
+        decision: bool | None = _parse_confirmation(raw_value)
+        if decision is None:
             self._write_error("Type 1 to start or 2 to skip.")
             return
         flow_name: str = str(self.pending_flow.get("flow") or "")
         params: dict[str, Any] = self.pending_flow.get("params") or {}
         self.pending_flow = None
         self._set_prompt_hint()
-        if normalized in {"2", "no", "n"}:
+        if not decision:
             self._write_system("Skipped suggested action.")
             return
         await self._start_terminal_flow_by_name(flow_name, params)
@@ -1719,7 +1745,7 @@ class DailybotChatApp(App[None]):
         except httpx.TimeoutException:
             self._write_error("Dailybot may still be processing the update. Check before retrying.")
             return
-        except APIError as exc:
+        except (APIError, httpx.HTTPError) as exc:
             self._write_error(self._format_api_error(exc))
             return
         finally:
@@ -1791,7 +1817,7 @@ class DailybotChatApp(App[None]):
         question: dict[str, Any] = questions[index]
         prompt: str = self._question_label(question, index)
         choices: list[str] = self._question_choices(question)
-        existing_value: Any = self._existing_response_value(index)
+        existing_value: Any = self._existing_response_value(question, index)
         existing_label: str = self._format_answer(existing_value)
         lines: list[str] = [
             f"Question {index + 1}/{len(questions)}: {prompt}",
@@ -1809,9 +1835,18 @@ class DailybotChatApp(App[None]):
             self._set_prompt_hint("Type a replacement, Enter to keep, or `cancel`.")
         self._write_dailybot("\n".join(lines))
 
-    def _existing_response_value(self, index: int) -> Any:
+    def _existing_response_value(self, question: dict[str, Any], index: int) -> Any:
         assert self.pending_flow is not None
         existing_responses: list[dict[str, Any]] = self.pending_flow.get("existing_responses") or []
+        # Prefer matching by question UUID (the API may return answers out of order
+        # or with a different length than the template questions).
+        question_uuid: str = str(question.get("uuid") or question.get("id") or "")
+        if question_uuid:
+            for response in existing_responses:
+                response_uuid: str = str(response.get("uuid") or response.get("question_uuid") or "")
+                if response_uuid == question_uuid:
+                    return response.get("response")
+        # Fallback: index-aligned (older responses without per-answer UUIDs).
         if index < len(existing_responses):
             return existing_responses[index].get("response")
         return ""
@@ -2179,9 +2214,9 @@ class DailybotChatApp(App[None]):
                 asyncio.to_thread(self.client.list_users),
                 asyncio.to_thread(self.client.list_teams),
             )
-        except APIError as exc:
-            self._write_error(self._format_api_error(exc))
-            self.mention_completion_items = []
+        except (APIError, httpx.HTTPError):
+            # Autocomplete fires on a keystroke — fail silently and do NOT cache the
+            # failure, so completion recovers once the directory is reachable again.
             return []
         user_items: list[str] = [f"@{self._user_label(user)}" for user in users]
         team_items: list[str] = [f"@{self._team_label(team)} team" for team in teams]
@@ -2275,12 +2310,16 @@ class DailybotChatApp(App[None]):
         return None
 
     @staticmethod
-    def _format_api_error(exc: APIError) -> str:
-        if exc.status_code in (401, 403):
-            return "Session expired or missing. Run: dailybot login"
-        if exc.status_code == 429:
-            return "Rate limit exceeded. Wait a moment and try again."
-        return exc.detail
+    def _format_api_error(exc: APIError | httpx.HTTPError) -> str:
+        if isinstance(exc, APIError):
+            if exc.status_code in (401, 403):
+                return "Session expired or missing. Run: dailybot login"
+            if exc.status_code == 429:
+                return "Rate limit exceeded. Wait a moment and try again."
+            return exc.detail
+        if isinstance(exc, httpx.TimeoutException):
+            return "Dailybot took too long to respond. Please try again."
+        return "Couldn't reach Dailybot. Check your connection and try again."
 
 
 def run_chat_app(client: DailyBotClient) -> None:
