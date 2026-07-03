@@ -309,11 +309,10 @@ class TestDailyBotClientPublicApi:
             )
 
         call_kwargs: dict[str, Any] = mock_post.call_args[1]
-        assert call_kwargs["json"]["user_uuid_receivers"] == ["user-uuid"]
+        assert call_kwargs["json"]["receivers"] == ["user-uuid"]
+        assert "user_uuid_receivers" not in call_kwargs["json"]
         assert "team_uuid_receivers" not in call_kwargs["json"]
         assert call_kwargs["json"]["company_value"] == "value-uuid"
-        assert "by_dailybot" not in call_kwargs["json"]
-        assert "receivers" not in call_kwargs["json"]
         assert result["uuid"] == "kudos-uuid"
 
     def test_give_kudos_team(self, client: DailyBotClient) -> None:
@@ -329,8 +328,10 @@ class TestDailyBotClientPublicApi:
             )
 
         call_kwargs: dict[str, Any] = mock_post.call_args[1]
-        assert call_kwargs["json"]["user_uuid_receivers"] == ["user-uuid"]
-        assert call_kwargs["json"]["team_uuid_receivers"] == ["team-uuid"]
+        # Users and teams are merged into one canonical `receivers` list.
+        assert call_kwargs["json"]["receivers"] == ["user-uuid", "team-uuid"]
+        assert "user_uuid_receivers" not in call_kwargs["json"]
+        assert "team_uuid_receivers" not in call_kwargs["json"]
 
     def test_list_teams(self, client: DailyBotClient) -> None:
         mock_response: MagicMock = MagicMock(spec=httpx.Response)

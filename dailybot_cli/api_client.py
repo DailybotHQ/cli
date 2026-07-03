@@ -387,14 +387,13 @@ class DailyBotClient:
     ) -> dict[str, Any]:
         """POST /v1/kudos/
 
-        At least one of ``user_uuid_receivers`` or ``team_uuid_receivers`` must
-        be non-empty — the backend rejects an empty receiver set.
+        Users and teams are sent as a single ``receivers`` list of UUIDs — the
+        canonical field the server expects; it resolves each UUID's type
+        internally. At least one receiver must be present — the backend rejects
+        an empty set.
         """
-        payload: dict[str, Any] = {"content": content}
-        if user_uuid_receivers:
-            payload["user_uuid_receivers"] = user_uuid_receivers
-        if team_uuid_receivers:
-            payload["team_uuid_receivers"] = team_uuid_receivers
+        receivers: list[str] = [*(user_uuid_receivers or []), *(team_uuid_receivers or [])]
+        payload: dict[str, Any] = {"content": content, "receivers": receivers}
         if company_value:
             payload["company_value"] = company_value
         response: httpx.Response = httpx.post(

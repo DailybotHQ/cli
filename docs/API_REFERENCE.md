@@ -23,7 +23,21 @@ dailybot [--api-url URL] [--version] [<command> …]
 
 Run with no subcommand → drops into the menu-driven interactive TUI (`commands/interactive.py`).
 
-### `dailybot interactive`
+### `dailybot ask [MESSAGE] [--json] [--session-id ID]`
+
+Talk to the Dailybot AI. The mode is chosen by whether a message is supplied (same pattern as `psql`/`python`/`sqlite3`):
+
+- **`dailybot ask "question"`** — **headless one-shot**: sends the message to `POST /v1/cli/chat/completions/` and prints the assistant's answer to stdout, then exits. Ideal for agents, CI, and scripts. `--json` emits `{ message, actions, classification, session_id }`. A piped message also works: `echo "draft my standup" | dailybot ask`.
+- **`dailybot ask`** (no message, interactive terminal) — opens the full-screen Textual chat session (multi-turn).
+
+| Flag | Short | Notes |
+|------|-------|-------|
+| `--json` | | Machine-readable answer (headless mode). |
+| `--session-id` | `-s` | Continue an existing chat session by id. |
+
+### `dailybot interactive` (deprecated alias)
+
+Deprecated alias for `dailybot ask` with no message (opens the chat session). Retained for backward-compatibility with CLI 1.14.0; prints a deprecation notice. New code should use `dailybot ask`.
 
 Starts a Claude-style full-screen Textual chat session. Natural-language turns are sent to Dailybot via `POST /v1/cli/chat/completions/`; the Textual UI is lazy-loaded only when this command runs.
 
@@ -157,7 +171,7 @@ Deletes a response via `DELETE /v1/forms/<uuid>/responses/<resp_uuid>/`. Allowed
 
 Gives kudos to a user, a team, or both. Users are resolved by name (exact then partial match) against `GET /v1/users/`. Teams are resolved by name against `GET /v1/teams/` (server-scoped by role). At least one of `--to` / `--team` is required.
 
-The POST `/v1/kudos/` payload uses `user_uuid_receivers` and `team_uuid_receivers` (both list-of-string fields); the backend manager expands team UUIDs into their active members and excludes the caller, so giving kudos to a team you belong to is valid.
+The POST `/v1/kudos/` payload uses a single `receivers` list of UUIDs (users and teams merged — the server resolves each UUID's type); the backend manager expands team UUIDs into their active members and excludes the caller, so giving kudos to a team you belong to is valid. (The legacy `user_uuid_receivers` / `team_uuid_receivers` fields are still accepted server-side during a deprecation window, but the CLI now sends `receivers`.)
 
 | Flag | Short | Notes |
 |------|-------|-------|
@@ -393,12 +407,8 @@ These accept **either** an org API key (`X-API-KEY`) or a Bearer login token; th
 |--------|------|---------|----------|-------|
 | `POST` | `/v1/cli/updates/` | `{ message?, done?, doing?, blocked? }` | `{ followups_count, attached_followups: [{followup_name, action}] }` | 120s timeout (AI parsing) |
 | `GET` | `/v1/cli/status/` | — | `{ pending_checkins: [{followup_name, template_questions}] }` | Also backs `dailybot checkin list` |
-
-> **Bearer-only exception.** `POST /v1/cli/chat/completions/` (the `dailybot interactive` AI chat) is the one CLI endpoint that **rejects API keys** — it requires a Bearer login session.
-
-| Method | Path | Request | Response | Notes |
-|--------|------|---------|----------|-------|
-| `POST` | `/v1/cli/chat/completions/` | `{ message, history?, session_id?, reset_thread?, available_commands? }` | `{ status, async, correlation_id, classification, message: {role, content}, actions }` | **Bearer only**; 120s timeout (chat agent response) |
+| `GET` | `/v1/cli/auth/status/` | — | `{ authenticated, user: {uuid, email, full_name}, organization: {id, name, uuid} }` | Session/identity; resolves the API key's owner too |
+| `POST` | `/v1/cli/chat/completions/` | `{ message?, history?, messages?, session_id?, reset_thread?, available_commands? }` | `{ status, async, correlation_id, classification, message: {role, content}, actions }` | AI chat (`dailybot ask` / `interactive`); 120s timeout |
 
 ### User-scoped (X-API-KEY *or* Bearer)
 
@@ -422,7 +432,7 @@ key, so all of these commands work with `DAILYBOT_API_KEY` set even without
 | `GET` | `/v1/teams/` | — | `{ results: [{ uuid, name, active, members_count, is_default }], next? }` | Server-scoped: admins see all, members see own |
 | `GET` | `/v1/teams/<uuid>/` | — | `{ uuid, name, active, ... }` | Same scoping |
 | `GET` | `/v1/teams/<uuid>/members/` | — | `[{ uuid, full_name, email }]` | Members of a team the caller can see |
-| `POST` | `/v1/kudos/` | `{ content, user_uuid_receivers?: [...], team_uuid_receivers?: [...], company_value? }` | `{ uuid }` | At least one receiver list required; 406 = daily limit |
+| `POST` | `/v1/kudos/` | `{ content, receivers: [...uuid], company_value? }` | `{ uuid }` | `receivers` merges users+teams; legacy `user_uuid_receivers`/`team_uuid_receivers` still accepted; 406 = daily limit |
 
 ### Agent (X-API-KEY *or* Bearer)
 

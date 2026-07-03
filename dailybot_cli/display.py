@@ -32,6 +32,15 @@ def print_info(message: str) -> None:
     console.print(f"[dim]{message}[/dim]")
 
 
+def print_ai_answer(content: str) -> None:
+    """Print a Dailybot AI answer to stdout verbatim.
+
+    Markup interpretation is off and wrapping is soft, so arbitrary AI text
+    (brackets, long lines) survives intact when piped into another tool.
+    """
+    console.print(content, markup=False, highlight=False, soft_wrap=True)
+
+
 def print_interactive_chat_welcome(version: str, session_id: str) -> None:
     """Display the conversational terminal session header."""
     console.print(

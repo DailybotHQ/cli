@@ -320,9 +320,8 @@ the Bearer path.
 | Scope | Accepted credentials | Used by |
 |-------|----------------------|---------|
 | **Agent endpoints** | API key (`X-API-KEY`) preferred, Bearer fallback | `dailybot agent update`, `dailybot agent health`, `dailybot agent email send` |
-| **User / CLI endpoints** | Bearer token preferred, API key fallback — **either works** | `dailybot status`, `dailybot update`, `dailybot checkin`, `dailybot form`, `dailybot kudos`, `dailybot team`, `dailybot user`, `dailybot chat` |
-| **AI chat** | Bearer login only (API key rejected) | `dailybot interactive` (`/v1/cli/chat/completions/`) |
-| **Login lifecycle** | OTP / Bearer only | `dailybot login`, `dailybot logout` |
+| **User / CLI endpoints** | Bearer token preferred, API key fallback — **either works** | `dailybot status`, `dailybot update`, `dailybot checkin`, `dailybot form`, `dailybot kudos`, `dailybot team`, `dailybot user`, `dailybot chat`, `dailybot ask` / `dailybot interactive` (AI chat) |
+| **Login lifecycle** | OTP / Bearer only | `dailybot login`, `dailybot logout` (revokes the session token) |
 
 Both credentials can coexist — the CLI stores them separately, and a developer
 can hold an API key and a Bearer session at the same time.
@@ -353,11 +352,13 @@ automatically if it does not exist.
 
 ### Commands need *some* credential
 
-`dailybot status`, `dailybot update`, `dailybot checkin`, `dailybot form`,
-`dailybot kudos`, `dailybot team`, `dailybot user`, and `dailybot chat` all
-work with **either** a Bearer login session or an org API key. They exit with a
-non-zero "not authenticated" code only when **neither** is present — in that
-case guide the developer through `dailybot login` or ask them to set
-`DAILYBOT_API_KEY`. The exceptions are `dailybot interactive` (the AI chat,
-`/v1/cli/chat/completions/`) — which requires a Bearer login session and rejects
-API keys — and the login lifecycle itself (`dailybot login` / `logout`).
+Every authenticated command — `status`, `update`, `checkin`, `form`, `kudos`,
+`team`, `user`, `chat`, and the AI chat (`ask` / `interactive`) — works with
+**either** a Bearer login session or an org API key. They exit with a non-zero
+"not authenticated" code only when **neither** is present — in that case guide
+the developer through `dailybot login` or ask them to set `DAILYBOT_API_KEY`.
+The only command that still requires a Bearer session is `dailybot logout`
+(it revokes the session token itself).
+
+This makes `dailybot ask "<question>"` the primary way an autonomous agent
+(with only `DAILYBOT_API_KEY`) can query the Dailybot AI headlessly.

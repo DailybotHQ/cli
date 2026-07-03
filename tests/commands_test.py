@@ -1,5 +1,6 @@
 """Tests for CLI commands."""
 
+import json
 from pathlib import Path
 from typing import Any
 from unittest.mock import MagicMock, patch
@@ -1078,36 +1079,121 @@ class TestInteractiveLogin:
 
 class TestInteractiveChatCommand:
     @patch("dailybot_cli.tui.app.run_chat_app")
-    @patch("dailybot_cli.commands.interactive_chat.require_login")
-    def test_interactive_chat_launches_textual_app(
+    @patch("dailybot_cli.commands.interactive_chat.require_auth")
+    def test_interactive_alias_launches_textual_app(
         self,
-        mock_require_login: MagicMock,
+        mock_require_auth: MagicMock,
         mock_run_chat_app: MagicMock,
         runner: CliRunner,
     ) -> None:
         mock_client: MagicMock = MagicMock()
-        mock_require_login.return_value = mock_client
+        mock_require_auth.return_value = mock_client
 
         result = runner.invoke(cli, ["interactive"])
 
         assert result.exit_code == 0
-        # AI chat is Bearer-only: it must gate through require_login (not require_auth).
-        mock_require_login.assert_called_once_with(
-            "AI chat requires a login session. Run: dailybot login"
-        )
+        # Deprecated alias, but still opens the chat via require_auth (either credential).
+        assert "deprecated" in result.output.lower()
+        mock_require_auth.assert_called_once_with()
         mock_run_chat_app.assert_called_once_with(mock_client)
 
-    @patch("dailybot_cli.commands.public_api_helpers.get_token")
-    def test_interactive_chat_rejects_api_key_only(
+    @patch("dailybot_cli.commands.public_api_helpers.get_agent_auth")
+    def test_interactive_not_authenticated(
         self,
-        mock_get_token: MagicMock,
+        mock_get_auth: MagicMock,
         runner: CliRunner,
     ) -> None:
-        """With only an API key (no login), AI chat exits with the login-required message."""
-        mock_get_token.return_value = None
+        """With neither credential, the AI chat exits 3 (not authenticated)."""
+        mock_get_auth.return_value = None
         result = runner.invoke(cli, ["interactive"])
         assert result.exit_code == 3
-        assert "AI chat requires a login session" in result.output
+        assert "Not authenticated" in result.output
+
+
+class TestAskCommand:
+    @patch("dailybot_cli.commands.ask.require_auth")
+    def test_ask_headless_prints_answer(
+        self, mock_require_auth: MagicMock, runner: CliRunner
+    ) -> None:
+        mock_client: MagicMock = MagicMock()
+        mock_client.create_chat_completion.return_value = {
+            "message": {"role": "assistant", "content": "You have 1 pending check-in."},
+        }
+        mock_require_auth.return_value = mock_client
+
+        result = runner.invoke(cli, ["ask", "What are my check-ins?"])
+
+        assert result.exit_code == 0
+        assert "You have 1 pending check-in." in result.output
+        mock_client.create_chat_completion.assert_called_once_with(
+            message="What are my check-ins?", session_id=None
+        )
+
+    @patch("dailybot_cli.commands.ask.require_auth")
+    def test_ask_json_output(self, mock_require_auth: MagicMock, runner: CliRunner) -> None:
+        mock_client: MagicMock = MagicMock()
+        mock_client.create_chat_completion.return_value = {
+            "message": {"content": "Done."},
+            "actions": [{"name": "open_form"}],
+            "classification": "action",
+            "session_id": "sess-1",
+        }
+        mock_require_auth.return_value = mock_client
+
+        result = runner.invoke(cli, ["ask", "do it", "--json", "--session-id", "sess-1"])
+
+        assert result.exit_code == 0
+        payload: dict[str, Any] = json.loads(result.output)
+        assert payload["message"] == "Done."
+        assert payload["actions"] == [{"name": "open_form"}]
+        assert payload["session_id"] == "sess-1"
+        mock_client.create_chat_completion.assert_called_once_with(
+            message="do it", session_id="sess-1"
+        )
+
+    @patch("dailybot_cli.commands.ask.launch_chat_tui")
+    @patch("dailybot_cli.commands.ask.require_auth")
+    def test_ask_without_message_launches_tui(
+        self, mock_require_auth: MagicMock, mock_launch_tui: MagicMock, runner: CliRunner
+    ) -> None:
+        mock_client: MagicMock = MagicMock()
+        mock_require_auth.return_value = mock_client
+
+        result = runner.invoke(cli, ["ask"])
+
+        assert result.exit_code == 0
+        mock_launch_tui.assert_called_once_with(mock_client)
+        mock_client.create_chat_completion.assert_not_called()
+
+    @patch("dailybot_cli.commands.ask.require_auth")
+    def test_ask_reads_piped_stdin(
+        self, mock_require_auth: MagicMock, runner: CliRunner
+    ) -> None:
+        mock_client: MagicMock = MagicMock()
+        mock_client.create_chat_completion.return_value = {"message": {"content": "ok"}}
+        mock_require_auth.return_value = mock_client
+
+        result = runner.invoke(cli, ["ask"], input="draft my standup\n")
+
+        assert result.exit_code == 0
+        mock_client.create_chat_completion.assert_called_once_with(
+            message="draft my standup", session_id=None
+        )
+
+    @patch("dailybot_cli.commands.public_api_helpers.get_agent_auth")
+    def test_ask_not_authenticated(self, mock_get_auth: MagicMock, runner: CliRunner) -> None:
+        mock_get_auth.return_value = None
+        result = runner.invoke(cli, ["ask", "hello"])
+        assert result.exit_code == 3
+
+    @patch("dailybot_cli.commands.ask.require_auth")
+    def test_ask_api_error(self, mock_require_auth: MagicMock, runner: CliRunner) -> None:
+        mock_client: MagicMock = MagicMock()
+        mock_client.create_chat_completion.side_effect = APIError(401, "Unauthorized")
+        mock_require_auth.return_value = mock_client
+
+        result = runner.invoke(cli, ["ask", "hello"])
+        assert result.exit_code == 3
 
 
 class TestInteractiveMenu:
