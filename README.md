@@ -93,6 +93,16 @@ dailybot update --done "Auth module" --doing "Tests" --blocked "None"
 
 Run `dailybot` with no arguments to enter **interactive mode** — a grouped menu covering check-ins, forms, kudos, and team browsing. If you're not logged in yet, it walks you through authentication first.
 
+Run `dailybot interactive` to start a Claude-style full-screen terminal chat where you can talk directly to Dailybot:
+
+```bash
+dailybot interactive
+
+# Opens a Textual chat UI with a transcript pane, prompt box, and footer shortcuts.
+```
+
+The chat mode uses your `dailybot login` session and supports control commands: `/help`, `/clear`, `/status`, `/checkins`, `/report`, and `/exit`. It lazy-loads the Textual UI only for this command, so regular CLI commands keep their normal startup path.
+
 ---
 
 ## Check-ins

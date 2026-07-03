@@ -193,6 +193,16 @@ jobs:
                 sha256 \"edd07a4824c6b40189fb7ac9bc4c52536e9780fbbfbddf6f1e2502c31b068c36\"
               end
 
+              resource \"textual\" do
+                url \"https://files.pythonhosted.org/packages/source/t/textual/textual-8.2.7.tar.gz\"
+                sha256 \"658f568ff81e30ed43890c3e07520390e5cf1b4763822006e060656b0a88f105\"
+              end
+
+              resource \"platformdirs\" do
+                url \"https://files.pythonhosted.org/packages/source/p/platformdirs/platformdirs-4.10.0.tar.gz\"
+                sha256 \"31e761a6a0ca04faf7353ea759bdba55652be214725111e5aac52dfa29d4bef7\"
+              end
+
               resource \"markdown-it-py\" do
                 url \"https://files.pythonhosted.org/packages/source/m/markdown_it_py/markdown_it_py-4.0.0.tar.gz\"
                 sha256 \"cb0a2b4aa34f932c007117b194e945bd74e0ec24133ceb5bac59009cda1cb9f3\"
@@ -206,6 +216,21 @@ jobs:
               resource \"pygments\" do
                 url \"https://files.pythonhosted.org/packages/source/p/pygments/pygments-2.20.0.tar.gz\"
                 sha256 \"6757cd03768053ff99f3039c1a36d6c0aa0b263438fcab17520b30a303a82b5f\"
+              end
+
+              resource \"mdit-py-plugins\" do
+                url \"https://files.pythonhosted.org/packages/source/m/mdit-py-plugins/mdit_py_plugins-0.6.1.tar.gz\"
+                sha256 \"a2bca0f039f39dbd35fb74ae1b5f998608c437463371f0ff7f49a19a17a114d0\"
+              end
+
+              resource \"linkify-it-py\" do
+                url \"https://files.pythonhosted.org/packages/source/l/linkify-it-py/linkify_it_py-2.1.0.tar.gz\"
+                sha256 \"43360231720999c10e9328dc3691160e27a718e280673d444c38d7d3aaa3b98b\"
+              end
+
+              resource \"uc-micro-py\" do
+                url \"https://files.pythonhosted.org/packages/source/u/uc-micro-py/uc_micro_py-2.0.0.tar.gz\"
+                sha256 \"c53691e495c8db60e16ffc4861a35469b0ba0821fe409a8a7a0a71864d33a811\"
               end
 
               resource \"typing-extensions\" do

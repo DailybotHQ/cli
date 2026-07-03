@@ -3,6 +3,7 @@
 from typing import Any
 
 from rich.console import Console
+from rich.markdown import Markdown
 from rich.panel import Panel
 from rich.table import Table
 from rich.text import Text
@@ -29,6 +30,29 @@ def print_warning(message: str) -> None:
 def print_info(message: str) -> None:
     """Print an info message."""
     console.print(f"[dim]{message}[/dim]")
+
+
+def print_interactive_chat_welcome(version: str, session_id: str) -> None:
+    """Display the conversational terminal session header."""
+    console.print(
+        Panel(
+            "Your Dailybot companion in the terminal.\n"
+            "Ask a question or type `/help` for commands.",
+            title=f"Dailybot interactive v{version}",
+            border_style="cyan",
+        )
+    )
+    console.print(f"[dim]Session: {session_id}[/dim]")
+
+
+def print_interactive_chat_help(help_text: str) -> None:
+    """Display conversational terminal slash-command help."""
+    console.print(Markdown(help_text))
+
+
+def print_interactive_chat_message(content: str) -> None:
+    """Display one assistant message in the conversational terminal."""
+    console.print(Panel(Markdown(content), title="Dailybot", border_style="green"))
 
 
 def print_version_info(

@@ -321,6 +321,7 @@ the Bearer path.
 |-------|----------------------|---------|
 | **Agent endpoints** | API key (`X-API-KEY`) preferred, Bearer fallback | `dailybot agent update`, `dailybot agent health`, `dailybot agent email send` |
 | **User / CLI endpoints** | Bearer token preferred, API key fallback — **either works** | `dailybot status`, `dailybot update`, `dailybot checkin`, `dailybot form`, `dailybot kudos`, `dailybot team`, `dailybot user`, `dailybot chat` |
+| **AI chat** | Bearer login only (API key rejected) | `dailybot interactive` (`/v1/cli/chat/completions/`) |
 | **Login lifecycle** | OTP / Bearer only | `dailybot login`, `dailybot logout` |
 
 Both credentials can coexist — the CLI stores them separately, and a developer
@@ -357,5 +358,6 @@ automatically if it does not exist.
 work with **either** a Bearer login session or an org API key. They exit with a
 non-zero "not authenticated" code only when **neither** is present — in that
 case guide the developer through `dailybot login` or ask them to set
-`DAILYBOT_API_KEY`. Only the login lifecycle itself (`dailybot login` /
-`logout`) is inherently Bearer/OTP.
+`DAILYBOT_API_KEY`. The exceptions are `dailybot interactive` (the AI chat,
+`/v1/cli/chat/completions/`) — which requires a Bearer login session and rejects
+API keys — and the login lifecycle itself (`dailybot login` / `logout`).

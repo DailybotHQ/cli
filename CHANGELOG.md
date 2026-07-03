@@ -9,6 +9,19 @@ Do not edit it by hand — your edits will be overwritten on the next release.
 
 <!-- version list -->
 
+## v1.14.0 (2026-07-01)
+
+### Bug Fixes
+
+- **interactive**: Satisfy ruff format and mypy for chat TUI
+  ([`92809c7`](https://github.com/DailybotHQ/cli/commit/92809c7e17b4a0f548c0b85e0e7b25ddbfbd24d5))
+
+### Features
+
+- **cli**: Add interactive chat TUI
+  ([`a8a860d`](https://github.com/DailybotHQ/cli/commit/a8a860d4f051ed5322af07d475d65f6c75742054))
+
+
 ## v1.13.2 (2026-06-12)
 
 ### Chores

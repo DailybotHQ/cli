@@ -115,6 +115,32 @@ class TestDailyBotClientUpdates:
 
         assert result["count"] == 1
 
+    def test_create_chat_completion(self, client: DailyBotClient) -> None:
+        mock_response: MagicMock = MagicMock(spec=httpx.Response)
+        mock_response.status_code = 200
+        mock_response.json.return_value = {
+            "status": "completed",
+            "message": {"role": "assistant", "content": "Hi there."},
+        }
+
+        with patch("httpx.post", return_value=mock_response) as mock_post:
+            result: dict[str, Any] = client.create_chat_completion(
+                message="Hi",
+                history=[{"role": "assistant", "content": "Welcome back"}],
+                session_id="terminal",
+            )
+
+        call_args: tuple[Any, ...] = mock_post.call_args[0]
+        call_kwargs: dict[str, Any] = mock_post.call_args[1]
+        assert call_args[0].endswith("/v1/cli/chat/completions/")
+        assert call_kwargs["json"] == {
+            "message": "Hi",
+            "history": [{"role": "assistant", "content": "Welcome back"}],
+            "session_id": "terminal",
+        }
+        assert "Bearer test-token" in call_kwargs["headers"]["Authorization"]
+        assert result["message"]["content"] == "Hi there."
+
 
 class TestDailyBotClientPublicApi:
     def test_complete_checkin(self, client: DailyBotClient) -> None:

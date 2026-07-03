@@ -21,7 +21,22 @@ dailybot [--api-url URL] [--version] [<command> …]
 | `--api-url` | `DAILYBOT_API_URL` | `https://api.dailybot.com` | Set before any subcommand runs |
 | `--version` | — | — | Reads `importlib.metadata.version("dailybot-cli")` |
 
-Run with no subcommand → drops into the interactive TUI (`commands/interactive.py`).
+Run with no subcommand → drops into the menu-driven interactive TUI (`commands/interactive.py`).
+
+### `dailybot interactive`
+
+Starts a Claude-style full-screen Textual chat session. Natural-language turns are sent to Dailybot via `POST /v1/cli/chat/completions/`; the Textual UI is lazy-loaded only when this command runs.
+
+Slash commands are handled locally unless they need an existing CLI endpoint:
+
+| Command | Behavior |
+|---------|----------|
+| `/help` | Show chat-mode help. |
+| `/clear` | Clear local transcript and start a new terminal session id. |
+| `/status` | Call `GET /v1/cli/auth/status/`. |
+| `/checkins` | Call `GET /v1/cli/status/`. |
+| `/report` | Submit a free-text update through `POST /v1/cli/updates/`. |
+| `/exit` | Leave the chat session. |
 
 ---
 
@@ -378,6 +393,12 @@ These accept **either** an org API key (`X-API-KEY`) or a Bearer login token; th
 |--------|------|---------|----------|-------|
 | `POST` | `/v1/cli/updates/` | `{ message?, done?, doing?, blocked? }` | `{ followups_count, attached_followups: [{followup_name, action}] }` | 120s timeout (AI parsing) |
 | `GET` | `/v1/cli/status/` | — | `{ pending_checkins: [{followup_name, template_questions}] }` | Also backs `dailybot checkin list` |
+
+> **Bearer-only exception.** `POST /v1/cli/chat/completions/` (the `dailybot interactive` AI chat) is the one CLI endpoint that **rejects API keys** — it requires a Bearer login session.
+
+| Method | Path | Request | Response | Notes |
+|--------|------|---------|----------|-------|
+| `POST` | `/v1/cli/chat/completions/` | `{ message, history?, session_id?, reset_thread?, available_commands? }` | `{ status, async, correlation_id, classification, message: {role, content}, actions }` | **Bearer only**; 120s timeout (chat agent response) |
 
 ### User-scoped (X-API-KEY *or* Bearer)
 

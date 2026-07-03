@@ -1076,6 +1076,40 @@ class TestInteractiveLogin:
         mock_do_login.assert_called_once_with("u@t.com")
 
 
+class TestInteractiveChatCommand:
+    @patch("dailybot_cli.tui.app.run_chat_app")
+    @patch("dailybot_cli.commands.interactive_chat.require_login")
+    def test_interactive_chat_launches_textual_app(
+        self,
+        mock_require_login: MagicMock,
+        mock_run_chat_app: MagicMock,
+        runner: CliRunner,
+    ) -> None:
+        mock_client: MagicMock = MagicMock()
+        mock_require_login.return_value = mock_client
+
+        result = runner.invoke(cli, ["interactive"])
+
+        assert result.exit_code == 0
+        # AI chat is Bearer-only: it must gate through require_login (not require_auth).
+        mock_require_login.assert_called_once_with(
+            "AI chat requires a login session. Run: dailybot login"
+        )
+        mock_run_chat_app.assert_called_once_with(mock_client)
+
+    @patch("dailybot_cli.commands.public_api_helpers.get_token")
+    def test_interactive_chat_rejects_api_key_only(
+        self,
+        mock_get_token: MagicMock,
+        runner: CliRunner,
+    ) -> None:
+        """With only an API key (no login), AI chat exits with the login-required message."""
+        mock_get_token.return_value = None
+        result = runner.invoke(cli, ["interactive"])
+        assert result.exit_code == 3
+        assert "AI chat requires a login session" in result.output
+
+
 class TestInteractiveMenu:
     @patch("dailybot_cli.commands.interactive.pick_from_list")
     @patch("dailybot_cli.commands.interactive.questionary")

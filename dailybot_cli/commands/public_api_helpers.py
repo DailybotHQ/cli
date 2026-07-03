@@ -9,7 +9,7 @@ import click
 import questionary
 
 from dailybot_cli.api_client import APIError, DailyBotClient
-from dailybot_cli.config import get_agent_auth
+from dailybot_cli.config import get_agent_auth, get_token
 from dailybot_cli.display import error_console, print_error, print_info
 
 USER_SCOPED_MODEL_HELP: str = (
@@ -72,6 +72,21 @@ def require_auth() -> DailyBotClient:
     """
     if get_agent_auth() is None:
         print_error("Not authenticated. Run: dailybot login or set DAILYBOT_API_KEY")
+        raise SystemExit(EXIT_NOT_AUTHENTICATED)
+    return DailyBotClient()
+
+
+def require_login(
+    message: str = "This command requires a login session. Run: dailybot login",
+) -> DailyBotClient:
+    """Ensure a Bearer login session exists (an org API key is NOT accepted).
+
+    For the few CLI endpoints the server gates to a real human session rather
+    than an org key — notably the AI chat (``POST /v1/cli/chat/completions/``).
+    Distinct from :func:`require_auth`, which accepts either credential.
+    """
+    if get_token() is None:
+        print_error(message)
         raise SystemExit(EXIT_NOT_AUTHENTICATED)
     return DailyBotClient()
 

@@ -174,6 +174,39 @@ class DailyBotClient:
         )
         return self._handle_response(response)
 
+    def create_chat_completion(
+        self,
+        *,
+        message: str | None = None,
+        history: list[dict[str, Any]] | None = None,
+        messages: list[dict[str, Any]] | None = None,
+        session_id: str | None = None,
+        reset_thread: bool = False,
+        available_commands: list[Any] | None = None,
+    ) -> dict[str, Any]:
+        """POST /v1/cli/chat/completions/"""
+        payload: dict[str, Any] = {}
+        if message is not None:
+            payload["message"] = message
+        if history is not None:
+            payload["history"] = history
+        if messages is not None:
+            payload["messages"] = messages
+        if session_id is not None:
+            payload["session_id"] = session_id
+        if reset_thread:
+            payload["reset_thread"] = True
+        if available_commands is not None:
+            payload["available_commands"] = available_commands
+
+        response: httpx.Response = httpx.post(
+            f"{self.api_url}/v1/cli/chat/completions/",
+            json=payload,
+            headers=self._headers(),
+            timeout=120.0,
+        )
+        return self._handle_response(response)
+
     # --- User-scoped public API endpoints (Bearer token) ---
 
     def complete_checkin(
