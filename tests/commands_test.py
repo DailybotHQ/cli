@@ -1266,6 +1266,37 @@ class TestInteractiveMenu:
         assert call_args.kwargs["user_receivers"] == [("peer-uuid", "Jane Doe")]
         assert call_args.kwargs["assume_yes"] is True
 
+    @patch("dailybot_cli.commands.interactive_chat.launch_chat_tui")
+    @patch("dailybot_cli.commands.interactive.questionary")
+    @patch("dailybot_cli.commands.interactive.load_credentials")
+    @patch("dailybot_cli.commands.interactive.get_token")
+    @patch("dailybot_cli.commands.interactive.DailyBotClient")
+    def test_interactive_menu_ask_ai_launches_chat_and_returns(
+        self,
+        mock_client_cls: MagicMock,
+        mock_get_token: MagicMock,
+        mock_load_creds: MagicMock,
+        mock_questionary: MagicMock,
+        mock_launch_tui: MagicMock,
+        runner: CliRunner,
+    ) -> None:
+        """Picking the AI option opens the chat TUI, then the loop returns to the menu."""
+        mock_get_token.return_value = "tok"
+        mock_load_creds.return_value = {
+            "token": "tok",
+            "email": "me@example.com",
+            "organization": "Org",
+            "api_url": "https://api.dailybot.com",
+        }
+        mock_client: MagicMock = mock_client_cls.return_value
+        # Select "Ask the Dailybot AI", then Exit — proving control returns to the menu.
+        mock_questionary.select.return_value.ask.side_effect = ["ask.ai", "exit"]
+
+        result = runner.invoke(cli, [])
+        assert result.exit_code == 0
+        mock_launch_tui.assert_called_once_with(mock_client)
+        assert mock_questionary.select.return_value.ask.call_count == 2
+
     @patch("dailybot_cli.commands.interactive.get_api_key")
     @patch("dailybot_cli.commands.interactive.questionary")
     @patch("dailybot_cli.commands.interactive.load_credentials")
