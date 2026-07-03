@@ -586,6 +586,9 @@ def execute_checkin_show(
                     template_uuid, followup_uuid=followup_uuid
                 )
                 raw_questions: Any = template.get("questions") or template.get("template_questions")
+                # The template endpoint nests questions as {"fields": [...]}.
+                if isinstance(raw_questions, dict):
+                    raw_questions = raw_questions.get("fields")
                 if isinstance(raw_questions, list):
                     questions = raw_questions
     except APIError as exc:
