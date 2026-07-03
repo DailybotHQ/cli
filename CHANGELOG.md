@@ -9,6 +9,27 @@ Do not edit it by hand — your edits will be overwritten on the next release.
 
 <!-- version list -->
 
+## v1.15.1 (2026-07-03)
+
+### Bug Fixes
+
+- **display**: Keep the report placement link on the "View:" line
+  ([`b5cf145`](https://github.com/DailybotHQ/cli/commit/b5cf14504b4d40b92f5d2880d9b38c011e8aad03))
+
+### Chores
+
+- **agents**: Add Cursor hook config and pin repo report policy
+  ([`257f432`](https://github.com/DailybotHQ/cli/commit/257f432dab350c3df5dfae887ddb60fb10be95c2))
+
+- **skill**: Sync vendored Dailybot skill pack to latest
+  ([`91e2230`](https://github.com/DailybotHQ/cli/commit/91e2230e16ac7def4507c615b2cd73ec7f4582c8))
+
+### Code Style
+
+- **tests**: Wrap long URL literal to satisfy ruff format
+  ([`f5c5e63`](https://github.com/DailybotHQ/cli/commit/f5c5e637d2f82d974928324fa8520cb512756a74))
+
+
 ## v1.15.0 (2026-07-03)
 
 ### Bug Fixes
