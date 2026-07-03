@@ -9,6 +9,14 @@ Do not edit it by hand — your edits will be overwritten on the next release.
 
 <!-- version list -->
 
+## v1.16.0 (2026-07-03)
+
+### Features
+
+- **release**: Let installers pin a specific CLI version
+  ([`3d3d3fe`](https://github.com/DailybotHQ/cli/commit/3d3d3fe272f7299fb11175cbaf2f4f7000e204b0))
+
+
 ## v1.15.1 (2026-07-03)
 
 ### Bug Fixes
