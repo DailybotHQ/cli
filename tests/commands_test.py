@@ -1195,6 +1195,32 @@ class TestAskCommand:
         result = runner.invoke(cli, ["ask", "hello"])
         assert result.exit_code == 3
 
+    @patch("dailybot_cli.commands.ask.require_auth")
+    def test_ask_rate_limited_text(self, mock_require_auth: MagicMock, runner: CliRunner) -> None:
+        mock_client: MagicMock = MagicMock()
+        mock_client.create_chat_completion.side_effect = APIError(
+            429, "Request was throttled.", retry_after=2.0
+        )
+        mock_require_auth.return_value = mock_client
+
+        result = runner.invoke(cli, ["ask", "hello"])
+        assert result.exit_code == 6
+        assert "Try again in 2s" in result.output
+
+    @patch("dailybot_cli.commands.ask.require_auth")
+    def test_ask_rate_limited_json(self, mock_require_auth: MagicMock, runner: CliRunner) -> None:
+        mock_client: MagicMock = MagicMock()
+        mock_client.create_chat_completion.side_effect = APIError(
+            429, "Request was throttled.", retry_after=2.0
+        )
+        mock_require_auth.return_value = mock_client
+
+        result = runner.invoke(cli, ["ask", "hello", "--json"])
+        assert result.exit_code == 6
+        payload: dict[str, Any] = json.loads(result.output)
+        assert payload["status"] == 429
+        assert payload["retry_after_seconds"] == 2
+
 
 class TestInteractiveMenu:
     @patch("dailybot_cli.commands.interactive.pick_from_list")

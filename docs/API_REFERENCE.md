@@ -35,6 +35,8 @@ Talk to the Dailybot AI. The mode is chosen by whether a message is supplied (sa
 | `--json` | | Machine-readable answer (headless mode). |
 | `--session-id` | `-s` | Continue an existing chat session by id. |
 
+The chat endpoint is throttled to **30 requests/minute per API key**. On a `429`, `dailybot ask` exits with code `6` and a "Rate limit exceeded. Try again in Ns." message; in `--json` mode the payload carries `retry_after_seconds` (from the `Retry-After` header).
+
 ### `dailybot interactive` (deprecated alias)
 
 Deprecated alias for `dailybot ask` with no message (opens the chat session). Retained for backward-compatibility with CLI 1.14.0; prints a deprecation notice. New code should use `dailybot ask`.
@@ -408,7 +410,7 @@ These accept **either** an org API key (`X-API-KEY`) or a Bearer login token; th
 | `POST` | `/v1/cli/updates/` | `{ message?, done?, doing?, blocked? }` | `{ followups_count, attached_followups: [{followup_name, action}] }` | 120s timeout (AI parsing) |
 | `GET` | `/v1/cli/status/` | — | `{ pending_checkins: [{followup_name, template_questions}] }` | Also backs `dailybot checkin list` |
 | `GET` | `/v1/cli/auth/status/` | — | `{ authenticated, user: {uuid, email, full_name}, organization: {id, name, uuid} }` | Session/identity; resolves the API key's owner too |
-| `POST` | `/v1/cli/chat/completions/` | `{ message?, history?, messages?, session_id?, reset_thread?, available_commands? }` | `{ status, async, correlation_id, classification, message: {role, content}, actions }` | AI chat (`dailybot ask` / `interactive`); 120s timeout |
+| `POST` | `/v1/cli/chat/completions/` | `{ message?, history?, messages?, session_id?, reset_thread?, available_commands? }` | `{ status, async, correlation_id, classification, message: {role, content}, actions }` | AI chat (`dailybot ask` / `interactive`); 120s timeout; **30 req/min per API key** (429 carries `Retry-After`) |
 
 ### User-scoped (X-API-KEY *or* Bearer)
 

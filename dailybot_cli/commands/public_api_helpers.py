@@ -107,7 +107,10 @@ def exit_for_api_error(exc: APIError, json_mode: bool) -> NoReturn:
         message = "Daily kudos limit reached."
         exit_code = EXIT_PERMISSION_DENIED
     elif exc.status_code == 429:
-        message = "Rate limit exceeded (60 requests/minute). Wait and try again."
+        retry_after: float | None = getattr(exc, "retry_after", None)
+        message = "Rate limit exceeded. Wait a moment and try again."
+        if retry_after:
+            message = f"Rate limit exceeded. Try again in {int(retry_after)}s."
         exit_code = EXIT_RATE_LIMITED
     elif exc.status_code == 400:
         message = mapped_message or exc.detail
@@ -122,6 +125,9 @@ def exit_for_api_error(exc: APIError, json_mode: bool) -> NoReturn:
             payload["code"] = code
         if exc.detail and exc.detail != message:
             payload["detail"] = exc.detail
+        retry_after_seconds: float | None = getattr(exc, "retry_after", None)
+        if exc.status_code == 429 and retry_after_seconds is not None:
+            payload["retry_after_seconds"] = int(retry_after_seconds)
         emit_json(payload)
     else:
         print_error(message)

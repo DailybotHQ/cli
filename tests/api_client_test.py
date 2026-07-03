@@ -447,6 +447,23 @@ class TestDailyBotClientPublicApi:
                 return
         raise AssertionError("APIError not raised")
 
+    def test_api_error_429_carries_retry_after(self, client: DailyBotClient) -> None:
+        mock_response: MagicMock = MagicMock(spec=httpx.Response)
+        mock_response.status_code = 429
+        mock_response.json.return_value = {"detail": "Request was throttled."}
+        mock_response.headers = {"Retry-After": "2"}
+
+        from dailybot_cli.api_client import APIError as _APIError
+
+        with patch("httpx.post", return_value=mock_response):
+            try:
+                client.create_chat_completion(message="hi")
+            except _APIError as exc:
+                assert exc.status_code == 429
+                assert exc.retry_after == 2.0
+                return
+        raise AssertionError("APIError not raised")
+
 
 class TestDailyBotClientAgent:
     def test_submit_agent_report(self, client: DailyBotClient) -> None:

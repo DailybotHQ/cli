@@ -12,10 +12,17 @@ _MAX_LIST_PAGES: int = 50  # safety cap for paginated list endpoints
 class APIError(Exception):
     """Raised when the API returns a non-success response."""
 
-    def __init__(self, status_code: int, detail: str, code: str | None = None) -> None:
+    def __init__(
+        self,
+        status_code: int,
+        detail: str,
+        code: str | None = None,
+        retry_after: float | None = None,
+    ) -> None:
         self.status_code: int = status_code
         self.detail: str = detail
         self.code: str | None = code
+        self.retry_after: float | None = retry_after  # seconds, from a 429 Retry-After header
         super().__init__(f"API error {status_code}: {detail}")
 
 
@@ -85,7 +92,20 @@ class DailyBotClient:
                 detail = response.text or f"HTTP {response.status_code}"
             if response.status_code in (401, 403) and self._agent_auth_mode == "bearer":
                 detail = "Session expired. Run 'dailybot login' to re-authenticate."
-            raise APIError(status_code=response.status_code, detail=detail, code=code)
+            retry_after: float | None = None
+            if response.status_code == 429:
+                raw_retry: str | None = response.headers.get("Retry-After")
+                if raw_retry:
+                    try:
+                        retry_after = float(raw_retry)
+                    except ValueError:
+                        retry_after = None
+            raise APIError(
+                status_code=response.status_code,
+                detail=detail,
+                code=code,
+                retry_after=retry_after,
+            )
         if response.status_code == 204:
             return {}
         return response.json()
