@@ -47,6 +47,54 @@ finish() {
     echo ""
 }
 
+# --- Version selection ---
+# Install a specific version instead of the latest. Provide it either as an
+# environment variable or a CLI flag:
+#   curl -sSL https://cli.dailybot.com/install.sh | DAILYBOT_VERSION=1.15.0 bash
+#   curl -sSL https://cli.dailybot.com/install.sh | bash -s -- --version 1.15.0
+# An empty value means "install the latest published version".
+VERSION="${DAILYBOT_VERSION:-}"
+
+while [ $# -gt 0 ]; do
+    case "$1" in
+        --version)
+            VERSION="${2:-}"
+            shift
+            [ $# -gt 0 ] && shift
+            ;;
+        --version=*)
+            VERSION="${1#--version=}"
+            shift
+            ;;
+        *)
+            shift
+            ;;
+    esac
+done
+
+# Reject anything that is not a plain version token so it cannot be smuggled
+# into the pip spec or the release download URL.
+case "$VERSION" in
+    "") ;;
+    *[!0-9A-Za-z.+-]*)
+        error "Invalid version '$VERSION'. Expected a version like 1.15.0."
+        exit 1
+        ;;
+esac
+
+# Emit the pip requirement: "dailybot-cli" or "dailybot-cli==<version>".
+pip_spec() {
+    if [ -n "$VERSION" ]; then
+        printf '%s==%s' "$PACKAGE" "$VERSION"
+    else
+        printf '%s' "$PACKAGE"
+    fi
+}
+
+if [ -n "$VERSION" ]; then
+    info "Requested Dailybot CLI version: $VERSION"
+fi
+
 # --- Detect OS ---
 
 OS="$(uname -s)"
@@ -55,20 +103,26 @@ OS="$(uname -s)"
 # macOS → Homebrew
 # =============================================================================
 if [ "$OS" = "Darwin" ]; then
-    if ! has brew; then
-        error "Homebrew is required on macOS."
-        echo ""
-        echo "  Install Homebrew first:"
-        echo '    /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"'
-        echo ""
-        echo "  Then re-run this script."
-        exit 1
-    fi
+    # Homebrew always installs the latest formula version. When a specific
+    # version is requested we fall through to the pip path, which can pin it.
+    if [ -n "$VERSION" ]; then
+        info "Homebrew installs only the latest release; using pip to install $VERSION..."
+    else
+        if ! has brew; then
+            error "Homebrew is required on macOS."
+            echo ""
+            echo "  Install Homebrew first:"
+            echo '    /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"'
+            echo ""
+            echo "  Then re-run this script."
+            exit 1
+        fi
 
-    info "Installing via Homebrew..."
-    brew install dailybothq/tap/dailybot
-    finish
-    exit 0
+        info "Installing via Homebrew..."
+        brew install dailybothq/tap/dailybot
+        finish
+        exit 0
+    fi
 fi
 
 # =============================================================================
@@ -86,11 +140,17 @@ if [ "$OS" = "Linux" ]; then
             return 1
         fi
 
-        latest=$(curl -sI "https://github.com/$REPO/releases/latest" \
-            | grep -i "^location:" | sed 's/.*tag\///' | tr -d '\r\n')
+        if [ -n "$VERSION" ]; then
+            # Pin the requested release tag; if its binary asset is missing
+            # the caller falls back to a pinned pip install.
+            latest="v$VERSION"
+        else
+            latest=$(curl -sI "https://github.com/$REPO/releases/latest" \
+                | grep -i "^location:" | sed 's/.*tag\///' | tr -d '\r\n')
 
-        if [ -z "$latest" ]; then
-            return 1
+            if [ -z "$latest" ]; then
+                return 1
+            fi
         fi
 
         url="https://github.com/$REPO/releases/download/$latest/dailybot-linux-x86_64"
@@ -157,7 +217,7 @@ installed=false
 # 1. pipx (preferred — isolated env, manages PATH)
 if ! $installed && has pipx; then
     info "Installing with pipx..."
-    if pipx install "$PACKAGE" --force 2>&1; then
+    if pipx install "$(pip_spec)" --force 2>&1; then
         installed=true
     else
         warn "pipx install failed, trying next method..."
@@ -167,7 +227,7 @@ fi
 # 2. uv tool (same benefits as pipx)
 if ! $installed && has uv; then
     info "Installing with uv..."
-    if uv tool install "$PACKAGE" --force 2>&1; then
+    if uv tool install "$(pip_spec)" --force 2>&1; then
         installed=true
     else
         warn "uv install failed, trying next method..."
@@ -177,7 +237,7 @@ fi
 # 3. pip inside an active virtualenv
 if ! $installed && in_virtualenv; then
     info "Virtualenv detected, installing with pip..."
-    if $PYTHON -m pip install --upgrade "$PACKAGE" 2>&1; then
+    if $PYTHON -m pip install --upgrade "$(pip_spec)" 2>&1; then
         installed=true
     else
         warn "pip install failed inside virtualenv."
@@ -197,11 +257,11 @@ if ! $installed; then
     fi
 
     info "Installing with pip..."
-    if $PYTHON -m pip install --upgrade "$PACKAGE" 2>&1; then
+    if $PYTHON -m pip install --upgrade "$(pip_spec)" 2>&1; then
         installed=true
     else
         warn "System pip install failed, trying --user install..."
-        if $PYTHON -m pip install --user --upgrade "$PACKAGE" 2>&1; then
+        if $PYTHON -m pip install --user --upgrade "$(pip_spec)" 2>&1; then
             installed=true
 
             user_bin="$($PYTHON -c "import site; print(site.getusersitepackages().replace('/lib/python', '/bin').split('/lib/')[0] + '/bin')" 2>/dev/null || echo "$HOME/.local/bin")"
@@ -224,9 +284,9 @@ if ! $installed; then
     error "All installation methods failed."
     echo ""
     echo "  You can try manually:"
-    echo "    pipx install $PACKAGE"
+    echo "    pipx install $(pip_spec)"
     echo "    # or"
-    echo "    pip install $PACKAGE"
+    echo "    pip install $(pip_spec)"
     exit 1
 fi
 

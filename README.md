@@ -2,7 +2,7 @@
 
 The command-line bridge between **humans** and **agents**. [Dailybot](https://www.dailybot.com) connects your team — whether they work in Slack, Google Chat, Discord, Microsoft Teams, or the web — with AI agents and automated workflows. The CLI brings that power to your terminal: progress reports, observability, health checks, messaging, and workflow automation for modern teams.
 
-## Installation.
+## Installation
 
 ```bash
 pip install dailybot-cli
@@ -10,12 +10,28 @@ pip install dailybot-cli
 
 Requires Python 3.10+.
 
+**Install a specific version** — append `==<version>` to pin an exact release:
+
+```bash
+pip install dailybot-cli==1.15.0
+```
+
 ### Alternative installation methods
+
+Every method installs the **latest** release by default. Where a specific
+version can be pinned, the pinned form is shown right below the default one.
 
 **macOS (Homebrew)**
 
 ```bash
 brew install dailybothq/tap/dailybot
+```
+
+Homebrew always installs the latest published formula. To pin a specific
+version, install with pip instead:
+
+```bash
+pip install dailybot-cli==1.15.0
 ```
 
 **Linux, WSL2, or Git Bash on Windows (binary or pip fallback)**
@@ -24,15 +40,37 @@ brew install dailybothq/tap/dailybot
 curl -sSL https://cli.dailybot.com/install.sh | bash
 ```
 
+Pin a version with the `DAILYBOT_VERSION` environment variable **or** the
+`--version` flag — both do the same thing, so use whichever reads better:
+
+```bash
+# environment variable
+curl -sSL https://cli.dailybot.com/install.sh | DAILYBOT_VERSION=1.15.0 bash
+
+# or the equivalent flag (note the `-s --` that forwards args through bash)
+curl -sSL https://cli.dailybot.com/install.sh | bash -s -- --version 1.15.0
+```
+
+A pinned version installs the matching Linux binary when one exists, and
+otherwise falls back to `pip install dailybot-cli==<version>`.
+
 **Native Windows PowerShell** (only if you don't have WSL2 or Git Bash)
 
 ```powershell
 irm https://cli.dailybot.com/install.ps1 | iex
 ```
 
+Pin a version by setting `DAILYBOT_VERSION` before running the script (piping
+to `iex` can't take arguments, so the environment variable is the only way):
+
+```powershell
+$env:DAILYBOT_VERSION = '1.15.0'; irm https://cli.dailybot.com/install.ps1 | iex
+```
+
 Requires Python 3.10+ on PATH. Wraps `pipx` / `uv tool` / `pip --user`.
 
-Or download directly from [GitHub Releases](https://github.com/DailyBotHQ/cli/releases).
+Or download a specific release directly from
+[GitHub Releases](https://github.com/DailyBotHQ/cli/releases).
 
 ## Checking your installed version
 
