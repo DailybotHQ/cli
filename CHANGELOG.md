@@ -9,6 +9,52 @@ Do not edit it by hand — your edits will be overwritten on the next release.
 
 <!-- version list -->
 
+## v1.15.0 (2026-07-03)
+
+### Bug Fixes
+
+- **checkin**: Read template questions from the nested 'fields' object
+  ([`e1d9262`](https://github.com/DailybotHQ/cli/commit/e1d9262420bb1d08e5239d5ffa12b951baa7be93))
+
+- **interactive**: Satisfy mypy for form responses
+  ([`e27cfc7`](https://github.com/DailybotHQ/cli/commit/e27cfc7a1256ffe935eec38dfe13a64186ce2fe8))
+
+- **interactive**: Satisfy ruff format for terminal flows
+  ([`776bd9d`](https://github.com/DailybotHQ/cli/commit/776bd9d9fce88441b7550cb328be2bded1960f23))
+
+### Code Style
+
+- Apply ruff format to check-in commands and helpers
+  ([`cb8c339`](https://github.com/DailybotHQ/cli/commit/cb8c339b7133bc116f2ba28f5ea5e6a2f54071e4))
+
+### Documentation
+
+- **security**: Redact real internal identifiers + add open-source privacy rule
+  ([`712362b`](https://github.com/DailybotHQ/cli/commit/712362b43205ef82ba91fed526c5b12569d83cd3))
+
+### Features
+
+- **ask**: Add headless `dailybot ask` AI command; deprecate `interactive`
+  ([`abc64a7`](https://github.com/DailybotHQ/cli/commit/abc64a7a5b00b3210528782fd8b92aefd80b65fb))
+
+- **ask**: Surface 429 rate-limit with Retry-After for AI chat
+  ([`8dd24b4`](https://github.com/DailybotHQ/cli/commit/8dd24b4603c849a841cc5f0e7123d0e73ee52e76))
+
+- **checkin**: Complete check-in lifecycle in the CLI (status/show/history/edit/reset)
+  ([`4aeb9bf`](https://github.com/DailybotHQ/cli/commit/4aeb9bfa6759d1732ef67c059ae7337d357c2911))
+
+- **cli**: Expand interactive terminal flows
+  ([`6c1bf4d`](https://github.com/DailybotHQ/cli/commit/6c1bf4d7c37b7c15fa0c1a660796e01c9597701e))
+
+- **interactive**: Add "Ask the Dailybot AI" menu entry that opens the chat
+  ([`bf213a0`](https://github.com/DailybotHQ/cli/commit/bf213a0607e4e3e88dc2e0f7b53b3b331992ce59))
+
+### Refactoring
+
+- **tui**: Harden and polish Andrés's terminal flows
+  ([`53355c9`](https://github.com/DailybotHQ/cli/commit/53355c993af1356b19acccf4f292dca6513fe4a1))
+
+
 ## v1.14.0 (2026-07-01)
 
 ### Bug Fixes
