@@ -2,5 +2,9 @@
   "name": "CLI",
   "default_metadata": {
     "repo": "cli"
+  },
+  "report": {
+    "min_interval_minutes": 30,
+    "nudge": true
   }
 }
