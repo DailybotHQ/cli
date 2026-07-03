@@ -51,14 +51,18 @@ The Dailybot CLI persists state in `~/.config/dailybot/` by default. The path ca
 
 ## Auth Resolution Order
 
-### For `dailybot login` / `logout` / `status` / `update` / `checkin` / `form` / `kudos` / `user`
+### For `dailybot login` / `logout`
 
-These commands only accept the **login session Bearer token**. The user-scoped commands (`checkin`, `form`, `kudos`, `user`) use `require_bearer_auth()` from `public_api_helpers.py`, which exits with code 3 if no token is found. Resolution:
+The OTP login flow issues the Bearer token; `logout` clears it. These are inherently tied to the login session.
 
-1. `DAILYBOT_CLI_TOKEN` env var
-2. `credentials.json::token`
+### For user / CLI commands (`status` / `update` / `checkin` / `form` / `kudos` / `team` / `user` / `chat`)
 
-If neither is present, the command exits with `Not logged in. Run: dailybot login`.
+These accept **either** a login session Bearer token **or** an org API key. The `status` / `update` commands gate via their own `get_agent_auth()` check; the user-scoped commands use `require_auth()` from `public_api_helpers.py`. Either way, resolution is:
+
+1. Login session Bearer token (`credentials.json::token`), preferred when present
+2. Org API key (`DAILYBOT_API_KEY` env var, then `config.json::api_key`)
+
+The command exits non-zero (`Not authenticated. Run: dailybot login or set DAILYBOT_API_KEY`) only when **neither** credential is present. The `DailyBotClient._headers()` helper prefers the Bearer token and falls back to `X-API-KEY`; the server resolves the acting user from the API key's owner, so both paths behave identically.
 
 ### For `dailybot status --auth`
 

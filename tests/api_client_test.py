@@ -596,3 +596,26 @@ class TestAgentDualAuth:
             client._handle_response(mock_response)
 
         assert exc_info.value.detail == "Invalid API key"
+
+
+class TestHeadersDualAuth:
+    def test_headers_sends_api_key_when_no_token(self) -> None:
+        """_headers() sends X-API-KEY when no Bearer token is available."""
+        client = DailyBotClient(api_key="test-key", token=None)
+        headers = client._headers()
+        assert headers["X-API-KEY"] == "test-key"
+        assert "Authorization" not in headers
+
+    def test_headers_prefers_bearer_over_api_key(self) -> None:
+        """_headers() sends Bearer when both token and api_key are set."""
+        client = DailyBotClient(api_key="test-key", token="test-token")
+        headers = client._headers()
+        assert headers["Authorization"] == "Bearer test-token"
+        assert "X-API-KEY" not in headers
+
+    def test_headers_unauthenticated_sends_neither(self) -> None:
+        """_headers(authenticated=False) sends no auth."""
+        client = DailyBotClient(api_key="test-key", token="test-token")
+        headers = client._headers(authenticated=False)
+        assert "Authorization" not in headers
+        assert "X-API-KEY" not in headers

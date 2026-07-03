@@ -47,21 +47,21 @@ Everything else is API-mediated.
 
 The Dailybot API exposes three distinct endpoint families that the CLI consumes:
 
-### Human endpoints — `/v1/cli/*`
+### CLI-personal endpoints — `/v1/cli/status/`, `/v1/cli/updates/`
 
-- Authenticate exclusively with a **Bearer token** (`Authorization: Bearer <token>`).
-- Issued by the email-OTP flow (`/v1/cli/auth/{request-code,verify-code}`).
-- Scope: a single user within a single organization (the `organization_id` is implicit in the token).
+- Authenticate with **either** a Bearer token (`Authorization: Bearer <token>`) **or** an org API key (`X-API-KEY`).
+- The Bearer token is issued by the email-OTP flow (`/v1/cli/auth/{request-code,verify-code}`); the API key resolves to its owning user server-side, so scope is identical.
+- Scope: a single user within a single organization.
 
-The CLI's `_headers(authenticated=True)` builds these. Used by `login`, `logout`, `status`, `update`.
+The CLI's `_headers(authenticated=True)` builds these. Used by `status`, `update`. The auth-lifecycle endpoints (`/v1/cli/auth/*`, used by `login` / `logout`) remain Bearer/OTP only.
 
-### User-scoped public API endpoints — `/v1/{checkins,forms,users,kudos}/*`
+### User-scoped public API endpoints — `/v1/{checkins,forms,teams,users,kudos}/*`
 
-- Authenticate exclusively with a **Bearer token** (same token issued by the login flow).
-- Scope: the logged-in user's visibility and permissions — identical to what they see in the webapp.
+- Authenticate with **either** a Bearer token (issued by the login flow) **or** an org API key (`X-API-KEY`).
+- Scope: the acting user's visibility and permissions — identical to what they see in the webapp.
 - These endpoints are part of the public API (not the `/v1/cli/` namespace), meaning they're also usable by non-CLI clients.
 
-The CLI's `_headers(authenticated=True)` builds these. Used by `checkin`, `form`, `kudos`, `user`. Auth is resolved through `require_bearer_auth()` in `public_api_helpers.py`.
+The CLI's `_headers(authenticated=True)` builds these — it prefers the Bearer token and falls back to `X-API-KEY`. Used by `checkin`, `form`, `kudos`, `team`, `user`. Auth is resolved through `require_auth()` in `public_api_helpers.py`.
 
 ### Agent endpoints — `/v1/agent*/*`
 

@@ -69,7 +69,7 @@ dailybot_cli/                # Source package
     ├── team.py              # `team` group: list / get (server-scoped by role)
     ├── kudos.py             # `kudos give` (to a user, a team, or both)
     ├── user.py              # `user list` (org directory)
-    ├── public_api_helpers.py  # require_bearer_auth, exit_for_api_error,
+    ├── public_api_helpers.py  # require_auth, exit_for_api_error,
     │                        #   ERROR_CODE_MESSAGES, resolve_user_/team_by_name_or_uuid
     ├── user_scoped_actions.py # shared handlers for checkin + form (used by CLI + TUI)
     ├── interactive.py       # questionary-based TUI when run with no args

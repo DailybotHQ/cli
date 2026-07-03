@@ -2,7 +2,7 @@
 
 import click
 
-from dailybot_cli.commands.public_api_helpers import require_bearer_auth
+from dailybot_cli.commands.public_api_helpers import require_auth
 from dailybot_cli.commands.user_scoped_actions import execute_checkin_complete, execute_checkin_list
 
 _HELP: str = "Acts as you. You can only see and act on what you could in the webapp."
@@ -30,7 +30,7 @@ def checkin_list(json_mode: bool) -> None:
       dailybot checkin list
       dailybot checkin list --json
     """
-    client = require_bearer_auth()
+    client = require_auth()
     execute_checkin_list(client, json_mode=json_mode)
 
 
@@ -67,7 +67,7 @@ def checkin_complete(
       dailybot checkin complete <followup_uuid> -a 0="Shipped auth" -a 1="Reviewing migrations"
       dailybot checkin complete <followup_uuid> --yes
     """
-    client = require_bearer_auth()
+    client = require_auth()
     execute_checkin_complete(
         client,
         followup_uuid,

@@ -443,7 +443,7 @@ class TestUpgradeCommand:
             assert "Upgrade complete" in result.output
 
     @patch("dailybot_cli.main.set_api_url_override")
-    @patch("dailybot_cli.commands.update.get_token")
+    @patch("dailybot_cli.commands.update.get_agent_auth")
     @patch("dailybot_cli.commands.update.DailyBotClient")
     def test_api_url_override(
         self,
@@ -788,7 +788,7 @@ class TestLogoutCommand:
 
 
 class TestUpdateCommand:
-    @patch("dailybot_cli.commands.update.get_token")
+    @patch("dailybot_cli.commands.update.get_agent_auth")
     @patch("dailybot_cli.commands.update.DailyBotClient")
     def test_update_message(
         self, mock_client_cls: MagicMock, mock_get_token: MagicMock, runner: CliRunner
@@ -804,7 +804,7 @@ class TestUpdateCommand:
         assert result.exit_code == 0
         assert "1 check-in" in result.output
 
-    @patch("dailybot_cli.commands.update.get_token")
+    @patch("dailybot_cli.commands.update.get_agent_auth")
     @patch("dailybot_cli.commands.update.DailyBotClient")
     def test_update_structured(
         self, mock_client_cls: MagicMock, mock_get_token: MagicMock, runner: CliRunner
@@ -824,7 +824,7 @@ class TestUpdateCommand:
             message=None, done="Auth", doing="Tests", blocked="None"
         )
 
-    @patch("dailybot_cli.commands.update.get_token")
+    @patch("dailybot_cli.commands.update.get_agent_auth")
     @patch("dailybot_cli.commands.update.DailyBotClient")
     def test_update_shows_submitted_for_created(
         self, mock_client_cls: MagicMock, mock_get_token: MagicMock, runner: CliRunner
@@ -840,7 +840,7 @@ class TestUpdateCommand:
         assert result.exit_code == 0
         assert "Submitted" in result.output
 
-    @patch("dailybot_cli.commands.update.get_token")
+    @patch("dailybot_cli.commands.update.get_agent_auth")
     @patch("dailybot_cli.commands.update.DailyBotClient")
     def test_update_shows_updated_for_enriched(
         self, mock_client_cls: MagicMock, mock_get_token: MagicMock, runner: CliRunner
@@ -856,7 +856,7 @@ class TestUpdateCommand:
         assert result.exit_code == 0
         assert "Updated" in result.output
 
-    @patch("dailybot_cli.commands.update.get_token")
+    @patch("dailybot_cli.commands.update.get_agent_auth")
     @patch("dailybot_cli.commands.update.DailyBotClient")
     def test_update_ai_processing_failed(
         self, mock_client_cls: MagicMock, mock_get_token: MagicMock, runner: CliRunner
@@ -872,7 +872,7 @@ class TestUpdateCommand:
         assert "could not process" in result.output
         assert "support@dailybot.com" in result.output
 
-    @patch("dailybot_cli.commands.update.get_token")
+    @patch("dailybot_cli.commands.update.get_agent_auth")
     @patch("dailybot_cli.commands.update.DailyBotClient")
     def test_update_timeout(
         self, mock_client_cls: MagicMock, mock_get_token: MagicMock, runner: CliRunner
@@ -887,20 +887,36 @@ class TestUpdateCommand:
         assert result.exit_code != 0
         assert "timed out" in result.output
 
-    @patch("dailybot_cli.commands.update.get_token")
-    def test_update_not_logged_in(self, mock_get_token: MagicMock, runner: CliRunner) -> None:
-        mock_get_token.return_value = None
+    @patch("dailybot_cli.commands.update.get_agent_auth")
+    @patch("dailybot_cli.commands.update.DailyBotClient")
+    def test_update_works_with_api_key(
+        self, mock_client_cls: MagicMock, mock_get_auth: MagicMock, runner: CliRunner
+    ) -> None:
+        """`dailybot update` works with an API key and no login session."""
+        mock_get_auth.return_value = "api_key"
+        mock_client: MagicMock = mock_client_cls.return_value
+        mock_client.submit_update.return_value = {
+            "followups_count": 1,
+            "attached_followups": [{"followup_name": "Standup"}],
+        }
+
+        result = runner.invoke(cli, ["update", "Shipped the API-key parity fix"])
+        assert result.exit_code == 0
+
+    @patch("dailybot_cli.commands.update.get_agent_auth")
+    def test_update_not_authenticated(self, mock_get_auth: MagicMock, runner: CliRunner) -> None:
+        mock_get_auth.return_value = None
         result = runner.invoke(cli, ["update", "test"])
         assert result.exit_code != 0
 
 
 class TestStatusCommand:
-    @patch("dailybot_cli.commands.status.get_token")
+    @patch("dailybot_cli.commands.status.get_agent_auth")
     @patch("dailybot_cli.commands.status.DailyBotClient")
     def test_status_with_checkins(
-        self, mock_client_cls: MagicMock, mock_get_token: MagicMock, runner: CliRunner
+        self, mock_client_cls: MagicMock, mock_get_auth: MagicMock, runner: CliRunner
     ) -> None:
-        mock_get_token.return_value = "tok"
+        mock_get_auth.return_value = "bearer"
         mock_client: MagicMock = mock_client_cls.return_value
         mock_client.get_status.return_value = {
             "count": 1,
@@ -918,18 +934,40 @@ class TestStatusCommand:
         assert result.exit_code == 0
         assert "Daily Standup" in result.output
 
-    @patch("dailybot_cli.commands.status.get_token")
+    @patch("dailybot_cli.commands.status.get_agent_auth")
     @patch("dailybot_cli.commands.status.DailyBotClient")
     def test_status_no_checkins(
-        self, mock_client_cls: MagicMock, mock_get_token: MagicMock, runner: CliRunner
+        self, mock_client_cls: MagicMock, mock_get_auth: MagicMock, runner: CliRunner
     ) -> None:
-        mock_get_token.return_value = "tok"
+        mock_get_auth.return_value = "bearer"
         mock_client: MagicMock = mock_client_cls.return_value
         mock_client.get_status.return_value = {"count": 0, "pending_checkins": []}
 
         result = runner.invoke(cli, ["status"])
         assert result.exit_code == 0
         assert "No pending" in result.output
+
+    @patch("dailybot_cli.commands.status.get_agent_auth")
+    @patch("dailybot_cli.commands.status.DailyBotClient")
+    def test_status_works_with_api_key(
+        self, mock_client_cls: MagicMock, mock_get_auth: MagicMock, runner: CliRunner
+    ) -> None:
+        """`dailybot status` works with an API key and no login session."""
+        mock_get_auth.return_value = "api_key"
+        mock_client: MagicMock = mock_client_cls.return_value
+        mock_client.get_status.return_value = {"count": 0, "pending_checkins": []}
+
+        result = runner.invoke(cli, ["status"])
+        assert result.exit_code == 0
+
+    @patch("dailybot_cli.commands.status.get_agent_auth")
+    def test_status_not_authenticated(
+        self, mock_get_auth: MagicMock, runner: CliRunner
+    ) -> None:
+        mock_get_auth.return_value = None
+        result = runner.invoke(cli, ["status"])
+        assert result.exit_code == 1
+        assert "Not authenticated" in result.output
 
     @patch("dailybot_cli.commands.status.get_token")
     @patch("dailybot_cli.commands.status.DailyBotClient")

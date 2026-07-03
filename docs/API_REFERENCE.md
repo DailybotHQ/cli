@@ -73,7 +73,7 @@ Persists to `~/.config/dailybot/config.json` (`0o600`).
 
 ---
 
-### `dailybot checkin` (group) — user-scoped, Bearer auth
+### `dailybot checkin` (group) — user-scoped, Bearer or API key auth
 
 #### `dailybot checkin list [--json]`
 
@@ -94,7 +94,7 @@ Interactive path: prompts each question using type-aware inputs (text, numeric, 
 
 ---
 
-### `dailybot form` (group) — user-scoped, Bearer auth
+### `dailybot form` (group) — user-scoped, Bearer or API key auth
 
 #### `dailybot form list [--json]`
 
@@ -136,7 +136,7 @@ Deletes a response via `DELETE /v1/forms/<uuid>/responses/<resp_uuid>/`. Allowed
 
 ---
 
-### `dailybot kudos` (group) — user-scoped, Bearer auth
+### `dailybot kudos` (group) — user-scoped, Bearer or API key auth
 
 #### `dailybot kudos give [--to <user>] [--team <team>] --message <text> [--value <uuid>] [--yes] [--json]`
 
@@ -157,7 +157,7 @@ Self-kudos via `--to` is rejected client-side (exit code 4). Ambiguous name matc
 
 ---
 
-### `dailybot user` (group) — user-scoped, Bearer auth
+### `dailybot user` (group) — user-scoped, Bearer or API key auth
 
 #### `dailybot user list [--json]`
 
@@ -165,7 +165,7 @@ Lists organization members. Calls `GET /v1/users/` with automatic pagination (ca
 
 ---
 
-### `dailybot team` (group) — user-scoped, Bearer auth
+### `dailybot team` (group) — user-scoped, Bearer or API key auth
 
 #### `dailybot team list [--json]`
 
@@ -370,14 +370,21 @@ All endpoints are POSTed to `{api_url}/v1/...`. The default `api_url` is `https:
 | `GET` | `/v1/cli/auth/status/` | — | `{ user: {email}, organization: {name, uuid} }` | Bearer |
 | `POST` | `/v1/cli/auth/logout/` | — | `{ detail }` | Bearer |
 
-### Human (Bearer)
+### CLI-personal (X-API-KEY *or* Bearer)
+
+These accept **either** an org API key (`X-API-KEY`) or a Bearer login token; the server resolves the acting user from the key's owner.
 
 | Method | Path | Request | Response | Notes |
 |--------|------|---------|----------|-------|
 | `POST` | `/v1/cli/updates/` | `{ message?, done?, doing?, blocked? }` | `{ followups_count, attached_followups: [{followup_name, action}] }` | 120s timeout (AI parsing) |
-| `GET` | `/v1/cli/status/` | — | `{ pending_checkins: [{followup_name, template_questions}] }` | |
+| `GET` | `/v1/cli/status/` | — | `{ pending_checkins: [{followup_name, template_questions}] }` | Also backs `dailybot checkin list` |
 
-### User-scoped (Bearer)
+### User-scoped (X-API-KEY *or* Bearer)
+
+These endpoints accept **either** an org API key (`X-API-KEY`) or a Bearer login
+token. The CLI prefers the login session when present and falls back to the API
+key, so all of these commands work with `DAILYBOT_API_KEY` set even without
+`dailybot login`.
 
 | Method | Path | Request | Response | Notes |
 |--------|------|---------|----------|-------|
@@ -423,8 +430,13 @@ All endpoints are POSTed to `{api_url}/v1/...`. The default `api_url` is `https:
 ```
 def _headers(authenticated=True):
     h = {Content-Type, Accept}
-    if authenticated and self.token:
-        h["Authorization"] = f"Bearer {self.token}"
+    if authenticated:
+        if self.token:
+            h["Authorization"] = f"Bearer {self.token}"   # ← preferred for user endpoints
+            self._agent_auth_mode = "bearer"
+        elif self.api_key:
+            h["X-API-KEY"] = self.api_key                 # ← fallback when no login session
+            self._agent_auth_mode = "api_key"
     return h
 
 def _agent_headers():
@@ -440,7 +452,11 @@ def _agent_headers():
     return h
 ```
 
-The `_agent_auth_mode` is used by `_handle_response` to produce a "Session expired" message on 401/403 only when the auth came from a Bearer token (not from an API key, where the wording would be misleading).
+Both helpers accept **either** credential; they differ only in preference order
+(`_headers` is Bearer-first, `_agent_headers` is API-key-first). The
+`_agent_auth_mode` is used by `_handle_response` to produce a "Session expired"
+message on 401/403 only when the auth came from a Bearer token (not from an API
+key, where the wording would be misleading).
 
 ## Error Translation
 

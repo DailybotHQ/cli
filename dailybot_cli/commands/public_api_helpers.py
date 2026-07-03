@@ -9,7 +9,7 @@ import click
 import questionary
 
 from dailybot_cli.api_client import APIError, DailyBotClient
-from dailybot_cli.config import get_token
+from dailybot_cli.config import get_agent_auth
 from dailybot_cli.display import error_console, print_error, print_info
 
 USER_SCOPED_MODEL_HELP: str = (
@@ -63,11 +63,15 @@ UUID_PATTERN: re.Pattern[str] = re.compile(
 )
 
 
-def require_bearer_auth() -> DailyBotClient:
-    """Ensure a CLI Bearer session exists and return a client."""
-    token: str | None = get_token()
-    if not token:
-        print_error("Not logged in. Run: dailybot login")
+def require_auth() -> DailyBotClient:
+    """Ensure a login session or API key exists and return a client.
+
+    User-scoped endpoints accept either a Bearer login token or an org API key,
+    so this helper succeeds under either credential and only fails when neither
+    is present.
+    """
+    if get_agent_auth() is None:
+        print_error("Not authenticated. Run: dailybot login or set DAILYBOT_API_KEY")
         raise SystemExit(EXIT_NOT_AUTHENTICATED)
     return DailyBotClient()
 
@@ -258,8 +262,17 @@ def resolve_team_by_name_or_uuid(
 
 
 def get_current_user_uuid(client: DailyBotClient) -> str | None:
-    """Return the authenticated user's UUID from auth status, if available."""
-    data: dict[str, Any] = client.auth_status()
+    """Return the authenticated user's UUID from auth status, if available.
+
+    Reads the Bearer-only ``/v1/cli/auth/status/`` endpoint. Under API-key
+    authentication that endpoint rejects the request, so this returns ``None``
+    rather than propagating the error — callers treat an unknown current user as
+    "skip the client-side self-check" and let the server enforce its own rules.
+    """
+    try:
+        data: dict[str, Any] = client.auth_status()
+    except APIError:
+        return None
     user_raw: Any = data.get("user")
     if isinstance(user_raw, dict):
         uuid_value: Any = user_raw.get("uuid")

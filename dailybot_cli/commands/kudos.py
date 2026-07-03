@@ -12,7 +12,7 @@ from dailybot_cli.commands.public_api_helpers import (
     emit_json,
     exit_for_api_error,
     get_current_user_uuid,
-    require_bearer_auth,
+    require_auth,
     resolve_team_by_name_or_uuid,
     resolve_user_by_name_or_uuid,
 )
@@ -167,7 +167,7 @@ def kudos_give(
             print_error(message_err)
         raise SystemExit(EXIT_USAGE_ERROR)
 
-    client = require_bearer_auth()
+    client = require_auth()
 
     user_receivers: list[tuple[str, str]] = []
     team_receivers: list[tuple[str, str]] = []

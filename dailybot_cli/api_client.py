@@ -36,13 +36,23 @@ class DailyBotClient:
         self._agent_auth_mode: str | None = None
 
     def _headers(self, authenticated: bool = True) -> dict[str, str]:
-        """Build request headers."""
+        """Build request headers.
+
+        Prefers the Bearer login token; falls back to the org API key so that
+        user-scoped endpoints (users, teams, forms, kudos, check-ins) work under
+        either credential. The server accepts both on these endpoints.
+        """
         headers: dict[str, str] = {
             "Content-Type": "application/json",
             "Accept": "application/json",
         }
-        if authenticated and self.token:
-            headers["Authorization"] = f"Bearer {self.token}"
+        if authenticated:
+            if self.token:
+                headers["Authorization"] = f"Bearer {self.token}"
+                self._agent_auth_mode = "bearer"
+            elif self.api_key:
+                headers["X-API-KEY"] = self.api_key
+                self._agent_auth_mode = "api_key"
         return headers
 
     def _agent_headers(self) -> dict[str, str]:
