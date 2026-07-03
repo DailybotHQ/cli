@@ -250,6 +250,150 @@ class DailyBotClient:
         )
         return self._handle_response(response)
 
+    def list_checkins(self) -> list[dict[str, Any]]:
+        """GET /v1/checkins/ — fetch visible check-ins."""
+        results: list[dict[str, Any]] = []
+        url: str | None = f"{self.api_url}/v1/checkins/"
+        pages_fetched: int = 0
+        while url is not None and pages_fetched < _MAX_LIST_PAGES:
+            response: httpx.Response = httpx.get(
+                url,
+                headers=self._headers(),
+                timeout=self.timeout,
+            )
+            if response.status_code >= 400:
+                self._handle_response(response)
+            body: Any = response.json()
+            if isinstance(body, dict) and "results" in body:
+                results.extend(body.get("results", []))
+                url = body.get("next")
+            elif isinstance(body, list):
+                results.extend(body)
+                url = None
+            else:
+                url = None
+            pages_fetched += 1
+        return results
+
+    def get_checkin(self, followup_uuid: str) -> dict[str, Any]:
+        """GET /v1/checkins/<followup_uuid>/."""
+        response: httpx.Response = httpx.get(
+            f"{self.api_url}/v1/checkins/{followup_uuid}/",
+            headers=self._headers(),
+            timeout=self.timeout,
+        )
+        return self._handle_response(response)
+
+    def get_template(
+        self,
+        template_uuid: str,
+        *,
+        followup_uuid: str | None = None,
+    ) -> dict[str, Any]:
+        """GET /v1/templates/<template_uuid>/ — template question definitions."""
+        params: dict[str, str] = {}
+        if followup_uuid:
+            params = {"render_special_vars": "true", "followup_id": followup_uuid}
+        response: httpx.Response = httpx.get(
+            f"{self.api_url}/v1/templates/{template_uuid}/",
+            headers=self._headers(),
+            params=params,
+            timeout=self.timeout,
+        )
+        return self._handle_response(response)
+
+    def list_checkin_responses(
+        self,
+        followup_uuid: str,
+        *,
+        date_start: str | None = None,
+        date_end: str | None = None,
+    ) -> list[dict[str, Any]]:
+        """GET /v1/checkins/<followup_uuid>/responses/."""
+        params: dict[str, str] = {}
+        if date_start:
+            params["date_start"] = date_start
+        if date_end:
+            params["date_end"] = date_end
+        response: httpx.Response = httpx.get(
+            f"{self.api_url}/v1/checkins/{followup_uuid}/responses/",
+            headers=self._headers(),
+            params=params,
+            timeout=self.timeout,
+        )
+        if response.status_code >= 400:
+            self._handle_response(response)
+        body: Any = response.json()
+        if isinstance(body, dict) and "results" in body:
+            return list(body.get("results", []))
+        if isinstance(body, list):
+            return body
+        return []
+
+    def update_checkin_response(
+        self,
+        followup_uuid: str,
+        responses: list[dict[str, Any]],
+        last_question_index: int | None = None,
+    ) -> dict[str, Any]:
+        """PUT /v1/checkins/<followup_uuid>/responses/ — update today's response."""
+        payload: dict[str, Any] = {"responses": responses}
+        if last_question_index is not None:
+            payload["last_question_index"] = last_question_index
+        response: httpx.Response = httpx.put(
+            f"{self.api_url}/v1/checkins/{followup_uuid}/responses/",
+            json=payload,
+            headers=self._headers(),
+            timeout=self.timeout,
+        )
+        return self._handle_response(response)
+
+    def delete_checkin_response(
+        self,
+        followup_uuid: str,
+        *,
+        response_date: str | None = None,
+    ) -> dict[str, Any]:
+        """DELETE /v1/checkins/<followup_uuid>/responses/ — reset a submitted response."""
+        params: dict[str, str] = {}
+        if response_date:
+            params["date_start"] = response_date
+            params["date_end"] = response_date
+        response: httpx.Response = httpx.request(
+            "DELETE",
+            f"{self.api_url}/v1/checkins/{followup_uuid}/responses/",
+            headers=self._headers(),
+            params=params,
+            timeout=self.timeout,
+        )
+        return self._handle_response(response)
+
+    def get_mood(self, mood_date: str | None = None) -> dict[str, Any]:
+        """GET /v1/mood/track/ — fetch today's mood response."""
+        params: dict[str, str] = {}
+        if mood_date:
+            params["date"] = mood_date
+        response: httpx.Response = httpx.get(
+            f"{self.api_url}/v1/mood/track/",
+            headers=self._headers(),
+            params=params,
+            timeout=self.timeout,
+        )
+        return self._handle_response(response)
+
+    def track_mood(self, score: int, mood_date: str | None = None) -> dict[str, Any]:
+        """POST /v1/mood/track/ — record a mood score."""
+        payload: dict[str, Any] = {"score": score}
+        if mood_date:
+            payload["date"] = mood_date
+        response: httpx.Response = httpx.post(
+            f"{self.api_url}/v1/mood/track/",
+            json=payload,
+            headers=self._headers(),
+            timeout=self.timeout,
+        )
+        return self._handle_response(response)
+
     def list_forms(self, *, include_questions: bool = False) -> list[dict[str, Any]]:
         """GET /v1/forms/ — optionally expand question definitions per form."""
         params: dict[str, str] = {"include": "questions"} if include_questions else {}
@@ -407,13 +551,19 @@ class DailyBotClient:
     ) -> dict[str, Any]:
         """POST /v1/kudos/
 
-        Users and teams are sent as a single ``receivers`` list of UUIDs — the
-        canonical field the server expects; it resolves each UUID's type
-        internally. At least one receiver must be present — the backend rejects
-        an empty set.
+        Sends the canonical ``receivers`` list (users + teams merged, for
+        validation) plus the type-specific ``users_receivers`` / ``teams_receivers``
+        lists the server uses to expand teams into their members. At least one
+        receiver must be present — the backend rejects an empty set.
         """
+        payload: dict[str, Any] = {"content": content}
         receivers: list[str] = [*(user_uuid_receivers or []), *(team_uuid_receivers or [])]
-        payload: dict[str, Any] = {"content": content, "receivers": receivers}
+        if receivers:
+            payload["receivers"] = receivers
+        if user_uuid_receivers:
+            payload["users_receivers"] = user_uuid_receivers
+        if team_uuid_receivers:
+            payload["teams_receivers"] = team_uuid_receivers
         if company_value:
             payload["company_value"] = company_value
         response: httpx.Response = httpx.post(
