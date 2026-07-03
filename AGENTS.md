@@ -218,6 +218,17 @@ os.chmod(PATH, 0o600)
 
 Never log full API keys or Bearer tokens. Use the `_mask` helper (or equivalent: first 4 chars + `****`).
 
+#### 11.a Open-source privacy hygiene — this repo is PUBLIC
+
+`DailybotHQ/cli` is a **public, open-source repository**. Anything you commit is world-readable forever (git history included). Never put **real internal or personal data** into tracked files — source, docs, tests, examples, or help text. This is a hard rule, and it applies even to "just an example":
+
+- **No real credentials/tokens** — no API keys, Bearer tokens, session tokens, webhook secrets, or `.env` values. Tests use obvious fakes (`"test-key"`, `"test-token"`); docs use `<your-api-key>` / `DAILYBOT_API_KEY`.
+- **No real identifiers or PII** — no real organization/user/form UUIDs, no real emails or names. Use placeholders: `<your-org-uuid>`, `<form-uuid>`, `me@example.com`, `Jane Doe`, `My Team`. (`security@dailybot.com` / `ops@dailybot.com` are the *intended* public contacts and are fine.)
+- **No internal infrastructure** — no internal hostnames (`djangovscode`, staging/dev URLs), no private repo names or internal architecture in **shipped/user-facing** content. Prefer generic example names (`my-service`, `my-api`) over real internal repo names. (The `docker/` local-dev tooling is a deliberate exception — it targets the internal dev container — but keep its internal references out of user-facing docs and the CLI's own output.)
+- **Scratch with real data stays in `tmp/`** — screenshots, API dumps, and probe output that contain real org UUIDs / emails / hosts go in `tmp/` (gitignored) and are **never** promoted into the repo. Do not `git add -A` blindly; prefer `git add -u` + explicit paths so stray artifacts (e.g. a debug `image.png` at the repo root) can't slip in.
+
+When in doubt, mask or genericize. To report a vulnerability, see [docs/SECURITY.md](docs/SECURITY.md) — never open a public issue for a security problem.
+
 ### 12. No Magic Numbers
 Extract limits, timeouts, and counts into module-level constants:
 

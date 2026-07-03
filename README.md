@@ -477,7 +477,7 @@ dailybot agent update "Sprint progress" --name "Claude Code" --json-data '{
 }'
 
 # Attach metadata (repo, branch, PR, or any key-value context)
-dailybot agent update "Fixed login bug" --name "Claude Code" --metadata '{"repo": "api-services", "branch": "fix/login", "pr": "#142"}'
+dailybot agent update "Fixed login bug" --name "Claude Code" --metadata '{"repo": "my-service", "branch": "fix/login", "pr": "#142"}'
 
 # Mark a report as a milestone
 dailybot agent update "Shipped v3.0" --milestone --name "Claude Code"
