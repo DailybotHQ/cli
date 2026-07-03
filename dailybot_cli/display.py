@@ -326,7 +326,9 @@ def print_agent_report_result(result: dict[str, Any]) -> None:
 
     url: str = result.get("url") or ""
     if url:
-        console.print(f"  [cyan]View:[/cyan] {url}")
+        # soft_wrap keeps the label and the (unbreakable) URL on one logical
+        # line; without it Rich word-wraps at 80 cols and orphans "View:".
+        console.print(f"  [cyan]View:[/cyan] {url}", soft_wrap=True)
 
     co_authors: list[dict[str, Any]] | None = result.get("co_authors")
     if co_authors:

@@ -280,6 +280,13 @@ dailybot agent profiles 2>&1
 If a default profile exists — note the name. You can omit `--name` on
 subsequent CLI commands.
 
+> **Repo profile takes precedence over the global default profile.** If
+> the repo ships a `.dailybot/profile.json` with a `name` field, that
+> name wins over whatever the global default is — and you must omit
+> `--name` regardless of what the global default is. Same for
+> `default_metadata` keys. Full rules:
+> [`shared/repo-profile.md`](repo-profile.md).
+
 If no profile exists and authentication succeeded, create one automatically.
 This is metadata only (no install, no network call beyond the CLI command),
 so no separate confirmation is needed:
@@ -303,28 +310,30 @@ Dailybot → Settings → API Keys.
 
 ---
 
-## 4. User-Scoped Commands (API Key *or* Bearer Token)
+## 4. Auth model — API key *or* login, almost everywhere
 
-Almost all Dailybot CLI commands — **check-ins**, **forms**, **kudos**,
-**teams**, the **user directory**, **status**, and **update** — accept
-**either** credential: a Bearer login token (stored at
-`~/.config/dailybot/credentials.json` after `dailybot login`) **or** an org
-API key (`DAILYBOT_API_KEY` env var or `dailybot config key=...`). The CLI
-prefers the login session when present and falls back to the API key, so these
-commands work in headless/CI environments with only an API key set. The server
-resolves the acting user from the API key's owner, so the scope is identical to
-the Bearer path.
-
-### Auth model
+As of the CLI's full-parity release (`dailybot-cli >= 1.15.0`, paired with the
+matching API server rollout), **every authenticated CLI command accepts either
+credential** — a Bearer login session **or** an org API key. The server resolves
+the acting user from the API key's `owner`, so the two paths behave identically.
+This is what lets an autonomous agent do **everything** with only
+`DAILYBOT_API_KEY` set — including `dailybot ask` (the AI chat).
 
 | Scope | Accepted credentials | Used by |
 |-------|----------------------|---------|
 | **Agent endpoints** | API key (`X-API-KEY`) preferred, Bearer fallback | `dailybot agent update`, `dailybot agent health`, `dailybot agent email send` |
-| **User / CLI endpoints** | Bearer token preferred, API key fallback — **either works** | `dailybot status`, `dailybot update`, `dailybot checkin`, `dailybot form`, `dailybot kudos`, `dailybot team`, `dailybot user`, `dailybot chat`, `dailybot ask` / `dailybot interactive` (AI chat) |
+| **User / CLI / AI commands** | Bearer token preferred, API key fallback — **either works** | `dailybot status`, `update`, `checkin`, `form`, `kudos`, `team`, `user`, `chat`, `ask` (AI chat) |
 | **Login lifecycle** | OTP / Bearer only | `dailybot login`, `dailybot logout` (revokes the session token) |
 
 Both credentials can coexist — the CLI stores them separately, and a developer
-can hold an API key and a Bearer session at the same time.
+can hold an API key and a Bearer session at the same time. The CLI prefers the
+login session when present and falls back to the API key.
+
+> **Older CLIs (< 1.15.0).** Before full parity, the user-scoped commands
+> (`checkin`, `form`, `kudos`, `user`) and the AI chat required a Bearer login
+> session and rejected API keys. If the developer is on an older CLI and an
+> API-key-only command exits `3` (not authenticated), either `dailybot upgrade`
+> or guide them through `dailybot login`.
 
 ### Checking session status
 
@@ -332,9 +341,9 @@ can hold an API key and a Bearer session at the same time.
 dailybot status --auth 2>&1
 ```
 
-The output shows both the agent API key status and the Bearer session status.
-If neither is present, guide the developer through `dailybot login` (Section 2)
-or ask them to export `DAILYBOT_API_KEY`.
+The output shows both the API key status and the Bearer session status. If
+neither is present, guide the developer through `dailybot login` (Section 2) or
+ask them to set `DAILYBOT_API_KEY`.
 
 ### Config directory override
 
@@ -352,13 +361,30 @@ automatically if it does not exist.
 
 ### Commands need *some* credential
 
-Every authenticated command — `status`, `update`, `checkin`, `form`, `kudos`,
-`team`, `user`, `chat`, and the AI chat (`ask` / `interactive`) — works with
-**either** a Bearer login session or an org API key. They exit with a non-zero
-"not authenticated" code only when **neither** is present — in that case guide
-the developer through `dailybot login` or ask them to set `DAILYBOT_API_KEY`.
-The only command that still requires a Bearer session is `dailybot logout`
-(it revokes the session token itself).
+Every authenticated command works with **either** a login session or an API
+key; they exit with a non-zero "not authenticated" code only when **neither**
+is present. The single command that still requires a Bearer session is
+`dailybot logout` (it revokes the session token itself). Guide the developer
+through `dailybot login` or ask them to set `DAILYBOT_API_KEY`.
 
-This makes `dailybot ask "<question>"` the primary way an autonomous agent
-(with only `DAILYBOT_API_KEY`) can query the Dailybot AI headlessly.
+### Config directory override
+
+The `DAILYBOT_CONFIG_DIR` environment variable overrides where all credential
+and config files are stored (default: `~/.config/dailybot/`):
+
+```bash
+export DAILYBOT_CONFIG_DIR=/tmp/my-sandbox-config
+dailybot login --email me@example.com
+```
+
+This is useful for development sandboxes, CI environments, or testing
+scenarios with isolated config directories. The directory is created
+automatically if it does not exist.
+
+### User-scoped commands fail without a Bearer session
+
+If a developer tries to use `dailybot checkin`, `dailybot form`,
+`dailybot kudos`, or `dailybot user` with only an API key and no login
+session, the CLI exits with code `3` (not authenticated). Guide them
+through `dailybot login` — these commands require the human's own
+session, not an agent key.

@@ -33,11 +33,11 @@ Customer-authored form skills live at `.agents/skills/dailybot-custom/<name>/SKI
 
 ---
 
-## Auth model — user-scoped commands
+## Auth model — API key or login
 
-All form commands accept **either** a Bearer login session (`dailybot login`) **or** an org API key (`DAILYBOT_API_KEY`). Access is scoped to the acting identity's permissions — they only see forms (and responses) they have access to, and the server enforces every audience check on the API side.
+All form commands accept **either** a Bearer login session (`dailybot login`) **or** an org API key (`DAILYBOT_API_KEY`) — as of `dailybot-cli >= 1.15.0`. Access is scoped to the acting identity's permissions (the server resolves the API key's owner) — they only see forms (and responses) they have access to, and the server enforces every audience check on the API side.
 
-If the developer has only an API key, form commands still work — the CLI falls back to `X-API-KEY`. Prefer `dailybot login` when the developer wants a personal, human-scoped view.
+If the developer has only an API key, form commands still work — the CLI falls back to `X-API-KEY`. (On CLIs older than 1.15.0, these required a Bearer session — `dailybot upgrade` or `dailybot login`.)
 
 ---
 
@@ -58,13 +58,13 @@ Do **not** use this skill for daily standup check-ins — route those to `dailyb
 
 Read and follow the authentication steps in [`../shared/auth.md`](../shared/auth.md). That file covers CLI installation, login, API key setup, and agent profile configuration.
 
-**Additionally**, confirm at least one credential is present (a Bearer login session or an API key):
+**Additionally**, confirm at least one credential is present (a login session or an API key):
 
 ```bash
 dailybot status --auth 2>&1
 ```
 
-If the output shows a logged-in user session **or** a configured API key, proceed. Otherwise guide them through `dailybot login` (see auth.md for the OTP flow) or ask them to set `DAILYBOT_API_KEY`.
+If the output shows a logged-in user session **or** a configured API key, proceed. Otherwise guide them through `dailybot login` (see auth.md) or ask them to set `DAILYBOT_API_KEY`.
 
 A scripted preflight that does both at once and exits with code `3` if unauthenticated:
 

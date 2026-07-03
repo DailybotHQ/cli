@@ -1414,6 +1414,28 @@ class TestAgentCommand:
 
     @patch("dailybot_cli.commands.agent.get_agent_auth")
     @patch("dailybot_cli.commands.agent.DailyBotClient")
+    def test_agent_update_keeps_long_url_on_view_line(
+        self, mock_client_cls: MagicMock, mock_get_auth: MagicMock, runner: CliRunner
+    ) -> None:
+        """A long placement URL must stay on the same line as the 'View:' label.
+
+        Rich word-wraps at the default 80-column width, which would push a
+        long, unbreakable URL onto its own line and leave 'View:' orphaned.
+        The renderer disables wrapping so the label and URL stay together.
+        """
+        mock_get_auth.return_value = "api_key"
+        long_url: str = (
+            "https://app.dailybot.com/agents/report/b59abb71-fdb6-4d4f-b0f2-1bf5399b15e4"
+        )
+        mock_client: MagicMock = mock_client_cls.return_value
+        mock_client.submit_agent_report.return_value = {"id": 1, "uuid": "abc", "url": long_url}
+
+        result = runner.invoke(cli, ["agent", "update", "Deployed v2.1", "--name", "Claude Code"])
+        assert result.exit_code == 0
+        assert f"View: {long_url}" in result.output
+
+    @patch("dailybot_cli.commands.agent.get_agent_auth")
+    @patch("dailybot_cli.commands.agent.DailyBotClient")
     def test_agent_update_with_metadata(
         self, mock_client_cls: MagicMock, mock_get_auth: MagicMock, runner: CliRunner
     ) -> None:
