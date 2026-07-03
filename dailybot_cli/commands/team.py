@@ -10,7 +10,7 @@ from dailybot_cli.commands.public_api_helpers import (
     emit_json,
     exit_for_api_error,
     print_error,
-    require_bearer_auth,
+    require_auth,
     resolve_team_by_name_or_uuid,
 )
 from dailybot_cli.display import (
@@ -64,7 +64,7 @@ def team_list(json_mode: bool) -> None:
       dailybot team list
       dailybot team list --json
     """
-    client = require_bearer_auth()
+    client = require_auth()
     try:
         with console.status("Fetching teams..."):
             teams: list[dict[str, Any]] = client.list_teams()
@@ -94,7 +94,7 @@ def team_get(team_identifier: str, with_members: bool, json_mode: bool) -> None:
       dailybot team get "Engineering"
       dailybot team get "Engineering" --with-members --json
     """
-    client = require_bearer_auth()
+    client = require_auth()
     team_uuid, _team_name = _resolve_team_arg(client, team_identifier, json_mode=json_mode)
 
     try:

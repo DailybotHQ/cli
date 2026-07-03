@@ -42,7 +42,7 @@ When adding a new module, mirror it in `tests/`. New test files **MUST** end in 
 
 ### User-scoped command tests
 
-The user-scoped commands (`checkin`, `form`, `team`, `kudos`, `user`) are tested in `public_api_commands_test.py`. The pattern follows the same approach as `commands_test.py` but patches `dailybot_cli.commands.public_api_helpers.get_token` and `dailybot_cli.commands.public_api_helpers.DailyBotClient` (since the auth resolution for these commands goes through `require_bearer_auth()`).
+The user-scoped commands (`checkin`, `form`, `team`, `kudos`, `user`) are tested in `public_api_commands_test.py`. The pattern follows the same approach as `commands_test.py` but patches `dailybot_cli.commands.public_api_helpers.get_agent_auth` and `dailybot_cli.commands.public_api_helpers.DailyBotClient` (since the auth resolution for these commands goes through `require_auth()`, which accepts either a Bearer session or an API key). A return value of `None` from `get_agent_auth` simulates the unauthenticated case (exit code 3).
 
 **Forms-lifecycle coverage expectations.** New `form` subcommands (`get`, `responses`, `response get`, `update`, `transition`, `delete`) must include:
 

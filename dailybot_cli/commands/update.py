@@ -6,15 +6,18 @@ import click
 import httpx
 
 from dailybot_cli.api_client import APIError, DailyBotClient
-from dailybot_cli.config import get_token
+from dailybot_cli.config import get_agent_auth
 from dailybot_cli.display import console, print_error, print_info, print_update_result
 
 
 def _require_auth() -> DailyBotClient:
-    """Ensure user is authenticated, return a client."""
-    token: str | None = get_token()
-    if not token:
-        print_error("Not logged in. Run: dailybot login")
+    """Ensure user is authenticated, return a client.
+
+    Accepts either a Bearer login session or an org API key — the server now
+    honours ``X-API-KEY`` on ``POST /v1/cli/updates/``.
+    """
+    if get_agent_auth() is None:
+        print_error("Not authenticated. Run: dailybot login or set DAILYBOT_API_KEY")
         raise SystemExit(1)
     return DailyBotClient()
 

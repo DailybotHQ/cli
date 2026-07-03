@@ -127,11 +127,11 @@ Every command that talks to an authenticated endpoint must resolve credentials t
 
 | Endpoint type | Resolution helper | Returns |
 |---------------|-------------------|---------|
-| Human (Bearer-only) | `_require_auth()` from the command file | `DailyBotClient` |
-| User-scoped (Bearer-only) | `require_bearer_auth()` from `public_api_helpers.py` | `DailyBotClient` |
+| CLI-personal `status` / `update` (key or Bearer) | `_require_auth()` from the command file | `DailyBotClient` |
+| User-scoped (key or Bearer) | `require_auth()` from `public_api_helpers.py` | `DailyBotClient` |
 | Agent (key or Bearer) | `_resolve_agent_context(profile_flag, name_flag)` from `commands/agent.py` | `(agent_name, DailyBotClient)` |
 
-**Do not duplicate the resolution logic.** If a new command needs auth, route through one of these helpers. User-scoped commands (`checkin`, `form`, `kudos`, `user`) use `require_bearer_auth()`, which exits with code `EXIT_NOT_AUTHENTICATED = 3` when no token is available.
+**Do not duplicate the resolution logic.** If a new command needs auth, route through one of these helpers. User-scoped commands (`checkin`, `form`, `kudos`, `team`, `user`) use `require_auth()`, which accepts either an API key or a Bearer session and exits with code `EXIT_NOT_AUTHENTICATED = 3` only when neither credential is available.
 
 For the resolution order specifics, see [CONFIGURATION.md](CONFIGURATION.md).
 
@@ -164,7 +164,7 @@ Avoid `sys.exit(...)` and never call `os._exit(...)`.
 
 The user-scoped commands (`checkin`, `form`, `kudos`, `user`) introduced two shared modules:
 
-- **`public_api_helpers.py`** — auth helpers (`require_bearer_auth`), error translation (`exit_for_api_error`), interactive helpers (`confirm_write`, `pick_from_list`), name resolution (`resolve_user_by_name_or_uuid`), exit-code constants, and the `InteractiveAbort` exception.
+- **`public_api_helpers.py`** — auth helpers (`require_auth`), error translation (`exit_for_api_error`), interactive helpers (`confirm_write`, `pick_from_list`), name resolution (`resolve_user_by_name_or_uuid`), exit-code constants, and the `InteractiveAbort` exception.
 - **`user_scoped_actions.py`** — stateless action functions (`execute_checkin_list`, `execute_form_submit`, etc.) shared between CLI commands and the interactive TUI.
 
 This pattern enables code reuse: the CLI command `dailybot form submit` and the interactive menu's "Submit a form" both call the same `execute_form_submit(...)` function. The command module is a thin Click wrapper; the action module contains the logic.

@@ -9,7 +9,7 @@ from dailybot_cli.commands.public_api_helpers import (
     confirm_write,
     emit_json,
     exit_for_api_error,
-    require_bearer_auth,
+    require_auth,
 )
 from dailybot_cli.commands.user_scoped_actions import (
     execute_form_list,
@@ -58,7 +58,7 @@ def form_list(json_mode: bool) -> None:
       dailybot form list
       dailybot form list --json
     """
-    client = require_bearer_auth()
+    client = require_auth()
     execute_form_list(client, json_mode=json_mode)
 
 
@@ -76,7 +76,7 @@ def form_get(form_uuid: str, json_mode: bool) -> None:
       dailybot form get <form_uuid>
       dailybot form get <form_uuid> --json
     """
-    client = require_bearer_auth()
+    client = require_auth()
     try:
         with console.status("Loading form..."):
             data: dict[str, Any] = client.get_form(form_uuid)
@@ -119,7 +119,7 @@ def form_submit(
       dailybot form submit <form_uuid> --content '{"<question_uuid>":"Yes"}'
       dailybot form submit <form_uuid> --content '{"<uuid>":"Answer"}' --yes
     """
-    client = require_bearer_auth()
+    client = require_auth()
     content_map = resolve_form_content(client, form_uuid, content)
     execute_form_submit(
         client,
@@ -156,7 +156,7 @@ def form_responses(
       dailybot form responses <form_uuid> --state qa --json
       dailybot form responses <form_uuid> --latest --json
     """
-    client = require_bearer_auth()
+    client = require_auth()
     try:
         with console.status("Fetching responses..."):
             responses: list[dict[str, Any]] = client.list_form_responses(form_uuid, state=state)
@@ -191,7 +191,7 @@ def form_response_get(form_uuid: str, response_uuid: str, json_mode: bool) -> No
       dailybot form response get <form_uuid> <response_uuid>
       dailybot form response get <form_uuid> <response_uuid> --json
     """
-    client = require_bearer_auth()
+    client = require_auth()
     try:
         with console.status("Loading response..."):
             data: dict[str, Any] = client.get_form_response(form_uuid, response_uuid)
@@ -234,7 +234,7 @@ def form_update(
         --content '{"<question_uuid>": "PR #4242"}'
       dailybot form update <form_uuid> <response_uuid> -c '{...}' --yes --json
     """
-    client = require_bearer_auth()
+    client = require_auth()
     content_map: dict[str, Any] = parse_form_content_json(content)
 
     summary_lines: list[str] = [
@@ -292,7 +292,7 @@ def form_transition(
       dailybot form transition <form_uuid> <response_uuid> qa --note "QA assigned"
       dailybot form transition <form_uuid> <response_uuid> released --json
     """
-    client = require_bearer_auth()
+    client = require_auth()
 
     summary_lines: list[str] = [
         f"Form UUID: {form_uuid}",
@@ -341,7 +341,7 @@ def form_delete(
       dailybot form delete <form_uuid> <response_uuid>
       dailybot form delete <form_uuid> <response_uuid> --yes
     """
-    client = require_bearer_auth()
+    client = require_auth()
 
     summary_lines: list[str] = [
         f"Form UUID: {form_uuid}",

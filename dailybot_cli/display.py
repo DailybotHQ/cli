@@ -32,6 +32,15 @@ def print_info(message: str) -> None:
     console.print(f"[dim]{message}[/dim]")
 
 
+def print_ai_answer(content: str) -> None:
+    """Print a Dailybot AI answer to stdout verbatim.
+
+    Markup interpretation is off and wrapping is soft, so arbitrary AI text
+    (brackets, long lines) survives intact when piped into another tool.
+    """
+    console.print(content, markup=False, highlight=False, soft_wrap=True)
+
+
 def print_interactive_chat_welcome(version: str, session_id: str) -> None:
     """Display the conversational terminal session header."""
     console.print(
@@ -442,6 +451,91 @@ def print_checkin_complete_result(followup_name: str, data: dict[str, Any]) -> N
     response_id: str = str(data.get("uuid") or data.get("id") or "N/A")
     print_success(f'Check-in completed for "{followup_name}"')
     print_info(f"Response ID: {response_id}")
+
+
+def _checkin_uuid(checkin: dict[str, Any]) -> str:
+    """Best-effort check-in identifier (the API mixes uuid / followup_uuid / id)."""
+    return str(checkin.get("uuid") or checkin.get("followup_uuid") or checkin.get("id") or "")
+
+
+def _checkin_name(checkin: dict[str, Any]) -> str:
+    return str(checkin.get("name") or checkin.get("followup_name") or "Check-in")
+
+
+def print_checkin_status_table(checkins: list[dict[str, Any]], *, date_label: str) -> None:
+    """Display each check-in with its pending/completed state for a date."""
+    if not checkins:
+        print_info(f"No check-ins for {date_label}.")
+        return
+    table: Table = Table(title=f"Check-ins — {date_label}", border_style="cyan")
+    table.add_column("Name", style="bold")
+    table.add_column("Status")
+    table.add_column("Followup UUID", style="dim")
+    table.add_column("Questions", justify="right")
+    for checkin in checkins:
+        completed: bool = bool(
+            checkin.get("response_completed")
+            or checkin.get("is_completed")
+            or checkin.get("completed")
+        )
+        status: str = "[green]completed[/green]" if completed else "[yellow]pending[/yellow]"
+        questions: list[Any] = checkin.get("template_questions") or checkin.get("questions") or []
+        table.add_row(
+            _checkin_name(checkin),
+            status,
+            _checkin_uuid(checkin),
+            str(len(questions)) if questions else "—",
+        )
+    console.print(table)
+
+
+def print_checkin_detail(checkin: dict[str, Any], questions: list[dict[str, Any]]) -> None:
+    """Display a check-in's configuration and question definitions."""
+    lines: list[str] = [f"[bold]{_checkin_name(checkin)}[/bold]", f"UUID: {_checkin_uuid(checkin)}"]
+    schedule: dict[str, Any] = checkin.get("schedule") or {}
+    for label, key in (("Frequency", "frequency"), ("Time", "time"), ("Timezone", "timezone")):
+        value: Any = checkin.get(key) or schedule.get(key)
+        if value:
+            lines.append(f"{label}: {value}")
+    console.print(Panel("\n".join(lines), title="Check-in", border_style="cyan"))
+    if not questions:
+        print_info("No questions defined for this check-in.")
+        return
+    table: Table = Table(title="Questions", border_style="cyan")
+    table.add_column("#", justify="right")
+    table.add_column("Question", style="bold")
+    table.add_column("Type")
+    table.add_column("Question UUID", style="dim")
+    for index, question in enumerate(questions):
+        table.add_row(
+            str(index),
+            str(question.get("question") or question.get("text") or ""),
+            str(question.get("question_type") or question.get("type") or "text"),
+            str(question.get("uuid") or question.get("id") or ""),
+        )
+    console.print(table)
+
+
+def print_checkin_history_table(responses: list[dict[str, Any]]) -> None:
+    """Display a check-in's response history over a date range."""
+    if not responses:
+        print_info("No responses found in that range.")
+        return
+    table: Table = Table(title=f"Response history ({len(responses)})", border_style="cyan")
+    table.add_column("Date")
+    table.add_column("Completed")
+    table.add_column("Answers")
+    for response in responses:
+        raw_date: str = str(response.get("response_date") or "")
+        if not raw_date:
+            raw_date = str(response.get("created_at") or "")[:10]
+        completed: str = "yes" if response.get("response_completed") else "no"
+        answers: list[dict[str, Any]] = response.get("responses") or []
+        summary: str = "; ".join(
+            str(answer.get("response") or "") for answer in answers if answer.get("response")
+        )
+        table.add_row(raw_date or "—", completed, (summary[:80] or "—"))
+    console.print(table)
 
 
 def print_forms_table(forms: list[dict[str, Any]]) -> None:

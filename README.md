@@ -93,15 +93,21 @@ dailybot update --done "Auth module" --doing "Tests" --blocked "None"
 
 Run `dailybot` with no arguments to enter **interactive mode** — a grouped menu covering check-ins, forms, kudos, and team browsing. If you're not logged in yet, it walks you through authentication first.
 
-Run `dailybot interactive` to start a Claude-style full-screen terminal chat where you can talk directly to Dailybot:
+Use `dailybot ask` to talk directly to the Dailybot AI. It has two modes, chosen by whether you pass a message:
 
 ```bash
-dailybot interactive
+# One-shot (headless) — prints the answer and exits. Great for agents, CI, and scripts:
+dailybot ask "Summarize my pending check-ins"
+dailybot ask "What forms do I have?" --json
+echo "draft my standup" | dailybot ask
 
-# Opens a Textual chat UI with a transcript pane, prompt box, and footer shortcuts.
+# No message — opens the full-screen Textual chat UI (transcript pane, prompt box, shortcuts):
+dailybot ask
 ```
 
-The chat mode uses your `dailybot login` session and supports control commands: `/help`, `/clear`, `/status`, `/checkins`, `/report`, and `/exit`. It lazy-loads the Textual UI only for this command, so regular CLI commands keep their normal startup path.
+The chat mode uses your `dailybot login` session and supports control commands: `/help`, `/clear`, `/status`, `/checkins`, `/report`, and `/exit`. It lazy-loads the Textual UI only when opening the session, so regular CLI commands keep their normal startup path.
+
+> `dailybot interactive` still works as a **deprecated alias** for `dailybot ask` (chat session), kept for backward-compatibility.
 
 ---
 
@@ -471,7 +477,7 @@ dailybot agent update "Sprint progress" --name "Claude Code" --json-data '{
 }'
 
 # Attach metadata (repo, branch, PR, or any key-value context)
-dailybot agent update "Fixed login bug" --name "Claude Code" --metadata '{"repo": "api-services", "branch": "fix/login", "pr": "#142"}'
+dailybot agent update "Fixed login bug" --name "Claude Code" --metadata '{"repo": "my-service", "branch": "fix/login", "pr": "#142"}'
 
 # Mark a report as a milestone
 dailybot agent update "Shipped v3.0" --milestone --name "Claude Code"

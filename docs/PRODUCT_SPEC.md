@@ -85,7 +85,7 @@ The CLI supports four credential sources, resolved in this order for **agent com
 4. Stored API key (`dailybot config key=...`)
 5. Login session Bearer token (`dailybot login`)
 
-For **human commands** (`status`, `update`, `logout`) and **user-scoped commands** (`checkin`, `form`, `kudos`, `user`), only the login session Bearer token is supported. These commands call `require_bearer_auth()` which checks `get_token()` and exits with code 3 if not logged in.
+Every authenticated command — `status`, `update`, `checkin`, `form`, `kudos`, `team`, `user`, `chat`, and the `agent` group — works with **either** the login session Bearer token **or** an org API key. The server resolves the acting user from the API key's owner, so the two credentials are behaviorally identical. The user-scoped commands call `require_auth()` (and `status` / `update` their own equivalent check), which resolves via `get_agent_auth()` and exits non-zero only when neither credential is present. Only `dailybot logout` and the OTP login flow are inherently tied to a Bearer session.
 
 For **standalone agent registration**, no authentication is required — agents complete a math challenge to prove they're not bots.
 

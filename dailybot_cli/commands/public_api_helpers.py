@@ -9,7 +9,7 @@ import click
 import questionary
 
 from dailybot_cli.api_client import APIError, DailyBotClient
-from dailybot_cli.config import get_token
+from dailybot_cli.config import get_agent_auth
 from dailybot_cli.display import error_console, print_error, print_info
 
 USER_SCOPED_MODEL_HELP: str = (
@@ -50,6 +50,23 @@ ERROR_CODE_MESSAGES: dict[str, str] = {
         "Empty receiver set — `--to` or `--team` must resolve to at least one valid receiver."
     ),
     "no_users_found": "Some users not found or duplicated.",
+    # Check-in response lifecycle
+    "user_is_not_a_followup_member": "You're not a participant in this check-in.",
+    "responses_not_allowed_on_inactive_followup": (
+        "This check-in is inactive — responses aren't allowed."
+    ),
+    "previous_responses_are_not_allowed": (
+        "Backfilling past responses is disabled for this check-in."
+    ),
+    "future_responses_are_not_allowed": ("Future-dated responses are disabled for this check-in."),
+    "followup_not_allow_responses_before_trigger_time": (
+        "It's too early — this check-in isn't open yet (before its trigger time)."
+    ),
+    "not_valid_followup_uuid": "Invalid check-in UUID.",
+    "template_questions_version_conflict": (
+        "The check-in's questions changed since you fetched them. Re-run and try again."
+    ),
+    "response_date_format_is_invalid": "Invalid date. Use YYYY-MM-DD.",
 }
 
 
@@ -63,11 +80,15 @@ UUID_PATTERN: re.Pattern[str] = re.compile(
 )
 
 
-def require_bearer_auth() -> DailyBotClient:
-    """Ensure a CLI Bearer session exists and return a client."""
-    token: str | None = get_token()
-    if not token:
-        print_error("Not logged in. Run: dailybot login")
+def require_auth() -> DailyBotClient:
+    """Ensure a login session or API key exists and return a client.
+
+    User-scoped endpoints accept either a Bearer login token or an org API key,
+    so this helper succeeds under either credential and only fails when neither
+    is present.
+    """
+    if get_agent_auth() is None:
+        print_error("Not authenticated. Run: dailybot login or set DAILYBOT_API_KEY")
         raise SystemExit(EXIT_NOT_AUTHENTICATED)
     return DailyBotClient()
 
@@ -103,7 +124,10 @@ def exit_for_api_error(exc: APIError, json_mode: bool) -> NoReturn:
         message = "Daily kudos limit reached."
         exit_code = EXIT_PERMISSION_DENIED
     elif exc.status_code == 429:
-        message = "Rate limit exceeded (60 requests/minute). Wait and try again."
+        retry_after: float | None = getattr(exc, "retry_after", None)
+        message = "Rate limit exceeded. Wait a moment and try again."
+        if retry_after:
+            message = f"Rate limit exceeded. Try again in {int(retry_after)}s."
         exit_code = EXIT_RATE_LIMITED
     elif exc.status_code == 400:
         message = mapped_message or exc.detail
@@ -118,6 +142,9 @@ def exit_for_api_error(exc: APIError, json_mode: bool) -> NoReturn:
             payload["code"] = code
         if exc.detail and exc.detail != message:
             payload["detail"] = exc.detail
+        retry_after_seconds: float | None = getattr(exc, "retry_after", None)
+        if exc.status_code == 429 and retry_after_seconds is not None:
+            payload["retry_after_seconds"] = int(retry_after_seconds)
         emit_json(payload)
     else:
         print_error(message)
@@ -258,8 +285,17 @@ def resolve_team_by_name_or_uuid(
 
 
 def get_current_user_uuid(client: DailyBotClient) -> str | None:
-    """Return the authenticated user's UUID from auth status, if available."""
-    data: dict[str, Any] = client.auth_status()
+    """Return the authenticated user's UUID from auth status, if available.
+
+    Reads the Bearer-only ``/v1/cli/auth/status/`` endpoint. Under API-key
+    authentication that endpoint rejects the request, so this returns ``None``
+    rather than propagating the error — callers treat an unknown current user as
+    "skip the client-side self-check" and let the server enforce its own rules.
+    """
+    try:
+        data: dict[str, Any] = client.auth_status()
+    except APIError:
+        return None
     user_raw: Any = data.get("user")
     if isinstance(user_raw, dict):
         uuid_value: Any = user_raw.get("uuid")

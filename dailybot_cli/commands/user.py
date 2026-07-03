@@ -2,7 +2,7 @@
 
 import click
 
-from dailybot_cli.commands.public_api_helpers import require_bearer_auth
+from dailybot_cli.commands.public_api_helpers import require_auth
 from dailybot_cli.commands.user_scoped_actions import execute_user_list
 
 
@@ -36,5 +36,5 @@ def user_list(include_inactive: bool, json_mode: bool) -> None:
       dailybot user list --include-inactive
       dailybot user list --json
     """
-    client = require_bearer_auth()
+    client = require_auth()
     execute_user_list(client, json_mode=json_mode, include_inactive=include_inactive)

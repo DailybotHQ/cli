@@ -56,10 +56,11 @@ The single HTTP boundary. Owns:
 - **`DailyBotClient`** — a thin httpx wrapper. Constructor accepts `api_url`, `token`, `api_key`, `timeout` and falls back to `config` lookups when omitted.
 - **`APIError(status_code, detail)`** — every non-2xx response becomes one of these. Command callbacks translate them; raw `httpx` exceptions never reach the user.
 - **Header helpers**:
-  - `_headers(authenticated=True)` — used by **human** endpoints; sends `Authorization: Bearer <token>`.
-  - `_agent_headers()` — used by **agent** endpoints; sends `X-API-KEY` if available, falls back to `Authorization: Bearer <token>`. Tracks the chosen mode in `_agent_auth_mode` so `_handle_response` can produce the right error message on 401/403.
+  - `_headers(authenticated=True)` — used by **human** and **user-scoped** endpoints; prefers `Authorization: Bearer <token>` and falls back to `X-API-KEY` when no login session is present. Tracks the chosen mode in `_agent_auth_mode` so `_handle_response` can produce the right error message on 401/403.
+  - `_agent_headers()` — used by **agent** endpoints; prefers `X-API-KEY` and falls back to `Authorization: Bearer <token>`. Also tracks `_agent_auth_mode`.
+  - The two helpers differ only in credential *preference* (Bearer-first vs. API-key-first); both accept either credential.
 
-**Three auth schemes.** Human endpoints (`/v1/cli/*`) and user-scoped endpoints (`/v1/checkins/*`, `/v1/forms/*`, `/v1/users/`, `/v1/kudos/`) only accept Bearer tokens. Agent endpoints (`/v1/agent*/*`) accept either API key or Bearer. The split is intentional and reflects the platform's security model.
+**Two auth schemes.** Every endpoint the CLI uses — user-scoped (`/v1/checkins/*`, `/v1/forms/*`, `/v1/teams/*`, `/v1/users/`, `/v1/kudos/`), agent (`/v1/agent*/*`), chat (`/v1/send-message/`), the CLI-personal endpoints (`/v1/cli/status/`, `/v1/cli/updates/`), the AI chat (`/v1/cli/chat/completions/`), and the session/identity endpoint (`/v1/cli/auth/status/`) — accepts **either** an org API key (`X-API-KEY`) or a Bearer login token. The server resolves the acting user from the API key's owner, so `X-API-KEY` and Bearer are behaviorally identical. Every CLI command therefore works after `dailybot login` *or* with `DAILYBOT_API_KEY` set — all gated by `require_auth`. The only endpoint that stays Bearer-only is `POST /v1/cli/auth/logout/` (it revokes the session token itself); the OTP request/verify endpoints are the login mechanism.
 
 **Two different timeouts.** Most calls use `self.timeout` (default 30s). The `submit_update` call uses 120s because the AI parsing on the backend can take a while. Add new long-running calls to a named constant rather than inlining a number.
 
@@ -123,7 +124,7 @@ Specific notes per file:
 - **`form.py`** — thin Click group (`list`, `submit`). Delegates to `user_scoped_actions.py`.
 - **`kudos.py`** — thin Click group (`give`). Contains `execute_kudos_give` (the shared handler used by both CLI and interactive mode).
 - **`user.py`** — thin Click group (`list`). Delegates to `user_scoped_actions.py`.
-- **`public_api_helpers.py`** — shared helpers for user-scoped commands: `require_bearer_auth`, `exit_for_api_error`, `confirm_write`, `pick_from_list`, `InteractiveAbort`, `resolve_user_by_name_or_uuid`, exit-code constants. Analogous to `_resolve_agent_context` but for Bearer-only commands.
+- **`public_api_helpers.py`** — shared helpers for user-scoped commands: `require_auth`, `exit_for_api_error`, `confirm_write`, `pick_from_list`, `InteractiveAbort`, `resolve_user_by_name_or_uuid`, exit-code constants. `require_auth` accepts either an API key or a Bearer session (via `get_agent_auth`).
 - **`user_scoped_actions.py`** — shared action logic extracted from command modules. Contains `execute_checkin_list`, `execute_checkin_complete`, `execute_form_list`, `execute_form_submit`, `execute_user_list`, `collect_checkin_answers`, `_prompt_form_answer` (type-aware prompts). Enables code reuse between CLI commands and the interactive TUI.
 - **`config.py`** — minimal get/set/remove for stored settings. Only `key` (→ `api_key`) is currently a known setting; adding new ones is a 1-line `KNOWN_SETTINGS` change.
 - **`interactive.py`** — questionary-based TUI. Calls into `auth._do_login` if not already authenticated; otherwise loops a grouped menu (Check-ins / Forms / Team / Session). Uses stable action IDs (`ACTION_*` constants) dispatched through `_HANDLER_MAP`. Pressing Esc in any sub-prompt raises `InteractiveAbort`, returning to the main menu.
@@ -186,7 +187,7 @@ The codebase uses modern Python typing throughout: `dict[str, Any]`, `list[dict[
 |----------------|-----------|
 | A new command | `dailybot_cli/commands/<name>.py` + register in `main.py` |
 | A subcommand of `agent` | `dailybot_cli/commands/agent.py` (add to one of the sub-groups or as a top-level `@agent.command`) |
-| A new user-scoped command | Thin Click wrapper in `dailybot_cli/commands/<name>.py`, shared logic in `user_scoped_actions.py`, auth via `public_api_helpers.require_bearer_auth()` |
+| A new user-scoped command | Thin Click wrapper in `dailybot_cli/commands/<name>.py`, shared logic in `user_scoped_actions.py`, auth via `public_api_helpers.require_auth()` |
 | A new HTTP endpoint call | `dailybot_cli/api_client.py` (one method per endpoint) |
 | A new rendered output | `dailybot_cli/display.py` (one helper per output shape) |
 | A new on-disk file | `dailybot_cli/config.py` (matching read/write/clear helpers; chmod 0600) |

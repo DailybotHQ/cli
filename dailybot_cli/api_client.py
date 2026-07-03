@@ -12,10 +12,17 @@ _MAX_LIST_PAGES: int = 50  # safety cap for paginated list endpoints
 class APIError(Exception):
     """Raised when the API returns a non-success response."""
 
-    def __init__(self, status_code: int, detail: str, code: str | None = None) -> None:
+    def __init__(
+        self,
+        status_code: int,
+        detail: str,
+        code: str | None = None,
+        retry_after: float | None = None,
+    ) -> None:
         self.status_code: int = status_code
         self.detail: str = detail
         self.code: str | None = code
+        self.retry_after: float | None = retry_after  # seconds, from a 429 Retry-After header
         super().__init__(f"API error {status_code}: {detail}")
 
 
@@ -36,13 +43,23 @@ class DailyBotClient:
         self._agent_auth_mode: str | None = None
 
     def _headers(self, authenticated: bool = True) -> dict[str, str]:
-        """Build request headers."""
+        """Build request headers.
+
+        Prefers the Bearer login token; falls back to the org API key so that
+        user-scoped endpoints (users, teams, forms, kudos, check-ins) work under
+        either credential. The server accepts both on these endpoints.
+        """
         headers: dict[str, str] = {
             "Content-Type": "application/json",
             "Accept": "application/json",
         }
-        if authenticated and self.token:
-            headers["Authorization"] = f"Bearer {self.token}"
+        if authenticated:
+            if self.token:
+                headers["Authorization"] = f"Bearer {self.token}"
+                self._agent_auth_mode = "bearer"
+            elif self.api_key:
+                headers["X-API-KEY"] = self.api_key
+                self._agent_auth_mode = "api_key"
         return headers
 
     def _agent_headers(self) -> dict[str, str]:
@@ -75,7 +92,20 @@ class DailyBotClient:
                 detail = response.text or f"HTTP {response.status_code}"
             if response.status_code in (401, 403) and self._agent_auth_mode == "bearer":
                 detail = "Session expired. Run 'dailybot login' to re-authenticate."
-            raise APIError(status_code=response.status_code, detail=detail, code=code)
+            retry_after: float | None = None
+            if response.status_code == 429:
+                raw_retry: str | None = response.headers.get("Retry-After")
+                if raw_retry:
+                    try:
+                        retry_after = float(raw_retry)
+                    except ValueError:
+                        retry_after = None
+            raise APIError(
+                status_code=response.status_code,
+                detail=detail,
+                code=code,
+                retry_after=retry_after,
+            )
         if response.status_code == 204:
             return {}
         return response.json()
@@ -214,6 +244,164 @@ class DailyBotClient:
             payload["response_date"] = response_date
         response: httpx.Response = httpx.post(
             f"{self.api_url}/v1/checkins/{followup_uuid}/responses/",
+            json=payload,
+            headers=self._headers(),
+            timeout=self.timeout,
+        )
+        return self._handle_response(response)
+
+    def list_checkins(
+        self,
+        *,
+        date: str | None = None,
+        include_summary: bool = False,
+        include_pending_users: bool = False,
+    ) -> list[dict[str, Any]]:
+        """GET /v1/checkins/ — fetch visible check-ins with optional completion state."""
+        results: list[dict[str, Any]] = []
+        params: dict[str, str] = {}
+        if date:
+            params["date"] = date
+        if include_summary:
+            params["include_summary"] = "true"
+        if include_pending_users:
+            params["include_pending_users"] = "true"
+        url: str | None = f"{self.api_url}/v1/checkins/"
+        pages_fetched: int = 0
+        while url is not None and pages_fetched < _MAX_LIST_PAGES:
+            response: httpx.Response = httpx.get(
+                url,
+                headers=self._headers(),
+                params=params if pages_fetched == 0 else None,
+                timeout=self.timeout,
+            )
+            if response.status_code >= 400:
+                self._handle_response(response)
+            body: Any = response.json()
+            if isinstance(body, dict) and "results" in body:
+                results.extend(body.get("results", []))
+                url = body.get("next")
+            elif isinstance(body, list):
+                results.extend(body)
+                url = None
+            else:
+                url = None
+            pages_fetched += 1
+        return results
+
+    def get_checkin(self, followup_uuid: str) -> dict[str, Any]:
+        """GET /v1/checkins/<followup_uuid>/."""
+        response: httpx.Response = httpx.get(
+            f"{self.api_url}/v1/checkins/{followup_uuid}/",
+            headers=self._headers(),
+            timeout=self.timeout,
+        )
+        return self._handle_response(response)
+
+    def get_template(
+        self,
+        template_uuid: str,
+        *,
+        followup_uuid: str | None = None,
+    ) -> dict[str, Any]:
+        """GET /v1/templates/<template_uuid>/ — template question definitions."""
+        params: dict[str, str] = {}
+        if followup_uuid:
+            params = {"render_special_vars": "true", "followup_id": followup_uuid}
+        response: httpx.Response = httpx.get(
+            f"{self.api_url}/v1/templates/{template_uuid}/",
+            headers=self._headers(),
+            params=params,
+            timeout=self.timeout,
+        )
+        return self._handle_response(response)
+
+    def list_checkin_responses(
+        self,
+        followup_uuid: str,
+        *,
+        date_start: str | None = None,
+        date_end: str | None = None,
+    ) -> list[dict[str, Any]]:
+        """GET /v1/checkins/<followup_uuid>/responses/."""
+        params: dict[str, str] = {}
+        if date_start:
+            params["date_start"] = date_start
+        if date_end:
+            params["date_end"] = date_end
+        response: httpx.Response = httpx.get(
+            f"{self.api_url}/v1/checkins/{followup_uuid}/responses/",
+            headers=self._headers(),
+            params=params,
+            timeout=self.timeout,
+        )
+        if response.status_code >= 400:
+            self._handle_response(response)
+        body: Any = response.json()
+        if isinstance(body, dict) and "results" in body:
+            return list(body.get("results", []))
+        if isinstance(body, list):
+            return body
+        return []
+
+    def update_checkin_response(
+        self,
+        followup_uuid: str,
+        responses: list[dict[str, Any]],
+        last_question_index: int | None = None,
+    ) -> dict[str, Any]:
+        """PUT /v1/checkins/<followup_uuid>/responses/ — update today's response."""
+        payload: dict[str, Any] = {"responses": responses}
+        if last_question_index is not None:
+            payload["last_question_index"] = last_question_index
+        response: httpx.Response = httpx.put(
+            f"{self.api_url}/v1/checkins/{followup_uuid}/responses/",
+            json=payload,
+            headers=self._headers(),
+            timeout=self.timeout,
+        )
+        return self._handle_response(response)
+
+    def delete_checkin_response(
+        self,
+        followup_uuid: str,
+        *,
+        response_date: str | None = None,
+    ) -> dict[str, Any]:
+        """DELETE /v1/checkins/<followup_uuid>/responses/ — reset a submitted response."""
+        params: dict[str, str] = {}
+        if response_date:
+            params["date_start"] = response_date
+            params["date_end"] = response_date
+        response: httpx.Response = httpx.request(
+            "DELETE",
+            f"{self.api_url}/v1/checkins/{followup_uuid}/responses/",
+            headers=self._headers(),
+            params=params,
+            timeout=self.timeout,
+        )
+        return self._handle_response(response)
+
+    def get_mood(self, mood_date: str | None = None) -> dict[str, Any]:
+        """GET /v1/mood/track/ — fetch today's mood response."""
+        params: dict[str, str] = {}
+        if mood_date:
+            params["date"] = mood_date
+        response: httpx.Response = httpx.get(
+            f"{self.api_url}/v1/mood/track/",
+            headers=self._headers(),
+            params=params,
+            timeout=self.timeout,
+        )
+        return self._handle_response(response)
+
+    def track_mood(self, score: int, mood_date: str | None = None) -> dict[str, Any]:
+        """POST /v1/mood/track/ — record a mood score."""
+        payload: dict[str, Any] = {"score": score}
+        if mood_date:
+            payload["date"] = mood_date
+        response: httpx.Response = httpx.post(
+            f"{self.api_url}/v1/mood/track/",
             json=payload,
             headers=self._headers(),
             timeout=self.timeout,
@@ -377,14 +565,19 @@ class DailyBotClient:
     ) -> dict[str, Any]:
         """POST /v1/kudos/
 
-        At least one of ``user_uuid_receivers`` or ``team_uuid_receivers`` must
-        be non-empty — the backend rejects an empty receiver set.
+        Sends the canonical ``receivers`` list (users + teams merged, for
+        validation) plus the type-specific ``users_receivers`` / ``teams_receivers``
+        lists the server uses to expand teams into their members. At least one
+        receiver must be present — the backend rejects an empty set.
         """
         payload: dict[str, Any] = {"content": content}
+        receivers: list[str] = [*(user_uuid_receivers or []), *(team_uuid_receivers or [])]
+        if receivers:
+            payload["receivers"] = receivers
         if user_uuid_receivers:
-            payload["user_uuid_receivers"] = user_uuid_receivers
+            payload["users_receivers"] = user_uuid_receivers
         if team_uuid_receivers:
-            payload["team_uuid_receivers"] = team_uuid_receivers
+            payload["teams_receivers"] = team_uuid_receivers
         if company_value:
             payload["company_value"] = company_value
         response: httpx.Response = httpx.post(

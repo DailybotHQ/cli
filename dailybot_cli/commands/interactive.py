@@ -39,6 +39,7 @@ from dailybot_cli.display import (
 )
 
 # Stable action IDs — dispatch is keyed on these, never on display strings.
+ACTION_ASK_AI: str = "ask.ai"
 ACTION_CHECKIN_COMPLETE: str = "checkin.complete"
 ACTION_CHECKIN_UPDATE: str = "checkin.update"
 ACTION_FORM_LIST: str = "form.list"
@@ -53,6 +54,8 @@ ACTION_EXIT: str = "exit"
 _I: str = "  "  # indent for action items — 2 spaces under each section header
 
 MENU_CHOICES: list[Choice | Separator] = [
+    Separator("Dailybot AI"),
+    Choice(_I + "Ask the Dailybot AI (opens chat)", value=ACTION_ASK_AI),
     Separator("Check-ins"),
     Choice(_I + "Complete pending check-ins", value=ACTION_CHECKIN_COMPLETE),
     Choice(_I + "Send free-text update", value=ACTION_CHECKIN_UPDATE),
@@ -72,6 +75,7 @@ MENU_CHOICES: list[Choice | Separator] = [
 
 # Action → handler lookup — keeps run_interactive() free of long if/elif chains.
 _HANDLER_MAP: dict[str, str] = {
+    ACTION_ASK_AI: "_ask_ai",
     ACTION_CHECKIN_COMPLETE: "_fill_pending_checkins",
     ACTION_CHECKIN_UPDATE: "_send_update",
     ACTION_FORM_LIST: "_list_forms",
@@ -180,6 +184,17 @@ def run_interactive() -> None:
             handler(client)
         except InteractiveAbort:
             _return_to_menu()
+
+
+def _ask_ai(client: DailyBotClient) -> None:
+    """Open the full-screen Dailybot AI chat; control returns to the menu on exit.
+
+    A discovery hook for `dailybot ask` — a menu user finds the AI chat here, and
+    leaving the chat (``/exit``) drops back into this menu loop.
+    """
+    from dailybot_cli.commands.interactive_chat import launch_chat_tui
+
+    launch_chat_tui(client)
 
 
 def _fill_pending_checkins(client: DailyBotClient) -> None:

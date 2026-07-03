@@ -5,7 +5,7 @@ from typing import Any
 import click
 
 from dailybot_cli.api_client import APIError, DailyBotClient
-from dailybot_cli.config import get_api_key, get_token
+from dailybot_cli.config import get_agent_auth, get_api_key, get_token
 from dailybot_cli.display import (
     console,
     print_auth_status,
@@ -69,9 +69,8 @@ def status(auth: bool) -> None:
         _check_auth()
         return
 
-    token: str | None = get_token()
-    if not token:
-        print_error("Not logged in. Run: dailybot login")
+    if get_agent_auth() is None:
+        print_error("Not authenticated. Run: dailybot login or set DAILYBOT_API_KEY")
         raise SystemExit(1)
 
     client: DailyBotClient = DailyBotClient()
@@ -82,7 +81,7 @@ def status(auth: bool) -> None:
         print_pending_checkins(checkins)
     except APIError as e:
         if e.status_code in (401, 403):
-            print_error("Session expired. Please log in again: dailybot login")
+            print_error("Authentication failed. Run: dailybot login or check DAILYBOT_API_KEY")
         else:
             print_error(e.detail)
         raise SystemExit(1)

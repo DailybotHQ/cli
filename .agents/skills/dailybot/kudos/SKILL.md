@@ -23,9 +23,9 @@ Two recipient types are supported:
 
 ## Auth model — user-scoped commands
 
-Kudos commands require a **Bearer token** (user session), not an API key. The developer must be logged in via `dailybot login`. This scopes kudos to the logged-in human — the kudos appear as coming from them, not from an agent.
+Kudos commands accept **either** a Bearer login session (`dailybot login`) **or** an org API key (`DAILYBOT_API_KEY`). Kudos are scoped to the acting identity — the server resolves the API key's owner, so they appear as coming from that user.
 
-If the developer only has an API key (`DAILYBOT_API_KEY`), guide them through `dailybot login` first. API keys authenticate agent-scoped endpoints (`dailybot agent ...`), not user-scoped ones.
+If the developer has only an API key, kudos still work — the CLI falls back to `X-API-KEY`. Prefer `dailybot login` when the developer wants the kudos attributed to their own human account.
 
 ---
 
@@ -53,13 +53,13 @@ Do **not** send kudos autonomously without the developer's explicit request. Kud
 
 Read and follow the authentication steps in [`../shared/auth.md`](../shared/auth.md). That file covers CLI installation, login, API key setup, and agent profile configuration.
 
-**Additionally**, verify the developer has a user session (Bearer token):
+**Additionally**, confirm at least one credential is present (a Bearer login session or an API key):
 
 ```bash
 dailybot status --auth 2>&1
 ```
 
-If the output shows a logged-in user session, proceed. If not, guide them through `dailybot login` (see auth.md for the OTP flow).
+If the output shows a logged-in user session **or** a configured API key, proceed. Otherwise guide them through `dailybot login` (see auth.md for the OTP flow) or ask them to set `DAILYBOT_API_KEY`.
 
 If auth fails or the developer declines, skip and continue with your primary task.
 
@@ -292,7 +292,7 @@ Agent:
 
 See [`../shared/http-fallback.md`](../shared/http-fallback.md) for base patterns.
 
-**Important:** Kudos endpoints use **Bearer token** auth, not API key auth.
+**Important:** Kudos endpoints accept **either** Bearer token or `X-API-KEY` auth.
 
 ### List teams (to resolve team names)
 
