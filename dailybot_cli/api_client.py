@@ -250,15 +250,29 @@ class DailyBotClient:
         )
         return self._handle_response(response)
 
-    def list_checkins(self) -> list[dict[str, Any]]:
-        """GET /v1/checkins/ — fetch visible check-ins."""
+    def list_checkins(
+        self,
+        *,
+        date: str | None = None,
+        include_summary: bool = False,
+        include_pending_users: bool = False,
+    ) -> list[dict[str, Any]]:
+        """GET /v1/checkins/ — fetch visible check-ins with optional completion state."""
         results: list[dict[str, Any]] = []
+        params: dict[str, str] = {}
+        if date:
+            params["date"] = date
+        if include_summary:
+            params["include_summary"] = "true"
+        if include_pending_users:
+            params["include_pending_users"] = "true"
         url: str | None = f"{self.api_url}/v1/checkins/"
         pages_fetched: int = 0
         while url is not None and pages_fetched < _MAX_LIST_PAGES:
             response: httpx.Response = httpx.get(
                 url,
                 headers=self._headers(),
+                params=params if pages_fetched == 0 else None,
                 timeout=self.timeout,
             )
             if response.status_code >= 400:

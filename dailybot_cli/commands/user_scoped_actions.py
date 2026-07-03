@@ -1,6 +1,7 @@
 """Shared handlers for user-scoped public API commands and interactive mode."""
 
 import json
+from datetime import date as date_cls, timedelta
 from typing import Any
 
 import click
@@ -20,12 +21,16 @@ from dailybot_cli.commands.public_api_helpers import (
 from dailybot_cli.display import (
     console,
     print_checkin_complete_result,
+    print_checkin_detail,
+    print_checkin_history_table,
     print_checkin_list_overview,
+    print_checkin_status_table,
     print_error,
     print_form_submit_result,
     print_forms_table,
     print_info,
     print_pending_checkins,
+    print_success,
     print_users_table,
 )
 
@@ -535,3 +540,200 @@ def execute_user_list(
 
     print_users_table(users)
     return users
+
+
+def _template_uuid(checkin: dict[str, Any]) -> str:
+    """Best-effort template UUID from a check-in detail payload."""
+    template: Any = checkin.get("template")
+    if isinstance(template, dict):
+        return str(template.get("uuid") or template.get("id") or "")
+    return str(checkin.get("template_uuid") or template or "")
+
+
+def execute_checkin_status(
+    client: DailyBotClient,
+    *,
+    date: str | None = None,
+    json_mode: bool = False,
+) -> None:
+    """Show pending/completed state for check-ins on a date (default today)."""
+    try:
+        with console.status("Fetching check-ins..."):
+            checkins: list[dict[str, Any]] = client.list_checkins(date=date, include_summary=True)
+    except APIError as exc:
+        exit_for_api_error(exc, json_mode)
+
+    if json_mode:
+        emit_json({"date": date or "today", "count": len(checkins), "checkins": checkins})
+        return
+    print_checkin_status_table(checkins, date_label=date or "today")
+
+
+def execute_checkin_show(
+    client: DailyBotClient,
+    followup_uuid: str,
+    *,
+    json_mode: bool = False,
+) -> None:
+    """Show a check-in's configuration and question definitions."""
+    try:
+        with console.status("Loading check-in..."):
+            checkin: dict[str, Any] = client.get_checkin(followup_uuid)
+            questions: list[dict[str, Any]] = []
+            template_uuid: str = _template_uuid(checkin)
+            if template_uuid:
+                template: dict[str, Any] = client.get_template(
+                    template_uuid, followup_uuid=followup_uuid
+                )
+                raw_questions: Any = template.get("questions") or template.get("template_questions")
+                if isinstance(raw_questions, list):
+                    questions = raw_questions
+    except APIError as exc:
+        exit_for_api_error(exc, json_mode)
+
+    if json_mode:
+        emit_json({"checkin": checkin, "questions": questions})
+        return
+    print_checkin_detail(checkin, questions)
+
+
+def execute_checkin_history(
+    client: DailyBotClient,
+    followup_uuid: str,
+    *,
+    days: int | None = None,
+    date_from: str | None = None,
+    date_to: str | None = None,
+    json_mode: bool = False,
+) -> None:
+    """Show a check-in's response history over a date range."""
+    date_start: str | None = date_from
+    date_end: str | None = date_to
+    if days is not None:
+        today: date_cls = date_cls.today()
+        date_end = today.isoformat()
+        date_start = (today - timedelta(days=max(days - 1, 0))).isoformat()
+    try:
+        with console.status("Fetching response history..."):
+            responses: list[dict[str, Any]] = client.list_checkin_responses(
+                followup_uuid, date_start=date_start, date_end=date_end
+            )
+    except APIError as exc:
+        exit_for_api_error(exc, json_mode)
+
+    if json_mode:
+        emit_json(
+            {
+                "count": len(responses),
+                "date_start": date_start,
+                "date_end": date_end,
+                "responses": responses,
+            }
+        )
+        return
+    print_checkin_history_table(responses)
+
+
+def execute_checkin_reset(
+    client: DailyBotClient,
+    followup_uuid: str,
+    *,
+    response_date: str | None = None,
+    assume_yes: bool = False,
+    json_mode: bool = False,
+) -> None:
+    """Delete (reset) the caller's own check-in response for a date."""
+    target: str = response_date or "today"
+    if not json_mode:
+        confirm_write([f"Delete your check-in response for {target}? This cannot be undone."], assume_yes)
+    try:
+        with console.status("Deleting response..."):
+            result: dict[str, Any] = client.delete_checkin_response(
+                followup_uuid, response_date=response_date
+            )
+    except APIError as exc:
+        exit_for_api_error(exc, json_mode)
+
+    if json_mode:
+        emit_json(result if isinstance(result, dict) else {"deleted": True})
+        return
+    deleted_count: Any = result.get("deleted_count") if isinstance(result, dict) else None
+    if deleted_count:
+        print_success(f"Deleted {deleted_count} response(s) for {target}.")
+    else:
+        print_success(f"Reset check-in response for {target}.")
+
+
+def execute_checkin_edit(
+    client: DailyBotClient,
+    followup_uuid: str,
+    *,
+    answer_flags: tuple[str, ...] = (),
+    response_date: str | None = None,
+    assume_yes: bool = False,
+    json_mode: bool = False,
+    interactive: bool = False,
+) -> None:
+    """Edit an existing check-in response (override answers, then PUT)."""
+    try:
+        with console.status("Loading current response..."):
+            existing: list[dict[str, Any]] = client.list_checkin_responses(
+                followup_uuid, date_start=response_date, date_end=response_date
+            )
+    except APIError as exc:
+        exit_for_api_error(exc, json_mode)
+
+    if not existing:
+        message: str = "No existing response to edit. Use `dailybot checkin complete` to create one."
+        if json_mode:
+            emit_json({"error": message, "status": 0})
+        else:
+            print_error(message)
+        raise SystemExit(EXIT_USAGE_ERROR)
+
+    answers: list[dict[str, Any]] = existing[0].get("responses") or []
+    try:
+        overrides: dict[int, str] = parse_answer_flags(answer_flags)
+    except ValueError as exc:
+        if json_mode:
+            emit_json({"error": str(exc), "status": 0})
+        else:
+            print_error(str(exc))
+        raise SystemExit(EXIT_USAGE_ERROR) from exc
+
+    new_responses: list[dict[str, Any]] = []
+    for index, answer in enumerate(answers):
+        current: Any = answer.get("response")
+        if index in overrides:
+            value: Any = overrides[index]
+        elif interactive and not json_mode:
+            prompt: str = str(answer.get("question") or f"Question {index}")
+            reply: str | None = questionary.text(f"{prompt}", default=str(current or "")).ask()
+            if reply is None:
+                raise InteractiveAbort()
+            value = reply
+        else:
+            value = current
+        new_responses.append(
+            {"uuid": answer.get("uuid"), "index": index, "response": value}
+        )
+
+    if not new_responses:
+        print_error("This response has no answers to edit.")
+        raise SystemExit(EXIT_USAGE_ERROR)
+
+    if not json_mode and not interactive:
+        confirm_write([f"Update your check-in response for {response_date or 'today'}?"], assume_yes)
+
+    try:
+        with console.status("Updating response..."):
+            result: dict[str, Any] = client.update_checkin_response(
+                followup_uuid, new_responses, last_question_index=len(new_responses) - 1
+            )
+    except APIError as exc:
+        exit_for_api_error(exc, json_mode)
+
+    if json_mode:
+        emit_json(result if isinstance(result, dict) else {"updated": True})
+        return
+    print_success(f"Updated check-in response for {response_date or 'today'}.")

@@ -1097,3 +1097,103 @@ class TestGetCurrentUserUuid:
         client: MagicMock = MagicMock()
         client.auth_status.side_effect = APIError(401, "Authentication credentials were not provided.")
         assert get_current_user_uuid(client) is None
+
+
+class TestCheckinExtendedCommands:
+    def _client(self, mock_client_cls: MagicMock, mock_get_auth: MagicMock) -> MagicMock:
+        mock_get_auth.return_value = "tok"
+        return mock_client_cls.return_value
+
+    @patch("dailybot_cli.commands.public_api_helpers.get_agent_auth")
+    @patch("dailybot_cli.commands.public_api_helpers.DailyBotClient")
+    def test_checkin_status_json(
+        self, mock_client_cls: MagicMock, mock_get_auth: MagicMock, runner: CliRunner
+    ) -> None:
+        client: MagicMock = self._client(mock_client_cls, mock_get_auth)
+        client.list_checkins.return_value = [
+            {"uuid": "f1", "name": "Standup", "response_completed": False, "template_questions": [{}]}
+        ]
+        result = runner.invoke(cli, ["checkin", "status", "--json"])
+        assert result.exit_code == 0
+        payload: dict[str, Any] = json.loads(result.output)
+        assert payload["count"] == 1
+        client.list_checkins.assert_called_once_with(date=None, include_summary=True)
+
+    @patch("dailybot_cli.commands.public_api_helpers.get_agent_auth")
+    @patch("dailybot_cli.commands.public_api_helpers.DailyBotClient")
+    def test_checkin_show_json(
+        self, mock_client_cls: MagicMock, mock_get_auth: MagicMock, runner: CliRunner
+    ) -> None:
+        client: MagicMock = self._client(mock_client_cls, mock_get_auth)
+        client.get_checkin.return_value = {"uuid": "f1", "name": "Standup", "template": {"uuid": "t1"}}
+        client.get_template.return_value = {
+            "questions": [{"uuid": "q1", "question": "Done?", "question_type": "text_field"}]
+        }
+        result = runner.invoke(cli, ["checkin", "show", "f1", "--json"])
+        assert result.exit_code == 0
+        payload: dict[str, Any] = json.loads(result.output)
+        assert payload["questions"][0]["uuid"] == "q1"
+        client.get_template.assert_called_once_with("t1", followup_uuid="f1")
+
+    @patch("dailybot_cli.commands.public_api_helpers.get_agent_auth")
+    @patch("dailybot_cli.commands.public_api_helpers.DailyBotClient")
+    def test_checkin_history_days_json(
+        self, mock_client_cls: MagicMock, mock_get_auth: MagicMock, runner: CliRunner
+    ) -> None:
+        client: MagicMock = self._client(mock_client_cls, mock_get_auth)
+        client.list_checkin_responses.return_value = [
+            {"response_date": "2026-07-01", "response_completed": True, "responses": []}
+        ]
+        result = runner.invoke(cli, ["checkin", "history", "f1", "--days", "7", "--json"])
+        assert result.exit_code == 0
+        payload: dict[str, Any] = json.loads(result.output)
+        assert payload["count"] == 1
+        client.list_checkin_responses.assert_called_once()
+
+    @patch("dailybot_cli.commands.public_api_helpers.get_agent_auth")
+    @patch("dailybot_cli.commands.public_api_helpers.DailyBotClient")
+    def test_checkin_reset_json_skips_confirm(
+        self, mock_client_cls: MagicMock, mock_get_auth: MagicMock, runner: CliRunner
+    ) -> None:
+        client: MagicMock = self._client(mock_client_cls, mock_get_auth)
+        client.delete_checkin_response.return_value = {"deleted": True, "deleted_count": 1}
+        result = runner.invoke(cli, ["checkin", "reset", "f1", "--json"])
+        assert result.exit_code == 0
+        payload: dict[str, Any] = json.loads(result.output)
+        assert payload["deleted_count"] == 1
+        client.delete_checkin_response.assert_called_once_with("f1", response_date=None)
+
+    @patch("dailybot_cli.commands.public_api_helpers.get_agent_auth")
+    @patch("dailybot_cli.commands.public_api_helpers.DailyBotClient")
+    def test_checkin_edit_overrides_answer(
+        self, mock_client_cls: MagicMock, mock_get_auth: MagicMock, runner: CliRunner
+    ) -> None:
+        client: MagicMock = self._client(mock_client_cls, mock_get_auth)
+        client.list_checkin_responses.return_value = [
+            {
+                "responses": [
+                    {"uuid": "q1", "index": 0, "response": "old"},
+                    {"uuid": "q2", "index": 1, "response": "keep"},
+                ]
+            }
+        ]
+        client.update_checkin_response.return_value = {"uuid": "r1"}
+        result = runner.invoke(cli, ["checkin", "edit", "f1", "-a", "0=new", "--json"])
+        assert result.exit_code == 0
+        new_responses: list[dict[str, Any]] = client.update_checkin_response.call_args.args[1]
+        assert new_responses[0]["response"] == "new"
+        assert new_responses[1]["response"] == "keep"
+
+    @patch("dailybot_cli.commands.public_api_helpers.get_agent_auth")
+    @patch("dailybot_cli.commands.public_api_helpers.DailyBotClient")
+    def test_checkin_reset_maps_backfill_error_code(
+        self, mock_client_cls: MagicMock, mock_get_auth: MagicMock, runner: CliRunner
+    ) -> None:
+        client: MagicMock = self._client(mock_client_cls, mock_get_auth)
+        client.delete_checkin_response.side_effect = APIError(
+            409, "nope", code="previous_responses_are_not_allowed"
+        )
+        result = runner.invoke(cli, ["checkin", "reset", "f1", "--json"])
+        payload: dict[str, Any] = json.loads(result.output)
+        assert payload["status"] == 409
+        assert payload["code"] == "previous_responses_are_not_allowed"

@@ -129,6 +129,28 @@ Completes a pending check-in.
 
 Interactive path: prompts each question using type-aware inputs (text, numeric, boolean, choice). Non-interactive path requires all `--answer` flags matching the question count.
 
+#### `dailybot checkin status [--date YYYY-MM-DD] [--json]`
+
+Shows each check-in with its pending/completed state for a date (default today). Calls `GET /v1/checkins/?date=...&include_summary=true`.
+
+#### `dailybot checkin show <followup_uuid> [--json]`
+
+Introspects a check-in's configuration and question definitions. Calls `GET /v1/checkins/<uuid>/` + `GET /v1/templates/<template_uuid>/?render_special_vars=true&followup_id=<uuid>`.
+
+#### `dailybot checkin history <followup_uuid> [--days N | --from YYYY-MM-DD --to YYYY-MM-DD] [--json]`
+
+Lists your response history for a check-in over a date range. Calls `GET /v1/checkins/<uuid>/responses/?date_start=...&date_end=...`.
+
+#### `dailybot checkin edit <followup_uuid> [-a index=response]... [--date YYYY-MM-DD] [--yes] [--json]`
+
+Edits an existing response: fetches it (`GET .../responses/`), applies `-a` overrides (or prompts each question with the current answer as default when a terminal is attached), then `PUT /v1/checkins/<uuid>/responses/`.
+
+#### `dailybot checkin reset <followup_uuid> [--date YYYY-MM-DD] [--yes] [--json]`
+
+Deletes (resets) your own response for a day via `DELETE /v1/checkins/<uuid>/responses/`. Confirms first unless `--yes` (or `--json`).
+
+> **Backfill / future-dating:** `complete` (`--response-date`), `edit`/`reset`/`history` (`--date` / range) target other days. The server may reject with `previous_responses_are_not_allowed` / `future_responses_are_not_allowed` / `followup_not_allow_responses_before_trigger_time` if the check-in disallows it — the CLI maps these `code`s to friendly messages.
+
 ---
 
 ### `dailybot form` (group) — user-scoped, Bearer or API key auth

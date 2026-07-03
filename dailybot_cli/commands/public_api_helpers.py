@@ -50,6 +50,25 @@ ERROR_CODE_MESSAGES: dict[str, str] = {
         "Empty receiver set — `--to` or `--team` must resolve to at least one valid receiver."
     ),
     "no_users_found": "Some users not found or duplicated.",
+    # Check-in response lifecycle
+    "user_is_not_a_followup_member": "You're not a participant in this check-in.",
+    "responses_not_allowed_on_inactive_followup": (
+        "This check-in is inactive — responses aren't allowed."
+    ),
+    "previous_responses_are_not_allowed": (
+        "Backfilling past responses is disabled for this check-in."
+    ),
+    "future_responses_are_not_allowed": (
+        "Future-dated responses are disabled for this check-in."
+    ),
+    "followup_not_allow_responses_before_trigger_time": (
+        "It's too early — this check-in isn't open yet (before its trigger time)."
+    ),
+    "not_valid_followup_uuid": "Invalid check-in UUID.",
+    "template_questions_version_conflict": (
+        "The check-in's questions changed since you fetched them. Re-run and try again."
+    ),
+    "response_date_format_is_invalid": "Invalid date. Use YYYY-MM-DD.",
 }
 
 

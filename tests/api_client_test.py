@@ -790,3 +790,30 @@ class TestHeadersDualAuth:
         headers = client._headers(authenticated=False)
         assert "Authorization" not in headers
         assert "X-API-KEY" not in headers
+
+
+class TestDailyBotClientCheckinsExtended:
+    def test_list_checkins_sends_summary_params(self, client: DailyBotClient) -> None:
+        mock_response: MagicMock = MagicMock(spec=httpx.Response)
+        mock_response.status_code = 200
+        mock_response.json.return_value = {"results": [], "next": None}
+
+        with patch("httpx.get", return_value=mock_response) as mock_get:
+            client.list_checkins(date="2026-07-01", include_summary=True)
+
+        call_kwargs: dict[str, Any] = mock_get.call_args[1]
+        assert call_kwargs["params"] == {"date": "2026-07-01", "include_summary": "true"}
+
+    def test_delete_checkin_response_uses_date_range(self, client: DailyBotClient) -> None:
+        mock_response: MagicMock = MagicMock(spec=httpx.Response)
+        mock_response.status_code = 200
+        mock_response.json.return_value = {"deleted": True, "deleted_count": 1}
+
+        with patch("httpx.request", return_value=mock_response) as mock_request:
+            result: dict[str, Any] = client.delete_checkin_response(
+                "followup-uuid", response_date="2026-07-01"
+            )
+
+        call_kwargs: dict[str, Any] = mock_request.call_args[1]
+        assert call_kwargs["params"] == {"date_start": "2026-07-01", "date_end": "2026-07-01"}
+        assert result["deleted_count"] == 1
