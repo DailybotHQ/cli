@@ -634,6 +634,19 @@ The public URL `https://cli.dailybot.com/install.sh` is a **Cloudflare 301 redir
 
 **Be deliberate** when editing `install.sh` — there is no staging step between merge and rollout. Test the script locally (`bash install.sh` from a checkout, or `curl -sSL https://raw.githubusercontent.com/DailyBotHQ/cli/<branch>/install.sh | bash` on a feature branch) before merging.
 
+### Pinning a specific version
+
+Both installers default to the **latest** release but accept an explicit version, so users (and CI) can reproduce a known-good install:
+
+| Method | How to pin | Applied as |
+|--------|-----------|-----------|
+| `pip` | `pip install dailybot-cli==<version>` | pip requirement specifier |
+| Homebrew | not supported — fall back to `pip install dailybot-cli==<version>` | (brew installs latest formula only) |
+| `install.sh` | `DAILYBOT_VERSION=<version>` env var **or** `bash -s -- --version <version>` | pinned Linux binary tag `v<version>`, falling back to `pip install dailybot-cli==<version>` |
+| `install.ps1` | `$env:DAILYBOT_VERSION = '<version>'` (piping to `iex` cannot forward args) | `pipx` / `uv tool` / `pip --user` install of `dailybot-cli==<version>` |
+
+Both scripts validate the value against `^[0-9A-Za-z.+-]+$` before it reaches any `pip`/URL command, so a malformed or hostile `DAILYBOT_VERSION` aborts the install instead of being interpolated. An empty/unset value means "latest". The README documents the user-facing commands for each method.
+
 ### `install.sh.sha256` (supply-chain verification)
 
 Consumers like [`DailyBotHQ/agent-skill`](https://github.com/DailyBotHQ/agent-skill) verify `install.sh` against a SHA-256 sidecar before executing it:

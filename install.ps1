@@ -19,6 +19,12 @@ $Package    = 'dailybot-cli'
 $Command    = 'dailybot'
 $MinPython  = [version]'3.10'
 
+# Install a specific version instead of the latest by setting the
+# DAILYBOT_VERSION environment variable before running the script:
+#   $env:DAILYBOT_VERSION = '1.15.0'; irm https://cli.dailybot.com/install.ps1 | iex
+# An empty value means "install the latest published version".
+$Version    = $env:DAILYBOT_VERSION
+
 function Write-Info    { param([string]$msg) Write-Host "==> $msg" -ForegroundColor Cyan }
 function Write-Ok      { param([string]$msg) Write-Host "==> $msg" -ForegroundColor Green }
 function Write-Warn    { param([string]$msg) Write-Host "==> $msg" -ForegroundColor Yellow }
@@ -27,6 +33,12 @@ function Write-Err     { param([string]$msg) Write-Host "Error: $msg" -Foregroun
 function Has-Cmd {
     param([string]$name)
     return $null -ne (Get-Command $name -ErrorAction SilentlyContinue)
+}
+
+function Get-PackageSpec {
+    # "dailybot-cli" or "dailybot-cli==<version>" when a version is pinned.
+    if ($Version) { return "$Package==$Version" }
+    return $Package
 }
 
 function Find-Python {
@@ -64,16 +76,17 @@ function Invoke-Python {
 
 function Try-Pipx {
     param([hashtable]$Python)
+    $spec = Get-PackageSpec
     if (Has-Cmd 'pipx') {
         Write-Info "Installing with pipx..."
-        & pipx install $Package --force
+        & pipx install $spec --force
         return $?
     }
     # pipx not on PATH — try invoking it via Python module if installed
     Invoke-Python $Python @('-m', 'pipx', '--version') *>$null
     if ($LASTEXITCODE -eq 0) {
         Write-Info "Installing with python -m pipx..."
-        Invoke-Python $Python @('-m', 'pipx', 'install', $Package, '--force')
+        Invoke-Python $Python @('-m', 'pipx', 'install', $spec, '--force')
         return $?
     }
     return $false
@@ -82,7 +95,7 @@ function Try-Pipx {
 function Try-UvTool {
     if (Has-Cmd 'uv') {
         Write-Info "Installing with uv tool..."
-        & uv tool install $Package --force
+        & uv tool install (Get-PackageSpec) --force
         return $?
     }
     return $false
@@ -91,7 +104,7 @@ function Try-UvTool {
 function Try-PipUser {
     param([hashtable]$Python)
     Write-Info "Installing with pip --user..."
-    Invoke-Python $Python @('-m', 'pip', 'install', '--user', '--upgrade', $Package)
+    Invoke-Python $Python @('-m', 'pip', 'install', '--user', '--upgrade', (Get-PackageSpec))
     return $?
 }
 
@@ -118,6 +131,16 @@ function Add-LocalBinToPath {
 }
 
 # === Main =================================================================
+
+if ($Version) {
+    # Reject anything that is not a plain version token so it cannot be
+    # smuggled into the pip spec.
+    if ($Version -notmatch '^[0-9A-Za-z.+-]+$') {
+        Write-Err "Invalid version '$Version'. Expected a version like 1.15.0."
+        exit 1
+    }
+    Write-Info "Requested Dailybot CLI version: $Version"
+}
 
 Write-Info "Detecting Python..."
 $py = Find-Python
@@ -150,9 +173,9 @@ if (-not $installed) {
     Write-Err "All installation methods failed."
     Write-Host ""
     Write-Host "  Try manually:"
-    Write-Host "    pipx install $Package"
+    Write-Host "    pipx install $(Get-PackageSpec)"
     Write-Host "    # or"
-    Write-Host "    pip install --user $Package"
+    Write-Host "    pip install --user $(Get-PackageSpec)"
     exit 1
 }
 
