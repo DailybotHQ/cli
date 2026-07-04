@@ -839,3 +839,105 @@ def print_users_table(users: list[dict[str, Any]]) -> None:
             str(user.get("uuid") or ""),
         )
     console.print(table)
+
+
+def _question_rows(questions: list[dict[str, Any]]) -> Table:
+    """Build a questions table shared by created/list renderers."""
+    table: Table = Table(title="Questions", border_style="cyan")
+    table.add_column("#", justify="right")
+    table.add_column("Question", style="bold")
+    table.add_column("Type")
+    table.add_column("Required")
+    table.add_column("Question UUID", style="dim")
+    for index, question in enumerate(questions):
+        required_raw: Any = question.get("required")
+        if required_raw is None and "is_optional" in question:
+            required_raw = not question.get("is_optional")
+        required: str = "yes" if required_raw or required_raw is None else "no"
+        table.add_row(
+            str(question.get("index", index)),
+            str(question.get("question") or question.get("label") or question.get("text") or ""),
+            str(question.get("question_type") or question.get("type") or "text"),
+            required,
+            str(question.get("uuid") or question.get("id") or ""),
+        )
+    return table
+
+
+def print_report_channels(channels: list[dict[str, Any]]) -> None:
+    """Display the reporting channels available to the caller."""
+    if not channels:
+        print_info("No report channels available.")
+        return
+    table: Table = Table(title=f"Report Channels ({len(channels)})", border_style="cyan")
+    table.add_column("Name", style="bold")
+    table.add_column("Platform")
+    table.add_column("UUID", style="dim")
+    for channel in channels:
+        table.add_row(
+            str(channel.get("name") or ""),
+            str(channel.get("platform") or ""),
+            str(channel.get("uuid") or channel.get("id") or ""),
+        )
+    console.print(table)
+
+
+def print_form_created(form: dict[str, Any]) -> None:
+    """Display a newly created form with its question summary."""
+    name: str = str(form.get("name") or "")
+    form_id: str = str(form.get("id") or form.get("uuid") or "")
+    console.print(
+        Panel(
+            f"[bold]{name}[/bold]\nID: {form_id}",
+            title="[bold]Form Created[/bold]",
+            border_style="green",
+        )
+    )
+    questions: list[dict[str, Any]] = form.get("questions") or []
+    if questions:
+        console.print(_question_rows(questions))
+
+
+def print_checkin_created(checkin: dict[str, Any]) -> None:
+    """Display a newly created check-in with schedule and question summary."""
+    name: str = str(checkin.get("name") or "")
+    checkin_id: str = str(checkin.get("id") or checkin.get("uuid") or "")
+    lines: list[str] = [f"[bold]{name}[/bold]", f"ID: {checkin_id}"]
+    schedule: dict[str, Any] = checkin.get("schedule") or {}
+    if schedule:
+        days: Any = schedule.get("days")
+        if days is not None:
+            lines.append(f"Days: {days}")
+        for label, key in (("Time", "time"), ("Timezone", "timezone")):
+            value: Any = schedule.get(key)
+            if value:
+                lines.append(f"{label}: {value}")
+    console.print(
+        Panel("\n".join(lines), title="[bold]Check-in Created[/bold]", border_style="green")
+    )
+    questions: list[dict[str, Any]] = checkin.get("questions") or []
+    if questions:
+        console.print(_question_rows(questions))
+
+
+def print_question(question: dict[str, Any]) -> None:
+    """Display a single question after an add/update."""
+    console.print(_question_rows([question]))
+
+
+def print_questions_table(questions: list[dict[str, Any]]) -> None:
+    """Display a form/check-in's questions."""
+    if not questions:
+        print_info("No questions defined.")
+        return
+    console.print(_question_rows(questions))
+
+
+def print_archived(kind: str, uuid: str) -> None:
+    """Confirm that a form or check-in was archived (soft-deleted)."""
+    print_success(f"{kind.capitalize()} {uuid} archived.")
+
+
+def print_reordered(kind: str, order: list[str]) -> None:
+    """Confirm that questions were reordered."""
+    print_success(f"{kind.capitalize()} questions reordered ({len(order)} items).")
