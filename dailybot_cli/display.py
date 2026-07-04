@@ -842,7 +842,12 @@ def print_users_table(users: list[dict[str, Any]]) -> None:
 
 
 def _question_rows(questions: list[dict[str, Any]]) -> Table:
-    """Build a questions table shared by created/list renderers."""
+    """Build a questions table shared by the authoring renderers.
+
+    Every authoring/read endpoint returns the canonical question shape
+    (``uuid`` / ``index`` / ``question`` / ``question_type`` / ``required`` /
+    ``choices``), so no field-name normalization is needed here.
+    """
     table: Table = Table(title="Questions", border_style="cyan")
     table.add_column("#", justify="right")
     table.add_column("Question", style="bold")
@@ -850,16 +855,12 @@ def _question_rows(questions: list[dict[str, Any]]) -> Table:
     table.add_column("Required")
     table.add_column("Question UUID", style="dim")
     for index, question in enumerate(questions):
-        required_raw: Any = question.get("required")
-        if required_raw is None and "is_optional" in question:
-            required_raw = not question.get("is_optional")
-        required: str = "yes" if required_raw or required_raw is None else "no"
         table.add_row(
             str(question.get("index", index)),
-            str(question.get("question") or question.get("label") or question.get("text") or ""),
-            str(question.get("question_type") or question.get("type") or "text"),
-            required,
-            str(question.get("uuid") or question.get("id") or ""),
+            str(question.get("question", "")),
+            str(question.get("question_type", "")),
+            "yes" if question.get("required", True) else "no",
+            str(question.get("uuid", "")),
         )
     return table
 
