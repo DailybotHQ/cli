@@ -5,6 +5,11 @@ from typing import Any
 import click
 
 from dailybot_cli.api_client import APIError, DailyBotClient
+from dailybot_cli.commands.authoring_helpers import (
+    build_question,
+    parse_options,
+    parse_questions_file,
+)
 from dailybot_cli.commands.public_api_helpers import (
     confirm_write,
     emit_json,
@@ -19,11 +24,16 @@ from dailybot_cli.commands.user_scoped_actions import (
 )
 from dailybot_cli.display import (
     console,
+    print_archived,
+    print_form_created,
     print_form_detail,
     print_form_response_deleted,
     print_form_response_detail,
     print_form_response_state,
     print_form_responses_table,
+    print_question,
+    print_questions_table,
+    print_reordered,
     print_success,
 )
 
@@ -134,6 +144,17 @@ def form_submit(
 @click.argument("form_uuid")
 @click.option("--state", default=None, help="Filter by current_state (workflow forms only).")
 @click.option(
+    "--all",
+    "all_responses",
+    is_flag=True,
+    help="List everyone's responses (admin/owner only; a member gets 403).",
+)
+@click.option("--user", default=None, help="Filter to one user's responses (admin/owner only).")
+@click.option(
+    "--from", "date_from", default=None, help="Responses on/after this date (YYYY-MM-DD)."
+)
+@click.option("--to", "date_to", default=None, help="Responses on/before this date (YYYY-MM-DD).")
+@click.option(
     "--latest",
     is_flag=True,
     help="Return only the most recent response (continue where you left off).",
@@ -142,24 +163,38 @@ def form_submit(
 def form_responses(
     form_uuid: str,
     state: str | None,
+    all_responses: bool,
+    user: str | None,
+    date_from: str | None,
+    date_to: str | None,
     latest: bool,
     json_mode: bool,
 ) -> None:
-    """List your own responses on a form.
+    """List responses on a form.
 
     \b
-    Acts as you. The server returns only responses you authored.
+    Acts as you. By default the server returns only responses you authored.
+    --all / --user surface others' responses and are admin/owner-only
+    (server-enforced — a member receives 403). --from / --to narrow the window.
 
     \b
     Examples:
       dailybot form responses <form_uuid>
       dailybot form responses <form_uuid> --state qa --json
-      dailybot form responses <form_uuid> --latest --json
+      dailybot form responses <form_uuid> --all --from 2026-01-01 --to 2026-06-30
+      dailybot form responses <form_uuid> --user <user_uuid> --json
     """
     client = require_auth()
     try:
         with console.status("Fetching responses..."):
-            responses: list[dict[str, Any]] = client.list_form_responses(form_uuid, state=state)
+            responses: list[dict[str, Any]] = client.list_form_responses(
+                form_uuid,
+                state=state,
+                all_responses=all_responses,
+                user=user,
+                date_from=date_from,
+                date_to=date_to,
+            )
     except APIError as exc:
         exit_for_api_error(exc, json_mode)
 
@@ -223,10 +258,12 @@ def form_update(
     assume_yes: bool,
     json_mode: bool,
 ) -> None:
-    """Patch new answers into one of your own in-progress responses.
+    """Patch new answers into a response.
 
     \b
-    Own-only. Admins are NOT elevated to other users' responses here.
+    The server authorizes by role: you may always edit your own response, and a
+    form owner / org admin may edit anyone's (audited as metadata.last_edited_by).
+    A non-privileged edit of someone else's response returns 403.
 
     \b
     Examples:
@@ -361,3 +398,343 @@ def form_delete(
         return
 
     print_form_response_deleted(form_uuid, response_uuid)
+
+
+@form.command("create")
+@click.option("--name", "-n", required=True, help="Form name.")
+@click.option(
+    "--questions-file",
+    default=None,
+    help="Path to a JSON array of question objects to seed the form.",
+)
+@click.option(
+    "--report-channel",
+    "report_channels",
+    multiple=True,
+    help="Report-channel UUID (repeatable). See `dailybot channels list`.",
+)
+@click.option("--json", "json_mode", is_flag=True, help="Emit machine-readable JSON to stdout.")
+def form_create(
+    name: str,
+    questions_file: str | None,
+    report_channels: tuple[str, ...],
+    json_mode: bool,
+) -> None:
+    """Create a form (optionally seeded with questions).
+
+    \b
+    Creating forms is role-gated server-side (admins/managers as applicable).
+    Add questions inline with --questions-file, or later via
+    `dailybot form questions add`.
+
+    \b
+    Examples:
+      dailybot form create --name "Sprint Retro"
+      dailybot form create -n "Retro" --questions-file questions.json
+      dailybot form create -n "Retro" --report-channel <channel_uuid> --json
+    """
+    client = require_auth()
+    questions: list[dict[str, Any]] | None = (
+        parse_questions_file(questions_file) if questions_file else None
+    )
+    try:
+        with console.status("Creating form..."):
+            result: dict[str, Any] = client.create_form(name, questions)
+    except APIError as exc:
+        exit_for_api_error(exc, json_mode)
+
+    # Attach report channels in a follow-up config call when provided (create
+    # takes only name + questions).
+    if report_channels:
+        form_id: str = str(result.get("id") or result.get("uuid") or "")
+        try:
+            with console.status("Attaching report channels..."):
+                result = client.update_form_config(form_id, report_channels=list(report_channels))
+        except APIError as exc:
+            exit_for_api_error(exc, json_mode)
+
+    if json_mode:
+        emit_json(result)
+        return
+    print_form_created(result)
+
+
+@form.command("edit")
+@click.argument("form_uuid")
+@click.option("--name", "-n", default=None, help="New form name.")
+@click.option(
+    "--report-channel",
+    "report_channels",
+    multiple=True,
+    help="Report-channel UUID (repeatable); replaces the form's channels.",
+)
+@click.option("--json", "json_mode", is_flag=True, help="Emit machine-readable JSON to stdout.")
+def form_edit(
+    form_uuid: str,
+    name: str | None,
+    report_channels: tuple[str, ...],
+    json_mode: bool,
+) -> None:
+    """Edit a form's name and/or report channels.
+
+    \b
+    Examples:
+      dailybot form edit <form_uuid> --name "Updated Retro"
+      dailybot form edit <form_uuid> --report-channel <channel_uuid> --json
+    """
+    if name is None and not report_channels:
+        raise click.UsageError("Nothing to edit. Pass --name and/or --report-channel.")
+    client = require_auth()
+    try:
+        with console.status("Updating form..."):
+            result: dict[str, Any] = client.update_form_config(
+                form_uuid,
+                name=name,
+                report_channels=list(report_channels) if report_channels else None,
+            )
+    except APIError as exc:
+        exit_for_api_error(exc, json_mode)
+
+    if json_mode:
+        emit_json(result)
+        return
+    print_success(f"Form {form_uuid} updated.")
+    print_form_created(result)
+
+
+@form.command("archive")
+@click.argument("form_uuid")
+@click.option("--yes", "-y", "assume_yes", is_flag=True, help="Skip the confirmation prompt.")
+@click.option("--json", "json_mode", is_flag=True, help="Emit machine-readable JSON to stdout.")
+def form_archive(form_uuid: str, assume_yes: bool, json_mode: bool) -> None:
+    """Archive (soft-delete) a form.
+
+    \b
+    Data is preserved server-side. This is distinct from `form delete`, which
+    removes an individual response.
+
+    \b
+    Examples:
+      dailybot form archive <form_uuid>
+      dailybot form archive <form_uuid> --yes
+    """
+    client = require_auth()
+    confirm_write(
+        [f"Form UUID: {form_uuid}", "This will archive (soft-delete) the form."],
+        assume_yes,
+    )
+    try:
+        with console.status("Archiving form..."):
+            client.archive_form(form_uuid)
+    except APIError as exc:
+        exit_for_api_error(exc, json_mode)
+
+    if json_mode:
+        emit_json({"archived": True, "form_uuid": form_uuid})
+        return
+    print_archived("form", form_uuid)
+
+
+@form.group("questions")
+def form_questions() -> None:
+    """Manage a form's questions (list / add / edit / delete / reorder)."""
+
+
+@form_questions.command("list")
+@click.argument("form_uuid")
+@click.option("--json", "json_mode", is_flag=True, help="Emit machine-readable JSON to stdout.")
+def form_questions_list(form_uuid: str, json_mode: bool) -> None:
+    """List a form's questions.
+
+    \b
+    Examples:
+      dailybot form questions list <form_uuid>
+    """
+    client = require_auth()
+    try:
+        with console.status("Loading form..."):
+            data: dict[str, Any] = client.get_form(form_uuid)
+    except APIError as exc:
+        exit_for_api_error(exc, json_mode)
+
+    questions: list[dict[str, Any]] = data.get("questions") or []
+    if json_mode:
+        emit_json(questions)
+        return
+    print_questions_table(questions)
+
+
+@form_questions.command("add")
+@click.argument("form_uuid")
+@click.option(
+    "--type", "question_type", required=True, help="text/multiple_choice/boolean/numeric."
+)
+@click.option("--question", required=True, help="The question text.")
+@click.option("--options", default=None, help="Comma-separated options (multiple_choice only).")
+@click.option("--required/--optional", "required", default=True, help="Mark the question required.")
+@click.option("--json", "json_mode", is_flag=True, help="Emit machine-readable JSON to stdout.")
+def form_questions_add(
+    form_uuid: str,
+    question_type: str,
+    question: str,
+    options: str | None,
+    required: bool,
+    json_mode: bool,
+) -> None:
+    """Add a question to a form.
+
+    \b
+    Examples:
+      dailybot form questions add <form_uuid> --type text --question "What went well?"
+      dailybot form questions add <form_uuid> --type multiple_choice \\
+        --question "Rating?" --options "Excellent,Good,Average,Poor"
+    """
+    client = require_auth()
+    payload: dict[str, Any] = build_question(
+        question_type, question, options=parse_options(options), required=required
+    )
+    try:
+        with console.status("Adding question..."):
+            result: dict[str, Any] = client.add_form_question(form_uuid, payload)
+    except APIError as exc:
+        exit_for_api_error(exc, json_mode)
+
+    if json_mode:
+        emit_json(result)
+        return
+    print_success("Question added.")
+    print_question(result)
+
+
+@form_questions.command("edit")
+@click.argument("form_uuid")
+@click.argument("question_uuid")
+@click.option("--question", default=None, help="New question text.")
+@click.option("--type", "question_type", default=None, help="New question type.")
+@click.option("--options", default=None, help="New comma-separated options (multiple_choice).")
+@click.option("--required/--optional", "required", default=None, help="Toggle required.")
+@click.option("--json", "json_mode", is_flag=True, help="Emit machine-readable JSON to stdout.")
+def form_questions_edit(
+    form_uuid: str,
+    question_uuid: str,
+    question: str | None,
+    question_type: str | None,
+    options: str | None,
+    required: bool | None,
+    json_mode: bool,
+) -> None:
+    """Update a question's text, type, options, or required flag.
+
+    \b
+    Examples:
+      dailybot form questions edit <form_uuid> <question_uuid> --question "Reworded?"
+      dailybot form questions edit <form_uuid> <question_uuid> --optional
+    """
+    fields: dict[str, Any] = _build_question_edit_fields(question, question_type, options, required)
+    if not fields:
+        raise click.UsageError(
+            "Nothing to edit. Pass --question, --type, --options, or --required."
+        )
+    client = require_auth()
+    try:
+        with console.status("Updating question..."):
+            result: dict[str, Any] = client.update_form_question(form_uuid, question_uuid, fields)
+    except APIError as exc:
+        exit_for_api_error(exc, json_mode)
+
+    if json_mode:
+        emit_json(result)
+        return
+    print_success("Question updated.")
+    print_question(result)
+
+
+@form_questions.command("delete")
+@click.argument("form_uuid")
+@click.argument("question_uuid")
+@click.option("--yes", "-y", "assume_yes", is_flag=True, help="Skip the confirmation prompt.")
+@click.option("--json", "json_mode", is_flag=True, help="Emit machine-readable JSON to stdout.")
+def form_questions_delete(
+    form_uuid: str,
+    question_uuid: str,
+    assume_yes: bool,
+    json_mode: bool,
+) -> None:
+    """Remove a question from a form.
+
+    \b
+    Examples:
+      dailybot form questions delete <form_uuid> <question_uuid>
+      dailybot form questions delete <form_uuid> <question_uuid> --yes
+    """
+    client = require_auth()
+    confirm_write(
+        [
+            f"Form UUID: {form_uuid}",
+            f"Question UUID: {question_uuid}",
+            "This will permanently remove the question.",
+        ],
+        assume_yes,
+    )
+    try:
+        with console.status("Deleting question..."):
+            client.delete_form_question(form_uuid, question_uuid)
+    except APIError as exc:
+        exit_for_api_error(exc, json_mode)
+
+    if json_mode:
+        emit_json({"deleted": True, "form_uuid": form_uuid, "question_uuid": question_uuid})
+        return
+    print_success(f"Question {question_uuid} deleted.")
+
+
+@form_questions.command("reorder")
+@click.argument("form_uuid")
+@click.argument("question_uuids", nargs=-1, required=True)
+@click.option("--json", "json_mode", is_flag=True, help="Emit machine-readable JSON to stdout.")
+def form_questions_reorder(
+    form_uuid: str,
+    question_uuids: tuple[str, ...],
+    json_mode: bool,
+) -> None:
+    """Set a new question order (pass question UUIDs in the desired order).
+
+    \b
+    Examples:
+      dailybot form questions reorder <form_uuid> <q3> <q1> <q2>
+    """
+    client = require_auth()
+    order: list[str] = list(question_uuids)
+    try:
+        with console.status("Reordering questions..."):
+            client.reorder_form_questions(form_uuid, order)
+    except APIError as exc:
+        exit_for_api_error(exc, json_mode)
+
+    if json_mode:
+        emit_json({"reordered": True, "form_uuid": form_uuid, "order": order})
+        return
+    print_reordered("form", order)
+
+
+def _build_question_edit_fields(
+    question: str | None,
+    question_type: str | None,
+    options: str | None,
+    required: bool | None,
+) -> dict[str, Any]:
+    """Build a partial question-update payload from provided edit flags.
+
+    Only shape checks run here; the server does full validation. ``build_question``
+    isn't reused because edits are partial (no required question/type pairing).
+    """
+    fields: dict[str, Any] = {}
+    if question is not None:
+        fields["question"] = question
+    if question_type is not None:
+        fields["question_type"] = question_type
+    if options is not None:
+        fields["options"] = parse_options(options) or []
+    if required is not None:
+        fields["required"] = required
+    return fields

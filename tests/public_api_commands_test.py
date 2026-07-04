@@ -866,7 +866,14 @@ class TestFormLifecycle:
         payload: list[dict[str, Any]] = json.loads(result.output)
         assert len(payload) == 1
         assert payload[0]["id"] == "r1"
-        mock_client.list_form_responses.assert_called_once_with("form-uuid-1", state=None)
+        mock_client.list_form_responses.assert_called_once_with(
+            "form-uuid-1",
+            state=None,
+            all_responses=False,
+            user=None,
+            date_from=None,
+            date_to=None,
+        )
 
     @patch("dailybot_cli.commands.public_api_helpers.get_agent_auth")
     @patch("dailybot_cli.commands.public_api_helpers.DailyBotClient")
@@ -882,7 +889,14 @@ class TestFormLifecycle:
 
         result = runner.invoke(cli, ["form", "responses", "form-uuid-1", "--state", "qa", "--json"])
         assert result.exit_code == 0
-        mock_client.list_form_responses.assert_called_once_with("form-uuid-1", state="qa")
+        mock_client.list_form_responses.assert_called_once_with(
+            "form-uuid-1",
+            state="qa",
+            all_responses=False,
+            user=None,
+            date_from=None,
+            date_to=None,
+        )
 
     @patch("dailybot_cli.commands.public_api_helpers.get_agent_auth")
     @patch("dailybot_cli.commands.public_api_helpers.DailyBotClient")
