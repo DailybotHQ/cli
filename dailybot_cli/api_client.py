@@ -322,13 +322,25 @@ class DailyBotClient:
         *,
         date_start: str | None = None,
         date_end: str | None = None,
+        all_responses: bool = False,
+        user: str | None = None,
     ) -> list[dict[str, Any]]:
-        """GET /v1/checkins/<followup_uuid>/responses/."""
+        """GET /v1/checkins/<followup_uuid>/responses/.
+
+        Without filters the server returns only the caller's own responses.
+        ``all_responses`` / ``user`` are admin/owner-only server-side (a member
+        receives 403). Note check-ins use ``date_start`` / ``date_end`` (forms
+        use ``date_from`` / ``date_to``).
+        """
         params: dict[str, str] = {}
         if date_start:
             params["date_start"] = date_start
         if date_end:
             params["date_end"] = date_end
+        if all_responses:
+            params["all"] = "true"
+        if user:
+            params["user"] = user
         response: httpx.Response = httpx.get(
             f"{self.api_url}/v1/checkins/{followup_uuid}/responses/",
             headers=self._headers(),
@@ -378,6 +390,129 @@ class DailyBotClient:
             f"{self.api_url}/v1/checkins/{followup_uuid}/responses/",
             headers=self._headers(),
             params=params,
+            timeout=self.timeout,
+        )
+        return self._handle_response(response)
+
+    # --- Check-ins authoring ---
+
+    def create_checkin(
+        self,
+        name: str,
+        *,
+        schedule: dict[str, Any] | None = None,
+        participants: dict[str, Any] | None = None,
+        questions: list[dict[str, Any]] | None = None,
+        report_channels: list[str] | None = None,
+    ) -> dict[str, Any]:
+        """POST /v1/checkins/create/ — create a check-in with schedule + questions."""
+        payload: dict[str, Any] = {"name": name}
+        if schedule is not None:
+            payload["schedule"] = schedule
+        if participants is not None:
+            payload["participants"] = participants
+        if questions:
+            payload["questions"] = questions
+        if report_channels is not None:
+            payload["report_channels"] = report_channels
+        response: httpx.Response = httpx.post(
+            f"{self.api_url}/v1/checkins/create/",
+            json=payload,
+            headers=self._headers(),
+            timeout=self.timeout,
+        )
+        return self._handle_response(response)
+
+    def update_checkin_config(
+        self,
+        followup_uuid: str,
+        *,
+        name: str | None = None,
+        schedule: dict[str, Any] | None = None,
+        report_channels: list[str] | None = None,
+        is_active: bool | None = None,
+    ) -> dict[str, Any]:
+        """PATCH /v1/checkins/<followup_uuid>/config/ — edit name/schedule/channels/active."""
+        payload: dict[str, Any] = {}
+        if name is not None:
+            payload["name"] = name
+        if schedule is not None:
+            payload["schedule"] = schedule
+        if report_channels is not None:
+            payload["report_channels"] = report_channels
+        if is_active is not None:
+            payload["is_active"] = is_active
+        response: httpx.Response = httpx.patch(
+            f"{self.api_url}/v1/checkins/{followup_uuid}/config/",
+            json=payload,
+            headers=self._headers(),
+            timeout=self.timeout,
+        )
+        return self._handle_response(response)
+
+    def archive_checkin(self, followup_uuid: str) -> dict[str, Any]:
+        """DELETE /v1/checkins/<followup_uuid>/archive/ — soft-delete a check-in (204)."""
+        response: httpx.Response = httpx.request(
+            "DELETE",
+            f"{self.api_url}/v1/checkins/{followup_uuid}/archive/",
+            headers=self._headers(),
+            timeout=self.timeout,
+        )
+        return self._handle_response(response)
+
+    def add_checkin_question(
+        self,
+        followup_uuid: str,
+        question: dict[str, Any],
+    ) -> dict[str, Any]:
+        """POST /v1/checkins/<followup_uuid>/questions/ — add a question."""
+        response: httpx.Response = httpx.post(
+            f"{self.api_url}/v1/checkins/{followup_uuid}/questions/",
+            json=question,
+            headers=self._headers(),
+            timeout=self.timeout,
+        )
+        return self._handle_response(response)
+
+    def update_checkin_question(
+        self,
+        followup_uuid: str,
+        question_uuid: str,
+        fields: dict[str, Any],
+    ) -> dict[str, Any]:
+        """PATCH /v1/checkins/<followup_uuid>/questions/<question_uuid>/ — update a question."""
+        response: httpx.Response = httpx.patch(
+            f"{self.api_url}/v1/checkins/{followup_uuid}/questions/{question_uuid}/",
+            json=fields,
+            headers=self._headers(),
+            timeout=self.timeout,
+        )
+        return self._handle_response(response)
+
+    def delete_checkin_question(
+        self,
+        followup_uuid: str,
+        question_uuid: str,
+    ) -> dict[str, Any]:
+        """DELETE /v1/checkins/<followup_uuid>/questions/<question_uuid>/delete/ (204)."""
+        response: httpx.Response = httpx.request(
+            "DELETE",
+            f"{self.api_url}/v1/checkins/{followup_uuid}/questions/{question_uuid}/delete/",
+            headers=self._headers(),
+            timeout=self.timeout,
+        )
+        return self._handle_response(response)
+
+    def reorder_checkin_questions(
+        self,
+        followup_uuid: str,
+        order: list[str],
+    ) -> dict[str, Any]:
+        """PUT /v1/checkins/<followup_uuid>/questions/reorder/ — set a new question order."""
+        response: httpx.Response = httpx.put(
+            f"{self.api_url}/v1/checkins/{followup_uuid}/questions/reorder/",
+            json={"order": order},
+            headers=self._headers(),
             timeout=self.timeout,
         )
         return self._handle_response(response)

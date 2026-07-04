@@ -984,3 +984,161 @@ class TestFormsAuthoring:
 
         assert exc_info.value.code == "form_edit_forbidden"
         assert exc_info.value.status_code == 403
+
+
+class TestCheckinsAuthoring:
+    def test_create_checkin(self, client: DailyBotClient) -> None:
+        mock_response: MagicMock = MagicMock(spec=httpx.Response)
+        mock_response.status_code = 201
+        mock_response.json.return_value = {"id": "followup-uuid", "name": "Standup"}
+
+        schedule: dict[str, Any] = {"days": [1, 2, 3], "time": "09:00", "timezone": "UTC"}
+        participants: dict[str, Any] = {"user_uuids": ["u1"], "team_uuids": []}
+        questions: list[dict[str, Any]] = [{"question_type": "text", "question": "Yesterday?"}]
+        with patch("httpx.post", return_value=mock_response) as mock_post:
+            result: dict[str, Any] = client.create_checkin(
+                "Standup",
+                schedule=schedule,
+                participants=participants,
+                questions=questions,
+                report_channels=["chan-1"],
+            )
+
+        call_kwargs: dict[str, Any] = mock_post.call_args[1]
+        assert mock_post.call_args[0][0].endswith("/v1/checkins/create/")
+        assert call_kwargs["json"] == {
+            "name": "Standup",
+            "schedule": schedule,
+            "participants": participants,
+            "questions": questions,
+            "report_channels": ["chan-1"],
+        }
+        assert result["id"] == "followup-uuid"
+
+    def test_create_checkin_minimal(self, client: DailyBotClient) -> None:
+        mock_response: MagicMock = MagicMock(spec=httpx.Response)
+        mock_response.status_code = 201
+        mock_response.json.return_value = {"id": "followup-uuid"}
+
+        with patch("httpx.post", return_value=mock_response) as mock_post:
+            client.create_checkin("Standup")
+
+        assert mock_post.call_args[1]["json"] == {"name": "Standup"}
+
+    def test_update_checkin_config_sends_is_active_false(self, client: DailyBotClient) -> None:
+        mock_response: MagicMock = MagicMock(spec=httpx.Response)
+        mock_response.status_code = 200
+        mock_response.json.return_value = {"id": "followup-uuid", "is_active": False}
+
+        with patch("httpx.patch", return_value=mock_response) as mock_patch:
+            client.update_checkin_config("followup-uuid", is_active=False)
+
+        assert mock_patch.call_args[0][0].endswith("/v1/checkins/followup-uuid/config/")
+        assert mock_patch.call_args[1]["json"] == {"is_active": False}
+
+    def test_update_checkin_config_partial(self, client: DailyBotClient) -> None:
+        mock_response: MagicMock = MagicMock(spec=httpx.Response)
+        mock_response.status_code = 200
+        mock_response.json.return_value = {"id": "followup-uuid"}
+
+        with patch("httpx.patch", return_value=mock_response) as mock_patch:
+            client.update_checkin_config("followup-uuid", name="Renamed")
+
+        assert mock_patch.call_args[1]["json"] == {"name": "Renamed"}
+
+    def test_archive_checkin(self, client: DailyBotClient) -> None:
+        mock_response: MagicMock = MagicMock(spec=httpx.Response)
+        mock_response.status_code = 204
+        mock_response.json.return_value = {}
+
+        with patch("httpx.request", return_value=mock_response) as mock_request:
+            result: dict[str, Any] = client.archive_checkin("followup-uuid")
+
+        assert mock_request.call_args[0][0] == "DELETE"
+        assert mock_request.call_args[0][1].endswith("/v1/checkins/followup-uuid/archive/")
+        assert result == {}
+
+    def test_add_checkin_question(self, client: DailyBotClient) -> None:
+        mock_response: MagicMock = MagicMock(spec=httpx.Response)
+        mock_response.status_code = 201
+        mock_response.json.return_value = {"uuid": "q-new"}
+
+        question: dict[str, Any] = {"question_type": "boolean", "question": "Blockers?"}
+        with patch("httpx.post", return_value=mock_response) as mock_post:
+            client.add_checkin_question("followup-uuid", question)
+
+        assert mock_post.call_args[0][0].endswith("/v1/checkins/followup-uuid/questions/")
+        assert mock_post.call_args[1]["json"] == question
+
+    def test_update_checkin_question(self, client: DailyBotClient) -> None:
+        mock_response: MagicMock = MagicMock(spec=httpx.Response)
+        mock_response.status_code = 200
+        mock_response.json.return_value = {"uuid": "q1"}
+
+        with patch("httpx.patch", return_value=mock_response) as mock_patch:
+            client.update_checkin_question("followup-uuid", "q1", {"question": "New?"})
+
+        assert mock_patch.call_args[0][0].endswith("/v1/checkins/followup-uuid/questions/q1/")
+        assert mock_patch.call_args[1]["json"] == {"question": "New?"}
+
+    def test_delete_checkin_question(self, client: DailyBotClient) -> None:
+        mock_response: MagicMock = MagicMock(spec=httpx.Response)
+        mock_response.status_code = 204
+        mock_response.json.return_value = {}
+
+        with patch("httpx.request", return_value=mock_response) as mock_request:
+            client.delete_checkin_question("followup-uuid", "q1")
+
+        assert mock_request.call_args[0][0] == "DELETE"
+        assert mock_request.call_args[0][1].endswith(
+            "/v1/checkins/followup-uuid/questions/q1/delete/"
+        )
+
+    def test_reorder_checkin_questions(self, client: DailyBotClient) -> None:
+        mock_response: MagicMock = MagicMock(spec=httpx.Response)
+        mock_response.status_code = 200
+        mock_response.json.return_value = {"reordered": True}
+
+        with patch("httpx.put", return_value=mock_response) as mock_put:
+            client.reorder_checkin_questions("followup-uuid", ["q2", "q1"])
+
+        assert mock_put.call_args[0][0].endswith("/v1/checkins/followup-uuid/questions/reorder/")
+        assert mock_put.call_args[1]["json"] == {"order": ["q2", "q1"]}
+
+    def test_list_checkin_responses_admin_filters(self, client: DailyBotClient) -> None:
+        mock_response: MagicMock = MagicMock(spec=httpx.Response)
+        mock_response.status_code = 200
+        mock_response.json.return_value = [{"uuid": "r1"}]
+
+        with patch("httpx.get", return_value=mock_response) as mock_get:
+            client.list_checkin_responses(
+                "followup-uuid",
+                all_responses=True,
+                user="user-uuid",
+                date_start="2026-01-01",
+                date_end="2026-12-31",
+            )
+
+        assert mock_get.call_args[1]["params"] == {
+            "date_start": "2026-01-01",
+            "date_end": "2026-12-31",
+            "all": "true",
+            "user": "user-uuid",
+        }
+
+    def test_archive_checkin_raises_api_error_with_code(self, client: DailyBotClient) -> None:
+        mock_response: MagicMock = MagicMock(spec=httpx.Response)
+        mock_response.status_code = 403
+        mock_response.json.return_value = {
+            "detail": "Forbidden",
+            "code": "checkin_permission_denied",
+        }
+
+        with (
+            patch("httpx.request", return_value=mock_response),
+            pytest.raises(APIError) as exc_info,
+        ):
+            client.archive_checkin("followup-uuid")
+
+        assert exc_info.value.code == "checkin_permission_denied"
+        assert exc_info.value.status_code == 403
