@@ -8,6 +8,7 @@ from dailybot_cli.api_client import APIError, DailyBotClient
 from dailybot_cli.commands.authoring_helpers import (
     build_question,
     build_question_edit_fields,
+    build_questions_interactively,
     parse_options,
     parse_questions_file,
 )
@@ -409,6 +410,11 @@ def form_delete(
     help="Path to a JSON array of question objects to seed the form.",
 )
 @click.option(
+    "--interactive",
+    is_flag=True,
+    help="Build questions interactively (requires a terminal).",
+)
+@click.option(
     "--report-channel",
     "report_channels",
     multiple=True,
@@ -418,6 +424,7 @@ def form_delete(
 def form_create(
     name: str,
     questions_file: str | None,
+    interactive: bool,
     report_channels: tuple[str, ...],
     json_mode: bool,
 ) -> None:
@@ -425,19 +432,23 @@ def form_create(
 
     \b
     Creating forms is role-gated server-side (admins/managers as applicable).
-    Add questions inline with --questions-file, or later via
+    Seed questions with --questions-file or --interactive, or add them later via
     `dailybot form questions add`.
 
     \b
     Examples:
       dailybot form create --name "Sprint Retro"
       dailybot form create -n "Retro" --questions-file questions.json
+      dailybot form create -n "Retro" --interactive
       dailybot form create -n "Retro" --report-channel <channel_uuid> --json
     """
     client = require_auth()
-    questions: list[dict[str, Any]] | None = (
-        parse_questions_file(questions_file) if questions_file else None
-    )
+    if interactive:
+        questions: list[dict[str, Any]] | None = build_questions_interactively()
+    elif questions_file:
+        questions = parse_questions_file(questions_file)
+    else:
+        questions = None
     try:
         with console.status("Creating form..."):
             result: dict[str, Any] = client.create_form(name, questions)

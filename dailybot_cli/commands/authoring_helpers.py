@@ -6,10 +6,12 @@ or edit what) is enforced server-side by role — the CLI never approximates it.
 
 import json
 import re
+import sys
 from pathlib import Path
 from typing import Any
 
 import click
+import questionary
 
 from dailybot_cli.api_client import DailyBotClient
 from dailybot_cli.commands.public_api_helpers import (
@@ -208,6 +210,47 @@ def parse_schedule(
     if not schedule:
         return None
     return _validate_schedule_dict(schedule)
+
+
+def build_questions_interactively() -> list[dict[str, Any]]:
+    """Walk the user through building questions with questionary prompts.
+
+    Every question passes through ``build_question``, so the interactive path
+    enforces the same validation as the flag and file paths. Requires a TTY.
+    """
+    if not sys.stdin.isatty():
+        raise AuthoringError(
+            "--interactive requires a terminal. Use --questions-file or inline "
+            "flags in a non-interactive context."
+        )
+
+    questions: list[dict[str, Any]] = []
+    while len(questions) < MAX_QUESTIONS:
+        qtype: str | None = questionary.select(
+            "Question type:", choices=list(VALID_QUESTION_TYPES)
+        ).ask()
+        if qtype is None:
+            break
+        text: str | None = questionary.text("Question text:").ask()
+        if text is None:
+            break
+        options: list[str] | None = None
+        if qtype == "multiple_choice":
+            raw_options: str | None = questionary.text("Options (comma-separated):").ask()
+            options = parse_options(raw_options)
+        required: bool | None = questionary.confirm("Required?", default=True).ask()
+
+        try:
+            questions.append(
+                build_question(qtype, text or "", options=options, required=bool(required))
+            )
+        except AuthoringError as exc:
+            print_error(exc.message)
+            continue
+
+        if not questionary.confirm("Add another question?", default=True).ask():
+            break
+    return questions
 
 
 def parse_participants(

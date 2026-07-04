@@ -9,6 +9,7 @@ from dailybot_cli.api_client import APIError
 from dailybot_cli.commands.authoring_helpers import (
     build_question,
     build_question_edit_fields,
+    build_questions_interactively,
     parse_options,
     parse_participants,
     parse_questions_file,
@@ -250,6 +251,11 @@ def checkin_edit(
 @click.option("--team", "teams", multiple=True, help="Participant team (name or UUID; repeatable).")
 @click.option("--questions-file", default=None, help="Path to a JSON array of question objects.")
 @click.option(
+    "--interactive",
+    is_flag=True,
+    help="Build questions interactively (requires a terminal).",
+)
+@click.option(
     "--report-channel",
     "report_channels",
     multiple=True,
@@ -265,14 +271,16 @@ def checkin_create(
     users: tuple[str, ...],
     teams: tuple[str, ...],
     questions_file: str | None,
+    interactive: bool,
     report_channels: tuple[str, ...],
     json_mode: bool,
 ) -> None:
     """Create a check-in with a schedule, participants, and questions.
 
     \b
-    Creating check-ins is role-gated server-side (admins/managers). Add questions
-    via --questions-file, or later with `dailybot checkin questions add`.
+    Creating check-ins is role-gated server-side (admins/managers). Seed questions
+    with --questions-file or --interactive, or add them later with
+    `dailybot checkin questions add`.
 
     \b
     Examples:
@@ -285,9 +293,12 @@ def checkin_create(
         days=days, time=time_, timezone=timezone, schedule_file=schedule_file
     )
     participants: dict[str, Any] = parse_participants(users, teams, client)
-    questions: list[dict[str, Any]] | None = (
-        parse_questions_file(questions_file) if questions_file else None
-    )
+    if interactive:
+        questions: list[dict[str, Any]] | None = build_questions_interactively()
+    elif questions_file:
+        questions = parse_questions_file(questions_file)
+    else:
+        questions = None
     try:
         with console.status("Creating check-in..."):
             result: dict[str, Any] = client.create_checkin(
