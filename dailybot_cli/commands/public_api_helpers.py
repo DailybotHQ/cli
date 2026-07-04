@@ -67,6 +67,38 @@ ERROR_CODE_MESSAGES: dict[str, str] = {
         "The check-in's questions changed since you fetched them. Re-run and try again."
     ),
     "response_date_format_is_invalid": "Invalid date. Use YYYY-MM-DD.",
+    # Forms & check-ins authoring (create/edit/questions/responses)
+    "invalid_question_type": (
+        "Invalid question type. Use one of: text, multiple_choice, boolean, numeric."
+    ),
+    "multiple_choice_requires_options": (
+        "Multiple-choice questions need at least one option (--options)."
+    ),
+    "question_label_required": "Question text is required.",
+    "questions_limit_exceeded": "Too many questions (the limit is 50).",
+    "form_name_required": "A name is required.",
+    "invalid_schedule_days": ("Schedule days must be integers 0-6 (0=Sunday .. 6=Saturday)."),
+    "invalid_schedule_time": "Schedule time must be in HH:MM format (e.g. 09:00).",
+    "invalid_timezone": "Unknown timezone. Use an IANA name (e.g. America/New_York).",
+    "checkin_permission_denied": (
+        "Your role doesn't allow authoring check-ins. Ask an admin or manager. "
+        "The CLI acts within your role and can't elevate."
+    ),
+    "form_edit_forbidden": (
+        "You don't have permission to edit this form (you're not the owner or an admin). "
+        "The CLI acts within your role and can't elevate."
+    ),
+    "form_response_view_all_forbidden": (
+        "Only admins/owners can list everyone's responses (--all / --user). "
+        "Without them you see only your own. The CLI acts within your role."
+    ),
+    "form_response_edit_forbidden": (
+        "You can only edit your own response unless you're the form owner or an admin. "
+        "The CLI acts within your role and can't elevate."
+    ),
+    "form_not_found": "Form not found.",
+    "checkin_not_found": "Check-in not found.",
+    "question_not_found": "Question not found on this form or check-in.",
 }
 
 
