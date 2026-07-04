@@ -205,8 +205,14 @@ dailybot form responses <form_uuid>
 dailybot form responses <form_uuid> --state qa --json
 dailybot form responses <form_uuid> --latest --json   # continue where you left off
 
+# Admins/owners: list everyone's responses, filter by user and date range
+# (server-enforced — a member passing --all/--user gets 403)
+dailybot form responses <form_uuid> --all --from 2026-01-01 --to 2026-06-30
+dailybot form responses <form_uuid> --user <user_uuid> --json
+
 # Operate on a single response
 dailybot form response get <form_uuid> <response_uuid>
+# You may edit your own response; a form owner / org admin may edit anyone's
 dailybot form update <form_uuid> <response_uuid> --content '{"<q-uuid>":"PR #4242"}'
 dailybot form transition <form_uuid> <response_uuid> qa --note "QA assigned"
 dailybot form delete <form_uuid> <response_uuid>
@@ -246,6 +252,88 @@ Guided mode (`form submit` without `--content`) fetches the form's question list
 | `--content` | `-c` | JSON map of `{"<question_uuid>": "<answer>"}`. Prompts when omitted. |
 | `--yes` | `-y` | Skip the confirmation prompt. |
 | `--json` | | Emit machine-readable JSON to stdout. |
+
+---
+
+## Authoring forms & check-ins
+
+Beyond filling them in, you can **create and configure** forms and check-ins from
+the CLI — create with questions, manage questions, set schedules and report
+channels, and archive. Authoring is **role-gated on the server** (admins /
+managers / form owners, as applicable); the CLI acts within your role and never
+elevates — an out-of-role action returns a clear `403`. Both a login session and
+an API key work.
+
+```bash
+# Discover report channels to attach to forms/check-ins
+dailybot channels list
+dailybot channels list --json
+
+# Create a form (empty, or seeded from a questions file, or interactively)
+dailybot form create --name "Sprint Retro"
+dailybot form create -n "Sprint Retro" --questions-file questions.json
+dailybot form create -n "Sprint Retro" --interactive
+dailybot form create -n "Sprint Retro" --report-channel <channel_uuid>
+
+# Edit a form's name / report channels, or archive it (soft-delete)
+dailybot form edit <form_uuid> --name "Updated Retro" --report-channel <channel_uuid>
+dailybot form archive <form_uuid>
+
+# Manage a form's questions
+dailybot form questions list <form_uuid>
+dailybot form questions add <form_uuid> --type text --question "What went well?"
+dailybot form questions add <form_uuid> --type multiple_choice \
+  --question "Sprint rating?" --options "Excellent,Good,Average,Poor"
+dailybot form questions edit <form_uuid> <question_uuid> --question "Reworded?"
+dailybot form questions delete <form_uuid> <question_uuid>
+dailybot form questions reorder <form_uuid> <q3> <q1> <q2>
+
+# Create a check-in with a schedule, participants, and questions
+dailybot checkin create -n "Daily Standup" --time 09:00 --days 1,2,3,4,5 \
+  --timezone America/New_York --questions-file questions.json
+dailybot checkin create -n "Daily Standup" --user "Jane Doe" --team "Engineering"
+
+# Edit a check-in's configuration, activate/deactivate, or archive it
+dailybot checkin config <followup_uuid> --time 10:00 --days 1,2,3,4,5
+dailybot checkin config <followup_uuid> --inactive
+dailybot checkin archive <followup_uuid>
+
+# Manage a check-in's questions (same subcommands as forms)
+dailybot checkin questions add <followup_uuid> --type text --question "Focus today?"
+dailybot checkin questions reorder <followup_uuid> <q2> <q1>
+```
+
+> **Question types:** `text`, `multiple_choice`, `boolean`, `numeric`.
+> `multiple_choice` needs `--options`; `boolean` auto-generates Yes/No (don't pass
+> options). Up to 50 questions per form/check-in.
+
+### Command naming (why authoring uses distinct verbs)
+
+The existing `form delete` / `form update` and `checkin edit` / `checkin reset`
+operate on **responses**. To avoid ambiguity, authoring the definitions uses
+distinct verbs: **`form archive`**, **`checkin config`**, and
+**`checkin archive`**.
+
+### `--questions-file` format
+
+A JSON array of question objects (`type`/`label` or `question_type`/`question`
+both work):
+
+```json
+[
+  {"question_type": "text", "question": "What went well?", "required": true},
+  {"question_type": "multiple_choice", "question": "Rating?", "options": ["1", "2", "3"]},
+  {"question_type": "boolean", "question": "Any blockers?"}
+]
+```
+
+### `--schedule-file` format
+
+```json
+{"days": [1, 2, 3, 4, 5], "time": "09:00", "timezone": "America/New_York"}
+```
+
+`days` are ISO weekday integers (0 = Sunday … 6 = Saturday).
 
 ---
 

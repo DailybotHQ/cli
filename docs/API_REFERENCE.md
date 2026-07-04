@@ -175,7 +175,7 @@ Submits a form response. When `--content` is omitted, calls `GET /v1/forms/<uuid
 
 #### `dailybot form responses <form_uuid> [--state STATE] [--latest] [--json]`
 
-Lists the caller's own responses (`GET /v1/forms/<uuid>/responses/`). `--state` filters by `current_state` (workflow forms only). `--latest` returns only the most recent — useful for "continue where I left off".
+Lists responses (`GET /v1/forms/<uuid>/responses/`). Defaults to the caller's own. `--state` filters by `current_state` (workflow forms only). `--latest` returns only the most recent. `--all` / `--user <uuid>` surface everyone's / a specific user's responses and are admin/owner-only server-side (a member gets 403 / `form_response_view_all_forbidden`). `--from` / `--to` (`date_from`/`date_to`) narrow the window.
 
 #### `dailybot form response get <form_uuid> <response_uuid> [--json]`
 
@@ -183,7 +183,7 @@ Fetches a single response (`GET /v1/forms/<uuid>/responses/<resp_uuid>/`) includ
 
 #### `dailybot form update <form_uuid> <response_uuid> --content JSON [--yes] [--json]`
 
-Merges new answers into an in-progress response via `PATCH /v1/forms/<uuid>/responses/<resp_uuid>/`. Strict own-only — admins are not elevated to other users' responses on this endpoint.
+Merges new answers into a response via `PATCH /v1/forms/<uuid>/responses/<resp_uuid>/`. The server authorizes by role: the response author may always edit; a form owner / org admin may edit anyone's (audited as `metadata.last_edited_by`). A non-privileged edit of another user's response returns 403 / `form_response_edit_forbidden`.
 
 #### `dailybot form transition <form_uuid> <response_uuid> <to_state> [--note ...] [--yes] [--json]`
 
@@ -192,6 +192,35 @@ Advances a response to `to_state` via `POST /v1/forms/<uuid>/responses/<resp_uui
 #### `dailybot form delete <form_uuid> <response_uuid> [--yes] [--json]`
 
 Deletes a response via `DELETE /v1/forms/<uuid>/responses/<resp_uuid>/`. Allowed for the response author, the form owner, or an org admin (403 / `form_response_delete_forbidden` otherwise).
+
+---
+
+### `dailybot channels list` — user-scoped, Bearer or API key auth
+
+Lists report channels available to the caller via `GET /v1/report-channels/`. Channel UUIDs feed `--report-channel` on form/check-in create and edit.
+
+---
+
+### Forms & check-ins authoring — user-scoped, Bearer or API key auth
+
+Creating and configuring forms/check-ins (as opposed to filling them in). All authoring is **role-gated server-side** (admins/managers/owners as applicable); the CLI performs only shape validation and surfaces the server's `403`. Both credentials work; an API key resolves to its admin owner.
+
+| Command | HTTP | Notes |
+|---|---|---|
+| `form create -n NAME [--questions-file F] [--interactive] [--report-channel UUID]` | `POST /v1/forms/create/` (+ `PATCH /config/` for channels) | Question types: `text`, `multiple_choice`, `boolean`, `numeric`; ≤ 50. |
+| `form edit <uuid> [--name] [--report-channel]` | `PATCH /v1/forms/<uuid>/config/` | |
+| `form archive <uuid>` | `DELETE /v1/forms/<uuid>/archive/` | Soft-delete (204). Confirms unless `--yes`. |
+| `form questions list <uuid>` | `GET /v1/forms/<uuid>/` | |
+| `form questions add <uuid> --type --question [--options] [--required/--optional]` | `POST /v1/forms/<uuid>/questions/` | `multiple_choice` requires `--options`; `boolean` takes none. |
+| `form questions edit <uuid> <q_uuid> [...]` | `PATCH /v1/forms/<uuid>/questions/<q_uuid>/` | Partial update. |
+| `form questions delete <uuid> <q_uuid>` | `DELETE /v1/forms/<uuid>/questions/<q_uuid>/delete/` | Confirms unless `--yes`. |
+| `form questions reorder <uuid> <q_uuid>...` | `PUT /v1/forms/<uuid>/questions/reorder/` | |
+| `checkin create -n NAME [--time --days --timezone \| --schedule-file] [--user --team] [--questions-file \| --interactive] [--report-channel]` | `POST /v1/checkins/create/` | `days` = ISO weekday ints (0=Sun…6=Sat). |
+| `checkin config <uuid> [--name] [--time --days --timezone] [--report-channel] [--active/--inactive]` | `PATCH /v1/checkins/<uuid>/config/` | |
+| `checkin archive <uuid>` | `DELETE /v1/checkins/<uuid>/archive/` | Soft-delete (204). Confirms unless `--yes`. |
+| `checkin questions add/edit/delete/reorder` | `.../v1/checkins/<uuid>/questions/...` | Same shapes as form questions. |
+
+> **Date-param asymmetry:** form response filters use `date_from`/`date_to`; check-in response filters use `date_start`/`date_end`. The CLI presents one `--from`/`--to` UX and maps per resource.
 
 ---
 
@@ -452,18 +481,33 @@ key, so all of these commands work with `DAILYBOT_API_KEY` set even without
 | `GET` | `/v1/forms/` | `?include=questions` (optional) | `[{ id, name, questions?: [...] }]` | |
 | `GET` | `/v1/forms/<uuid>/` | — | `{ id, name, slug, workflow_enabled, workflow_config, questions: [...] }` | Used by guided form submit + `form get` |
 | `POST` | `/v1/forms/<uuid>/responses/` | `{ content: { "<q_uuid>": "<answer>" } }` | `{ id, current_state?, allowed_transitions?, can_change_state? }` | 402 = quota exhausted |
-| `GET` | `/v1/forms/<uuid>/responses/` | `?state=<key>` (optional) | `[{ id, current_state, allowed_transitions, can_change_state, state_history, content, edited, created_at }]` | Caller's own responses |
+| `GET` | `/v1/forms/<uuid>/responses/` | `?state`, `?all=true`, `?user`, `?date_from`, `?date_to` (all optional) | `[{ id, current_state, allowed_transitions, can_change_state, state_history, content, edited, created_at }]` | Own by default; `all`/`user` admin/owner-only (403 `form_response_view_all_forbidden`) |
 | `GET` | `/v1/forms/<uuid>/responses/<resp_uuid>/` | — | Same shape as above | 404 = `form_response_not_found` |
-| `PATCH` | `/v1/forms/<uuid>/responses/<resp_uuid>/` | `{ content: { ... } }` | Updated response | Strict own-only |
+| `PATCH` | `/v1/forms/<uuid>/responses/<resp_uuid>/` | `{ content: { ... } }` | Updated response | Own always; owner/admin may edit anyone (audited) |
 | `POST` | `/v1/forms/<uuid>/responses/<resp_uuid>/transition/` | `{ to_state, note? }` | Updated response | 403 = `form_response_change_state_forbidden` or `final_state_locked` |
 | `DELETE` | `/v1/forms/<uuid>/responses/<resp_uuid>/` | — | 204 | Author / owner / admin |
+| `GET` | `/v1/report-channels/` | — | `[{ uuid, name, platform, channel_id }]` | `channels list` |
+| `POST` | `/v1/forms/create/` | `{ name, questions?: [...] }` | `{ id, name, is_active, questions }` | Role-gated; `form create` |
+| `PATCH` | `/v1/forms/<uuid>/config/` | `{ name?, report_channels? }` | Form | `form edit` |
+| `DELETE` | `/v1/forms/<uuid>/archive/` | — | 204 | `form archive` (soft-delete) |
+| `POST` | `/v1/forms/<uuid>/questions/` | `{ question_type, question, options?, required? }` | Question | `form questions add` |
+| `PATCH` | `/v1/forms/<uuid>/questions/<q_uuid>/` | partial | Question | `form questions edit` |
+| `DELETE` | `/v1/forms/<uuid>/questions/<q_uuid>/delete/` | — | 204 | `form questions delete` |
+| `PUT` | `/v1/forms/<uuid>/questions/reorder/` | `{ order: [q_uuid...] }` | `{ reordered: true }` | `form questions reorder` |
 | `POST` | `/v1/checkins/<followup_uuid>/responses/` | `{ responses: [{ uuid, index, response }], last_question_index?, response_date? }` | `{ uuid }` | |
 | `GET` | `/v1/checkins/` | — | `{ results: [{ id, name, ... }], next? }` (or bare list) | Paginated; terminal check-in flows |
 | `GET` | `/v1/checkins/<followup_uuid>/` | — | `{ ... }` | Check-in detail |
 | `GET` | `/v1/templates/<template_uuid>/` | `?render_special_vars=true&followup_id=<uuid>` | `{ questions: [...] }` | Question definitions for a check-in |
-| `GET` | `/v1/checkins/<followup_uuid>/responses/` | `?date_start&date_end` | `[{ ... }]` | Today's response (edit/reset) |
+| `GET` | `/v1/checkins/<followup_uuid>/responses/` | `?date_start&date_end`, `?all=true`, `?user` | `[{ ... }]` | History; `all`/`user` admin/owner-only |
 | `PUT` | `/v1/checkins/<followup_uuid>/responses/` | `{ responses: [...], last_question_index? }` | Updated response | `/checkin edit` |
 | `DELETE` | `/v1/checkins/<followup_uuid>/responses/` | `?date_start&date_end` | 204 | `/checkin reset` |
+| `POST` | `/v1/checkins/create/` | `{ name, schedule?, participants?, questions?, report_channels? }` | Check-in | Role-gated; `checkin create` |
+| `PATCH` | `/v1/checkins/<followup_uuid>/config/` | `{ name?, schedule?, report_channels?, is_active? }` | Check-in | `checkin config` |
+| `DELETE` | `/v1/checkins/<followup_uuid>/archive/` | — | 204 | `checkin archive` (soft-delete) |
+| `POST` | `/v1/checkins/<followup_uuid>/questions/` | `{ question_type, question, options?, required? }` | Question | `checkin questions add` |
+| `PATCH` | `/v1/checkins/<followup_uuid>/questions/<q_uuid>/` | partial | Question | `checkin questions edit` |
+| `DELETE` | `/v1/checkins/<followup_uuid>/questions/<q_uuid>/delete/` | — | 204 | `checkin questions delete` |
+| `PUT` | `/v1/checkins/<followup_uuid>/questions/reorder/` | `{ order: [q_uuid...] }` | `{ reordered: true }` | `checkin questions reorder` |
 | `GET` | `/v1/mood/track/` | `?date` | `{ ... }` | Read today's mood |
 | `POST` | `/v1/mood/track/` | `{ score, date? }` | `{ ... }` | `/mood` |
 | `GET` | `/v1/users/` | — | `{ results: [{ uuid, full_name }], next: url\|null }` | Paginated |
