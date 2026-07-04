@@ -870,6 +870,19 @@ class TestFormsAuthoring:
 
         assert mock_post.call_args[1]["json"] == {"name": "Retro"}
 
+    def test_create_form_with_report_channels_inline(self, client: DailyBotClient) -> None:
+        mock_response: MagicMock = MagicMock(spec=httpx.Response)
+        mock_response.status_code = 201
+        mock_response.json.return_value = {"id": "form-uuid"}
+
+        with patch("httpx.post", return_value=mock_response) as mock_post:
+            client.create_form("Retro", report_channels=["chan-1", "chan-2"])
+
+        assert mock_post.call_args[1]["json"] == {
+            "name": "Retro",
+            "report_channels": ["chan-1", "chan-2"],
+        }
+
     def test_update_form_config(self, client: DailyBotClient) -> None:
         mock_response: MagicMock = MagicMock(spec=httpx.Response)
         mock_response.status_code = 200

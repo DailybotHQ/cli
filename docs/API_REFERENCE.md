@@ -207,7 +207,7 @@ Creating and configuring forms/check-ins (as opposed to filling them in). All au
 
 | Command | HTTP | Notes |
 |---|---|---|
-| `form create -n NAME [--questions-file F] [--interactive] [--report-channel UUID]` | `POST /v1/forms/create/` (+ `PATCH /config/` for channels) | Question types: `text`, `multiple_choice`, `boolean`, `numeric`; ≤ 50. |
+| `form create -n NAME [--questions-file F] [--interactive] [--report-channel UUID]` | `POST /v1/forms/create/` (`name`, `questions?`, `report_channels?` all inline) | Question types: `text`, `multiple_choice`, `boolean`, `numeric`; ≤ 50. |
 | `form edit <uuid> [--name] [--report-channel]` | `PATCH /v1/forms/<uuid>/config/` | |
 | `form archive <uuid>` | `DELETE /v1/forms/<uuid>/archive/` | Soft-delete (204). Confirms unless `--yes`. |
 | `form questions list <uuid>` | `GET /v1/forms/<uuid>/` | |
@@ -487,7 +487,7 @@ key, so all of these commands work with `DAILYBOT_API_KEY` set even without
 | `POST` | `/v1/forms/<uuid>/responses/<resp_uuid>/transition/` | `{ to_state, note? }` | Updated response | 403 = `form_response_change_state_forbidden` or `final_state_locked` |
 | `DELETE` | `/v1/forms/<uuid>/responses/<resp_uuid>/` | — | 204 | Author / owner / admin |
 | `GET` | `/v1/report-channels/` | — | `[{ uuid, name, platform, channel_id }]` | `channels list` |
-| `POST` | `/v1/forms/create/` | `{ name, questions?: [...] }` | `{ id, name, is_active, questions }` | Role-gated; `form create` |
+| `POST` | `/v1/forms/create/` | `{ name, questions?: [...], report_channels?: [...] }` | `{ id, name, is_active, questions }` | Role-gated; `form create` |
 | `PATCH` | `/v1/forms/<uuid>/config/` | `{ name?, report_channels? }` | Form | `form edit` |
 | `DELETE` | `/v1/forms/<uuid>/archive/` | — | 204 | `form archive` (soft-delete) |
 | `POST` | `/v1/forms/<uuid>/questions/` | `{ question_type, question, options?, required? }` | Question | `form questions add` |

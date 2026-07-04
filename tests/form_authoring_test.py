@@ -53,17 +53,17 @@ class TestFormCreate:
         sent_questions = client.create_form.call_args[0][1]
         assert sent_questions[0]["question_type"] == "text"
 
-    def test_create_with_report_channel_calls_config(self, runner: CliRunner) -> None:
+    def test_create_with_report_channel_inline(self, runner: CliRunner) -> None:
         with _auth(), _client() as cls:
             client: MagicMock = cls.return_value
             client.create_form.return_value = FORM_PAYLOAD
-            client.update_form_config.return_value = FORM_PAYLOAD
             result = runner.invoke(
                 cli, ["form", "create", "-n", "Retro", "--report-channel", "chan-1"]
             )
         assert result.exit_code == 0
-        client.update_form_config.assert_called_once()
-        assert client.update_form_config.call_args[1]["report_channels"] == ["chan-1"]
+        # Report channels go directly in the create body — no follow-up config call.
+        assert client.create_form.call_args[1]["report_channels"] == ["chan-1"]
+        client.update_form_config.assert_not_called()
 
     def test_create_invalid_question_type_fails_fast(
         self, runner: CliRunner, tmp_path: Any

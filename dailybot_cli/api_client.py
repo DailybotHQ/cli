@@ -707,11 +707,15 @@ class DailyBotClient:
         self,
         name: str,
         questions: list[dict[str, Any]] | None = None,
+        *,
+        report_channels: list[str] | None = None,
     ) -> dict[str, Any]:
-        """POST /v1/forms/create/ — create a form with optional inline questions."""
+        """POST /v1/forms/create/ — create a form with optional questions + channels."""
         payload: dict[str, Any] = {"name": name}
         if questions:
             payload["questions"] = questions
+        if report_channels:
+            payload["report_channels"] = report_channels
         response: httpx.Response = httpx.post(
             f"{self.api_url}/v1/forms/create/",
             json=payload,

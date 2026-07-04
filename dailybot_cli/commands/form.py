@@ -451,19 +451,13 @@ def form_create(
         questions = None
     try:
         with console.status("Creating form..."):
-            result: dict[str, Any] = client.create_form(name, questions)
+            result: dict[str, Any] = client.create_form(
+                name,
+                questions,
+                report_channels=list(report_channels) if report_channels else None,
+            )
     except APIError as exc:
         exit_for_api_error(exc, json_mode)
-
-    # Attach report channels in a follow-up config call when provided (create
-    # takes only name + questions).
-    if report_channels:
-        form_id: str = str(result.get("id") or result.get("uuid") or "")
-        try:
-            with console.status("Attaching report channels..."):
-                result = client.update_form_config(form_id, report_channels=list(report_channels))
-        except APIError as exc:
-            exit_for_api_error(exc, json_mode)
 
     if json_mode:
         emit_json(result)
