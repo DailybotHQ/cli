@@ -207,18 +207,22 @@ Creating and configuring forms/check-ins (as opposed to filling them in). All au
 
 | Command | HTTP | Notes |
 |---|---|---|
+| `form list [--include-archived]` | `GET /v1/forms/` (`?include_archived=true`) | Archived forms hidden by default; flagged in a Status column when shown. |
 | `form create -n NAME [--questions-file F] [--interactive] [--report-channel UUID]` | `POST /v1/forms/create/` (`name`, `questions?`, `report_channels?` all inline) | Question types: `text`, `multiple_choice`, `boolean`, `numeric`; ≤ 50. |
 | `form edit <uuid> [--name] [--report-channel]` | `PATCH /v1/forms/<uuid>/config/` | |
 | `form archive <uuid>` | `DELETE /v1/forms/<uuid>/archive/` | Soft-delete (204). Confirms unless `--yes`. |
-| `form questions list <uuid>` | `GET /v1/forms/<uuid>/` | |
-| `form questions add <uuid> --type --question [--options] [--required/--optional]` | `POST /v1/forms/<uuid>/questions/` | `multiple_choice` requires `--options`; `boolean` takes none. |
-| `form questions edit <uuid> <q_uuid> [...]` | `PATCH /v1/forms/<uuid>/questions/<q_uuid>/` | Partial update. |
+| `form questions list <uuid>` | `GET /v1/forms/<uuid>/` | Canonical question shape (see below). |
+| `form questions add <uuid> --type --question [--options] [--required/--optional] [--blocker]` | `POST /v1/forms/<uuid>/questions/` | `multiple_choice` requires `--options`; `boolean` takes none. `--blocker` tags the blocker question. |
+| `form questions edit <uuid> <q_uuid> [... --blocker/--no-blocker]` | `PATCH /v1/forms/<uuid>/questions/<q_uuid>/` | Partial update (non-destructive). |
 | `form questions delete <uuid> <q_uuid>` | `DELETE /v1/forms/<uuid>/questions/<q_uuid>/delete/` | Confirms unless `--yes`. |
-| `form questions reorder <uuid> <q_uuid>...` | `PUT /v1/forms/<uuid>/questions/reorder/` | |
+| `form questions reorder <uuid> <q_uuid>...` | `PUT /v1/forms/<uuid>/questions/reorder/` | Unknown UUID → 400. |
 | `checkin create -n NAME [--time --days --timezone \| --schedule-file] [--user --team] [--questions-file \| --interactive] [--report-channel]` | `POST /v1/checkins/create/` | `days` = ISO weekday ints (0=Sun…6=Sat). |
+| `checkin show <uuid>` | `GET /v1/checkins/<uuid>/detail/` | Canonical detail: schedule, resolved `participants`, attached `report_channels`, canonical questions. |
 | `checkin config <uuid> [--name] [--time --days --timezone] [--report-channel] [--active/--inactive]` | `PATCH /v1/checkins/<uuid>/config/` | |
 | `checkin archive <uuid>` | `DELETE /v1/checkins/<uuid>/archive/` | Soft-delete (204). Confirms unless `--yes`. |
-| `checkin questions add/edit/delete/reorder` | `.../v1/checkins/<uuid>/questions/...` | Same shapes as form questions. |
+| `checkin questions add/edit/delete/reorder` | `.../v1/checkins/<uuid>/questions/...` | Same shapes as form questions (incl. `--blocker`). |
+
+**Canonical question shape** (every read path — form detail, `form questions list`, `checkin show` detail): `{ uuid, index, question, question_type, required, is_blocker, choices }`. For `multiple_choice`, `choices` is a list of `{ label, value }` objects; for `text`/`boolean`/`numeric` it is `[]`.
 
 > **Date-param asymmetry:** form response filters use `date_from`/`date_to`; check-in response filters use `date_start`/`date_end`. The CLI presents one `--from`/`--to` UX and maps per resource.
 
@@ -487,24 +491,26 @@ key, so all of these commands work with `DAILYBOT_API_KEY` set even without
 | `POST` | `/v1/forms/<uuid>/responses/<resp_uuid>/transition/` | `{ to_state, note? }` | Updated response | 403 = `form_response_change_state_forbidden` or `final_state_locked` |
 | `DELETE` | `/v1/forms/<uuid>/responses/<resp_uuid>/` | — | 204 | Author / owner / admin |
 | `GET` | `/v1/report-channels/` | — | `[{ uuid, name, platform, channel_id }]` | `channels list` |
-| `POST` | `/v1/forms/create/` | `{ name, questions?: [...], report_channels?: [...] }` | `{ id, name, is_active, questions }` | Role-gated; `form create` |
+| `GET` | `/v1/forms/` | `?include=questions`, `?include_archived=true` | `[{ id, name, is_active, is_archived, questions? }]` | `form list`; archived hidden unless opted in |
+| `POST` | `/v1/forms/create/` | `{ name, questions?: [...], report_channels?: [...] }` | `{ id, name, is_active, is_archived, questions, report_channels }` | Role-gated; `form create` |
 | `PATCH` | `/v1/forms/<uuid>/config/` | `{ name?, report_channels? }` | Form | `form edit` |
-| `DELETE` | `/v1/forms/<uuid>/archive/` | — | 204 | `form archive` (soft-delete) |
-| `POST` | `/v1/forms/<uuid>/questions/` | `{ question_type, question, options?, required? }` | Question | `form questions add` |
+| `DELETE` | `/v1/forms/<uuid>/archive/` | — | 204 (sets `is_active=false` + `is_archived=true`) | `form archive` (soft-delete) |
+| `POST` | `/v1/forms/<uuid>/questions/` | `{ question_type, question, options?, required?, is_blocker? }` | Question | `form questions add` |
 | `PATCH` | `/v1/forms/<uuid>/questions/<q_uuid>/` | partial | Question | `form questions edit` |
 | `DELETE` | `/v1/forms/<uuid>/questions/<q_uuid>/delete/` | — | 204 | `form questions delete` |
 | `PUT` | `/v1/forms/<uuid>/questions/reorder/` | `{ order: [q_uuid...] }` | `{ reordered: true }` | `form questions reorder` |
 | `POST` | `/v1/checkins/<followup_uuid>/responses/` | `{ responses: [{ uuid, index, response }], last_question_index?, response_date? }` | `{ uuid }` | |
 | `GET` | `/v1/checkins/` | — | `{ results: [{ id, name, ... }], next? }` (or bare list) | Paginated; terminal check-in flows |
-| `GET` | `/v1/checkins/<followup_uuid>/` | — | `{ ... }` | Check-in detail |
+| `GET` | `/v1/checkins/<followup_uuid>/` | — | `{ ... }` | v2 retrieve serializer (different shape) |
+| `GET` | `/v1/checkins/<followup_uuid>/detail/` | — | `{ id, name, is_archived, schedule, questions, participants: {users,teams}, report_channels }` | **Canonical** authoring read; `checkin show` |
 | `GET` | `/v1/templates/<template_uuid>/` | `?render_special_vars=true&followup_id=<uuid>` | `{ questions: [...] }` | Question definitions for a check-in |
 | `GET` | `/v1/checkins/<followup_uuid>/responses/` | `?date_start&date_end`, `?all=true`, `?user` | `[{ ... }]` | History; `all`/`user` admin/owner-only |
 | `PUT` | `/v1/checkins/<followup_uuid>/responses/` | `{ responses: [...], last_question_index? }` | Updated response | `/checkin edit` |
 | `DELETE` | `/v1/checkins/<followup_uuid>/responses/` | `?date_start&date_end` | 204 | `/checkin reset` |
 | `POST` | `/v1/checkins/create/` | `{ name, schedule?, participants?, questions?, report_channels? }` | Check-in | Role-gated; `checkin create` |
 | `PATCH` | `/v1/checkins/<followup_uuid>/config/` | `{ name?, schedule?, report_channels?, is_active? }` | Check-in | `checkin config` |
-| `DELETE` | `/v1/checkins/<followup_uuid>/archive/` | — | 204 | `checkin archive` (soft-delete) |
-| `POST` | `/v1/checkins/<followup_uuid>/questions/` | `{ question_type, question, options?, required? }` | Question | `checkin questions add` |
+| `DELETE` | `/v1/checkins/<followup_uuid>/archive/` | — | 204 (sets `active=false` + `archived=true`) | `checkin archive` (soft-delete) |
+| `POST` | `/v1/checkins/<followup_uuid>/questions/` | `{ question_type, question, options?, required?, is_blocker? }` | Question | `checkin questions add` |
 | `PATCH` | `/v1/checkins/<followup_uuid>/questions/<q_uuid>/` | partial | Question | `checkin questions edit` |
 | `DELETE` | `/v1/checkins/<followup_uuid>/questions/<q_uuid>/delete/` | — | 204 | `checkin questions delete` |
 | `PUT` | `/v1/checkins/<followup_uuid>/questions/reorder/` | `{ order: [q_uuid...] }` | `{ reordered: true }` | `checkin questions reorder` |

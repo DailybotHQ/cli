@@ -37,15 +37,18 @@ class TestBuildQuestionsInteractively:
             _prompt("A, B, C"),
         ]
         mock_q.confirm.side_effect = [
-            _prompt(True),  # required?
+            _prompt(True),  # Q1 required?
+            _prompt(False),  # Q1 blocker?
             _prompt(True),  # add another?
-            _prompt(True),  # required?
+            _prompt(True),  # Q2 required?
+            _prompt(False),  # Q2 blocker?
             _prompt(False),  # add another? -> stop
         ]
 
         result: list[dict[str, Any]] = build_questions_interactively()
         assert len(result) == 2
         assert result[0]["question_type"] == "text"
+        assert result[0]["is_blocker"] is False
         assert result[1]["question_type"] == "multiple_choice"
         assert result[1]["options"] == ["A", "B", "C"]
 

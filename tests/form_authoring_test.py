@@ -138,6 +138,27 @@ class TestFormQuestions:
         assert result.exit_code == 0
         assert client.add_form_question.call_args[0][1]["question_type"] == "text"
 
+    def test_add_with_blocker(self, runner: CliRunner) -> None:
+        with _auth(), _client() as cls:
+            client: MagicMock = cls.return_value
+            client.add_form_question.return_value = {"uuid": "q-new", "question": "Blocked?"}
+            result = runner.invoke(
+                cli,
+                [
+                    "form",
+                    "questions",
+                    "add",
+                    "form-uuid",
+                    "--type",
+                    "boolean",
+                    "--question",
+                    "Blocked?",
+                    "--blocker",
+                ],
+            )
+        assert result.exit_code == 0
+        assert client.add_form_question.call_args[0][1]["is_blocker"] is True
+
     def test_add_multiple_choice_needs_options(self, runner: CliRunner) -> None:
         with _auth(), _client() as cls:
             result = runner.invoke(
@@ -191,6 +212,26 @@ class TestFormQuestions:
             result = runner.invoke(cli, ["form", "questions", "reorder", "form-uuid", "q2", "q1"])
         assert result.exit_code == 0
         assert client.reorder_form_questions.call_args[0][1] == ["q2", "q1"]
+
+
+class TestFormListArchived:
+    def test_include_archived_forwarded(self, runner: CliRunner) -> None:
+        with _auth(), _client() as cls:
+            client: MagicMock = cls.return_value
+            client.list_forms.return_value = [
+                {"id": "f1", "name": "Old", "is_archived": True, "questions": []}
+            ]
+            result = runner.invoke(cli, ["form", "list", "--include-archived"])
+        assert result.exit_code == 0
+        assert client.list_forms.call_args[1]["include_archived"] is True
+
+    def test_archived_hidden_by_default(self, runner: CliRunner) -> None:
+        with _auth(), _client() as cls:
+            client: MagicMock = cls.return_value
+            client.list_forms.return_value = []
+            result = runner.invoke(cli, ["form", "list"])
+        assert result.exit_code == 0
+        assert client.list_forms.call_args[1]["include_archived"] is False
 
 
 class TestFormResponsesExtended:

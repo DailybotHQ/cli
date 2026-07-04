@@ -269,11 +269,17 @@ dailybot checkin config <followup_uuid> --time 10:00 --days 1,2,3,4,5
 dailybot checkin config <followup_uuid> --inactive
 dailybot checkin archive <followup_uuid>
 
-# Manage questions (same shapes as form questions)
+# Manage questions (same shapes as form questions; --blocker tags the blocker Q)
 dailybot checkin questions add <followup_uuid> --type text --question "Focus today?"
+dailybot checkin questions add <followup_uuid> --type boolean --question "Any blockers?" --blocker
 dailybot checkin questions edit <followup_uuid> <question_uuid> --question "Need help?"
+dailybot checkin questions edit <followup_uuid> <question_uuid> --blocker
 dailybot checkin questions delete <followup_uuid> <question_uuid> --yes
 dailybot checkin questions reorder <followup_uuid> <q2> <q1>
+
+# Read a check-in back — canonical detail: schedule, resolved participants
+# (names), attached report channels, and canonical questions in one call
+dailybot checkin show <followup_uuid> --json
 
 # Admin/owner: read everyone's response history, filtered by user
 dailybot checkin history <followup_uuid> --days 7    # your own; --all/--user are on `responses` API
@@ -284,7 +290,13 @@ is `HH:MM`; `--timezone` is an IANA name. Or pass `--schedule-file`
 (`{"days": [...], "time": "HH:MM", "timezone": "..."}`). **Participants:**
 repeatable `--user` / `--team` accept a name or a UUID. **Question types** match
 forms: `text`, `multiple_choice` (needs `--options`), `boolean` (no options),
-`numeric`; up to 50.
+`numeric`; up to 50. Tag the blocker question with `--blocker`.
+
+**Reading back (`checkin show`):** returns the canonical detail shape — schedule,
+`participants` (users/teams resolved to names), attached `report_channels`, and
+`questions` in the canonical `{uuid, index, question, question_type, required,
+is_blocker, choices}` form (identical to form detail). Use it to verify a
+check-in you just created — who's assigned, where it reports, and question order.
 
 ---
 

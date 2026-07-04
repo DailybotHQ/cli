@@ -137,6 +137,35 @@ class TestCheckinQuestions:
         assert result.exit_code == 0
         assert client.add_checkin_question.call_args[0][1]["question_type"] == "boolean"
 
+    def test_add_with_blocker(self, runner: CliRunner) -> None:
+        with _auth(), _client() as cls:
+            client: MagicMock = cls.return_value
+            client.add_checkin_question.return_value = {"uuid": "q-new"}
+            result = runner.invoke(
+                cli,
+                [
+                    "checkin",
+                    "questions",
+                    "add",
+                    "fu-1",
+                    "--type",
+                    "boolean",
+                    "--question",
+                    "Any blockers?",
+                    "--blocker",
+                ],
+            )
+        assert result.exit_code == 0
+        assert client.add_checkin_question.call_args[0][1]["is_blocker"] is True
+
+    def test_edit_blocker_toggle(self, runner: CliRunner) -> None:
+        with _auth(), _client() as cls:
+            client: MagicMock = cls.return_value
+            client.update_checkin_question.return_value = {"uuid": "q1"}
+            result = runner.invoke(cli, ["checkin", "questions", "edit", "fu-1", "q1", "--blocker"])
+        assert result.exit_code == 0
+        assert client.update_checkin_question.call_args[0][2] == {"is_blocker": True}
+
     def test_edit(self, runner: CliRunner) -> None:
         with _auth(), _client() as cls:
             client: MagicMock = cls.return_value

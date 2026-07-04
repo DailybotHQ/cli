@@ -12,6 +12,7 @@ from dailybot_cli.commands.authoring_helpers import (
     MAX_QUESTIONS,
     AuthoringError,
     build_question,
+    build_question_edit_fields,
     parse_options,
     parse_participants,
     parse_questions_file,
@@ -26,6 +27,7 @@ class TestBuildQuestion:
             "question_type": "text",
             "question": "What went well?",
             "required": True,
+            "is_blocker": False,
         }
 
     def test_multiple_choice_with_options(self) -> None:
@@ -54,6 +56,25 @@ class TestBuildQuestion:
     def test_type_is_normalized(self) -> None:
         assert build_question("TEXT", "Q?")["question_type"] == "text"
 
+    def test_is_blocker_defaults_false(self) -> None:
+        assert build_question("boolean", "Blocked?")["is_blocker"] is False
+
+    def test_is_blocker_flag_forwarded(self) -> None:
+        assert build_question("boolean", "Blocked?", is_blocker=True)["is_blocker"] is True
+
+
+class TestBuildQuestionEditFields:
+    def test_empty_when_nothing_provided(self) -> None:
+        assert build_question_edit_fields(None, None, None, None) == {}
+
+    def test_blocker_toggle_forwarded(self) -> None:
+        assert build_question_edit_fields(None, None, None, None, is_blocker=True) == {
+            "is_blocker": True
+        }
+
+    def test_blocker_none_omitted(self) -> None:
+        assert "is_blocker" not in build_question_edit_fields("Q?", None, None, None, None)
+
 
 class TestParseOptions:
     def test_splits_and_trims(self) -> None:
@@ -81,6 +102,12 @@ class TestParseQuestionsFile:
         assert len(result) == 2
         assert result[1]["question_type"] == "multiple_choice"
         assert result[1]["question"] == "Rating?"
+
+    def test_is_blocker_read_from_file(self, tmp_path: Path) -> None:
+        path: Path = tmp_path / "questions.json"
+        path.write_text(json.dumps([{"type": "boolean", "label": "Blocked?", "is_blocker": True}]))
+        result: list[dict[str, Any]] = parse_questions_file(str(path))
+        assert result[0]["is_blocker"] is True
 
     def test_missing_file_rejected(self, tmp_path: Path) -> None:
         with pytest.raises(AuthoringError):
@@ -205,3 +232,82 @@ class TestAuthoringDisplay:
         with display.console.capture() as capture:
             display.print_questions_table([])
         assert "No questions" in capture.get()
+
+    def test_questions_table_renders_choices_and_blocker(self) -> None:
+        with display.console.capture() as capture:
+            display.print_questions_table(
+                [
+                    {
+                        "uuid": "q1",
+                        "index": 0,
+                        "question": "Mood?",
+                        "question_type": "multiple_choice",
+                        "required": True,
+                        "is_blocker": False,
+                        "choices": [
+                            {"label": "Great", "value": "great"},
+                            {"label": "Rough", "value": "rough"},
+                        ],
+                    },
+                    {
+                        "uuid": "q2",
+                        "index": 1,
+                        "question": "Blocked?",
+                        "question_type": "boolean",
+                        "required": True,
+                        "is_blocker": True,
+                        "choices": [],
+                    },
+                ]
+            )
+        output: str = capture.get()
+        assert "Great" in output  # {label,value} choice rendered by label
+        assert "Rough" in output
+        assert "Blocker" in output  # blocker column header present
+
+    def test_form_updated_title(self) -> None:
+        with display.console.capture() as capture:
+            display.print_form_created({"id": "f-1", "name": "Retro"}, updated=True)
+        assert "Form Updated" in capture.get()
+
+    def test_checkin_detail_renders_participants(self) -> None:
+        with display.console.capture() as capture:
+            display.print_checkin_detail(
+                {
+                    "id": "fu-1",
+                    "name": "Standup",
+                    "is_archived": False,
+                    "schedule": {"days": [1], "time": "09:00", "timezone": "UTC"},
+                    "participants": {
+                        "users": [{"uuid": "u1", "name": "Jane Doe"}],
+                        "teams": [{"uuid": "t1", "name": "Engineering"}],
+                    },
+                    "report_channels": [{"id": "C1", "type": "channel", "reporting_enabled": True}],
+                    "questions": [
+                        {
+                            "uuid": "q1",
+                            "index": 0,
+                            "question": "Done?",
+                            "question_type": "text",
+                            "required": True,
+                            "is_blocker": False,
+                            "choices": [],
+                        }
+                    ],
+                }
+            )
+        output: str = capture.get()
+        assert "Jane Doe" in output
+        assert "Engineering" in output
+        assert "Done?" in output
+
+    def test_forms_table_shows_archived_status(self) -> None:
+        with display.console.capture() as capture:
+            display.print_forms_table(
+                [
+                    {"id": "f-1", "name": "Active Form", "questions": []},
+                    {"id": "f-2", "name": "Old Form", "questions": [], "is_archived": True},
+                ]
+            )
+        output: str = capture.get()
+        assert "archived" in output

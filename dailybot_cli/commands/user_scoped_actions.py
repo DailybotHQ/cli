@@ -456,11 +456,14 @@ def execute_form_list(
     client: DailyBotClient,
     *,
     json_mode: bool = False,
+    include_archived: bool = False,
 ) -> list[dict[str, Any]] | None:
     """Fetch and display forms visible to the user (with question counts)."""
     try:
         with console.status("Fetching forms..."):
-            forms: list[dict[str, Any]] = client.list_forms(include_questions=True)
+            forms: list[dict[str, Any]] = client.list_forms(
+                include_questions=True, include_archived=include_archived
+            )
     except APIError as exc:
         exit_for_api_error(exc, json_mode)
 
@@ -542,14 +545,6 @@ def execute_user_list(
     return users
 
 
-def _template_uuid(checkin: dict[str, Any]) -> str:
-    """Best-effort template UUID from a check-in detail payload."""
-    template: Any = checkin.get("template")
-    if isinstance(template, dict):
-        return str(template.get("uuid") or template.get("id") or "")
-    return str(checkin.get("template_uuid") or template or "")
-
-
 def execute_checkin_status(
     client: DailyBotClient,
     *,
@@ -575,29 +570,22 @@ def execute_checkin_show(
     *,
     json_mode: bool = False,
 ) -> None:
-    """Show a check-in's configuration and question definitions."""
+    """Show a check-in's configuration and question definitions.
+
+    Reads the canonical ``/detail/`` endpoint, which returns the schedule,
+    resolved participants, attached report channels and the canonical question
+    shape in a single call.
+    """
     try:
         with console.status("Loading check-in..."):
-            checkin: dict[str, Any] = client.get_checkin(followup_uuid)
-            questions: list[dict[str, Any]] = []
-            template_uuid: str = _template_uuid(checkin)
-            if template_uuid:
-                template: dict[str, Any] = client.get_template(
-                    template_uuid, followup_uuid=followup_uuid
-                )
-                raw_questions: Any = template.get("questions") or template.get("template_questions")
-                # The template endpoint nests questions as {"fields": [...]}.
-                if isinstance(raw_questions, dict):
-                    raw_questions = raw_questions.get("fields")
-                if isinstance(raw_questions, list):
-                    questions = raw_questions
+            detail: dict[str, Any] = client.get_checkin_detail(followup_uuid)
     except APIError as exc:
         exit_for_api_error(exc, json_mode)
 
     if json_mode:
-        emit_json({"checkin": checkin, "questions": questions})
+        emit_json(detail)
         return
-    print_checkin_detail(checkin, questions)
+    print_checkin_detail(detail)
 
 
 def execute_checkin_history(

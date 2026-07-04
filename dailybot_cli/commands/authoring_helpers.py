@@ -55,11 +55,13 @@ def build_question(
     *,
     options: list[str] | None = None,
     required: bool = True,
+    is_blocker: bool = False,
 ) -> dict[str, Any]:
     """Build a validated question payload (explicit ``question_type``/``question``).
 
     Enforces the type whitelist, that ``multiple_choice`` carries options, that
-    other types do not, and that the question text is non-empty.
+    other types do not, and that the question text is non-empty. ``is_blocker``
+    tags the question as the blocker prompt (common on boolean check-in Qs).
     """
     qtype: str = question_type.strip().lower()
     if qtype not in VALID_QUESTION_TYPES:
@@ -75,6 +77,7 @@ def build_question(
         "question_type": qtype,
         "question": text,
         "required": required,
+        "is_blocker": is_blocker,
     }
     if qtype == "multiple_choice":
         if not options:
@@ -92,11 +95,13 @@ def build_question_edit_fields(
     question_type: str | None,
     options: str | None,
     required: bool | None,
+    is_blocker: bool | None = None,
 ) -> dict[str, Any]:
     """Build a partial question-update payload from provided edit flags.
 
     Only shape checks run here; the server does full validation. ``build_question``
     isn't reused because edits are partial (no required question/type pairing).
+    Omitted flags are not sent (non-destructive PATCH).
     """
     fields: dict[str, Any] = {}
     if question is not None:
@@ -107,6 +112,8 @@ def build_question_edit_fields(
         fields["options"] = parse_options(options) or []
     if required is not None:
         fields["required"] = required
+    if is_blocker is not None:
+        fields["is_blocker"] = is_blocker
     return fields
 
 
@@ -141,7 +148,10 @@ def parse_questions_file(path: str) -> list[dict[str, Any]]:
             [str(option) for option in raw_options] if isinstance(raw_options, list) else None
         )
         required: bool = bool(item.get("required", True))
-        questions.append(build_question(qtype, qtext, options=options, required=required))
+        is_blocker: bool = bool(item.get("is_blocker", False))
+        questions.append(
+            build_question(qtype, qtext, options=options, required=required, is_blocker=is_blocker)
+        )
     return questions
 
 
@@ -239,10 +249,19 @@ def build_questions_interactively() -> list[dict[str, Any]]:
             raw_options: str | None = questionary.text("Options (comma-separated):").ask()
             options = parse_options(raw_options)
         required: bool | None = questionary.confirm("Required?", default=True).ask()
+        is_blocker: bool | None = questionary.confirm(
+            "Is this the blocker question?", default=False
+        ).ask()
 
         try:
             questions.append(
-                build_question(qtype, text or "", options=options, required=bool(required))
+                build_question(
+                    qtype,
+                    text or "",
+                    options=options,
+                    required=bool(required),
+                    is_blocker=bool(is_blocker),
+                )
             )
         except AuthoringError as exc:
             print_error(exc.message)

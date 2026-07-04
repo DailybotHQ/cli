@@ -58,20 +58,27 @@ def form() -> None:
 
 
 @form.command("list")
+@click.option(
+    "--include-archived",
+    is_flag=True,
+    help="Include archived forms (hidden by default).",
+)
 @click.option("--json", "json_mode", is_flag=True, help="Emit machine-readable JSON to stdout.")
-def form_list(json_mode: bool) -> None:
+def form_list(include_archived: bool, json_mode: bool) -> None:
     """List forms visible to you.
 
     \b
     Acts as you. You can only see and act on what you could in the webapp.
+    Archived forms are hidden unless you pass --include-archived.
 
     \b
     Examples:
       dailybot form list
+      dailybot form list --include-archived
       dailybot form list --json
     """
     client = require_auth()
-    execute_form_list(client, json_mode=json_mode)
+    execute_form_list(client, json_mode=json_mode, include_archived=include_archived)
 
 
 @form.command("get")
@@ -505,7 +512,7 @@ def form_edit(
         emit_json(result)
         return
     print_success(f"Form {form_uuid} updated.")
-    print_form_created(result)
+    print_form_created(result, updated=True)
 
 
 @form.command("archive")
@@ -578,6 +585,12 @@ def form_questions_list(form_uuid: str, json_mode: bool) -> None:
 @click.option("--question", required=True, help="The question text.")
 @click.option("--options", default=None, help="Comma-separated options (multiple_choice only).")
 @click.option("--required/--optional", "required", default=True, help="Mark the question required.")
+@click.option(
+    "--blocker/--no-blocker",
+    "is_blocker",
+    default=False,
+    help="Tag this as the blocker question.",
+)
 @click.option("--json", "json_mode", is_flag=True, help="Emit machine-readable JSON to stdout.")
 def form_questions_add(
     form_uuid: str,
@@ -585,6 +598,7 @@ def form_questions_add(
     question: str,
     options: str | None,
     required: bool,
+    is_blocker: bool,
     json_mode: bool,
 ) -> None:
     """Add a question to a form.
@@ -597,7 +611,11 @@ def form_questions_add(
     """
     client = require_auth()
     payload: dict[str, Any] = build_question(
-        question_type, question, options=parse_options(options), required=required
+        question_type,
+        question,
+        options=parse_options(options),
+        required=required,
+        is_blocker=is_blocker,
     )
     try:
         with console.status("Adding question..."):
@@ -619,6 +637,12 @@ def form_questions_add(
 @click.option("--type", "question_type", default=None, help="New question type.")
 @click.option("--options", default=None, help="New comma-separated options (multiple_choice).")
 @click.option("--required/--optional", "required", default=None, help="Toggle required.")
+@click.option(
+    "--blocker/--no-blocker",
+    "is_blocker",
+    default=None,
+    help="Toggle the blocker tag.",
+)
 @click.option("--json", "json_mode", is_flag=True, help="Emit machine-readable JSON to stdout.")
 def form_questions_edit(
     form_uuid: str,
@@ -627,19 +651,23 @@ def form_questions_edit(
     question_type: str | None,
     options: str | None,
     required: bool | None,
+    is_blocker: bool | None,
     json_mode: bool,
 ) -> None:
-    """Update a question's text, type, options, or required flag.
+    """Update a question's text, type, options, required, or blocker flag.
 
     \b
     Examples:
       dailybot form questions edit <form_uuid> <question_uuid> --question "Reworded?"
       dailybot form questions edit <form_uuid> <question_uuid> --optional
+      dailybot form questions edit <form_uuid> <question_uuid> --blocker
     """
-    fields: dict[str, Any] = build_question_edit_fields(question, question_type, options, required)
+    fields: dict[str, Any] = build_question_edit_fields(
+        question, question_type, options, required, is_blocker
+    )
     if not fields:
         raise click.UsageError(
-            "Nothing to edit. Pass --question, --type, --options, or --required."
+            "Nothing to edit. Pass --question, --type, --options, --required, or --blocker."
         )
     client = require_auth()
     try:

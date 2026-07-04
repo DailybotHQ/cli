@@ -531,17 +531,23 @@ dailybot form create --name "Sprint Retro"
 dailybot form create -n "Sprint Retro" --questions-file questions.json
 dailybot form create -n "Sprint Retro" --interactive
 
+# List forms — archived forms are hidden unless you ask for them
+dailybot form list                       # active only
+dailybot form list --include-archived    # includes archived, flagged in a Status column
+
 # Edit config / archive (soft-delete). Note: `form archive` is the definition;
 # `form delete` still removes a *response*.
 dailybot form edit <form_uuid> --name "Updated Retro" --report-channel <channel_uuid>
 dailybot form archive <form_uuid>
 
-# Manage questions
+# Manage questions (--blocker tags the blocker question)
 dailybot form questions list <form_uuid>
 dailybot form questions add <form_uuid> --type text --question "What went well?"
 dailybot form questions add <form_uuid> --type multiple_choice \
   --question "Rating?" --options "Excellent,Good,Average,Poor"
+dailybot form questions add <form_uuid> --type boolean --question "Blocking?" --blocker
 dailybot form questions edit <form_uuid> <question_uuid> --question "Reworded?"
+dailybot form questions edit <form_uuid> <question_uuid> --blocker
 dailybot form questions delete <form_uuid> <question_uuid> --yes
 dailybot form questions reorder <form_uuid> <q3> <q1> <q2>
 
@@ -557,8 +563,15 @@ dailybot form update <form_uuid> <response_uuid> --content '{"<q_uuid>":"correct
 **Question types:** `text`, `multiple_choice`, `boolean`, `numeric`.
 `multiple_choice` requires `--options`; `boolean` auto-generates Yes/No (no
 options); up to 50 questions. `--questions-file` is a JSON array of
-`{question_type, question, options?, required?}` objects (`type`/`label` aliases
-also accepted).
+`{question_type, question, options?, required?, is_blocker?}` objects
+(`type`/`label` aliases also accepted). Any question may be tagged the **blocker**
+question with `--blocker` (or `"is_blocker": true` in the file).
+
+**Reading questions back:** every read path (`form get`, `form questions list`,
+check-in `detail`) returns the canonical shape
+`{uuid, index, question, question_type, required, is_blocker, choices}`. For
+`multiple_choice`, `choices` is a list of `{label, value}` objects (display the
+`label`); for other types `choices` is `[]`.
 
 ---
 

@@ -256,6 +256,7 @@ class DailyBotClient:
         date: str | None = None,
         include_summary: bool = False,
         include_pending_users: bool = False,
+        include_archived: bool = False,
     ) -> list[dict[str, Any]]:
         """GET /v1/checkins/ — fetch visible check-ins with optional completion state."""
         results: list[dict[str, Any]] = []
@@ -266,6 +267,8 @@ class DailyBotClient:
             params["include_summary"] = "true"
         if include_pending_users:
             params["include_pending_users"] = "true"
+        if include_archived:
+            params["include_archived"] = "true"
         url: str | None = f"{self.api_url}/v1/checkins/"
         pages_fetched: int = 0
         while url is not None and pages_fetched < _MAX_LIST_PAGES:
@@ -293,6 +296,21 @@ class DailyBotClient:
         """GET /v1/checkins/<followup_uuid>/."""
         response: httpx.Response = httpx.get(
             f"{self.api_url}/v1/checkins/{followup_uuid}/",
+            headers=self._headers(),
+            timeout=self.timeout,
+        )
+        return self._handle_response(response)
+
+    def get_checkin_detail(self, followup_uuid: str) -> dict[str, Any]:
+        """GET /v1/checkins/<followup_uuid>/detail/ — canonical authoring read.
+
+        Returns the check-in with the canonical question shape, resolved
+        ``participants`` (users/teams with names), attached ``report_channels``
+        and the ``is_archived`` flag — the shape aligned with form detail. Use
+        this for authoring/verification rather than the v2 retrieve serializer.
+        """
+        response: httpx.Response = httpx.get(
+            f"{self.api_url}/v1/checkins/{followup_uuid}/detail/",
             headers=self._headers(),
             timeout=self.timeout,
         )
@@ -543,9 +561,15 @@ class DailyBotClient:
         )
         return self._handle_response(response)
 
-    def list_forms(self, *, include_questions: bool = False) -> list[dict[str, Any]]:
-        """GET /v1/forms/ — optionally expand question definitions per form."""
-        params: dict[str, str] = {"include": "questions"} if include_questions else {}
+    def list_forms(
+        self, *, include_questions: bool = False, include_archived: bool = False
+    ) -> list[dict[str, Any]]:
+        """GET /v1/forms/ — optionally expand questions and include archived forms."""
+        params: dict[str, str] = {}
+        if include_questions:
+            params["include"] = "questions"
+        if include_archived:
+            params["include_archived"] = "true"
         response: httpx.Response = httpx.get(
             f"{self.api_url}/v1/forms/",
             headers=self._headers(),

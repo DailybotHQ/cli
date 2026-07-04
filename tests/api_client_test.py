@@ -205,6 +205,22 @@ class TestDailyBotClientPublicApi:
         assert result["template"] == "template-uuid"
         assert mock_get.call_args[0][0].endswith("/v1/checkins/followup-uuid/")
 
+    def test_get_checkin_detail(self, client: DailyBotClient) -> None:
+        mock_response: MagicMock = MagicMock(spec=httpx.Response)
+        mock_response.status_code = 200
+        mock_response.json.return_value = {
+            "id": "followup-uuid",
+            "name": "Standup",
+            "questions": [{"uuid": "q1", "index": 0, "required": True, "is_blocker": False}],
+            "participants": {"users": [{"uuid": "u1", "name": "Jane Doe"}], "teams": []},
+        }
+
+        with patch("httpx.get", return_value=mock_response) as mock_get:
+            result: dict[str, Any] = client.get_checkin_detail("followup-uuid")
+
+        assert result["participants"]["users"][0]["name"] == "Jane Doe"
+        assert mock_get.call_args[0][0].endswith("/v1/checkins/followup-uuid/detail/")
+
     def test_list_checkin_responses(self, client: DailyBotClient) -> None:
         mock_response: MagicMock = MagicMock(spec=httpx.Response)
         mock_response.status_code = 200
@@ -301,6 +317,16 @@ class TestDailyBotClientPublicApi:
         assert result[0]["id"] == "form-uuid"
         assert "Bearer test-token" in mock_get.call_args[1]["headers"]["Authorization"]
         assert mock_get.call_args[1].get("params", {}) == {}
+
+    def test_list_forms_include_archived(self, client: DailyBotClient) -> None:
+        mock_response: MagicMock = MagicMock(spec=httpx.Response)
+        mock_response.status_code = 200
+        mock_response.json.return_value = [{"id": "form-uuid", "is_archived": True}]
+
+        with patch("httpx.get", return_value=mock_response) as mock_get:
+            client.list_forms(include_archived=True)
+
+        assert mock_get.call_args[1]["params"] == {"include_archived": "true"}
 
     def test_list_forms_with_questions(self, client: DailyBotClient) -> None:
         mock_response: MagicMock = MagicMock(spec=httpx.Response)
@@ -803,6 +829,16 @@ class TestDailyBotClientCheckinsExtended:
 
         call_kwargs: dict[str, Any] = mock_get.call_args[1]
         assert call_kwargs["params"] == {"date": "2026-07-01", "include_summary": "true"}
+
+    def test_list_checkins_include_archived(self, client: DailyBotClient) -> None:
+        mock_response: MagicMock = MagicMock(spec=httpx.Response)
+        mock_response.status_code = 200
+        mock_response.json.return_value = {"results": [], "next": None}
+
+        with patch("httpx.get", return_value=mock_response) as mock_get:
+            client.list_checkins(include_archived=True)
+
+        assert mock_get.call_args[1]["params"] == {"include_archived": "true"}
 
     def test_delete_checkin_response_uses_date_range(self, client: DailyBotClient) -> None:
         mock_response: MagicMock = MagicMock(spec=httpx.Response)
