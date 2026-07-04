@@ -17,6 +17,11 @@ MIN_PYTHON="3.10"
 
 has() { command -v "$1" &>/dev/null; }
 
+# True if version $1 >= version $2, compared as dotted version tokens via the
+# version-aware `sort -V` (GNU coreutils, always present on the Linux binary
+# path). Used only to check a ">=" floor against the latest published release.
+version_ge() { [ "$(printf '%s\n%s\n' "$1" "$2" | sort -V | tail -n1)" = "$1" ]; }
+
 info()    { printf '\033[1;34m==>\033[0m %s\n' "$*"; }
 success() { printf '\033[1;32m==>\033[0m %s\n' "$*"; }
 warn()    { printf '\033[1;33m==>\033[0m %s\n' "$*" >&2; }
@@ -48,11 +53,16 @@ finish() {
 }
 
 # --- Version selection ---
-# Install a specific version instead of the latest. Provide it either as an
-# environment variable or a CLI flag:
+# Install a specific version, or a minimum version floor, instead of the
+# latest. Provide it either as an environment variable or a CLI flag:
 #   curl -sSL https://cli.dailybot.com/install.sh | DAILYBOT_VERSION=1.15.0 bash
 #   curl -sSL https://cli.dailybot.com/install.sh | bash -s -- --version 1.15.0
-# An empty value means "install the latest published version".
+#
+# Accepted forms:
+#   (empty)     install the latest published version
+#   1.15.0      install exactly 1.15.0
+#   ==1.15.0    install exactly 1.15.0 (explicit form of the above)
+#   >=1.15.0    install the newest published version at or above 1.15.0
 VERSION="${DAILYBOT_VERSION:-}"
 
 while [ $# -gt 0 ]; do
@@ -72,27 +82,56 @@ while [ $# -gt 0 ]; do
     esac
 done
 
+# Split an optional comparison operator from the numeric version. VERSION_OP is
+# "" (latest), "==" (exact pin) or ">=" (minimum floor); VERSION_NUM holds the
+# bare number. Unsupported operators (<, >, <=, ~=, !=) are rejected outright so
+# the binary path never has to resolve a range it can't map to a single tag.
+VERSION_OP=""
+VERSION_NUM=""
+case "$VERSION" in
+    "")    ;;
+    ">="*) VERSION_OP=">="; VERSION_NUM="${VERSION#>=}" ;;
+    "=="*) VERSION_OP="=="; VERSION_NUM="${VERSION#==}" ;;
+    *[\<\>\~\!=]*)
+        error "Unsupported version specifier '$VERSION'. Use an exact version (1.15.0 or ==1.15.0) or a minimum floor (>=1.15.0)."
+        exit 1
+        ;;
+    *)     VERSION_OP="=="; VERSION_NUM="$VERSION" ;;
+esac
+
+# Tolerate whitespace around the number (e.g. DAILYBOT_VERSION=">= 1.15.0").
+VERSION_NUM="${VERSION_NUM//[[:space:]]/}"
+
 # Reject anything that is not a plain version token so it cannot be smuggled
 # into the pip spec or the release download URL.
-case "$VERSION" in
+case "$VERSION_NUM" in
     "") ;;
     *[!0-9A-Za-z.+-]*)
-        error "Invalid version '$VERSION'. Expected a version like 1.15.0."
+        error "Invalid version '$VERSION_NUM'. Expected a version like 1.15.0."
         exit 1
         ;;
 esac
 
-# Emit the pip requirement: "dailybot-cli" or "dailybot-cli==<version>".
+# Human-readable specifier for log lines: "", "==1.15.0" or ">=1.15.0".
+VERSION_DISPLAY=""
+[ -n "$VERSION_NUM" ] && VERSION_DISPLAY="${VERSION_OP}${VERSION_NUM}"
+
+# Emit the pip requirement: "dailybot-cli", "dailybot-cli==<v>" or
+# "dailybot-cli>=<v>". pip natively resolves ">=" to the newest matching release.
 pip_spec() {
-    if [ -n "$VERSION" ]; then
-        printf '%s==%s' "$PACKAGE" "$VERSION"
+    if [ -n "$VERSION_NUM" ]; then
+        printf '%s%s%s' "$PACKAGE" "$VERSION_OP" "$VERSION_NUM"
     else
         printf '%s' "$PACKAGE"
     fi
 }
 
-if [ -n "$VERSION" ]; then
-    info "Requested Dailybot CLI version: $VERSION"
+if [ -n "$VERSION_NUM" ]; then
+    if [ "$VERSION_OP" = ">=" ]; then
+        info "Requested Dailybot CLI: >=$VERSION_NUM (minimum floor — installing the newest at or above it)"
+    else
+        info "Requested Dailybot CLI version: $VERSION_NUM"
+    fi
 fi
 
 # --- Detect OS ---
@@ -104,9 +143,10 @@ OS="$(uname -s)"
 # =============================================================================
 if [ "$OS" = "Darwin" ]; then
     # Homebrew always installs the latest formula version. When a specific
-    # version is requested we fall through to the pip path, which can pin it.
-    if [ -n "$VERSION" ]; then
-        info "Homebrew installs only the latest release; using pip to install $VERSION..."
+    # version (or a floor) is requested we fall through to the pip path, which
+    # can honour both an exact pin and a ">=" minimum.
+    if [ -n "$VERSION_NUM" ]; then
+        info "Homebrew installs only the latest release; using pip to install $VERSION_DISPLAY..."
     else
         if ! has brew; then
             error "Homebrew is required on macOS."
@@ -131,7 +171,7 @@ fi
 if [ "$OS" = "Linux" ]; then
     install_binary() {
         local latest url status_code install_dir="/usr/local/bin"
-        local arch
+        local arch latest_num
         arch="$(uname -m)"
 
         # Only x86_64 binary is available; skip on other architectures
@@ -140,16 +180,28 @@ if [ "$OS" = "Linux" ]; then
             return 1
         fi
 
-        if [ -n "$VERSION" ]; then
-            # Pin the requested release tag; if its binary asset is missing
-            # the caller falls back to a pinned pip install.
-            latest="v$VERSION"
+        if [ "$VERSION_OP" = "==" ]; then
+            # Exact pin: request that release tag directly. If its binary asset
+            # is missing the caller falls back to a pinned pip install.
+            latest="v$VERSION_NUM"
         else
+            # Latest, or a ">=" floor: resolve the newest published release tag.
             latest=$(curl -sI "https://github.com/$REPO/releases/latest" \
                 | grep -i "^location:" | sed 's/.*tag\///' | tr -d '\r\n')
 
             if [ -z "$latest" ]; then
                 return 1
+            fi
+
+            # For a floor, only take the latest binary if it satisfies the floor;
+            # otherwise defer to pip, which resolves/verifies the ">=" spec and
+            # errors clearly when the floor is unpublishable.
+            if [ "$VERSION_OP" = ">=" ]; then
+                latest_num="${latest#v}"
+                if ! version_ge "$latest_num" "$VERSION_NUM"; then
+                    warn "Latest release $latest does not satisfy >=$VERSION_NUM; deferring to pip."
+                    return 1
+                fi
             fi
         fi
 

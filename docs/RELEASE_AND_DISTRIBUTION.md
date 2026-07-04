@@ -636,16 +636,16 @@ The public URL `https://cli.dailybot.com/install.sh` is a **Cloudflare 301 redir
 
 ### Pinning a specific version
 
-Both installers default to the **latest** release but accept an explicit version, so users (and CI) can reproduce a known-good install:
+Both installers default to the **latest** release but accept an explicit version, so users (and CI) can reproduce a known-good install. Two specifier styles are accepted: an **exact pin** (`1.15.0` or `==1.15.0`) and a **minimum floor** (`>=1.15.0`, which resolves to the newest release at or above the floor):
 
 | Method | How to pin | Applied as |
 |--------|-----------|-----------|
-| `pip` | `pip install dailybot-cli==<version>` | pip requirement specifier |
-| Homebrew | not supported — fall back to `pip install dailybot-cli==<version>` | (brew installs latest formula only) |
-| `install.sh` | `DAILYBOT_VERSION=<version>` env var **or** `bash -s -- --version <version>` | pinned Linux binary tag `v<version>`, falling back to `pip install dailybot-cli==<version>` |
-| `install.ps1` | `$env:DAILYBOT_VERSION = '<version>'` (piping to `iex` cannot forward args) | `pipx` / `uv tool` / `pip --user` install of `dailybot-cli==<version>` |
+| `pip` | `pip install dailybot-cli==<version>` or `pip install "dailybot-cli>=<version>"` | pip requirement specifier (pip natively resolves `>=` to the newest match) |
+| Homebrew | not supported — fall back to `pip install dailybot-cli==<version>` / `>=<version>` | (brew installs latest formula only) |
+| `install.sh` | `DAILYBOT_VERSION=<spec>` env var **or** `bash -s -- --version <spec>`, where `<spec>` is `<version>`, `==<version>` or `>=<version>` | **exact** → pinned Linux binary tag `v<version>`, falling back to `pip install dailybot-cli==<version>`; **floor** → latest binary when it satisfies the floor, else `pip install "dailybot-cli>=<version>"` |
+| `install.ps1` | `$env:DAILYBOT_VERSION = '<spec>'` (piping to `iex` cannot forward args) | `pipx` / `uv tool` / `pip --user` install of `dailybot-cli==<version>` or `dailybot-cli>=<version>` |
 
-Both scripts validate the value against `^[0-9A-Za-z.+-]+$` before it reaches any `pip`/URL command, so a malformed or hostile `DAILYBOT_VERSION` aborts the install instead of being interpolated. An empty/unset value means "latest". The README documents the user-facing commands for each method.
+**Specifier parsing.** Each script splits an optional leading operator (`==` or `>=`) from the numeric token, then validates the remainder against `^[0-9A-Za-z.+-]+$` before it reaches any `pip`/URL command — so a malformed or hostile `DAILYBOT_VERSION` (e.g. `1.0.0; rm -rf /`) aborts the install instead of being interpolated. Unsupported operators (`<`, `>`, `<=`, `~=`, `!=`) are rejected with a clear error rather than silently mishandled, because the binary path must resolve a spec to a single release tag. For a `>=` floor, `install.sh` compares the latest published tag against the floor with `sort -V` and only downloads the binary when it satisfies the floor (otherwise it defers to pip, which errors clearly if the floor is unpublishable). An empty/unset value means "latest". The README documents the user-facing commands for each method.
 
 ### `install.sh.sha256` (supply-chain verification)
 
