@@ -490,7 +490,7 @@ key, so all of these commands work with `DAILYBOT_API_KEY` set even without
 | `PATCH` | `/v1/forms/<uuid>/responses/<resp_uuid>/` | `{ content: { ... } }` | Updated response | Own always; owner/admin may edit anyone (audited) |
 | `POST` | `/v1/forms/<uuid>/responses/<resp_uuid>/transition/` | `{ to_state, note? }` | Updated response | 403 = `form_response_change_state_forbidden` or `final_state_locked` |
 | `DELETE` | `/v1/forms/<uuid>/responses/<resp_uuid>/` | — | 204 | Author / owner / admin |
-| `GET` | `/v1/report-channels/` | — | `[{ uuid, name, platform, channel_id }]` | `channels list` |
+| `GET` | `/v1/report-channels/` | — | `{ channels: [{ id, name, platform, type }], total }` (also accepts `{results}` / bare list) | `channels list`; `id` feeds `--report-channel` |
 | `GET` | `/v1/forms/` | `?include=questions`, `?include_archived=true` | `[{ id, name, is_active, is_archived, questions? }]` | `form list`; archived hidden unless opted in |
 | `POST` | `/v1/forms/create/` | `{ name, questions?: [...], report_channels?: [...] }` | `{ id, name, is_active, is_archived, questions, report_channels }` | Role-gated; `form create` |
 | `PATCH` | `/v1/forms/<uuid>/config/` | `{ name?, report_channels? }` | Form | `form edit` |

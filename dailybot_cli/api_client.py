@@ -710,7 +710,12 @@ class DailyBotClient:
     # --- Report channels ---
 
     def list_report_channels(self) -> list[dict[str, Any]]:
-        """GET /v1/report-channels/ — reporting channels available to the caller."""
+        """GET /v1/report-channels/ — reporting channels available to the caller.
+
+        The endpoint returns ``{"channels": [{id, name, platform, type}], "total": N}``;
+        older/other deployments may return ``{"results": [...]}`` or a bare list.
+        All three are accepted.
+        """
         response: httpx.Response = httpx.get(
             f"{self.api_url}/v1/report-channels/",
             headers=self._headers(),
@@ -719,8 +724,11 @@ class DailyBotClient:
         if response.status_code >= 400:
             self._handle_response(response)
         body: Any = response.json()
-        if isinstance(body, dict) and "results" in body:
-            return list(body.get("results", []))
+        if isinstance(body, dict):
+            if "channels" in body:
+                return list(body.get("channels", []))
+            if "results" in body:
+                return list(body.get("results", []))
         if isinstance(body, list):
             return body
         return []

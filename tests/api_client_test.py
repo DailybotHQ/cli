@@ -880,6 +880,24 @@ class TestFormsAuthoring:
 
         assert result == [{"uuid": "chan-1"}]
 
+    def test_list_report_channels_unwraps_channels_key(self, client: DailyBotClient) -> None:
+        # The live endpoint returns {"channels": [...], "total": N}.
+        mock_response: MagicMock = MagicMock(spec=httpx.Response)
+        mock_response.status_code = 200
+        mock_response.json.return_value = {
+            "channels": [
+                {"id": "C04C1GL9RH8", "name": "general", "platform": "slack", "type": "channel"},
+            ],
+            "total": 1,
+        }
+
+        with patch("httpx.get", return_value=mock_response):
+            result: list[dict[str, Any]] = client.list_report_channels()
+
+        assert len(result) == 1
+        assert result[0]["id"] == "C04C1GL9RH8"
+        assert result[0]["name"] == "general"
+
     def test_create_form_with_questions(self, client: DailyBotClient) -> None:
         mock_response: MagicMock = MagicMock(spec=httpx.Response)
         mock_response.status_code = 201
