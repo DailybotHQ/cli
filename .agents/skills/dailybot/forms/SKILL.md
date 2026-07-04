@@ -515,6 +515,53 @@ Only the **author, form owner, or org admin** can delete a response (server-enfo
 
 ---
 
+## Step 11.5 — Authoring forms (`dailybot-cli >= 1.17.0`)
+
+Beyond filling forms in, you can **create and configure** them. Authoring is
+**role-gated on the server** (form owners / admins / managers, as applicable) —
+the CLI performs only shape validation and surfaces the server's `403`; it never
+elevates. Works under a login session **or** an API key.
+
+```bash
+# Discover report channels (channel UUIDs feed --report-channel)
+dailybot channels list --json
+
+# Create a form — empty, seeded from a JSON file, or interactively
+dailybot form create --name "Sprint Retro"
+dailybot form create -n "Sprint Retro" --questions-file questions.json
+dailybot form create -n "Sprint Retro" --interactive
+
+# Edit config / archive (soft-delete). Note: `form archive` is the definition;
+# `form delete` still removes a *response*.
+dailybot form edit <form_uuid> --name "Updated Retro" --report-channel <channel_uuid>
+dailybot form archive <form_uuid>
+
+# Manage questions
+dailybot form questions list <form_uuid>
+dailybot form questions add <form_uuid> --type text --question "What went well?"
+dailybot form questions add <form_uuid> --type multiple_choice \
+  --question "Rating?" --options "Excellent,Good,Average,Poor"
+dailybot form questions edit <form_uuid> <question_uuid> --question "Reworded?"
+dailybot form questions delete <form_uuid> <question_uuid> --yes
+dailybot form questions reorder <form_uuid> <q3> <q1> <q2>
+
+# Admin/owner: read everyone's responses, filtered by user and date
+dailybot form responses <form_uuid> --all --from 2026-01-01 --to 2026-06-30 --json
+dailybot form responses <form_uuid> --user <user_uuid> --json
+
+# Admin/owner may edit anyone's response (author may always edit their own;
+# a non-privileged edit of another user's response returns 403)
+dailybot form update <form_uuid> <response_uuid> --content '{"<q_uuid>":"corrected"}'
+```
+
+**Question types:** `text`, `multiple_choice`, `boolean`, `numeric`.
+`multiple_choice` requires `--options`; `boolean` auto-generates Yes/No (no
+options); up to 50 questions. `--questions-file` is a JSON array of
+`{question_type, question, options?, required?}` objects (`type`/`label` aliases
+also accepted).
+
+---
+
 ## Step 12 — Multi-turn Lifecycle Examples
 
 ### Example A — Non-workflow form ("Team Feedback")

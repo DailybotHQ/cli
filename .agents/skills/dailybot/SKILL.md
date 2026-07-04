@@ -31,10 +31,11 @@ Ten coordinated capabilities, with smart routing between them:
 | **Email** | `dailybot-email` | Explicit user request, with mandatory pre-send safety checks |
 | **Chat** | `dailybot-chat` | Developer wants to send / edit a bot message on Slack, Teams, Discord, or Google Chat — to a channel, DMs, or whole team. Supports report-style threads (headline + replies in one call) and editing the parent or any reply afterward |
 | **Health & status** | `dailybot-health` | Long-running sessions; periodic heartbeats |
-| **Check-ins** | `dailybot-checkin` | Full check-in lifecycle: list/status, complete, inspect questions, history, edit, reset, backfill/future-date |
+| **Check-ins** | `dailybot-checkin` | Full check-in lifecycle: list/status, complete, inspect questions, history, edit, reset, backfill/future-date — plus **authoring** (create/config/archive + questions) on CLI ≥ 1.17.0 |
 | **Kudos** | `dailybot-kudos` | Developer wants to recognize a teammate or a whole team's contribution |
 | **Teams** | `dailybot-teams` | List teams, inspect members, or resolve a team name → UUID (used as a resolver by other skills) |
-| **Forms** | `dailybot-forms` | Developer wants to list, submit, update, or transition forms — including workflow-state forms with audience permissions |
+| **Forms** | `dailybot-forms` | Developer wants to list, submit, update, or transition forms — including workflow-state forms with audience permissions — plus **authoring** (create/config/archive + questions) on CLI ≥ 1.17.0 |
+| **Report channels** | `dailybot-channels` | Discover report-channel UUIDs to attach to forms/check-ins with `--report-channel` (CLI ≥ 1.17.0) |
 
 ## Install
 
@@ -90,6 +91,17 @@ fallback). Full guide: [`docs/INSTALLATION.md`](https://github.com/DailybotHQ/ag
 > status / show / history / edit / reset` plus backfill/future-dating — all
 > headless with `--json`. See [`checkin/SKILL.md`](checkin/SKILL.md) § "The full
 > check-in lifecycle". Below 1.15.0 only `checkin list` + `complete` exist.
+>
+> **`1.17.0` floor for forms & check-ins *authoring*** (paired with the matching
+> API server rollout): `dailybot channels list`, `form create / edit / archive`,
+> the `form questions` subgroup, extended `form responses` (`--all` / `--user` /
+> `--from` / `--to`), owner/admin editing of another user's response, and
+> `checkin create / config / archive` + the `checkin questions` subgroup all
+> first ship in 1.17.0. This is what lets an agent **author and configure** forms
+> and check-ins (not just fill them in), role-permission-gated server-side. Below
+> 1.17.0 only the fill-in commands exist. The authoring sections of
+> [`forms/SKILL.md`](forms/SKILL.md) and [`checkin/SKILL.md`](checkin/SKILL.md),
+> and the [`channels/SKILL.md`](channels/SKILL.md) sub-skill, require this minimum.
 
 ### Why this minimum
 
@@ -193,10 +205,11 @@ the full step-by-step workflow.
 | "check messages", "do I have messages?", "what should I work on?", "any instructions?" | **Messages** → read [`messages/SKILL.md`](messages/SKILL.md) |
 | "email this to Alice", "send an email", "send a summary to the team" | **Email** → read [`email/SKILL.md`](email/SKILL.md) |
 | "go online", "announce status", "health check" | **Health** → read [`health/SKILL.md`](health/SKILL.md) |
-| "complete my check-in", "fill in my standup", "check-in status", "what does my standup ask?", "check-in history", "edit / reset my check-in", "submit my standup for yesterday" | **Checkin** → read [`checkin/SKILL.md`](checkin/SKILL.md) |
+| "complete my check-in", "fill in my standup", "check-in status", "what does my standup ask?", "check-in history", "edit / reset my check-in", "submit my standup for yesterday", "create a standup", "add a question to the check-in", "change the standup schedule" | **Checkin** → read [`checkin/SKILL.md`](checkin/SKILL.md) |
 | "give kudos to Jane", "recognize Alice", "kudos al equipo Engineering", "felicita al team de QA" | **Kudos** → read [`kudos/SKILL.md`](kudos/SKILL.md) |
 | "list my teams", "who's in QA?", "resolve the Engineering team", or another skill needs a team UUID | **Teams** → read [`teams/SKILL.md`](teams/SKILL.md) |
-| "list my forms", "submit the retro form", "continue my release-form draft", "transition the release to released", "show me the last form response" | **Forms** → read [`forms/SKILL.md`](forms/SKILL.md) |
+| "list my forms", "submit the retro form", "continue my release-form draft", "transition the release to released", "show me the last form response", "create a form", "add / reorder questions", "archive the form", "read everyone's responses" | **Forms** → read [`forms/SKILL.md`](forms/SKILL.md) |
+| "which channels can Dailybot post to?", "list report channels", "I need a channel UUID for the form" | **Channels** → read [`channels/SKILL.md`](channels/SKILL.md) |
 | "send a Slack message", "DM Sergio in chat", "post the deploy report to #releases (with a thread)", "edit that chat message I just sent", "ping the Engineering team in chat" | **Chat** → read [`chat/SKILL.md`](chat/SKILL.md) |
 
 ### Auto-activation (no explicit request)

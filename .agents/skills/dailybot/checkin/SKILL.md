@@ -249,6 +249,45 @@ prompts — handy for humans; agents should use the headless commands above.
 
 ---
 
+## Step 3.6 — Authoring check-ins (`dailybot-cli >= 1.17.0`)
+
+Beyond completing check-ins, you can **create and configure** them. Authoring is
+**role-gated on the server** (admins/managers) — the CLI validates shape only and
+surfaces the server's `403`; it never elevates. Works under a login session **or**
+an API key.
+
+```bash
+# Create a check-in with a schedule, participants, and questions
+dailybot checkin create -n "Daily Standup" --time 09:00 --days 1,2,3,4,5 \
+  --timezone America/New_York --questions-file questions.json
+dailybot checkin create -n "Daily Standup" --user "Jane Doe" --team "Engineering"
+dailybot checkin create -n "Daily Standup" --interactive   # guided question builder
+
+# Edit config / activate-deactivate / archive. Note: `checkin config` edits the
+# definition; `checkin edit` still edits your *response*, `checkin reset` deletes it.
+dailybot checkin config <followup_uuid> --time 10:00 --days 1,2,3,4,5
+dailybot checkin config <followup_uuid> --inactive
+dailybot checkin archive <followup_uuid>
+
+# Manage questions (same shapes as form questions)
+dailybot checkin questions add <followup_uuid> --type text --question "Focus today?"
+dailybot checkin questions edit <followup_uuid> <question_uuid> --question "Need help?"
+dailybot checkin questions delete <followup_uuid> <question_uuid> --yes
+dailybot checkin questions reorder <followup_uuid> <q2> <q1>
+
+# Admin/owner: read everyone's response history, filtered by user
+dailybot checkin history <followup_uuid> --days 7    # your own; --all/--user are on `responses` API
+```
+
+**Schedule:** `--days` are ISO weekday integers (0=Sunday … 6=Saturday); `--time`
+is `HH:MM`; `--timezone` is an IANA name. Or pass `--schedule-file`
+(`{"days": [...], "time": "HH:MM", "timezone": "..."}`). **Participants:**
+repeatable `--user` / `--team` accept a name or a UUID. **Question types** match
+forms: `text`, `multiple_choice` (needs `--options`), `boolean` (no options),
+`numeric`; up to 50.
+
+---
+
 ## Step 4 — HTTP Fallback (when CLI is unavailable)
 
 See [`../shared/http-fallback.md`](../shared/http-fallback.md) for base patterns.
