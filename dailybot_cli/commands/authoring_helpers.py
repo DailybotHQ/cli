@@ -85,6 +85,29 @@ def build_question(
     return payload
 
 
+def build_question_edit_fields(
+    question: str | None,
+    question_type: str | None,
+    options: str | None,
+    required: bool | None,
+) -> dict[str, Any]:
+    """Build a partial question-update payload from provided edit flags.
+
+    Only shape checks run here; the server does full validation. ``build_question``
+    isn't reused because edits are partial (no required question/type pairing).
+    """
+    fields: dict[str, Any] = {}
+    if question is not None:
+        fields["question"] = question
+    if question_type is not None:
+        fields["question_type"] = question_type
+    if options is not None:
+        fields["options"] = parse_options(options) or []
+    if required is not None:
+        fields["required"] = required
+    return fields
+
+
 def parse_questions_file(path: str) -> list[dict[str, Any]]:
     """Load and validate a JSON array of question objects from ``path``.
 

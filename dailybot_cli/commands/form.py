@@ -7,6 +7,7 @@ import click
 from dailybot_cli.api_client import APIError, DailyBotClient
 from dailybot_cli.commands.authoring_helpers import (
     build_question,
+    build_question_edit_fields,
     parse_options,
     parse_questions_file,
 )
@@ -630,7 +631,7 @@ def form_questions_edit(
       dailybot form questions edit <form_uuid> <question_uuid> --question "Reworded?"
       dailybot form questions edit <form_uuid> <question_uuid> --optional
     """
-    fields: dict[str, Any] = _build_question_edit_fields(question, question_type, options, required)
+    fields: dict[str, Any] = build_question_edit_fields(question, question_type, options, required)
     if not fields:
         raise click.UsageError(
             "Nothing to edit. Pass --question, --type, --options, or --required."
@@ -715,26 +716,3 @@ def form_questions_reorder(
         emit_json({"reordered": True, "form_uuid": form_uuid, "order": order})
         return
     print_reordered("form", order)
-
-
-def _build_question_edit_fields(
-    question: str | None,
-    question_type: str | None,
-    options: str | None,
-    required: bool | None,
-) -> dict[str, Any]:
-    """Build a partial question-update payload from provided edit flags.
-
-    Only shape checks run here; the server does full validation. ``build_question``
-    isn't reused because edits are partial (no required question/type pairing).
-    """
-    fields: dict[str, Any] = {}
-    if question is not None:
-        fields["question"] = question
-    if question_type is not None:
-        fields["question_type"] = question_type
-    if options is not None:
-        fields["options"] = parse_options(options) or []
-    if required is not None:
-        fields["required"] = required
-    return fields
