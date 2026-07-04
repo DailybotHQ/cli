@@ -8,6 +8,7 @@ from dailybot_cli import __version__
 from dailybot_cli.commands.agent import agent
 from dailybot_cli.commands.ask import ask
 from dailybot_cli.commands.auth import login, logout
+from dailybot_cli.commands.channels import channels
 from dailybot_cli.commands.chat import chat
 from dailybot_cli.commands.checkin import checkin
 from dailybot_cli.commands.config import config
@@ -74,6 +75,7 @@ cli.add_command(update)
 cli.add_command(status)
 cli.add_command(checkin)
 cli.add_command(form)
+cli.add_command(channels)
 cli.add_command(kudos)
 cli.add_command(team)
 cli.add_command(user)
