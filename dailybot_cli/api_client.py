@@ -449,11 +449,29 @@ class DailyBotClient:
         form_uuid: str,
         *,
         state: str | None = None,
+        all_responses: bool = False,
+        user: str | None = None,
+        date_from: str | None = None,
+        date_to: str | None = None,
     ) -> list[dict[str, Any]]:
-        """GET /v1/forms/<form_uuid>/responses/ — list the caller's own responses."""
+        """GET /v1/forms/<form_uuid>/responses/ — list responses.
+
+        Without filters the server returns only the caller's own responses.
+        ``all_responses`` / ``user`` are admin/owner-only server-side (a member
+        receives 403); ``date_from`` / ``date_to`` (``YYYY-MM-DD``) narrow the
+        window for anyone.
+        """
         params: dict[str, str] = {}
         if state:
             params["state"] = state
+        if all_responses:
+            params["all"] = "true"
+        if user:
+            params["user"] = user
+        if date_from:
+            params["date_from"] = date_from
+        if date_to:
+            params["date_to"] = date_to
         response: httpx.Response = httpx.get(
             f"{self.api_url}/v1/forms/{form_uuid}/responses/",
             headers=self._headers(),
@@ -525,6 +543,131 @@ class DailyBotClient:
         response: httpx.Response = httpx.request(
             "DELETE",
             f"{self.api_url}/v1/forms/{form_uuid}/responses/{response_uuid}/",
+            headers=self._headers(),
+            timeout=self.timeout,
+        )
+        return self._handle_response(response)
+
+    # --- Report channels ---
+
+    def list_report_channels(self) -> list[dict[str, Any]]:
+        """GET /v1/report-channels/ — reporting channels available to the caller."""
+        response: httpx.Response = httpx.get(
+            f"{self.api_url}/v1/report-channels/",
+            headers=self._headers(),
+            timeout=self.timeout,
+        )
+        if response.status_code >= 400:
+            self._handle_response(response)
+        body: Any = response.json()
+        if isinstance(body, dict) and "results" in body:
+            return list(body.get("results", []))
+        if isinstance(body, list):
+            return body
+        return []
+
+    # --- Forms authoring ---
+
+    def create_form(
+        self,
+        name: str,
+        questions: list[dict[str, Any]] | None = None,
+    ) -> dict[str, Any]:
+        """POST /v1/forms/create/ — create a form with optional inline questions."""
+        payload: dict[str, Any] = {"name": name}
+        if questions:
+            payload["questions"] = questions
+        response: httpx.Response = httpx.post(
+            f"{self.api_url}/v1/forms/create/",
+            json=payload,
+            headers=self._headers(),
+            timeout=self.timeout,
+        )
+        return self._handle_response(response)
+
+    def update_form_config(
+        self,
+        form_uuid: str,
+        *,
+        name: str | None = None,
+        report_channels: list[str] | None = None,
+    ) -> dict[str, Any]:
+        """PATCH /v1/forms/<form_uuid>/config/ — edit name and/or report channels."""
+        payload: dict[str, Any] = {}
+        if name is not None:
+            payload["name"] = name
+        if report_channels is not None:
+            payload["report_channels"] = report_channels
+        response: httpx.Response = httpx.patch(
+            f"{self.api_url}/v1/forms/{form_uuid}/config/",
+            json=payload,
+            headers=self._headers(),
+            timeout=self.timeout,
+        )
+        return self._handle_response(response)
+
+    def archive_form(self, form_uuid: str) -> dict[str, Any]:
+        """DELETE /v1/forms/<form_uuid>/archive/ — soft-delete a form (204)."""
+        response: httpx.Response = httpx.request(
+            "DELETE",
+            f"{self.api_url}/v1/forms/{form_uuid}/archive/",
+            headers=self._headers(),
+            timeout=self.timeout,
+        )
+        return self._handle_response(response)
+
+    def add_form_question(
+        self,
+        form_uuid: str,
+        question: dict[str, Any],
+    ) -> dict[str, Any]:
+        """POST /v1/forms/<form_uuid>/questions/ — add a question to a form."""
+        response: httpx.Response = httpx.post(
+            f"{self.api_url}/v1/forms/{form_uuid}/questions/",
+            json=question,
+            headers=self._headers(),
+            timeout=self.timeout,
+        )
+        return self._handle_response(response)
+
+    def update_form_question(
+        self,
+        form_uuid: str,
+        question_uuid: str,
+        fields: dict[str, Any],
+    ) -> dict[str, Any]:
+        """PATCH /v1/forms/<form_uuid>/questions/<question_uuid>/ — update a question."""
+        response: httpx.Response = httpx.patch(
+            f"{self.api_url}/v1/forms/{form_uuid}/questions/{question_uuid}/",
+            json=fields,
+            headers=self._headers(),
+            timeout=self.timeout,
+        )
+        return self._handle_response(response)
+
+    def delete_form_question(
+        self,
+        form_uuid: str,
+        question_uuid: str,
+    ) -> dict[str, Any]:
+        """DELETE /v1/forms/<form_uuid>/questions/<question_uuid>/delete/ (204)."""
+        response: httpx.Response = httpx.request(
+            "DELETE",
+            f"{self.api_url}/v1/forms/{form_uuid}/questions/{question_uuid}/delete/",
+            headers=self._headers(),
+            timeout=self.timeout,
+        )
+        return self._handle_response(response)
+
+    def reorder_form_questions(
+        self,
+        form_uuid: str,
+        order: list[str],
+    ) -> dict[str, Any]:
+        """PUT /v1/forms/<form_uuid>/questions/reorder/ — set a new question order."""
+        response: httpx.Response = httpx.put(
+            f"{self.api_url}/v1/forms/{form_uuid}/questions/reorder/",
+            json={"order": order},
             headers=self._headers(),
             timeout=self.timeout,
         )
