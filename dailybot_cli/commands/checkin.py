@@ -138,6 +138,43 @@ def _config_flag_options(func: Callable[..., Any]) -> Callable[..., Any]:
         click.option(
             "--report-time", "time_for_report", default=None, help="Report delivery time (HH:MM)."
         ),
+        click.option(
+            "--reminder-tone",
+            "reminder_tone",
+            default=None,
+            help="Reminder voice: standard / persuasive.",
+        ),
+        click.option(
+            "--smart/--no-smart",
+            "is_smart_checkin",
+            default=None,
+            help="Enable smart (AI-driven adaptive) check-in mode.",
+        ),
+        click.option(
+            "--intelligence/--no-intelligence",
+            "is_intelligence_enabled",
+            default=None,
+            help="Enable AI insights on responses (requires --smart).",
+        ),
+        click.option(
+            "--max-clarifying",
+            "max_clarifying_questions",
+            type=int,
+            default=None,
+            help="Max AI clarifying questions per response (0-5; requires --intelligence).",
+        ),
+        click.option(
+            "--frequency-advanced",
+            "frequency_advanced",
+            default=None,
+            help="Advanced recurrence: disabled / monthly / custom.",
+        ),
+        click.option(
+            "--cron",
+            "frequency_cron",
+            default=None,
+            help="5-field cron for custom cadence (e.g. '0 9 * * 1,3,5').",
+        ),
     ]
     for option in reversed(options):
         func = option(func)

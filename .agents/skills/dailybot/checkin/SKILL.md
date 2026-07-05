@@ -297,8 +297,13 @@ config, partial): `--start-on/--end-on`, `--frequency weekly|monthly|custom`,
 `--reminder-interval 0-60`, `--reminder-condition smart_frequency|fixed_frequency`,
 `--work-days/--no-work-days`, `--allow-early/--no-early`, `--allow-past/--no-past`,
 `--allow-future/--no-future`, `--anonymous/--no-anonymous`, `--privacy <level>`,
-`--one-by-one/--aggregated`, `--intro/--outro`, `--report-time HH:MM` — mirroring
-the web's Frequency + Additional-settings panels; `checkin show` echoes them back.
+`--one-by-one/--aggregated`, `--intro/--outro`, `--report-time HH:MM`,
+`--reminder-tone standard|persuasive`, `--smart/--no-smart`,
+`--intelligence/--no-intelligence` (needs `--smart`), `--max-clarifying 0-5`
+(needs `--intelligence`), `--frequency-advanced disabled|monthly|custom`,
+`--cron "0 9 * * 1,3,5"` — full 100% parity with the web's Frequency +
+Additional-settings panels (only the computed `summary` stays read-only);
+`checkin show` echoes them all back.
 **Participants:**
 repeatable `--user` / `--team` accept a name or a UUID. **A check-in must have at
 least one participant** (a team or a person) — it only triggers for its

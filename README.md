@@ -314,6 +314,12 @@ dailybot checkin create -n "Daily Standup" --user "Jane Doe" --team "Engineering
 
 # Edit a check-in's configuration, activate/deactivate, or archive it
 dailybot checkin config <followup_uuid> --time 10:00 --days 1,2,3,4,5
+dailybot checkin config <followup_uuid> --reminders 3 --reminder-interval 30 \
+  --reminder-tone persuasive --privacy everyone
+# Smart/AI + advanced scheduling (100% parity with the web UI)
+dailybot checkin config <followup_uuid> --smart --intelligence --max-clarifying 2
+dailybot checkin config <followup_uuid> --frequency custom \
+  --frequency-advanced custom --cron "0 9 * * 1,3,5"
 dailybot checkin config <followup_uuid> --inactive
 dailybot checkin archive <followup_uuid>
 

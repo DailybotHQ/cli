@@ -174,6 +174,51 @@ class TestCheckinConfig:
         cfg = client.update_checkin_config.call_args[1]["config"]
         assert cfg == {"allow_past_responses": False, "privacy": "everyone"}
 
+    def test_config_ai_and_advanced_flags_forwarded(self, runner: CliRunner) -> None:
+        with _auth(), _client() as cls:
+            client: MagicMock = cls.return_value
+            client.update_checkin_config.return_value = CHECKIN_PAYLOAD
+            result = runner.invoke(
+                cli,
+                [
+                    "checkin",
+                    "config",
+                    "fu-1",
+                    "--smart",
+                    "--intelligence",
+                    "--max-clarifying",
+                    "2",
+                    "--reminder-tone",
+                    "standard",
+                    "--frequency-advanced",
+                    "custom",
+                    "--cron",
+                    "0 9 * * 1,3,5",
+                ],
+            )
+        assert result.exit_code == 0
+        cfg = client.update_checkin_config.call_args[1]["config"]
+        assert cfg == {
+            "is_smart_checkin": True,
+            "is_intelligence_enabled": True,
+            "max_clarifying_questions": 2,
+            "reminder_tone": "standard",
+            "frequency_advanced": "custom",
+            "frequency_cron": "0 9 * * 1,3,5",
+        }
+
+    def test_intelligence_dependency_error_is_friendly(self, runner: CliRunner) -> None:
+        with _auth(), _client() as cls:
+            client: MagicMock = cls.return_value
+            client.update_checkin_config.side_effect = APIError(
+                status_code=400,
+                detail="AI intelligence requires smart mode.",
+                code="intelligence_requires_smart_checkin",
+            )
+            result = runner.invoke(cli, ["checkin", "config", "fu-1", "--intelligence"])
+        assert result.exit_code != 0
+        assert "--smart" in result.output
+
     def test_config_invalid_reminder_count_fails_fast(self, runner: CliRunner) -> None:
         with _auth(), _client() as cls:
             result = runner.invoke(cli, ["checkin", "config", "fu-1", "--reminders", "9"])

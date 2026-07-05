@@ -213,6 +213,40 @@ class TestBuildCheckinConfig:
         with pytest.raises(AuthoringError):
             build_checkin_config(custom_template_intro="hi")
 
+    def test_reminder_tone_normalized(self) -> None:
+        cfg = build_checkin_config(reminder_tone="STANDARD")
+        assert cfg == {"reminder_tone": "standard"}
+
+    def test_invalid_reminder_tone_rejected(self) -> None:
+        with pytest.raises(AuthoringError):
+            build_checkin_config(reminder_tone="chirpy")
+
+    def test_ai_fields_forwarded(self) -> None:
+        cfg = build_checkin_config(
+            is_smart_checkin=True, is_intelligence_enabled=True, max_clarifying_questions=2
+        )
+        assert cfg == {
+            "is_smart_checkin": True,
+            "is_intelligence_enabled": True,
+            "max_clarifying_questions": 2,
+        }
+
+    def test_max_clarifying_out_of_range_rejected(self) -> None:
+        with pytest.raises(AuthoringError):
+            build_checkin_config(max_clarifying_questions=9)
+
+    def test_advanced_frequency_and_cron_forwarded(self) -> None:
+        cfg = build_checkin_config(frequency_advanced="custom", frequency_cron="0 9 * * 1,3,5")
+        assert cfg == {"frequency_advanced": "custom", "frequency_cron": "0 9 * * 1,3,5"}
+
+    def test_invalid_frequency_advanced_rejected(self) -> None:
+        with pytest.raises(AuthoringError):
+            build_checkin_config(frequency_advanced="hourly")
+
+    def test_malformed_cron_rejected(self) -> None:
+        with pytest.raises(AuthoringError):
+            build_checkin_config(frequency_cron="0 9 * *")  # only 4 fields
+
 
 class TestParseParticipants:
     def test_resolves_users_and_teams(self) -> None:
@@ -373,6 +407,29 @@ class TestAuthoringDisplay:
         assert "Reminders: 3" in output
         assert "no past reports" in output
         assert "Privacy: everyone" in output
+
+    def test_checkin_detail_renders_ai_and_advanced_summary(self) -> None:
+        with display.console.capture() as capture:
+            display.print_checkin_detail(
+                {
+                    "id": "fu-1",
+                    "name": "Standup",
+                    "frequency_type": "custom",
+                    "frequency_advanced": "custom",
+                    "frequency_cron": "0 9 * * 1,3,5",
+                    "reminders_max_count": 2,
+                    "reminder_tone": "persuasive",
+                    "is_smart_checkin": True,
+                    "is_intelligence_enabled": True,
+                    "max_clarifying_questions": 2,
+                    "questions": [],
+                }
+            )
+        output: str = capture.get()
+        assert "Advanced: custom" in output
+        assert "0 9 * * 1,3,5" in output
+        assert "persuasive tone" in output
+        assert "AI: smart, intelligence, 2 clarifying Qs" in output
 
     def test_attached_channel_falls_back_to_id_when_unnamed(self) -> None:
         with display.console.capture() as capture:

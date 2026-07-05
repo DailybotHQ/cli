@@ -546,6 +546,10 @@ def _checkin_config_lines(detail: dict[str, Any]) -> list[str]:
     every: Any = detail.get("frequency")
     if freq:
         lines.append(f"Frequency: {freq}" + (f" (every {every})" if every and every != 1 else ""))
+    advanced: Any = detail.get("frequency_advanced")
+    if advanced and advanced != "disabled":
+        cron: Any = detail.get("frequency_cron")
+        lines.append(f"Advanced: {advanced}" + (f" ({cron})" if cron else ""))
     if detail.get("start_on"):
         span: str = str(detail.get("start_on"))
         if detail.get("end_on"):
@@ -559,9 +563,19 @@ def _checkin_config_lines(detail: dict[str, Any]) -> list[str]:
         cond: Any = detail.get("reminders_trigger_condition")
         extra: str = f" every {interval}m" if interval else ""
         extra += f" ({cond})" if cond else ""
+        tone: Any = detail.get("reminder_tone")
+        extra += f", {tone} tone" if tone else ""
         lines.append(f"Reminders: {reminders}{extra}")
     elif reminders == 0:
         lines.append("Reminders: off")
+    if detail.get("is_smart_checkin"):
+        ai_bits: list[str] = ["smart"]
+        if detail.get("is_intelligence_enabled"):
+            ai_bits.append("intelligence")
+        clarifying: Any = detail.get("max_clarifying_questions")
+        if isinstance(clarifying, int) and clarifying > 0:
+            ai_bits.append(f"{clarifying} clarifying Qs")
+        lines.append("AI: " + ", ".join(ai_bits))
     flags: list[str] = []
     if detail.get("is_anonymous"):
         flags.append("anonymous")

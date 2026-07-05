@@ -42,10 +42,17 @@ PRIVACY_LEVELS: tuple[str, ...] = (
     "custom",
 )
 REMINDER_CONDITIONS: tuple[str, ...] = ("smart_frequency", "fixed_frequency")
+REMINDER_TONES: tuple[str, ...] = ("standard", "persuasive")
+FREQUENCY_ADVANCED: tuple[str, ...] = ("disabled", "monthly", "custom")
 REMINDERS_MAX_COUNT: int = 5
 REMINDER_INTERVAL_MAX: int = 60
+# AI / smart check-in: max clarifying follow-up questions per response.
+MAX_CLARIFYING_QUESTIONS: int = 5
 INTRO_OUTRO_MIN_LEN: int = 3
 INTRO_OUTRO_MAX_LEN: int = 1024
+# Standard 5-field cron (minute hour day-of-month month day-of-week); the server
+# does the full parse — we only fail fast on an obviously wrong field count.
+CRON_FIELD_COUNT: int = 5
 _DATE_PATTERN: re.Pattern[str] = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 _REPORT_TIME_PATTERN: re.Pattern[str] = re.compile(r"^\d{2}:\d{2}(:\d{2})?$")
 
@@ -276,6 +283,12 @@ def build_checkin_config(
     custom_template_intro: str | None = None,
     custom_template_outro: str | None = None,
     time_for_report: str | None = None,
+    reminder_tone: str | None = None,
+    is_smart_checkin: bool | None = None,
+    is_intelligence_enabled: bool | None = None,
+    max_clarifying_questions: int | None = None,
+    frequency_cron: str | None = None,
+    frequency_advanced: str | None = None,
 ) -> dict[str, Any]:
     """Assemble a validated check-in config dict from create/config flags.
 
@@ -347,6 +360,35 @@ def build_checkin_config(
         if not _REPORT_TIME_PATTERN.match(time_for_report):
             raise AuthoringError(f"Invalid --report-time '{time_for_report}'. Use HH:MM.")
         config["time_for_report"] = time_for_report
+
+    if reminder_tone is not None:
+        config["reminder_tone"] = _check_enum(reminder_tone, REMINDER_TONES, "reminder tone")
+
+    # Smart / AI check-in. The dependency rules (intelligence needs smart; a
+    # clarifying cap needs intelligence) are enforced server-side and echoed as
+    # `intelligence_requires_smart_checkin` — we don't approximate them here so a
+    # partial config flip (e.g. enabling intelligence on an already-smart check-in)
+    # isn't rejected by the CLI before the server can decide.
+    if is_smart_checkin is not None:
+        config["is_smart_checkin"] = is_smart_checkin
+    if is_intelligence_enabled is not None:
+        config["is_intelligence_enabled"] = is_intelligence_enabled
+    if max_clarifying_questions is not None:
+        config["max_clarifying_questions"] = _check_int_range(
+            max_clarifying_questions, 0, MAX_CLARIFYING_QUESTIONS, "--max-clarifying"
+        )
+
+    if frequency_advanced is not None:
+        config["frequency_advanced"] = _check_enum(
+            frequency_advanced, FREQUENCY_ADVANCED, "advanced frequency"
+        )
+    if frequency_cron is not None:
+        if len(frequency_cron.split()) != CRON_FIELD_COUNT:
+            raise AuthoringError(
+                f"Invalid --cron '{frequency_cron}'. Use a 5-field cron expression "
+                "(minute hour day-of-month month day-of-week), e.g. '0 9 * * 1,3,5'."
+            )
+        config["frequency_cron"] = frequency_cron
 
     return config
 

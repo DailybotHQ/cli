@@ -123,6 +123,18 @@ ERROR_CODE_MESSAGES: dict[str, str] = {
     ),
     "invalid_privacy": "Invalid --privacy value. See `dailybot checkin config --help`.",
     "invalid_time_for_report": "Invalid --report-time. Use HH:MM.",
+    "invalid_reminder_tone": "Invalid --reminder-tone. Use standard or persuasive.",
+    "invalid_max_clarifying_questions": "Invalid --max-clarifying. Must be an integer 0-5.",
+    "intelligence_requires_smart_checkin": (
+        "AI features need smart mode. Enable --smart before --intelligence, and "
+        "--intelligence before --max-clarifying."
+    ),
+    "invalid_frequency_cron": (
+        "Invalid --cron. Use a 5-field cron expression (e.g. '0 9 * * 1,3,5')."
+    ),
+    "invalid_frequency_advanced": (
+        "Invalid --frequency-advanced. Use disabled, monthly, or custom."
+    ),
 }
 
 
