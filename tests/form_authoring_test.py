@@ -157,7 +157,8 @@ class TestFormQuestions:
         logic_file.write_text(
             '{"rules": {"rules_if": [{"conditions": [{"operator": "is_equal_to", '
             '"comparison_value": "No"}], "then": {"action": "trigger_form", '
-            '"target": "other-form"}}]}}'
+            '"target": "other-form"}}], "rules_else": {"action": "jump_to", '
+            '"target": -1}}}'
         )
         with _auth(), _client() as cls:
             client: MagicMock = cls.return_value

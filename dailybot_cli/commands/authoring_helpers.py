@@ -29,14 +29,27 @@ MAX_QUESTIONS: int = 50
 SHORT_QUESTION_MAX_LEN: int = 512
 VARIATIONS_MAX: int = 10
 # Question logic (conditional/branching) vocabulary, mirroring the server contract.
+# The operator set is the *union* across question types (text/numeric/mc/boolean);
+# the server enforces which operators are legal for a given type, so the CLI stays
+# lenient here to avoid false rejections.
 LOGIC_OPERATORS: tuple[str, ...] = (
     "is_equal_to",
     "is_not_equal_to",
     "contains",
     "not_contains",
+    "begins_with",
+    "not_begins_with",
+    "ends_with",
+    "not_ends_with",
+    "lower_than",
+    "lower_or_equal_to",
+    "greater_than",
+    "greater_or_equal_to",
 )
 LOGIC_ACTIONS: tuple[str, ...] = ("jump_to", "trigger_checkin", "trigger_form")
 LOGIC_CONNECTORS: tuple[str, ...] = ("and", "or")
+# Sentinel target meaning "jump to the end of the questionnaire".
+LOGIC_JUMP_TO_END: int = -1
 # Schedule validation: ISO weekday ints (0=Sunday .. 6=Saturday) and HH:MM time.
 MIN_WEEKDAY: int = 0
 MAX_WEEKDAY: int = 6
@@ -121,6 +134,14 @@ def question_extras_options(func: Any) -> Any:
             type=int,
             default=None,
             help="Inline logic: target question index to jump to (-1 = end).",
+        ),
+        click.option(
+            "--else-jump-to",
+            "else_jump_to",
+            type=int,
+            default=None,
+            help="Inline logic: fallback target when the condition doesn't match "
+            "(default -1 = end).",
         ),
     ]
     for option in reversed(options):
@@ -301,8 +322,9 @@ def validate_logic(logic: Any) -> dict[str, Any]:
     """Validate a question-logic object's structure against the server contract.
 
     Checks the ``rules`` envelope, each ``rules_if`` rule's conditions/action, and
-    the optional ``rules_else`` action. The server does the authoritative check
-    (``invalid_question_logic``); this fails fast on obvious mistakes.
+    the **required** ``rules_else`` fallback action. Forward-only jump targets and
+    per-type operator/value legality are enforced by the server (it owns the
+    question index); this fails fast on obvious structural mistakes.
     """
     if not isinstance(logic, dict):
         raise AuthoringError("Question logic must be a JSON object.")
@@ -322,9 +344,26 @@ def validate_logic(logic: Any) -> dict[str, Any]:
             _validate_logic_condition(condition)
         _validate_logic_action(rule.get("then"))
     rules_else: Any = rules.get("rules_else")
-    if rules_else is not None:
-        _validate_logic_action(rules_else)
+    if not isinstance(rules_else, dict):
+        raise AuthoringError(
+            'Question logic must include a "rules_else" fallback action '
+            "(what happens when no condition matches — the server requires it)."
+        )
+    _validate_logic_action(rules_else)
     return logic
+
+
+def _coerce_comparison_value(raw: str) -> Any:
+    """Coerce an inline ``--jump-if-equals`` string to the value type it implies.
+
+    ``true``/``false`` (case-insensitive) become JSON booleans, which is what the
+    server requires for boolean questions. Everything else stays a string; for
+    numeric comparisons use ``--logic-file`` with an explicit number.
+    """
+    lowered: str = raw.strip().lower()
+    if lowered in ("true", "false"):
+        return lowered == "true"
+    return raw
 
 
 def build_question_logic(
@@ -332,12 +371,15 @@ def build_question_logic(
     logic_file: str | None = None,
     jump_if_equals: str | None = None,
     jump_to: int | None = None,
+    else_jump_to: int | None = None,
 ) -> dict[str, Any] | None:
     """Assemble question logic from a JSON file or an inline single-jump rule.
 
     ``--logic-file`` carries the full ``{rules: {...}}`` structure. The inline
     ``--jump-if-equals VALUE --jump-to N`` pair is a convenience for the common
-    "branch on one answer" case. Returns ``None`` when neither is provided.
+    "branch on one answer" case; ``--else-jump-to`` sets the fallback (defaults to
+    ``-1`` = end). Returns ``None`` when neither is provided. Jump targets must be
+    forward (greater than this question's index) or ``-1`` — the server enforces it.
     """
     if logic_file:
         try:
@@ -361,18 +403,24 @@ def build_question_logic(
                         "conditions": [
                             {
                                 "operator": "is_equal_to",
-                                "comparison_value": jump_if_equals,
+                                "comparison_value": _coerce_comparison_value(jump_if_equals),
                                 "logic_connector": "and",
                             }
                         ],
                         "then": {"action": "jump_to", "target": jump_to},
                     }
-                ]
+                ],
+                "rules_else": {
+                    "action": "jump_to",
+                    "target": else_jump_to if else_jump_to is not None else LOGIC_JUMP_TO_END,
+                },
             }
         }
         return validate_logic(logic)
     if jump_if_equals is not None:
         raise AuthoringError("--jump-if-equals requires --jump-to (the target question index).")
+    if else_jump_to is not None:
+        raise AuthoringError("--else-jump-to only applies with --jump-if-equals and --jump-to.")
     return None
 
 
@@ -383,6 +431,7 @@ def resolve_question_extras(
     logic_file: str | None = None,
     jump_if_equals: str | None = None,
     jump_to: int | None = None,
+    else_jump_to: int | None = None,
 ) -> dict[str, Any]:
     """Turn the shared question-extra flags into validated ``build_question`` kwargs.
 
@@ -396,7 +445,10 @@ def resolve_question_extras(
     if variations is not None:
         extras["variations"] = variations
     logic: dict[str, Any] | None = build_question_logic(
-        logic_file=logic_file, jump_if_equals=jump_if_equals, jump_to=jump_to
+        logic_file=logic_file,
+        jump_if_equals=jump_if_equals,
+        jump_to=jump_to,
+        else_jump_to=else_jump_to,
     )
     if logic is not None:
         extras["logic"] = logic

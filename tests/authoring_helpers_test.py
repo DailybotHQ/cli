@@ -126,9 +126,56 @@ class TestQuestionExtras:
                         ],
                         "then": {"action": "jump_to", "target": 3},
                     }
-                ]
+                ],
+                "rules_else": {"action": "jump_to", "target": -1},
             }
         }
+
+    def test_inline_boolean_value_coerced(self) -> None:
+        logic = build_question_logic(jump_if_equals="true", jump_to=2)
+        assert logic is not None
+        cond = logic["rules"]["rules_if"][0]["conditions"][0]
+        assert cond["comparison_value"] is True
+
+    def test_inline_else_jump_to_forwarded(self) -> None:
+        logic = build_question_logic(jump_if_equals="x", jump_to=3, else_jump_to=2)
+        assert logic is not None
+        assert logic["rules"]["rules_else"] == {"action": "jump_to", "target": 2}
+
+    def test_else_jump_to_alone_rejected(self) -> None:
+        with pytest.raises(AuthoringError):
+            build_question_logic(else_jump_to=2)
+
+    def test_logic_missing_rules_else_rejected(self) -> None:
+        with pytest.raises(AuthoringError):
+            validate_logic(
+                {
+                    "rules": {
+                        "rules_if": [
+                            {
+                                "conditions": [
+                                    {"operator": "is_equal_to", "comparison_value": "Yes"}
+                                ],
+                                "then": {"action": "jump_to", "target": 2},
+                            }
+                        ]
+                    }
+                }
+            )
+
+    def test_extended_numeric_operator_accepted(self) -> None:
+        logic = {
+            "rules": {
+                "rules_if": [
+                    {
+                        "conditions": [{"operator": "greater_than", "comparison_value": 5}],
+                        "then": {"action": "jump_to", "target": 3},
+                    }
+                ],
+                "rules_else": {"action": "jump_to", "target": -1},
+            }
+        }
+        assert validate_logic(logic) is logic
 
     def test_jump_to_without_value_rejected(self) -> None:
         with pytest.raises(AuthoringError):
@@ -268,7 +315,8 @@ class TestParseQuestionsFile:
                                         ],
                                         "then": {"action": "jump_to", "target": 2},
                                     }
-                                ]
+                                ],
+                                "rules_else": {"action": "jump_to", "target": -1},
                             }
                         },
                     }

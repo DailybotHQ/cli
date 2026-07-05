@@ -102,10 +102,9 @@ ERROR_CODE_MESSAGES: dict[str, str] = {
     "invalid_question_variations": (
         "Invalid question variations. Pass up to 10 non-empty alternate phrasings."
     ),
-    "invalid_question_logic": (
-        "Invalid question logic. Check the operators, actions, connectors, and jump "
-        "targets — see `dailybot checkin questions edit --help`."
-    ),
+    # invalid_question_logic is intentionally NOT mapped: the server's detail names
+    # the offending operator/target and lists the valid values for the question
+    # type, which is more actionable than any generic message we could substitute.
     "anonymous_irreversible": (
         "An anonymous check-in cannot be made non-anonymous. Create a new check-in "
         "if you need non-anonymous responses."
