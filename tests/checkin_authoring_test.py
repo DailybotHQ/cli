@@ -6,6 +6,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 from click.testing import CliRunner
 
+from dailybot_cli.api_client import APIError
 from dailybot_cli.main import cli
 
 CHECKIN_PAYLOAD: dict[str, Any] = {
@@ -120,6 +121,20 @@ class TestCheckinConfig:
             result = runner.invoke(cli, ["checkin", "config", "fu-1", "--team", "Eng"])
         assert result.exit_code == 0
         assert client.update_checkin_config.call_args[1]["participants"] == {"team_uuids": ["t-1"]}
+
+    def test_server_zero_participant_error_is_friendly(self, runner: CliRunner) -> None:
+        # Server-side backstop (checkin_requires_participant) maps to guidance.
+        with _auth(), _client() as cls:
+            client: MagicMock = cls.return_value
+            client.list_teams.return_value = [{"uuid": "t-1", "name": "Eng"}]
+            client.update_checkin_config.side_effect = APIError(
+                status_code=400,
+                detail="A check-in must have at least one participant.",
+                code="checkin_requires_participant",
+            )
+            result = runner.invoke(cli, ["checkin", "config", "fu-1", "--team", "Eng"])
+        assert result.exit_code != 0
+        assert "--user and/or --team" in result.output
 
 
 class TestCheckinArchive:
