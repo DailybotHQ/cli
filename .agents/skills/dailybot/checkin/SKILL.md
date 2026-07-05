@@ -323,7 +323,9 @@ forms: `text`, `multiple_choice` (needs `--options`), `boolean` (no options),
 `--blocker`. **Per-question extras** (`questions add`/`edit`): `--short-question`
 (report title, ≤512 chars), `--variation` (repeatable, ≤10), and conditional logic
 via `--logic-file` or inline `--jump-if-equals VALUE --jump-to N` (`-1` = end).
-Empty question text is rejected server-side.
+**A report title is required** when adding/seeding a question — pass
+`--short-question` (or `--ai-short-question` to let Dailybot generate it). Empty
+question text is rejected server-side.
 
 **Reading back (`checkin show`):** returns the canonical detail shape — schedule,
 `participants` (users/teams resolved to names), attached `report_channels`, and

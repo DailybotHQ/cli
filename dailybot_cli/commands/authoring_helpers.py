@@ -262,6 +262,44 @@ def validate_short_question(text: str) -> str:
     return stripped
 
 
+# Shared guidance so the "provide a report title" nudge reads the same everywhere.
+_SHORT_QUESTION_HINT: str = (
+    'Pass --short-question "<report title>", or --ai-short-question to let '
+    "Dailybot generate it (AI titling needs an intelligence-enabled check-in)."
+)
+
+
+def require_short_question(short_question: str | None, ai_short_question: bool) -> None:
+    """Enforce an explicit report title on single-question authoring (add).
+
+    The CLI treats ``short_question`` as effectively mandatory: AI auto-titling is a
+    frontend convenience, so an agent/script must either supply the title or opt in
+    to AI generation with ``--ai-short-question``.
+    """
+    if short_question is None and not ai_short_question:
+        raise AuthoringError(f"A report title is required. {_SHORT_QUESTION_HINT}")
+
+
+def require_short_questions(questions: list[dict[str, Any]], ai_short_question: bool) -> None:
+    """Enforce an explicit report title on every question in a bulk create.
+
+    Skipped entirely when ``ai_short_question`` opts in. Names the offending
+    questions so a --questions-file author knows exactly which entries to fix.
+    """
+    if ai_short_question:
+        return
+    missing: list[str] = [
+        f"#{index + 1}"
+        for index, question in enumerate(questions)
+        if not question.get("short_question")
+    ]
+    if missing:
+        raise AuthoringError(
+            f'Question(s) {", ".join(missing)} need a report title ("short_question"). '
+            f"{_SHORT_QUESTION_HINT}"
+        )
+
+
 def build_variations(raw: tuple[str, ...] | list[str]) -> list[str] | None:
     """Validate alternate phrasings; returns ``None`` when none were provided.
 
@@ -727,11 +765,14 @@ def build_checkin_config(
     return config
 
 
-def build_questions_interactively() -> list[dict[str, Any]]:
+def build_questions_interactively(ai_short_question: bool = False) -> list[dict[str, Any]]:
     """Walk the user through building questions with questionary prompts.
 
     Every question passes through ``build_question``, so the interactive path
-    enforces the same validation as the flag and file paths. Requires a TTY.
+    enforces the same validation as the flag and file paths. Requires a TTY. Unless
+    ``ai_short_question`` opts in, the user is asked for a report title per question
+    (blank re-asks) so interactive-built questions carry an explicit
+    ``short_question`` like every other CLI path.
     """
     if not sys.stdin.isatty():
         raise AuthoringError(
@@ -757,6 +798,17 @@ def build_questions_interactively() -> list[dict[str, Any]]:
         is_blocker: bool | None = questionary.confirm(
             "Is this the blocker question?", default=False
         ).ask()
+        short_question: str | None = None
+        if not ai_short_question:
+            prompt: str = "Short report title:"
+            while True:
+                answer: str | None = questionary.text(prompt).ask()
+                if answer is None:
+                    break
+                if answer.strip():
+                    short_question = answer.strip()
+                    break
+                prompt = "Short report title (required — or restart with --ai-short-question):"
 
         try:
             questions.append(
@@ -766,6 +818,7 @@ def build_questions_interactively() -> list[dict[str, Any]]:
                     options=options,
                     required=bool(required),
                     is_blocker=bool(is_blocker),
+                    short_question=short_question,
                 )
             )
         except AuthoringError as exc:

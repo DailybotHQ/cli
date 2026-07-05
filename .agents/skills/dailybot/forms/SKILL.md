@@ -573,7 +573,10 @@ may be tagged the **blocker** question with `--blocker` (or `"is_blocker": true`
 the file). **Per-question extras** on `questions add`/`edit`: `--short-question`
 (report title, ≤512 chars), `--variation` (repeatable, ≤10), and conditional logic
 via `--logic-file` (a `{"rules": {...}}` object) or inline
-`--jump-if-equals VALUE --jump-to N`. Empty question text is rejected server-side.
+`--jump-if-equals VALUE --jump-to N`. **A report title is required** when
+adding/seeding a question — pass `--short-question` / `"short_question"` (or
+`--ai-short-question` to let Dailybot generate it). Empty question text is rejected
+server-side.
 
 **Reading questions back:** every read path (`form get`, `form questions list`,
 check-in `detail`) returns the canonical shape

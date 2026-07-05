@@ -284,6 +284,7 @@ class TestCheckinQuestions:
                     "boolean",
                     "--question",
                     "Blockers?",
+                    "--ai-short-question",
                 ],
             )
         assert result.exit_code == 0
@@ -305,6 +306,7 @@ class TestCheckinQuestions:
                     "--question",
                     "Any blockers?",
                     "--blocker",
+                    "--ai-short-question",
                 ],
             )
         assert result.exit_code == 0
@@ -357,6 +359,7 @@ class TestCheckinQuestions:
                     "No",
                     "--jump-to",
                     "-1",
+                    "--ai-short-question",
                 ],
             )
         assert result.exit_code == 0
@@ -380,11 +383,23 @@ class TestCheckinQuestions:
                     "Q?",
                     "--jump-to",
                     "2",
+                    "--ai-short-question",
                 ],
             )
             cls.return_value.add_checkin_question.assert_not_called()
         assert result.exit_code != 0
         assert "--jump-if-equals" in result.output
+
+    def test_add_without_short_question_is_rejected(self, runner: CliRunner) -> None:
+        # A report title is required unless --ai-short-question opts into AI titling.
+        with _auth(), _client() as cls:
+            result = runner.invoke(
+                cli,
+                ["checkin", "questions", "add", "fu-1", "--type", "text", "--question", "Q?"],
+            )
+            cls.return_value.add_checkin_question.assert_not_called()
+        assert result.exit_code != 0
+        assert "report title" in result.output
 
     def test_anonymous_irreversible_error_is_friendly(self, runner: CliRunner) -> None:
         with _auth(), _client() as cls:

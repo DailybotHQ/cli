@@ -87,6 +87,7 @@ class TestClientSideValidationFailsFast:
                     "stars",
                     "--question",
                     "How many?",
+                    "--ai-short-question",
                 ],
             )
             cls.return_value.add_form_question.assert_not_called()

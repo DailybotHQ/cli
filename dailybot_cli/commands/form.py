@@ -12,6 +12,8 @@ from dailybot_cli.commands.authoring_helpers import (
     parse_options,
     parse_questions_file,
     question_extras_options,
+    require_short_question,
+    require_short_questions,
     resolve_question_extras,
 )
 from dailybot_cli.commands.public_api_helpers import (
@@ -429,12 +431,20 @@ def form_delete(
     multiple=True,
     help="Report-channel UUID (repeatable). See `dailybot channels list`.",
 )
+@click.option(
+    "--ai-short-question",
+    "ai_short_question",
+    is_flag=True,
+    help="Let Dailybot's AI generate each question's report title instead of "
+    "requiring a 'short_question' on every question.",
+)
 @click.option("--json", "json_mode", is_flag=True, help="Emit machine-readable JSON to stdout.")
 def form_create(
     name: str,
     questions_file: str | None,
     interactive: bool,
     report_channels: tuple[str, ...],
+    ai_short_question: bool,
     json_mode: bool,
 ) -> None:
     """Create a form (optionally seeded with questions).
@@ -442,7 +452,8 @@ def form_create(
     \b
     Creating forms is role-gated server-side (admins/managers as applicable).
     Seed questions with --questions-file or --interactive, or add them later via
-    `dailybot form questions add`.
+    `dailybot form questions add`. Each seeded question needs a report title
+    (--short-question / "short_question") unless you pass --ai-short-question.
 
     \b
     Examples:
@@ -453,11 +464,13 @@ def form_create(
     """
     client = require_auth()
     if interactive:
-        questions: list[dict[str, Any]] | None = build_questions_interactively()
+        questions: list[dict[str, Any]] | None = build_questions_interactively(ai_short_question)
     elif questions_file:
         questions = parse_questions_file(questions_file)
     else:
         questions = None
+    if questions:
+        require_short_questions(questions, ai_short_question)
     try:
         with console.status("Creating form..."):
             result: dict[str, Any] = client.create_form(
@@ -594,6 +607,12 @@ def form_questions_list(form_uuid: str, json_mode: bool) -> None:
     help="Tag this as the blocker question.",
 )
 @question_extras_options
+@click.option(
+    "--ai-short-question",
+    "ai_short_question",
+    is_flag=True,
+    help="Skip --short-question and let Dailybot's AI generate the report title.",
+)
 @click.option("--json", "json_mode", is_flag=True, help="Emit machine-readable JSON to stdout.")
 def form_questions_add(
     form_uuid: str,
@@ -602,24 +621,28 @@ def form_questions_add(
     options: str | None,
     required: bool,
     is_blocker: bool,
+    ai_short_question: bool,
     json_mode: bool,
     **extra_flags: Any,
 ) -> None:
     """Add a question to a form.
 
     \b
-    Extras: --short-question (report title), --variation (repeatable), and logic
-    via --logic-file or inline --jump-if-equals/--jump-to.
+    A report title (--short-question) is required unless you pass
+    --ai-short-question. Other extras: --variation (repeatable), and logic via
+    --logic-file or inline --jump-if-equals/--jump-to.
 
     \b
     Examples:
-      dailybot form questions add <form_uuid> --type text --question "What went well?"
+      dailybot form questions add <form_uuid> --type text \\
+        --question "What went well?" --short-question "Wins"
       dailybot form questions add <form_uuid> --type multiple_choice \\
-        --question "Rating?" --options "Excellent,Good,Average,Poor"
+        --question "Rating?" --options "Excellent,Good,Average,Poor" --ai-short-question
       dailybot form questions add <form_uuid> --type boolean --question "Ship it?" \\
         --short-question "Ship" --jump-if-equals "No" --jump-to 4
     """
     client = require_auth()
+    require_short_question(extra_flags.get("short_question"), ai_short_question)
     extras: dict[str, Any] = resolve_question_extras(**extra_flags)
     payload: dict[str, Any] = build_question(
         question_type,

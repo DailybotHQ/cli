@@ -339,6 +339,9 @@ dailybot checkin questions reorder <followup_uuid> <q2> <q1>
 > `--short-question` (title shown in web & chat reports), `--variation` (repeatable
 > alternate phrasings), and conditional logic via `--logic-file` or the inline
 > `--jump-if-equals VALUE --jump-to N` shortcut.
+>
+> **A report title is required** when adding/seeding a question — pass
+> `--short-question "..."` (or `--ai-short-question` to let Dailybot generate it).
 
 ### Command naming (why authoring uses distinct verbs)
 

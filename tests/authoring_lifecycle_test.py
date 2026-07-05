@@ -32,7 +32,9 @@ def _client() -> Any:
 class TestFormLifecycle:
     def test_full_form_authoring_flow(self, runner: CliRunner, tmp_path: Any) -> None:
         qfile = tmp_path / "q.json"
-        qfile.write_text(json.dumps([{"question_type": "text", "question": "Well?"}]))
+        qfile.write_text(
+            json.dumps([{"question_type": "text", "question": "Well?", "short_question": "Wins"}])
+        )
         form: dict[str, Any] = {
             "id": "f-1",
             "name": "Retro",
@@ -55,7 +57,18 @@ class TestFormLifecycle:
             steps: list[list[str]] = [
                 ["channels", "list"],
                 ["form", "create", "-n", "Retro", "--questions-file", str(qfile)],
-                ["form", "questions", "add", "f-1", "--type", "text", "--question", "Rating?"],
+                [
+                    "form",
+                    "questions",
+                    "add",
+                    "f-1",
+                    "--type",
+                    "text",
+                    "--question",
+                    "Rating?",
+                    "--short-question",
+                    "Rating",
+                ],
                 ["form", "questions", "reorder", "f-1", "q2", "q1"],
                 ["form", "questions", "edit", "f-1", "q2", "--question", "Rate?"],
                 ["form", "questions", "delete", "f-1", "q2", "--yes"],
@@ -105,7 +118,18 @@ class TestCheckinLifecycle:
                     "--team",
                     "Eng",
                 ],
-                ["checkin", "questions", "add", "fu-1", "--type", "text", "--question", "Today?"],
+                [
+                    "checkin",
+                    "questions",
+                    "add",
+                    "fu-1",
+                    "--type",
+                    "text",
+                    "--question",
+                    "Today?",
+                    "--short-question",
+                    "Today",
+                ],
                 ["checkin", "questions", "edit", "fu-1", "q1", "--question", "Focus?"],
                 ["checkin", "questions", "reorder", "fu-1", "q1"],
                 ["checkin", "questions", "delete", "fu-1", "q1", "--yes"],

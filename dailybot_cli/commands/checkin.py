@@ -19,6 +19,8 @@ from dailybot_cli.commands.authoring_helpers import (
     parse_schedule,
     prompt_participants_interactively,
     question_extras_options,
+    require_short_question,
+    require_short_questions,
     resolve_question_extras,
 )
 from dailybot_cli.commands.public_api_helpers import (
@@ -405,6 +407,13 @@ def checkin_edit(
     multiple=True,
     help="Report-channel UUID (repeatable). See `dailybot channels list`.",
 )
+@click.option(
+    "--ai-short-question",
+    "ai_short_question",
+    is_flag=True,
+    help="Let Dailybot's AI generate each question's report title instead of "
+    "requiring a 'short_question' on every question.",
+)
 @_config_flag_options
 @click.option("--json", "json_mode", is_flag=True, help="Emit machine-readable JSON to stdout.")
 def checkin_create(
@@ -418,6 +427,7 @@ def checkin_create(
     questions_file: str | None,
     interactive: bool,
     report_channels: tuple[str, ...],
+    ai_short_question: bool,
     json_mode: bool,
     **config_flags: Any,
 ) -> None:
@@ -456,11 +466,13 @@ def checkin_create(
             "Add --user and/or --team."
         )
     if interactive:
-        questions: list[dict[str, Any]] | None = build_questions_interactively()
+        questions: list[dict[str, Any]] | None = build_questions_interactively(ai_short_question)
     elif questions_file:
         questions = parse_questions_file(questions_file)
     else:
         questions = None
+    if questions:
+        require_short_questions(questions, ai_short_question)
     try:
         with console.status("Creating check-in..."):
             result: dict[str, Any] = client.create_checkin(
@@ -620,6 +632,12 @@ def checkin_questions() -> None:
     help="Tag this as the blocker question.",
 )
 @question_extras_options
+@click.option(
+    "--ai-short-question",
+    "ai_short_question",
+    is_flag=True,
+    help="Skip --short-question and let Dailybot's AI generate the report title.",
+)
 @click.option("--json", "json_mode", is_flag=True, help="Emit machine-readable JSON to stdout.")
 def checkin_questions_add(
     followup_uuid: str,
@@ -628,22 +646,28 @@ def checkin_questions_add(
     options: str | None,
     required: bool,
     is_blocker: bool,
+    ai_short_question: bool,
     json_mode: bool,
     **extra_flags: Any,
 ) -> None:
     """Add a question to a check-in.
 
     \b
+    A report title (--short-question) is required unless you pass
+    --ai-short-question to let Dailybot generate it.
+
+    \b
     Examples:
       dailybot checkin questions add <followup_uuid> --type text \\
-        --question "What are you working on today?"
+        --question "What are you working on today?" --short-question "Focus"
       dailybot checkin questions add <followup_uuid> --type boolean \\
-        --question "Any blockers?" --blocker
+        --question "Any blockers?" --blocker --ai-short-question
       dailybot checkin questions add <followup_uuid> --type text \\
         --question "What did you do?" --short-question "Yesterday" \\
         --variation "What did you accomplish?" --jump-if-equals "None" --jump-to -1
     """
     client = require_auth()
+    require_short_question(extra_flags.get("short_question"), ai_short_question)
     extras: dict[str, Any] = resolve_question_extras(**extra_flags)
     payload: dict[str, Any] = build_question(
         question_type,

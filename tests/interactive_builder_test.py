@@ -31,10 +31,13 @@ class TestBuildQuestionsInteractively:
     def test_builds_two_questions(self, mock_q: MagicMock, _isatty: MagicMock) -> None:
         # Q1: text, required, add another -> yes. Q2: multiple_choice + options, stop.
         mock_q.select.side_effect = [_prompt("text"), _prompt("multiple_choice")]
+        # text() order per question: question text, (options for mc), short title.
         mock_q.text.side_effect = [
             _prompt("What went well?"),
+            _prompt("Wins"),  # Q1 short report title
             _prompt("Rating?"),
             _prompt("A, B, C"),
+            _prompt("Rating"),  # Q2 short report title
         ]
         mock_q.confirm.side_effect = [
             _prompt(True),  # Q1 required?
@@ -49,8 +52,26 @@ class TestBuildQuestionsInteractively:
         assert len(result) == 2
         assert result[0]["question_type"] == "text"
         assert result[0]["is_blocker"] is False
+        assert result[0]["short_question"] == "Wins"
         assert result[1]["question_type"] == "multiple_choice"
         assert result[1]["options"] == ["A", "B", "C"]
+        assert result[1]["short_question"] == "Rating"
+
+    @patch("dailybot_cli.commands.authoring_helpers.sys.stdin.isatty", return_value=True)
+    @patch("dailybot_cli.commands.authoring_helpers.questionary")
+    def test_ai_short_question_skips_title_prompt(
+        self, mock_q: MagicMock, _isatty: MagicMock
+    ) -> None:
+        mock_q.select.side_effect = [_prompt("text")]
+        mock_q.text.side_effect = [_prompt("What went well?")]  # no short-title prompt
+        mock_q.confirm.side_effect = [
+            _prompt(True),  # required?
+            _prompt(False),  # blocker?
+            _prompt(False),  # add another? -> stop
+        ]
+        result: list[dict[str, Any]] = build_questions_interactively(ai_short_question=True)
+        assert len(result) == 1
+        assert "short_question" not in result[0]
 
     @patch("dailybot_cli.commands.authoring_helpers.sys.stdin.isatty", return_value=True)
     @patch("dailybot_cli.commands.authoring_helpers.questionary")
@@ -79,7 +100,9 @@ class TestInteractiveWiring:
         client: MagicMock = mock_client_cls.return_value
         client.create_form.return_value = {"id": "f-1", "name": "Retro", "questions": []}
 
-        result = runner.invoke(cli, ["form", "create", "-n", "Retro", "--interactive"])
+        result = runner.invoke(
+            cli, ["form", "create", "-n", "Retro", "--interactive", "--ai-short-question"]
+        )
         assert result.exit_code == 0
         mock_builder.assert_called_once()
         assert client.create_form.call_args[0][1] == [{"question_type": "text", "question": "Q?"}]
@@ -100,7 +123,17 @@ class TestInteractiveWiring:
         client.list_teams.return_value = [{"uuid": "t-1", "name": "Eng"}]
 
         result = runner.invoke(
-            cli, ["checkin", "create", "-n", "Standup", "--interactive", "--team", "Eng"]
+            cli,
+            [
+                "checkin",
+                "create",
+                "-n",
+                "Standup",
+                "--interactive",
+                "--team",
+                "Eng",
+                "--ai-short-question",
+            ],
         )
         assert result.exit_code == 0
         mock_builder.assert_called_once()

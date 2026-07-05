@@ -20,6 +20,8 @@ from dailybot_cli.commands.authoring_helpers import (
     parse_participants,
     parse_questions_file,
     parse_schedule,
+    require_short_question,
+    require_short_questions,
     resolve_question_extras,
     validate_logic,
     validate_short_question,
@@ -261,6 +263,28 @@ class TestQuestionExtras:
         )
         assert payload["short_question"] == "Yesterday"
         assert payload["variations"] == ["What happened?"]
+
+    def test_require_short_question_ok_when_provided(self) -> None:
+        require_short_question("Title", False)  # no raise
+
+    def test_require_short_question_ok_when_ai_optin(self) -> None:
+        require_short_question(None, True)  # no raise
+
+    def test_require_short_question_raises_when_missing(self) -> None:
+        with pytest.raises(AuthoringError):
+            require_short_question(None, False)
+
+    def test_require_short_questions_names_missing(self) -> None:
+        questions = [
+            {"question": "a", "short_question": "A"},
+            {"question": "b"},  # missing
+            {"question": "c"},  # missing
+        ]
+        with pytest.raises(AuthoringError, match="#2, #3"):
+            require_short_questions(questions, False)
+
+    def test_require_short_questions_skipped_with_ai(self) -> None:
+        require_short_questions([{"question": "b"}], True)  # no raise
 
 
 class TestParseOptions:

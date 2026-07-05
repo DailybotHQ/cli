@@ -42,7 +42,9 @@ class TestFormCreate:
 
     def test_create_with_questions_file(self, runner: CliRunner, tmp_path: Any) -> None:
         qfile = tmp_path / "q.json"
-        qfile.write_text(json.dumps([{"question_type": "text", "question": "Well?"}]))
+        qfile.write_text(
+            json.dumps([{"question_type": "text", "question": "Well?", "short_question": "Wins"}])
+        )
         with _auth(), _client() as cls:
             client: MagicMock = cls.return_value
             client.create_form.return_value = FORM_PAYLOAD
@@ -52,6 +54,41 @@ class TestFormCreate:
         assert result.exit_code == 0
         sent_questions = client.create_form.call_args[0][1]
         assert sent_questions[0]["question_type"] == "text"
+
+    def test_create_questions_file_missing_short_question_is_rejected(
+        self, runner: CliRunner, tmp_path: Any
+    ) -> None:
+        qfile = tmp_path / "q.json"
+        qfile.write_text(json.dumps([{"question_type": "text", "question": "Well?"}]))
+        with _auth(), _client() as cls:
+            result = runner.invoke(
+                cli, ["form", "create", "-n", "Retro", "--questions-file", str(qfile)]
+            )
+            cls.return_value.create_form.assert_not_called()
+        assert result.exit_code != 0
+        assert "report title" in result.output
+
+    def test_create_questions_file_ai_short_question_allows_missing(
+        self, runner: CliRunner, tmp_path: Any
+    ) -> None:
+        qfile = tmp_path / "q.json"
+        qfile.write_text(json.dumps([{"question_type": "text", "question": "Well?"}]))
+        with _auth(), _client() as cls:
+            client: MagicMock = cls.return_value
+            client.create_form.return_value = FORM_PAYLOAD
+            result = runner.invoke(
+                cli,
+                [
+                    "form",
+                    "create",
+                    "-n",
+                    "Retro",
+                    "--questions-file",
+                    str(qfile),
+                    "--ai-short-question",
+                ],
+            )
+        assert result.exit_code == 0
 
     def test_create_with_report_channel_inline(self, runner: CliRunner) -> None:
         with _auth(), _client() as cls:
@@ -147,7 +184,17 @@ class TestFormQuestions:
             client.add_form_question.return_value = {"uuid": "q-new", "question": "New?"}
             result = runner.invoke(
                 cli,
-                ["form", "questions", "add", "form-uuid", "--type", "text", "--question", "New?"],
+                [
+                    "form",
+                    "questions",
+                    "add",
+                    "form-uuid",
+                    "--type",
+                    "text",
+                    "--question",
+                    "New?",
+                    "--ai-short-question",
+                ],
             )
         assert result.exit_code == 0
         assert client.add_form_question.call_args[0][1]["question_type"] == "text"
@@ -201,6 +248,7 @@ class TestFormQuestions:
                     "--question",
                     "Blocked?",
                     "--blocker",
+                    "--ai-short-question",
                 ],
             )
         assert result.exit_code == 0
@@ -219,6 +267,7 @@ class TestFormQuestions:
                     "multiple_choice",
                     "--question",
                     "Rating?",
+                    "--ai-short-question",
                 ],
             )
             cls.return_value.add_form_question.assert_not_called()
