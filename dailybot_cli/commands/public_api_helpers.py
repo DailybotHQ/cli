@@ -114,7 +114,10 @@ ERROR_CODE_MESSAGES: dict[str, str] = {
     ),
     "invalid_start_on": "Invalid start date. Use YYYY-MM-DD.",
     "invalid_end_on": "Invalid end date. Use YYYY-MM-DD.",
-    "invalid_frequency_type": "Invalid --frequency. Use weekly, monthly, or custom.",
+    "invalid_frequency_type": (
+        "Invalid --frequency. Only 'weekly' is accepted; for monthly or custom "
+        "cadences use --frequency-advanced (monthly / custom, with --cron for custom)."
+    ),
     "invalid_frequency": "Invalid --every. Must be an integer >= 1.",
     "invalid_reminder_count": "Invalid --reminders. Must be an integer 0-5.",
     "invalid_reminder_interval": "Invalid --reminder-interval. Must be 0-60 minutes.",

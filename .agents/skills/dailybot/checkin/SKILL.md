@@ -291,7 +291,8 @@ dailybot checkin history <followup_uuid> --days 7    # your own; --all/--user ar
 **Schedule:** `--days` are ISO weekday integers (0=Sunday … 6=Saturday); `--time`
 is `HH:MM`; `--timezone` is an IANA name. Or pass `--schedule-file`
 (`{"days": [...], "time": "HH:MM", "timezone": "..."}`). **Full config** (create +
-config, partial): `--start-on/--end-on`, `--frequency weekly|monthly|custom`,
+config, partial): `--start-on/--end-on`, `--frequency weekly` (monthly/custom
+cadences are driven by `--frequency-advanced`),
 `--every N`, `--trigger-based/--fixed-time`,
 `--participant-timezone/--custom-timezone`, `--reminders 0-5`,
 `--reminder-interval 0-60`, `--reminder-condition smart_frequency|fixed_frequency`,

@@ -190,8 +190,12 @@ class TestBuildCheckinConfig:
         assert cfg["privacy"] == "everyone"
 
     def test_invalid_frequency_rejected(self) -> None:
+        # frequency_type is weekly-only now; monthly/custom moved to
+        # frequency_advanced, so both are rejected here.
         with pytest.raises(AuthoringError):
             build_checkin_config(frequency_type="yearly")
+        with pytest.raises(AuthoringError):
+            build_checkin_config(frequency_type="monthly")
 
     def test_reminder_count_out_of_range_rejected(self) -> None:
         with pytest.raises(AuthoringError):
@@ -414,7 +418,7 @@ class TestAuthoringDisplay:
                 {
                     "id": "fu-1",
                     "name": "Standup",
-                    "frequency_type": "custom",
+                    "frequency_type": "weekly",
                     "frequency_advanced": "custom",
                     "frequency_cron": "0 9 * * 1,3,5",
                     "reminders_max_count": 2,

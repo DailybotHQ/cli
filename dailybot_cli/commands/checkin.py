@@ -57,7 +57,10 @@ def _config_flag_options(func: Callable[..., Any]) -> Callable[..., Any]:
         click.option("--start-on", "start_on", default=None, help="Start date (YYYY-MM-DD)."),
         click.option("--end-on", "end_on", default=None, help="End date (YYYY-MM-DD)."),
         click.option(
-            "--frequency", "frequency_type", default=None, help="weekly / monthly / custom."
+            "--frequency",
+            "frequency_type",
+            default=None,
+            help="Recurrence base (weekly). For monthly/custom use --frequency-advanced.",
         ),
         click.option("--every", "frequency", type=int, default=None, help="Repeat every N (>=1)."),
         click.option(

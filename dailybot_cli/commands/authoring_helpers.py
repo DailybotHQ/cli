@@ -30,8 +30,10 @@ MAX_WEEKDAY: int = 6
 _TIME_PATTERN: re.Pattern[str] = re.compile(r"^\d{2}:\d{2}$")
 
 # Check-in configuration enums + constraints (mirror the server contract so the
-# CLI fails fast; the server remains the source of truth).
-FREQUENCY_TYPES: tuple[str, ...] = ("weekly", "monthly", "custom")
+# CLI fails fast; the server remains the source of truth). ``frequency_type`` is
+# weekly-only — monthly/custom cadences are driven by ``frequency_advanced``
+# (+ ``frequency_cron`` for custom).
+FREQUENCY_TYPES: tuple[str, ...] = ("weekly",)
 PRIVACY_LEVELS: tuple[str, ...] = (
     "only_owner",
     "owner_and_members",
