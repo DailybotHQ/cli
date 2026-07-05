@@ -546,6 +546,10 @@ dailybot form questions add <form_uuid> --type text --question "What went well?"
 dailybot form questions add <form_uuid> --type multiple_choice \
   --question "Rating?" --options "Excellent,Good,Average,Poor"
 dailybot form questions add <form_uuid> --type boolean --question "Blocking?" --blocker
+# Per-question extras: report title, alternate phrasings, conditional logic
+dailybot form questions add <form_uuid> --type text --question "What went well?" \
+  --short-question "Wins" --variation "What are you proud of?"
+dailybot form questions edit <form_uuid> <question_uuid> --logic-file branching.json
 dailybot form questions edit <form_uuid> <question_uuid> --question "Reworded?"
 dailybot form questions edit <form_uuid> <question_uuid> --blocker
 dailybot form questions delete <form_uuid> <question_uuid> --yes
@@ -560,12 +564,16 @@ dailybot form responses <form_uuid> --user <user_uuid> --json
 dailybot form update <form_uuid> <response_uuid> --content '{"<q_uuid>":"corrected"}'
 ```
 
-**Question types:** `text`, `multiple_choice`, `boolean`, `numeric`.
-`multiple_choice` requires `--options`; `boolean` auto-generates Yes/No (no
-options); up to 50 questions. `--questions-file` is a JSON array of
-`{question_type, question, options?, required?, is_blocker?}` objects
-(`type`/`label` aliases also accepted). Any question may be tagged the **blocker**
-question with `--blocker` (or `"is_blocker": true` in the file).
+**Question types:** `text`, `multiple_choice`, `boolean`, `numeric` (the complete
+catalog). `multiple_choice` requires `--options`; `boolean` auto-generates Yes/No
+(no options); up to 50 questions. `--questions-file` is a JSON array of
+`{question_type, question, options?, required?, is_blocker?, short_question?,
+variations?, logic?}` objects (`type`/`label` aliases also accepted). Any question
+may be tagged the **blocker** question with `--blocker` (or `"is_blocker": true` in
+the file). **Per-question extras** on `questions add`/`edit`: `--short-question`
+(report title, ≤512 chars), `--variation` (repeatable, ≤10), and conditional logic
+via `--logic-file` (a `{"rules": {...}}` object) or inline
+`--jump-if-equals VALUE --jump-to N`. Empty question text is rejected server-side.
 
 **Reading questions back:** every read path (`form get`, `form questions list`,
 check-in `detail`) returns the canonical shape

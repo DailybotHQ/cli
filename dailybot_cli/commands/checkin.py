@@ -18,6 +18,8 @@ from dailybot_cli.commands.authoring_helpers import (
     parse_questions_file,
     parse_schedule,
     prompt_participants_interactively,
+    question_extras_options,
+    resolve_question_extras,
 )
 from dailybot_cli.commands.public_api_helpers import (
     confirm_write,
@@ -617,6 +619,7 @@ def checkin_questions() -> None:
     default=False,
     help="Tag this as the blocker question.",
 )
+@question_extras_options
 @click.option("--json", "json_mode", is_flag=True, help="Emit machine-readable JSON to stdout.")
 def checkin_questions_add(
     followup_uuid: str,
@@ -626,6 +629,7 @@ def checkin_questions_add(
     required: bool,
     is_blocker: bool,
     json_mode: bool,
+    **extra_flags: Any,
 ) -> None:
     """Add a question to a check-in.
 
@@ -635,14 +639,19 @@ def checkin_questions_add(
         --question "What are you working on today?"
       dailybot checkin questions add <followup_uuid> --type boolean \\
         --question "Any blockers?" --blocker
+      dailybot checkin questions add <followup_uuid> --type text \\
+        --question "What did you do?" --short-question "Yesterday" \\
+        --variation "What did you accomplish?" --jump-if-equals "None" --jump-to -1
     """
     client = require_auth()
+    extras: dict[str, Any] = resolve_question_extras(**extra_flags)
     payload: dict[str, Any] = build_question(
         question_type,
         question,
         options=parse_options(options),
         required=required,
         is_blocker=is_blocker,
+        **extras,
     )
     try:
         with console.status("Adding question..."):
@@ -670,6 +679,7 @@ def checkin_questions_add(
     default=None,
     help="Toggle the blocker tag.",
 )
+@question_extras_options
 @click.option("--json", "json_mode", is_flag=True, help="Emit machine-readable JSON to stdout.")
 def checkin_questions_edit(
     followup_uuid: str,
@@ -680,21 +690,30 @@ def checkin_questions_edit(
     required: bool | None,
     is_blocker: bool | None,
     json_mode: bool,
+    **extra_flags: Any,
 ) -> None:
-    """Update a check-in question's text, type, options, required, or blocker flag.
+    """Update a check-in question's text, type, options, required, blocker, or extras.
+
+    \b
+    Extras: --short-question (report title), --variation (repeatable), and logic
+    via --logic-file or inline --jump-if-equals/--jump-to.
 
     \b
     Examples:
       dailybot checkin questions edit <followup_uuid> <question_uuid> \\
         --question "Do you need help today?"
       dailybot checkin questions edit <followup_uuid> <question_uuid> --blocker
+      dailybot checkin questions edit <followup_uuid> <question_uuid> \\
+        --short-question "Help?" --logic-file branching.json
     """
+    extras: dict[str, Any] = resolve_question_extras(**extra_flags)
     fields: dict[str, Any] = build_question_edit_fields(
-        question, question_type, options, required, is_blocker
+        question, question_type, options, required, is_blocker, **extras
     )
     if not fields:
         raise click.UsageError(
-            "Nothing to edit. Pass --question, --type, --options, --required, or --blocker."
+            "Nothing to edit. Pass --question, --type, --options, --required, --blocker, "
+            "--short-question, --variation, or logic (--logic-file / --jump-if-equals + --jump-to)."
         )
     client = require_auth()
     try:

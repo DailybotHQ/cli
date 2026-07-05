@@ -303,6 +303,10 @@ dailybot form questions list <form_uuid>
 dailybot form questions add <form_uuid> --type text --question "What went well?"
 dailybot form questions add <form_uuid> --type multiple_choice \
   --question "Sprint rating?" --options "Excellent,Good,Average,Poor"
+# Per-question extras: report title, alternate phrasings, conditional logic
+dailybot form questions add <form_uuid> --type text --question "What went well?" \
+  --short-question "Wins" --variation "What are you proud of?"
+dailybot form questions edit <form_uuid> <question_uuid> --logic-file branching.json
 dailybot form questions edit <form_uuid> <question_uuid> --question "Reworded?"
 dailybot form questions delete <form_uuid> <question_uuid>
 dailybot form questions reorder <form_uuid> <q3> <q1> <q2>
@@ -318,8 +322,7 @@ dailybot checkin config <followup_uuid> --reminders 3 --reminder-interval 30 \
   --reminder-tone persuasive --privacy everyone
 # Smart/AI + advanced scheduling (100% parity with the web UI)
 dailybot checkin config <followup_uuid> --smart --intelligence --max-clarifying 2
-dailybot checkin config <followup_uuid> --frequency custom \
-  --frequency-advanced custom --cron "0 9 * * 1,3,5"
+dailybot checkin config <followup_uuid> --frequency-advanced custom --cron "0 9 * * 1,3,5"
 dailybot checkin config <followup_uuid> --inactive
 dailybot checkin archive <followup_uuid>
 
@@ -328,9 +331,14 @@ dailybot checkin questions add <followup_uuid> --type text --question "Focus tod
 dailybot checkin questions reorder <followup_uuid> <q2> <q1>
 ```
 
-> **Question types:** `text`, `multiple_choice`, `boolean`, `numeric`.
-> `multiple_choice` needs `--options`; `boolean` auto-generates Yes/No (don't pass
-> options). Up to 50 questions per form/check-in.
+> **Question types:** `text`, `multiple_choice`, `boolean`, `numeric` (the complete
+> catalog). `multiple_choice` needs `--options`; `boolean` auto-generates Yes/No
+> (don't pass options). Up to 50 questions per form/check-in.
+>
+> **Per-question extras** (on `questions add`/`edit`, forms and check-ins):
+> `--short-question` (title shown in web & chat reports), `--variation` (repeatable
+> alternate phrasings), and conditional logic via `--logic-file` or the inline
+> `--jump-if-equals VALUE --jump-to N` shortcut.
 
 ### Command naming (why authoring uses distinct verbs)
 

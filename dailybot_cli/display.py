@@ -986,6 +986,14 @@ def _question_rows(questions: list[dict[str, Any]]) -> Table:
         labels: list[str] = _choice_labels(question)
         if labels:
             question_cell.append("\n" + ", ".join(labels), style="dim")
+        short_q: Any = question.get("short_question")
+        if short_q and str(short_q) != str(question.get("question", "")):
+            question_cell.append(f"\n↳ report title: {short_q}", style="dim")
+        variations: Any = question.get("variations")
+        if variations:
+            question_cell.append(f"\n↳ {len(variations)} variation(s)", style="dim")
+        if question.get("logic"):
+            question_cell.append("\n↳ conditional logic", style="dim")
         blocker_cell: Text = (
             Text("yes", style="red") if question.get("is_blocker") else Text("—", style="dim")
         )

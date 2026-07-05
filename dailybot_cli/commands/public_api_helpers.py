@@ -99,6 +99,17 @@ ERROR_CODE_MESSAGES: dict[str, str] = {
     "form_not_found": "Form not found.",
     "checkin_not_found": "Check-in not found.",
     "question_not_found": "Question not found on this form or check-in.",
+    "invalid_question_variations": (
+        "Invalid question variations. Pass up to 10 non-empty alternate phrasings."
+    ),
+    "invalid_question_logic": (
+        "Invalid question logic. Check the operators, actions, connectors, and jump "
+        "targets — see `dailybot checkin questions edit --help`."
+    ),
+    "anonymous_irreversible": (
+        "An anonymous check-in cannot be made non-anonymous. Create a new check-in "
+        "if you need non-anonymous responses."
+    ),
     "report_channel_not_found": (
         "Report channel not found — run `dailybot channels list` to see the "
         "channels available in your organization."

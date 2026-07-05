@@ -152,6 +152,38 @@ class TestFormQuestions:
         assert result.exit_code == 0
         assert client.add_form_question.call_args[0][1]["question_type"] == "text"
 
+    def test_add_with_logic_file(self, runner: CliRunner, tmp_path: Any) -> None:
+        logic_file = tmp_path / "logic.json"
+        logic_file.write_text(
+            '{"rules": {"rules_if": [{"conditions": [{"operator": "is_equal_to", '
+            '"comparison_value": "No"}], "then": {"action": "trigger_form", '
+            '"target": "other-form"}}]}}'
+        )
+        with _auth(), _client() as cls:
+            client: MagicMock = cls.return_value
+            client.add_form_question.return_value = {"uuid": "q-new"}
+            result = runner.invoke(
+                cli,
+                [
+                    "form",
+                    "questions",
+                    "add",
+                    "form-uuid",
+                    "--type",
+                    "boolean",
+                    "--question",
+                    "Ship it?",
+                    "--short-question",
+                    "Ship",
+                    "--logic-file",
+                    str(logic_file),
+                ],
+            )
+        assert result.exit_code == 0
+        payload = client.add_form_question.call_args[0][1]
+        assert payload["short_question"] == "Ship"
+        assert payload["logic"]["rules"]["rules_if"][0]["then"]["action"] == "trigger_form"
+
     def test_add_with_blocker(self, runner: CliRunner) -> None:
         with _auth(), _client() as cls:
             client: MagicMock = cls.return_value

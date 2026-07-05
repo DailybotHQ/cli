@@ -14,10 +14,15 @@ from dailybot_cli.commands.authoring_helpers import (
     build_checkin_config,
     build_question,
     build_question_edit_fields,
+    build_question_logic,
+    build_variations,
     parse_options,
     parse_participants,
     parse_questions_file,
     parse_schedule,
+    resolve_question_extras,
+    validate_logic,
+    validate_short_question,
 )
 
 
@@ -77,6 +82,140 @@ class TestBuildQuestionEditFields:
         assert "is_blocker" not in build_question_edit_fields("Q?", None, None, None, None)
 
 
+class TestQuestionExtras:
+    def test_short_question_trimmed(self) -> None:
+        assert validate_short_question("  Yesterday  ") == "Yesterday"
+
+    def test_short_question_empty_rejected(self) -> None:
+        with pytest.raises(AuthoringError):
+            validate_short_question("   ")
+
+    def test_short_question_too_long_rejected(self) -> None:
+        with pytest.raises(AuthoringError):
+            validate_short_question("x" * 513)
+
+    def test_variations_built(self) -> None:
+        assert build_variations(("What happened?", " What went well? ")) == [
+            "What happened?",
+            "What went well?",
+        ]
+
+    def test_variations_empty_tuple_is_none(self) -> None:
+        assert build_variations(()) is None
+
+    def test_variations_whitespace_rejected(self) -> None:
+        with pytest.raises(AuthoringError):
+            build_variations(("ok", "   "))
+
+    def test_variations_over_limit_rejected(self) -> None:
+        with pytest.raises(AuthoringError):
+            build_variations(tuple(f"v{i}" for i in range(11)))
+
+    def test_inline_jump_logic_built(self) -> None:
+        logic = build_question_logic(jump_if_equals="Yes", jump_to=3)
+        assert logic == {
+            "rules": {
+                "rules_if": [
+                    {
+                        "conditions": [
+                            {
+                                "operator": "is_equal_to",
+                                "comparison_value": "Yes",
+                                "logic_connector": "and",
+                            }
+                        ],
+                        "then": {"action": "jump_to", "target": 3},
+                    }
+                ]
+            }
+        }
+
+    def test_jump_to_without_value_rejected(self) -> None:
+        with pytest.raises(AuthoringError):
+            build_question_logic(jump_to=3)
+
+    def test_jump_if_without_target_rejected(self) -> None:
+        with pytest.raises(AuthoringError):
+            build_question_logic(jump_if_equals="Yes")
+
+    def test_no_logic_is_none(self) -> None:
+        assert build_question_logic() is None
+
+    def test_validate_logic_accepts_trigger_action(self) -> None:
+        logic = {
+            "rules": {
+                "rules_if": [
+                    {
+                        "conditions": [{"operator": "contains", "comparison_value": "bug"}],
+                        "then": {"action": "trigger_form", "target": "form-uuid"},
+                    }
+                ],
+                "rules_else": {"action": "jump_to", "target": -1},
+            }
+        }
+        assert validate_logic(logic) is logic
+
+    def test_validate_logic_bad_operator_rejected(self) -> None:
+        with pytest.raises(AuthoringError):
+            validate_logic(
+                {
+                    "rules": {
+                        "rules_if": [
+                            {
+                                "conditions": [{"operator": "gt", "comparison_value": "5"}],
+                                "then": {"action": "jump_to", "target": 1},
+                            }
+                        ]
+                    }
+                }
+            )
+
+    def test_validate_logic_jump_needs_int_target(self) -> None:
+        with pytest.raises(AuthoringError):
+            validate_logic(
+                {
+                    "rules": {
+                        "rules_if": [
+                            {
+                                "conditions": [
+                                    {"operator": "is_equal_to", "comparison_value": "Yes"}
+                                ],
+                                "then": {"action": "jump_to", "target": "nope"},
+                            }
+                        ]
+                    }
+                }
+            )
+
+    def test_validate_logic_requires_rules(self) -> None:
+        with pytest.raises(AuthoringError):
+            validate_logic({"foo": "bar"})
+
+    def test_resolve_extras_merges_all(self) -> None:
+        extras = resolve_question_extras(
+            short_question="Yesterday",
+            variations_raw=("What did you do?",),
+            jump_if_equals="No",
+            jump_to=-1,
+        )
+        assert extras["short_question"] == "Yesterday"
+        assert extras["variations"] == ["What did you do?"]
+        assert extras["logic"]["rules"]["rules_if"][0]["then"]["target"] == -1
+
+    def test_resolve_extras_empty(self) -> None:
+        assert resolve_question_extras() == {}
+
+    def test_build_question_carries_extras(self) -> None:
+        payload = build_question(
+            "text",
+            "What did you do?",
+            short_question="Yesterday",
+            variations=["What happened?"],
+        )
+        assert payload["short_question"] == "Yesterday"
+        assert payload["variations"] == ["What happened?"]
+
+
 class TestParseOptions:
     def test_splits_and_trims(self) -> None:
         assert parse_options("a, b ,c") == ["a", "b", "c"]
@@ -109,6 +248,43 @@ class TestParseQuestionsFile:
         path.write_text(json.dumps([{"type": "boolean", "label": "Blocked?", "is_blocker": True}]))
         result: list[dict[str, Any]] = parse_questions_file(str(path))
         assert result[0]["is_blocker"] is True
+
+    def test_extras_read_from_file(self, tmp_path: Path) -> None:
+        path: Path = tmp_path / "questions.json"
+        path.write_text(
+            json.dumps(
+                [
+                    {
+                        "question_type": "text",
+                        "question": "What did you do?",
+                        "short_question": "Yesterday",
+                        "variations": ["What happened?", "What went well?"],
+                        "logic": {
+                            "rules": {
+                                "rules_if": [
+                                    {
+                                        "conditions": [
+                                            {"operator": "contains", "comparison_value": "bug"}
+                                        ],
+                                        "then": {"action": "jump_to", "target": 2},
+                                    }
+                                ]
+                            }
+                        },
+                    }
+                ]
+            )
+        )
+        result: list[dict[str, Any]] = parse_questions_file(str(path))
+        assert result[0]["short_question"] == "Yesterday"
+        assert result[0]["variations"] == ["What happened?", "What went well?"]
+        assert result[0]["logic"]["rules"]["rules_if"][0]["then"]["target"] == 2
+
+    def test_bad_logic_in_file_rejected(self, tmp_path: Path) -> None:
+        path: Path = tmp_path / "questions.json"
+        path.write_text(json.dumps([{"type": "text", "label": "Q?", "logic": {"no": "rules"}}]))
+        with pytest.raises(AuthoringError):
+            parse_questions_file(str(path))
 
     def test_missing_file_rejected(self, tmp_path: Path) -> None:
         with pytest.raises(AuthoringError):
@@ -344,6 +520,29 @@ class TestAuthoringDisplay:
         output: str = capture.get()
         assert "Great" in output  # {label,value} choice rendered by label
         assert "Rough" in output
+
+    def test_questions_table_renders_extras(self) -> None:
+        with display.console.capture() as capture:
+            display.print_questions_table(
+                [
+                    {
+                        "uuid": "q1",
+                        "index": 0,
+                        "question": "What did you do yesterday?",
+                        "question_type": "text",
+                        "required": True,
+                        "is_blocker": False,
+                        "choices": [],
+                        "short_question": "Yesterday",
+                        "variations": ["What happened?", "What went well?"],
+                        "logic": {"rules": {"rules_if": [{"conditions": [], "then": {}}]}},
+                    }
+                ]
+            )
+        output: str = capture.get()
+        assert "report title: Yesterday" in output
+        assert "2 variation(s)" in output
+        assert "conditional logic" in output
         assert "Blocker" in output  # blocker column header present
 
     def test_form_updated_title(self) -> None:

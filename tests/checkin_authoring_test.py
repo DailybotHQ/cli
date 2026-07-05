@@ -310,6 +310,94 @@ class TestCheckinQuestions:
         assert result.exit_code == 0
         assert client.add_checkin_question.call_args[0][1]["is_blocker"] is True
 
+    def test_add_with_short_question_and_variations(self, runner: CliRunner) -> None:
+        with _auth(), _client() as cls:
+            client: MagicMock = cls.return_value
+            client.add_checkin_question.return_value = {"uuid": "q-new"}
+            result = runner.invoke(
+                cli,
+                [
+                    "checkin",
+                    "questions",
+                    "add",
+                    "fu-1",
+                    "--type",
+                    "text",
+                    "--question",
+                    "What did you do?",
+                    "--short-question",
+                    "Yesterday",
+                    "--variation",
+                    "What happened?",
+                    "--variation",
+                    "What went well?",
+                ],
+            )
+        assert result.exit_code == 0
+        payload = client.add_checkin_question.call_args[0][1]
+        assert payload["short_question"] == "Yesterday"
+        assert payload["variations"] == ["What happened?", "What went well?"]
+
+    def test_add_with_inline_jump_logic(self, runner: CliRunner) -> None:
+        with _auth(), _client() as cls:
+            client: MagicMock = cls.return_value
+            client.add_checkin_question.return_value = {"uuid": "q-new"}
+            result = runner.invoke(
+                cli,
+                [
+                    "checkin",
+                    "questions",
+                    "add",
+                    "fu-1",
+                    "--type",
+                    "boolean",
+                    "--question",
+                    "Any blockers?",
+                    "--jump-if-equals",
+                    "No",
+                    "--jump-to",
+                    "-1",
+                ],
+            )
+        assert result.exit_code == 0
+        logic = client.add_checkin_question.call_args[0][1]["logic"]
+        rule = logic["rules"]["rules_if"][0]
+        assert rule["conditions"][0]["comparison_value"] == "No"
+        assert rule["then"] == {"action": "jump_to", "target": -1}
+
+    def test_add_jump_to_without_value_fails_fast(self, runner: CliRunner) -> None:
+        with _auth(), _client() as cls:
+            result = runner.invoke(
+                cli,
+                [
+                    "checkin",
+                    "questions",
+                    "add",
+                    "fu-1",
+                    "--type",
+                    "text",
+                    "--question",
+                    "Q?",
+                    "--jump-to",
+                    "2",
+                ],
+            )
+            cls.return_value.add_checkin_question.assert_not_called()
+        assert result.exit_code != 0
+        assert "--jump-if-equals" in result.output
+
+    def test_anonymous_irreversible_error_is_friendly(self, runner: CliRunner) -> None:
+        with _auth(), _client() as cls:
+            client: MagicMock = cls.return_value
+            client.update_checkin_config.side_effect = APIError(
+                status_code=400,
+                detail="An anonymous check-in cannot be made non-anonymous.",
+                code="anonymous_irreversible",
+            )
+            result = runner.invoke(cli, ["checkin", "config", "fu-1", "--no-anonymous"])
+        assert result.exit_code != 0
+        assert "non-anonymous" in result.output
+
     def test_edit_blocker_toggle(self, runner: CliRunner) -> None:
         with _auth(), _client() as cls:
             client: MagicMock = cls.return_value

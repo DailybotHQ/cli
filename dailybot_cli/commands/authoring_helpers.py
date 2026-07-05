@@ -24,6 +24,19 @@ from dailybot_cli.display import print_error
 VALID_QUESTION_TYPES: tuple[str, ...] = ("text", "multiple_choice", "boolean", "numeric")
 # Server-side ceiling; mirrored here so the CLI fails fast on obviously-too-many.
 MAX_QUESTIONS: int = 50
+# Per-question extras (short report title + alternate phrasings). Limits mirror
+# the server contract so the CLI fails fast; the server stays authoritative.
+SHORT_QUESTION_MAX_LEN: int = 512
+VARIATIONS_MAX: int = 10
+# Question logic (conditional/branching) vocabulary, mirroring the server contract.
+LOGIC_OPERATORS: tuple[str, ...] = (
+    "is_equal_to",
+    "is_not_equal_to",
+    "contains",
+    "not_contains",
+)
+LOGIC_ACTIONS: tuple[str, ...] = ("jump_to", "trigger_checkin", "trigger_form")
+LOGIC_CONNECTORS: tuple[str, ...] = ("and", "or")
 # Schedule validation: ISO weekday ints (0=Sunday .. 6=Saturday) and HH:MM time.
 MIN_WEEKDAY: int = 0
 MAX_WEEKDAY: int = 6
@@ -70,6 +83,51 @@ class AuthoringError(click.ClickException):
         print_error(self.message)
 
 
+def question_extras_options(func: Any) -> Any:
+    """Attach the shared per-question extra flags (short title, variations, logic).
+
+    Applied to ``questions add`` and ``questions edit`` on both check-ins and forms.
+    Dest names match ``resolve_question_extras`` kwargs so callbacks can forward
+    them directly.
+    """
+    options: list[Any] = [
+        click.option(
+            "--short-question",
+            "short_question",
+            default=None,
+            help="Short title shown in web & chat reports (<=512 chars).",
+        ),
+        click.option(
+            "--variation",
+            "variations_raw",
+            multiple=True,
+            help="Alternate phrasing rotated per run (repeatable; up to 10).",
+        ),
+        click.option(
+            "--logic-file",
+            "logic_file",
+            default=None,
+            help='Path to a JSON question-logic object ({"rules": {...}}).',
+        ),
+        click.option(
+            "--jump-if-equals",
+            "jump_if_equals",
+            default=None,
+            help="Inline logic: answer value that triggers the jump (needs --jump-to).",
+        ),
+        click.option(
+            "--jump-to",
+            "jump_to",
+            type=int,
+            default=None,
+            help="Inline logic: target question index to jump to (-1 = end).",
+        ),
+    ]
+    for option in reversed(options):
+        func = option(func)
+    return func
+
+
 def parse_options(raw: str | None) -> list[str] | None:
     """Split a comma-separated ``--options`` string into a trimmed list."""
     if raw is None:
@@ -85,12 +143,18 @@ def build_question(
     options: list[str] | None = None,
     required: bool = True,
     is_blocker: bool = False,
+    short_question: str | None = None,
+    variations: list[str] | None = None,
+    logic: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Build a validated question payload (explicit ``question_type``/``question``).
 
     Enforces the type whitelist, that ``multiple_choice`` carries options, that
     other types do not, and that the question text is non-empty. ``is_blocker``
     tags the question as the blocker prompt (common on boolean check-in Qs).
+    ``short_question`` (report title), ``variations`` (alternate phrasings), and
+    ``logic`` (conditional branching) are optional per-question extras; callers
+    pass already-validated values (see ``resolve_question_extras``).
     """
     qtype: str = question_type.strip().lower()
     if qtype not in VALID_QUESTION_TYPES:
@@ -116,6 +180,12 @@ def build_question(
         payload["options"] = options
     elif options:
         raise AuthoringError(f"'{qtype}' questions do not take options.")
+    if short_question is not None:
+        payload["short_question"] = validate_short_question(short_question)
+    if variations is not None:
+        payload["variations"] = variations
+    if logic is not None:
+        payload["logic"] = logic
     return payload
 
 
@@ -125,12 +195,18 @@ def build_question_edit_fields(
     options: str | None,
     required: bool | None,
     is_blocker: bool | None = None,
+    *,
+    short_question: str | None = None,
+    variations: list[str] | None = None,
+    logic: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Build a partial question-update payload from provided edit flags.
 
     Only shape checks run here; the server does full validation. ``build_question``
     isn't reused because edits are partial (no required question/type pairing).
-    Omitted flags are not sent (non-destructive PATCH).
+    Omitted flags are not sent (non-destructive PATCH). ``short_question`` /
+    ``variations`` / ``logic`` arrive already validated from
+    ``resolve_question_extras``.
     """
     fields: dict[str, Any] = {}
     if question is not None:
@@ -143,7 +219,188 @@ def build_question_edit_fields(
         fields["required"] = required
     if is_blocker is not None:
         fields["is_blocker"] = is_blocker
+    if short_question is not None:
+        fields["short_question"] = validate_short_question(short_question)
+    if variations is not None:
+        fields["variations"] = variations
+    if logic is not None:
+        fields["logic"] = logic
     return fields
+
+
+def validate_short_question(text: str) -> str:
+    """Trim and length-check a per-question report title (``short_question``)."""
+    stripped: str = text.strip()
+    if not stripped:
+        raise AuthoringError("--short-question cannot be empty.")
+    if len(stripped) > SHORT_QUESTION_MAX_LEN:
+        raise AuthoringError(
+            f"--short-question must be at most {SHORT_QUESTION_MAX_LEN} characters "
+            f"(got {len(stripped)})."
+        )
+    return stripped
+
+
+def build_variations(raw: tuple[str, ...] | list[str]) -> list[str] | None:
+    """Validate alternate phrasings; returns ``None`` when none were provided.
+
+    Each variation must be non-empty (whitespace-only rejected) and the count is
+    capped at ``VARIATIONS_MAX`` — mirroring ``invalid_question_variations``.
+    """
+    if not raw:
+        return None
+    variations: list[str] = []
+    for item in raw:
+        text: str = str(item).strip()
+        if not text:
+            raise AuthoringError("Question variations cannot be empty.")
+        variations.append(text)
+    if len(variations) > VARIATIONS_MAX:
+        raise AuthoringError(
+            f"Too many variations ({len(variations)}); the limit is {VARIATIONS_MAX}."
+        )
+    return variations
+
+
+def _validate_logic_condition(condition: Any) -> None:
+    if not isinstance(condition, dict):
+        raise AuthoringError("Each logic condition must be an object.")
+    operator: Any = condition.get("operator")
+    if operator not in LOGIC_OPERATORS:
+        raise AuthoringError(
+            f"Invalid logic operator '{operator}'. Choose from: {', '.join(LOGIC_OPERATORS)}."
+        )
+    if "comparison_value" not in condition:
+        raise AuthoringError("Each logic condition needs a 'comparison_value'.")
+    connector: Any = condition.get("logic_connector", "and")
+    if connector not in LOGIC_CONNECTORS:
+        raise AuthoringError(
+            f"Invalid logic connector '{connector}'. Choose from: {', '.join(LOGIC_CONNECTORS)}."
+        )
+
+
+def _validate_logic_action(action: Any) -> None:
+    if not isinstance(action, dict):
+        raise AuthoringError("A logic action must be an object with 'action' and 'target'.")
+    act: Any = action.get("action")
+    if act not in LOGIC_ACTIONS:
+        raise AuthoringError(
+            f"Invalid logic action '{act}'. Choose from: {', '.join(LOGIC_ACTIONS)}."
+        )
+    target: Any = action.get("target")
+    if act == "jump_to":
+        if not isinstance(target, int) or isinstance(target, bool):
+            raise AuthoringError(
+                "A 'jump_to' action needs an integer 'target' (question index, or -1 for end)."
+            )
+    elif not isinstance(target, str) or not target:
+        raise AuthoringError(f"A '{act}' action needs a string 'target' (a UUID).")
+
+
+def validate_logic(logic: Any) -> dict[str, Any]:
+    """Validate a question-logic object's structure against the server contract.
+
+    Checks the ``rules`` envelope, each ``rules_if`` rule's conditions/action, and
+    the optional ``rules_else`` action. The server does the authoritative check
+    (``invalid_question_logic``); this fails fast on obvious mistakes.
+    """
+    if not isinstance(logic, dict):
+        raise AuthoringError("Question logic must be a JSON object.")
+    rules: Any = logic.get("rules")
+    if not isinstance(rules, dict):
+        raise AuthoringError('Question logic must have a "rules" object.')
+    rules_if: Any = rules.get("rules_if", [])
+    if not isinstance(rules_if, list):
+        raise AuthoringError('"rules_if" must be a list of rules.')
+    for rule in rules_if:
+        if not isinstance(rule, dict):
+            raise AuthoringError("Each logic rule must be an object.")
+        conditions: Any = rule.get("conditions")
+        if not isinstance(conditions, list) or not conditions:
+            raise AuthoringError("Each logic rule needs a non-empty 'conditions' list.")
+        for condition in conditions:
+            _validate_logic_condition(condition)
+        _validate_logic_action(rule.get("then"))
+    rules_else: Any = rules.get("rules_else")
+    if rules_else is not None:
+        _validate_logic_action(rules_else)
+    return logic
+
+
+def build_question_logic(
+    *,
+    logic_file: str | None = None,
+    jump_if_equals: str | None = None,
+    jump_to: int | None = None,
+) -> dict[str, Any] | None:
+    """Assemble question logic from a JSON file or an inline single-jump rule.
+
+    ``--logic-file`` carries the full ``{rules: {...}}`` structure. The inline
+    ``--jump-if-equals VALUE --jump-to N`` pair is a convenience for the common
+    "branch on one answer" case. Returns ``None`` when neither is provided.
+    """
+    if logic_file:
+        try:
+            raw: str = Path(logic_file).read_text(encoding="utf-8")
+        except OSError as exc:
+            raise AuthoringError(f"Cannot read logic file '{logic_file}': {exc}") from exc
+        try:
+            data: Any = json.loads(raw)
+        except json.JSONDecodeError as exc:
+            raise AuthoringError(f"Logic file '{logic_file}' is not valid JSON: {exc}") from exc
+        return validate_logic(data)
+    if jump_to is not None:
+        if jump_if_equals is None:
+            raise AuthoringError(
+                "--jump-to requires --jump-if-equals (the answer that triggers the jump)."
+            )
+        logic: dict[str, Any] = {
+            "rules": {
+                "rules_if": [
+                    {
+                        "conditions": [
+                            {
+                                "operator": "is_equal_to",
+                                "comparison_value": jump_if_equals,
+                                "logic_connector": "and",
+                            }
+                        ],
+                        "then": {"action": "jump_to", "target": jump_to},
+                    }
+                ]
+            }
+        }
+        return validate_logic(logic)
+    if jump_if_equals is not None:
+        raise AuthoringError("--jump-if-equals requires --jump-to (the target question index).")
+    return None
+
+
+def resolve_question_extras(
+    *,
+    short_question: str | None = None,
+    variations_raw: tuple[str, ...] = (),
+    logic_file: str | None = None,
+    jump_if_equals: str | None = None,
+    jump_to: int | None = None,
+) -> dict[str, Any]:
+    """Turn the shared question-extra flags into validated ``build_question`` kwargs.
+
+    Returns only the keys the caller supplied, so both add (full) and edit
+    (partial) paths can splat the result without sending untouched fields.
+    """
+    extras: dict[str, Any] = {}
+    if short_question is not None:
+        extras["short_question"] = validate_short_question(short_question)
+    variations: list[str] | None = build_variations(variations_raw)
+    if variations is not None:
+        extras["variations"] = variations
+    logic: dict[str, Any] | None = build_question_logic(
+        logic_file=logic_file, jump_if_equals=jump_if_equals, jump_to=jump_to
+    )
+    if logic is not None:
+        extras["logic"] = logic
+    return extras
 
 
 def parse_questions_file(path: str) -> list[dict[str, Any]]:
@@ -178,8 +435,31 @@ def parse_questions_file(path: str) -> list[dict[str, Any]]:
         )
         required: bool = bool(item.get("required", True))
         is_blocker: bool = bool(item.get("is_blocker", False))
+        extras: dict[str, Any] = {}
+        raw_short: Any = item.get("short_question")
+        if raw_short is not None:
+            extras["short_question"] = validate_short_question(str(raw_short))
+        raw_variations: Any = item.get("variations")
+        if raw_variations is not None:
+            if not isinstance(raw_variations, list):
+                raise AuthoringError(
+                    f"Question #{index + 1}: 'variations' must be a list of strings."
+                )
+            built: list[str] | None = build_variations([str(v) for v in raw_variations])
+            if built is not None:
+                extras["variations"] = built
+        raw_logic: Any = item.get("logic")
+        if raw_logic is not None:
+            extras["logic"] = validate_logic(raw_logic)
         questions.append(
-            build_question(qtype, qtext, options=options, required=required, is_blocker=is_blocker)
+            build_question(
+                qtype,
+                qtext,
+                options=options,
+                required=required,
+                is_blocker=is_blocker,
+                **extras,
+            )
         )
     return questions
 

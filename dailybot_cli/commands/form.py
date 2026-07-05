@@ -11,6 +11,8 @@ from dailybot_cli.commands.authoring_helpers import (
     build_questions_interactively,
     parse_options,
     parse_questions_file,
+    question_extras_options,
+    resolve_question_extras,
 )
 from dailybot_cli.commands.public_api_helpers import (
     confirm_write,
@@ -591,6 +593,7 @@ def form_questions_list(form_uuid: str, json_mode: bool) -> None:
     default=False,
     help="Tag this as the blocker question.",
 )
+@question_extras_options
 @click.option("--json", "json_mode", is_flag=True, help="Emit machine-readable JSON to stdout.")
 def form_questions_add(
     form_uuid: str,
@@ -600,22 +603,31 @@ def form_questions_add(
     required: bool,
     is_blocker: bool,
     json_mode: bool,
+    **extra_flags: Any,
 ) -> None:
     """Add a question to a form.
+
+    \b
+    Extras: --short-question (report title), --variation (repeatable), and logic
+    via --logic-file or inline --jump-if-equals/--jump-to.
 
     \b
     Examples:
       dailybot form questions add <form_uuid> --type text --question "What went well?"
       dailybot form questions add <form_uuid> --type multiple_choice \\
         --question "Rating?" --options "Excellent,Good,Average,Poor"
+      dailybot form questions add <form_uuid> --type boolean --question "Ship it?" \\
+        --short-question "Ship" --jump-if-equals "No" --jump-to 4
     """
     client = require_auth()
+    extras: dict[str, Any] = resolve_question_extras(**extra_flags)
     payload: dict[str, Any] = build_question(
         question_type,
         question,
         options=parse_options(options),
         required=required,
         is_blocker=is_blocker,
+        **extras,
     )
     try:
         with console.status("Adding question..."):
@@ -643,6 +655,7 @@ def form_questions_add(
     default=None,
     help="Toggle the blocker tag.",
 )
+@question_extras_options
 @click.option("--json", "json_mode", is_flag=True, help="Emit machine-readable JSON to stdout.")
 def form_questions_edit(
     form_uuid: str,
@@ -653,21 +666,29 @@ def form_questions_edit(
     required: bool | None,
     is_blocker: bool | None,
     json_mode: bool,
+    **extra_flags: Any,
 ) -> None:
-    """Update a question's text, type, options, required, or blocker flag.
+    """Update a question's text, type, options, required, blocker, or extras.
+
+    \b
+    Extras: --short-question (report title), --variation (repeatable), and logic
+    via --logic-file or inline --jump-if-equals/--jump-to.
 
     \b
     Examples:
       dailybot form questions edit <form_uuid> <question_uuid> --question "Reworded?"
       dailybot form questions edit <form_uuid> <question_uuid> --optional
-      dailybot form questions edit <form_uuid> <question_uuid> --blocker
+      dailybot form questions edit <form_uuid> <question_uuid> \\
+        --short-question "Rating" --variation "How would you rate it?"
     """
+    extras: dict[str, Any] = resolve_question_extras(**extra_flags)
     fields: dict[str, Any] = build_question_edit_fields(
-        question, question_type, options, required, is_blocker
+        question, question_type, options, required, is_blocker, **extras
     )
     if not fields:
         raise click.UsageError(
-            "Nothing to edit. Pass --question, --type, --options, --required, or --blocker."
+            "Nothing to edit. Pass --question, --type, --options, --required, --blocker, "
+            "--short-question, --variation, or logic (--logic-file / --jump-if-equals + --jump-to)."
         )
     client = require_auth()
     try:

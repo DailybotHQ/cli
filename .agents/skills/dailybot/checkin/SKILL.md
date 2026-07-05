@@ -275,6 +275,12 @@ dailybot checkin archive <followup_uuid>
 # Manage questions (same shapes as form questions; --blocker tags the blocker Q)
 dailybot checkin questions add <followup_uuid> --type text --question "Focus today?"
 dailybot checkin questions add <followup_uuid> --type boolean --question "Any blockers?" --blocker
+# Per-question extras: report title, alternate phrasings, and conditional logic
+dailybot checkin questions add <followup_uuid> --type text --question "What did you do?" \
+  --short-question "Yesterday" --variation "What did you accomplish?"
+dailybot checkin questions edit <followup_uuid> <question_uuid> \
+  --jump-if-equals "No" --jump-to -1        # inline single-jump logic
+dailybot checkin questions edit <followup_uuid> <question_uuid> --logic-file branching.json
 dailybot checkin questions edit <followup_uuid> <question_uuid> --question "Need help?"
 dailybot checkin questions edit <followup_uuid> <question_uuid> --blocker
 dailybot checkin questions delete <followup_uuid> <question_uuid> --yes
@@ -313,7 +319,11 @@ prompts you to pick some (the default team is suggested); a non-interactive run
 (agent/script) errors instead of creating an empty check-in. Add or replace
 participants later with `checkin config --user/--team`. **Question types** match
 forms: `text`, `multiple_choice` (needs `--options`), `boolean` (no options),
-`numeric`; up to 50. Tag the blocker question with `--blocker`.
+`numeric`; up to 50 (this is the complete catalog). Tag the blocker question with
+`--blocker`. **Per-question extras** (`questions add`/`edit`): `--short-question`
+(report title, ≤512 chars), `--variation` (repeatable, ≤10), and conditional logic
+via `--logic-file` or inline `--jump-if-equals VALUE --jump-to N` (`-1` = end).
+Empty question text is rejected server-side.
 
 **Reading back (`checkin show`):** returns the canonical detail shape — schedule,
 `participants` (users/teams resolved to names), attached `report_channels`, and
