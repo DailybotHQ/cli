@@ -1092,6 +1092,22 @@ class TestCheckinsAuthoring:
 
         assert mock_post.call_args[1]["json"] == {"name": "Standup"}
 
+    def test_create_checkin_merges_config(self, client: DailyBotClient) -> None:
+        mock_response: MagicMock = MagicMock(spec=httpx.Response)
+        mock_response.status_code = 201
+        mock_response.json.return_value = {"id": "followup-uuid"}
+
+        with patch("httpx.post", return_value=mock_response) as mock_post:
+            client.create_checkin(
+                "Standup", config={"reminders_max_count": 3, "frequency_type": "weekly"}
+            )
+
+        assert mock_post.call_args[1]["json"] == {
+            "name": "Standup",
+            "reminders_max_count": 3,
+            "frequency_type": "weekly",
+        }
+
     def test_update_checkin_config_sends_is_active_false(self, client: DailyBotClient) -> None:
         mock_response: MagicMock = MagicMock(spec=httpx.Response)
         mock_response.status_code = 200
@@ -1122,6 +1138,21 @@ class TestCheckinsAuthoring:
             client.update_checkin_config("followup-uuid", participants={"team_uuids": ["t-1"]})
 
         assert mock_patch.call_args[1]["json"] == {"participants": {"team_uuids": ["t-1"]}}
+
+    def test_update_checkin_config_merges_config(self, client: DailyBotClient) -> None:
+        mock_response: MagicMock = MagicMock(spec=httpx.Response)
+        mock_response.status_code = 200
+        mock_response.json.return_value = {"id": "followup-uuid"}
+
+        with patch("httpx.patch", return_value=mock_response) as mock_patch:
+            client.update_checkin_config(
+                "followup-uuid", config={"reminders_max_count": 2, "allow_past_responses": False}
+            )
+
+        assert mock_patch.call_args[1]["json"] == {
+            "reminders_max_count": 2,
+            "allow_past_responses": False,
+        }
 
     def test_archive_checkin(self, client: DailyBotClient) -> None:
         mock_response: MagicMock = MagicMock(spec=httpx.Response)

@@ -422,8 +422,13 @@ class DailyBotClient:
         participants: dict[str, Any] | None = None,
         questions: list[dict[str, Any]] | None = None,
         report_channels: list[str] | None = None,
+        config: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
-        """POST /v1/checkins/create/ — create a check-in with schedule + questions."""
+        """POST /v1/checkins/create/ — create a check-in with schedule + questions.
+
+        ``config`` carries the extra scheduling/behavior fields (frequency,
+        reminders, timezone mode, submission rules, privacy, …) merged inline.
+        """
         payload: dict[str, Any] = {"name": name}
         if schedule is not None:
             payload["schedule"] = schedule
@@ -433,6 +438,8 @@ class DailyBotClient:
             payload["questions"] = questions
         if report_channels is not None:
             payload["report_channels"] = report_channels
+        if config:
+            payload.update(config)
         response: httpx.Response = httpx.post(
             f"{self.api_url}/v1/checkins/create/",
             json=payload,
@@ -450,8 +457,14 @@ class DailyBotClient:
         report_channels: list[str] | None = None,
         is_active: bool | None = None,
         participants: dict[str, Any] | None = None,
+        config: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
-        """PATCH /v1/checkins/<followup_uuid>/config/ — edit name/schedule/channels/active/participants."""
+        """PATCH /v1/checkins/<followup_uuid>/config/ — edit config (partial update).
+
+        ``config`` carries the extra scheduling/behavior fields (frequency,
+        reminders, timezone mode, submission rules, privacy, …); only the keys
+        present are changed.
+        """
         payload: dict[str, Any] = {}
         if name is not None:
             payload["name"] = name
@@ -463,6 +476,8 @@ class DailyBotClient:
             payload["is_active"] = is_active
         if participants is not None:
             payload["participants"] = participants
+        if config:
+            payload.update(config)
         response: httpx.Response = httpx.patch(
             f"{self.api_url}/v1/checkins/{followup_uuid}/config/",
             json=payload,

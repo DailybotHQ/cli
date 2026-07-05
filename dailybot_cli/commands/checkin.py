@@ -1,6 +1,7 @@
 """Check-in commands for the user-scoped public API."""
 
 import sys
+from collections.abc import Callable
 from typing import Any
 
 import click
@@ -8,6 +9,7 @@ import click
 from dailybot_cli.api_client import APIError
 from dailybot_cli.commands.authoring_helpers import (
     AuthoringError,
+    build_checkin_config,
     build_question,
     build_question_edit_fields,
     build_questions_interactively,
@@ -42,6 +44,104 @@ from dailybot_cli.display import (
 )
 
 _HELP: str = "Acts as you. You can only see and act on what you could in the webapp."
+
+
+def _config_flag_options(func: Callable[..., Any]) -> Callable[..., Any]:
+    """Attach the shared check-in configuration flags to create + config.
+
+    Dest names match ``authoring_helpers.build_checkin_config`` kwargs so the
+    callback can forward them as ``**config_flags``. Toggle flags default to
+    ``None`` (unset → not sent), keeping ``config`` a partial update.
+    """
+    options: list[Callable[..., Any]] = [
+        click.option("--start-on", "start_on", default=None, help="Start date (YYYY-MM-DD)."),
+        click.option("--end-on", "end_on", default=None, help="End date (YYYY-MM-DD)."),
+        click.option(
+            "--frequency", "frequency_type", default=None, help="weekly / monthly / custom."
+        ),
+        click.option("--every", "frequency", type=int, default=None, help="Repeat every N (>=1)."),
+        click.option(
+            "--trigger-based/--fixed-time",
+            "is_trigger_based",
+            default=None,
+            help="Trigger-based vs a fixed time.",
+        ),
+        click.option(
+            "--participant-timezone/--custom-timezone",
+            "use_participant_timezone",
+            default=None,
+            help="Use each participant's timezone vs the custom one.",
+        ),
+        click.option(
+            "--reminders",
+            "reminders_max_count",
+            type=int,
+            default=None,
+            help="Extra reminders to send to non-responders (0-5; 0 = off).",
+        ),
+        click.option(
+            "--reminder-interval",
+            "reminders_frequency_time",
+            type=int,
+            default=None,
+            help="Minutes between reminders (0-60).",
+        ),
+        click.option(
+            "--reminder-condition",
+            "reminders_trigger_condition",
+            default=None,
+            help="smart_frequency / fixed_frequency.",
+        ),
+        click.option(
+            "--work-days/--no-work-days",
+            "use_user_defined_work_days",
+            default=None,
+            help="Respect each user's work days.",
+        ),
+        click.option(
+            "--allow-early/--no-early",
+            "allow_responses_before_trigger",
+            default=None,
+            help="Allow responses before the trigger time.",
+        ),
+        click.option(
+            "--allow-past/--no-past",
+            "allow_past_responses",
+            default=None,
+            help="Allow reports on past dates.",
+        ),
+        click.option(
+            "--allow-future/--no-future",
+            "allow_future_responses",
+            default=None,
+            help="Allow reports on future dates.",
+        ),
+        click.option(
+            "--anonymous/--no-anonymous",
+            "is_anonymous",
+            default=None,
+            help="Anonymous responses.",
+        ),
+        click.option("--privacy", "privacy", default=None, help="Response visibility level."),
+        click.option(
+            "--one-by-one/--aggregated",
+            "send_reports_one_by_one",
+            default=None,
+            help="Post reports one-by-one vs aggregated.",
+        ),
+        click.option(
+            "--intro", "custom_template_intro", default=None, help="Custom intro (3-1024 chars)."
+        ),
+        click.option(
+            "--outro", "custom_template_outro", default=None, help="Custom outro (3-1024 chars)."
+        ),
+        click.option(
+            "--report-time", "time_for_report", default=None, help="Report delivery time (HH:MM)."
+        ),
+    ]
+    for option in reversed(options):
+        func = option(func)
+    return func
 
 
 @click.group()
@@ -263,6 +363,7 @@ def checkin_edit(
     multiple=True,
     help="Report-channel UUID (repeatable). See `dailybot channels list`.",
 )
+@_config_flag_options
 @click.option("--json", "json_mode", is_flag=True, help="Emit machine-readable JSON to stdout.")
 def checkin_create(
     name: str,
@@ -276,19 +377,22 @@ def checkin_create(
     interactive: bool,
     report_channels: tuple[str, ...],
     json_mode: bool,
+    **config_flags: Any,
 ) -> None:
-    """Create a check-in with a schedule, participants, and questions.
+    """Create a check-in with a schedule, participants, questions, and config.
 
     \b
     Creating check-ins is role-gated server-side (admins/managers). Seed questions
     with --questions-file or --interactive, or add them later with
-    `dailybot checkin questions add`.
+    `dailybot checkin questions add`. The scheduling/behavior flags (frequency,
+    reminders, timezone mode, submission rules, privacy) mirror the web UI.
 
     \b
     Examples:
       dailybot checkin create -n "Daily Standup" --time 09:00 --days 1,2,3,4,5 \\
-        --timezone America/New_York --questions-file questions.json
-      dailybot checkin create -n "Standup" --user "Jane Doe" --team "Eng" --json
+        --timezone America/New_York --questions-file questions.json --team "Eng"
+      dailybot checkin create -n "Standup" --team "Eng" --frequency weekly \\
+        --reminders 3 --reminder-interval 30 --no-past --json
 
     \b
     A check-in must have at least one participant (a team or a person) — it only
@@ -300,6 +404,7 @@ def checkin_create(
     schedule: dict[str, Any] | None = parse_schedule(
         days=days, time=time_, timezone=timezone, schedule_file=schedule_file
     )
+    config: dict[str, Any] = build_checkin_config(**config_flags)
     participants: dict[str, Any] = parse_participants(users, teams, client)
     if not participants and not json_mode:
         participants = prompt_participants_interactively(client)
@@ -322,6 +427,7 @@ def checkin_create(
                 participants=participants or None,
                 questions=questions,
                 report_channels=list(report_channels) if report_channels else None,
+                config=config or None,
             )
     except APIError as exc:
         exit_for_api_error(exc, json_mode)
@@ -347,6 +453,7 @@ def checkin_create(
 @click.option("--user", "users", multiple=True, help="Participant user (name or UUID; repeatable).")
 @click.option("--team", "teams", multiple=True, help="Participant team (name or UUID; repeatable).")
 @click.option("--active/--inactive", "is_active", default=None, help="Activate or deactivate.")
+@_config_flag_options
 @click.option("--json", "json_mode", is_flag=True, help="Emit machine-readable JSON to stdout.")
 def checkin_config(
     followup_uuid: str,
@@ -359,21 +466,26 @@ def checkin_config(
     teams: tuple[str, ...],
     is_active: bool | None,
     json_mode: bool,
+    **config_flags: Any,
 ) -> None:
-    """Edit a check-in's configuration (name, schedule, channels, participants, active).
+    """Edit a check-in's configuration (partial update).
 
     \b
     Distinct from `checkin edit`, which edits your own response. This edits the
     check-in definition (role-gated server-side). --user/--team replace the
-    check-in's participants (a check-in always needs at least one).
+    check-in's participants (a check-in always needs at least one). The
+    scheduling/behavior flags (frequency, reminders, timezone mode, submission
+    rules, privacy) mirror the web UI; only the flags you pass change.
 
     \b
     Examples:
       dailybot checkin config <followup_uuid> --time 10:00 --days 1,2,3,4,5
       dailybot checkin config <followup_uuid> --team "Engineering"
-      dailybot checkin config <followup_uuid> --inactive
+      dailybot checkin config <followup_uuid> --reminders 3 --reminder-interval 30
+      dailybot checkin config <followup_uuid> --no-past --privacy everyone --inactive
     """
     schedule: dict[str, Any] | None = parse_schedule(days=days, time=time_, timezone=timezone)
+    config: dict[str, Any] = build_checkin_config(**config_flags)
     if (
         name is None
         and schedule is None
@@ -381,10 +493,11 @@ def checkin_config(
         and not users
         and not teams
         and is_active is None
+        and not config
     ):
         raise click.UsageError(
-            "Nothing to edit. Pass --name, --time/--days/--timezone, "
-            "--report-channel, --user/--team, or --active/--inactive."
+            "Nothing to edit. Pass --name, --time/--days/--timezone, --report-channel, "
+            "--user/--team, --active/--inactive, or a config flag (see --help)."
         )
     client = require_auth()
     participants: dict[str, Any] = parse_participants(users, teams, client)
@@ -397,6 +510,7 @@ def checkin_config(
                 report_channels=list(report_channels) if report_channels else None,
                 is_active=is_active,
                 participants=participants or None,
+                config=config or None,
             )
     except APIError as exc:
         exit_for_api_error(exc, json_mode)

@@ -11,6 +11,7 @@ from dailybot_cli import display
 from dailybot_cli.commands.authoring_helpers import (
     MAX_QUESTIONS,
     AuthoringError,
+    build_checkin_config,
     build_question,
     build_question_edit_fields,
     parse_options,
@@ -171,6 +172,48 @@ class TestParseSchedule:
             parse_schedule(schedule_file=str(path))
 
 
+class TestBuildCheckinConfig:
+    def test_empty_when_nothing_passed(self) -> None:
+        assert build_checkin_config() == {}
+
+    def test_only_provided_fields_included(self) -> None:
+        cfg = build_checkin_config(reminders_max_count=3, reminders_frequency_time=30)
+        assert cfg == {"reminders_max_count": 3, "reminders_frequency_time": 30}
+
+    def test_toggles_forwarded(self) -> None:
+        cfg = build_checkin_config(allow_past_responses=False, is_anonymous=True)
+        assert cfg == {"allow_past_responses": False, "is_anonymous": True}
+
+    def test_frequency_and_privacy_normalized(self) -> None:
+        cfg = build_checkin_config(frequency_type="WEEKLY", privacy="everyone")
+        assert cfg["frequency_type"] == "weekly"
+        assert cfg["privacy"] == "everyone"
+
+    def test_invalid_frequency_rejected(self) -> None:
+        with pytest.raises(AuthoringError):
+            build_checkin_config(frequency_type="yearly")
+
+    def test_reminder_count_out_of_range_rejected(self) -> None:
+        with pytest.raises(AuthoringError):
+            build_checkin_config(reminders_max_count=9)
+
+    def test_reminder_interval_out_of_range_rejected(self) -> None:
+        with pytest.raises(AuthoringError):
+            build_checkin_config(reminders_frequency_time=120)
+
+    def test_invalid_privacy_rejected(self) -> None:
+        with pytest.raises(AuthoringError):
+            build_checkin_config(privacy="nobody")
+
+    def test_bad_start_date_rejected(self) -> None:
+        with pytest.raises(AuthoringError):
+            build_checkin_config(start_on="07/05/2026")
+
+    def test_short_intro_rejected(self) -> None:
+        with pytest.raises(AuthoringError):
+            build_checkin_config(custom_template_intro="hi")
+
+
 class TestParseParticipants:
     def test_resolves_users_and_teams(self) -> None:
         client: MagicMock = MagicMock()
@@ -309,6 +352,27 @@ class TestAuthoringDisplay:
         assert "Engineering" in output
         assert "Done?" in output
         assert "#general" in output  # channel resolved to its name (Finding 3)
+
+    def test_checkin_detail_renders_config_summary(self) -> None:
+        with display.console.capture() as capture:
+            display.print_checkin_detail(
+                {
+                    "id": "fu-1",
+                    "name": "Standup",
+                    "frequency_type": "weekly",
+                    "frequency": 1,
+                    "reminders_max_count": 3,
+                    "reminders_frequency_time": 30,
+                    "allow_past_responses": False,
+                    "privacy": "everyone",
+                    "questions": [],
+                }
+            )
+        output: str = capture.get()
+        assert "Frequency: weekly" in output
+        assert "Reminders: 3" in output
+        assert "no past reports" in output
+        assert "Privacy: everyone" in output
 
     def test_attached_channel_falls_back_to_id_when_unnamed(self) -> None:
         with display.console.capture() as capture:

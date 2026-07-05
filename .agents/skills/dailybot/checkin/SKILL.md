@@ -268,7 +268,8 @@ dailybot checkin create -n "Daily Standup" --interactive   # guided question bui
 # deletes it. --user/--team replace participants (a check-in always needs ≥1).
 dailybot checkin config <followup_uuid> --time 10:00 --days 1,2,3,4,5
 dailybot checkin config <followup_uuid> --team "Engineering"
-dailybot checkin config <followup_uuid> --inactive
+dailybot checkin config <followup_uuid> --reminders 3 --reminder-interval 30
+dailybot checkin config <followup_uuid> --no-past --privacy everyone --inactive
 dailybot checkin archive <followup_uuid>
 
 # Manage questions (same shapes as form questions; --blocker tags the blocker Q)
@@ -289,7 +290,16 @@ dailybot checkin history <followup_uuid> --days 7    # your own; --all/--user ar
 
 **Schedule:** `--days` are ISO weekday integers (0=Sunday … 6=Saturday); `--time`
 is `HH:MM`; `--timezone` is an IANA name. Or pass `--schedule-file`
-(`{"days": [...], "time": "HH:MM", "timezone": "..."}`). **Participants:**
+(`{"days": [...], "time": "HH:MM", "timezone": "..."}`). **Full config** (create +
+config, partial): `--start-on/--end-on`, `--frequency weekly|monthly|custom`,
+`--every N`, `--trigger-based/--fixed-time`,
+`--participant-timezone/--custom-timezone`, `--reminders 0-5`,
+`--reminder-interval 0-60`, `--reminder-condition smart_frequency|fixed_frequency`,
+`--work-days/--no-work-days`, `--allow-early/--no-early`, `--allow-past/--no-past`,
+`--allow-future/--no-future`, `--anonymous/--no-anonymous`, `--privacy <level>`,
+`--one-by-one/--aggregated`, `--intro/--outro`, `--report-time HH:MM` — mirroring
+the web's Frequency + Additional-settings panels; `checkin show` echoes them back.
+**Participants:**
 repeatable `--user` / `--team` accept a name or a UUID. **A check-in must have at
 least one participant** (a team or a person) — it only triggers for its
 participants. If you create with no `--user`/`--team`, an interactive terminal

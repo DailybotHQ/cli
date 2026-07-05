@@ -107,6 +107,22 @@ ERROR_CODE_MESSAGES: dict[str, str] = {
         "A check-in must have at least one participant (a team or a person). "
         "Add --user and/or --team."
     ),
+    # Check-in configuration validation
+    "unknown_field": (
+        "The server rejected an unrecognized field. Update the CLI "
+        "(`dailybot upgrade`) — this build sent a field the API doesn't accept yet."
+    ),
+    "invalid_start_on": "Invalid start date. Use YYYY-MM-DD.",
+    "invalid_end_on": "Invalid end date. Use YYYY-MM-DD.",
+    "invalid_frequency_type": "Invalid --frequency. Use weekly, monthly, or custom.",
+    "invalid_frequency": "Invalid --every. Must be an integer >= 1.",
+    "invalid_reminder_count": "Invalid --reminders. Must be an integer 0-5.",
+    "invalid_reminder_interval": "Invalid --reminder-interval. Must be 0-60 minutes.",
+    "invalid_reminder_condition": (
+        "Invalid --reminder-condition. Use smart_frequency or fixed_frequency."
+    ),
+    "invalid_privacy": "Invalid --privacy value. See `dailybot checkin config --help`.",
+    "invalid_time_for_report": "Invalid --report-time. Use HH:MM.",
 }
 
 

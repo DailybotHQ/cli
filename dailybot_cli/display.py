@@ -535,6 +535,50 @@ def _print_attached_channels(channels: list[dict[str, Any]]) -> None:
     console.print(table)
 
 
+def _checkin_config_lines(detail: dict[str, Any]) -> list[str]:
+    """Summarize the scheduling/behavior config for the check-in panel.
+
+    Only surfaces fields that are present and meaningful, so pre-config check-ins
+    render exactly as before.
+    """
+    lines: list[str] = []
+    freq: Any = detail.get("frequency_type")
+    every: Any = detail.get("frequency")
+    if freq:
+        lines.append(f"Frequency: {freq}" + (f" (every {every})" if every and every != 1 else ""))
+    if detail.get("start_on"):
+        span: str = str(detail.get("start_on"))
+        if detail.get("end_on"):
+            span += f" → {detail.get('end_on')}"
+        lines.append(f"Runs: {span}")
+    if detail.get("use_participant_timezone"):
+        lines.append("Timezone: each participant's own")
+    reminders: Any = detail.get("reminders_max_count")
+    if isinstance(reminders, int) and reminders > 0:
+        interval: Any = detail.get("reminders_frequency_time")
+        cond: Any = detail.get("reminders_trigger_condition")
+        extra: str = f" every {interval}m" if interval else ""
+        extra += f" ({cond})" if cond else ""
+        lines.append(f"Reminders: {reminders}{extra}")
+    elif reminders == 0:
+        lines.append("Reminders: off")
+    flags: list[str] = []
+    if detail.get("is_anonymous"):
+        flags.append("anonymous")
+    if detail.get("use_user_defined_work_days"):
+        flags.append("respects work days")
+    if detail.get("allow_past_responses") is False:
+        flags.append("no past reports")
+    if detail.get("allow_future_responses") is False:
+        flags.append("no future reports")
+    if flags:
+        lines.append("Options: " + ", ".join(flags))
+    privacy: Any = detail.get("privacy")
+    if privacy:
+        lines.append(f"Privacy: {privacy}")
+    return lines
+
+
 def print_checkin_detail(detail: dict[str, Any]) -> None:
     """Display a check-in from the canonical ``/detail/`` endpoint.
 
@@ -554,6 +598,7 @@ def print_checkin_detail(detail: dict[str, Any]) -> None:
         value: Any = schedule.get(key)
         if value:
             lines.append(f"{label}: {value}")
+    lines.extend(_checkin_config_lines(detail))
     console.print(Panel("\n".join(lines), title="Check-in", border_style="cyan"))
 
     _print_participants(detail.get("participants") or {})

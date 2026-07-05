@@ -29,6 +29,26 @@ MIN_WEEKDAY: int = 0
 MAX_WEEKDAY: int = 6
 _TIME_PATTERN: re.Pattern[str] = re.compile(r"^\d{2}:\d{2}$")
 
+# Check-in configuration enums + constraints (mirror the server contract so the
+# CLI fails fast; the server remains the source of truth).
+FREQUENCY_TYPES: tuple[str, ...] = ("weekly", "monthly", "custom")
+PRIVACY_LEVELS: tuple[str, ...] = (
+    "only_owner",
+    "owner_and_members",
+    "managers_and_members",
+    "managers_and_admins",
+    "org_admins",
+    "everyone",
+    "custom",
+)
+REMINDER_CONDITIONS: tuple[str, ...] = ("smart_frequency", "fixed_frequency")
+REMINDERS_MAX_COUNT: int = 5
+REMINDER_INTERVAL_MAX: int = 60
+INTRO_OUTRO_MIN_LEN: int = 3
+INTRO_OUTRO_MAX_LEN: int = 1024
+_DATE_PATTERN: re.Pattern[str] = re.compile(r"^\d{4}-\d{2}-\d{2}$")
+_REPORT_TIME_PATTERN: re.Pattern[str] = re.compile(r"^\d{2}:\d{2}(:\d{2})?$")
+
 
 class AuthoringError(click.ClickException):
     """A user-facing validation error for authoring input.
@@ -220,6 +240,115 @@ def parse_schedule(
     if not schedule:
         return None
     return _validate_schedule_dict(schedule)
+
+
+def _check_enum(value: str, allowed: tuple[str, ...], label: str) -> str:
+    normalized: str = value.strip().lower()
+    if normalized not in allowed:
+        raise AuthoringError(f"Invalid {label} '{value}'. Choose from: {', '.join(allowed)}.")
+    return normalized
+
+
+def _check_int_range(value: int, low: int, high: int, label: str) -> int:
+    if not low <= value <= high:
+        raise AuthoringError(f"{label} must be between {low} and {high} (got {value}).")
+    return value
+
+
+def build_checkin_config(
+    *,
+    start_on: str | None = None,
+    end_on: str | None = None,
+    frequency_type: str | None = None,
+    frequency: int | None = None,
+    is_trigger_based: bool | None = None,
+    use_participant_timezone: bool | None = None,
+    reminders_max_count: int | None = None,
+    reminders_frequency_time: int | None = None,
+    reminders_trigger_condition: str | None = None,
+    use_user_defined_work_days: bool | None = None,
+    allow_responses_before_trigger: bool | None = None,
+    allow_past_responses: bool | None = None,
+    allow_future_responses: bool | None = None,
+    is_anonymous: bool | None = None,
+    privacy: str | None = None,
+    send_reports_one_by_one: bool | None = None,
+    custom_template_intro: str | None = None,
+    custom_template_outro: str | None = None,
+    time_for_report: str | None = None,
+) -> dict[str, Any]:
+    """Assemble a validated check-in config dict from create/config flags.
+
+    Only fields the caller supplied (non-``None``) are included, so ``config``
+    stays a partial update. Enum/range checks mirror the server contract to fail
+    fast; the server remains authoritative (and rejects unknown fields with 400).
+    """
+    config: dict[str, Any] = {}
+
+    for value, field, label in (
+        (start_on, "start_on", "start date"),
+        (end_on, "end_on", "end date"),
+    ):
+        if value is not None:
+            if not _DATE_PATTERN.match(value):
+                raise AuthoringError(f"Invalid {label} '{value}'. Use YYYY-MM-DD.")
+            config[field] = value
+
+    if frequency_type is not None:
+        config["frequency_type"] = _check_enum(frequency_type, FREQUENCY_TYPES, "frequency")
+    if frequency is not None:
+        if frequency < 1:
+            raise AuthoringError(f"--every must be >= 1 (got {frequency}).")
+        config["frequency"] = frequency
+    if is_trigger_based is not None:
+        config["is_trigger_based"] = is_trigger_based
+    if use_participant_timezone is not None:
+        config["use_participant_timezone"] = use_participant_timezone
+
+    if reminders_max_count is not None:
+        config["reminders_max_count"] = _check_int_range(
+            reminders_max_count, 0, REMINDERS_MAX_COUNT, "--reminders"
+        )
+    if reminders_frequency_time is not None:
+        config["reminders_frequency_time"] = _check_int_range(
+            reminders_frequency_time, 0, REMINDER_INTERVAL_MAX, "--reminder-interval"
+        )
+    if reminders_trigger_condition is not None:
+        config["reminders_trigger_condition"] = _check_enum(
+            reminders_trigger_condition, REMINDER_CONDITIONS, "reminder condition"
+        )
+
+    for flag, flag_field in (
+        (use_user_defined_work_days, "use_user_defined_work_days"),
+        (allow_responses_before_trigger, "allow_responses_before_trigger"),
+        (allow_past_responses, "allow_past_responses"),
+        (allow_future_responses, "allow_future_responses"),
+        (is_anonymous, "is_anonymous"),
+        (send_reports_one_by_one, "send_reports_one_by_one"),
+    ):
+        if flag is not None:
+            config[flag_field] = flag
+
+    if privacy is not None:
+        config["privacy"] = _check_enum(privacy, PRIVACY_LEVELS, "privacy")
+
+    for text, text_field in (
+        (custom_template_intro, "custom_template_intro"),
+        (custom_template_outro, "custom_template_outro"),
+    ):
+        if text is not None:
+            if not INTRO_OUTRO_MIN_LEN <= len(text) <= INTRO_OUTRO_MAX_LEN:
+                raise AuthoringError(
+                    f"{text_field} must be {INTRO_OUTRO_MIN_LEN}-{INTRO_OUTRO_MAX_LEN} characters."
+                )
+            config[text_field] = text
+
+    if time_for_report is not None:
+        if not _REPORT_TIME_PATTERN.match(time_for_report):
+            raise AuthoringError(f"Invalid --report-time '{time_for_report}'. Use HH:MM.")
+        config["time_for_report"] = time_for_report
+
+    return config
 
 
 def build_questions_interactively() -> list[dict[str, Any]]:
