@@ -97,8 +97,11 @@ class TestInteractiveWiring:
         mock_builder.return_value = [{"question_type": "boolean", "question": "Blockers?"}]
         client: MagicMock = mock_client_cls.return_value
         client.create_checkin.return_value = {"id": "fu-1", "name": "Standup", "questions": []}
+        client.list_teams.return_value = [{"uuid": "t-1", "name": "Eng"}]
 
-        result = runner.invoke(cli, ["checkin", "create", "-n", "Standup", "--interactive"])
+        result = runner.invoke(
+            cli, ["checkin", "create", "-n", "Standup", "--interactive", "--team", "Eng"]
+        )
         assert result.exit_code == 0
         mock_builder.assert_called_once()
         assert client.create_checkin.call_args[1]["questions"] == [

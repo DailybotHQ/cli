@@ -272,6 +272,55 @@ def build_questions_interactively() -> list[dict[str, Any]]:
     return questions
 
 
+def prompt_participants_interactively(client: DailyBotClient) -> dict[str, Any]:
+    """Interactively pick check-in participants (teams and/or people).
+
+    A check-in must always have at least one participant, so ``checkin create``
+    calls this when none were passed on the command line. The first team is
+    suggested (pre-checked) as a sensible default. Requires a TTY; returns
+    ``{user_uuids?, team_uuids?}`` — an empty dict if there's no terminal, no
+    directory, or nothing was selected (the caller then errors out).
+    """
+    if not sys.stdin.isatty():
+        return {}
+    teams: list[dict[str, Any]] = client.list_teams()
+    users: list[dict[str, Any]] = client.list_users()
+    choices: list[questionary.Choice] = []
+    for index, team in enumerate(teams):
+        team_uuid: str = str(team.get("uuid") or team.get("id") or "")
+        if not team_uuid:
+            continue
+        choices.append(
+            questionary.Choice(
+                title=f"team · {team.get('name') or team_uuid}",
+                value=("team", team_uuid),
+                checked=(index == 0),  # suggest the default team
+            )
+        )
+    for user in users:
+        user_uuid: str = str(user.get("uuid") or user.get("id") or "")
+        if not user_uuid:
+            continue
+        label: Any = user.get("name") or user.get("full_name") or user.get("email") or user_uuid
+        choices.append(questionary.Choice(title=f"user · {label}", value=("user", user_uuid)))
+    if not choices:
+        return {}
+    selected: list[tuple[str, str]] | None = questionary.checkbox(
+        "Add participants — a check-in needs at least one (teams or people):",
+        choices=choices,
+    ).ask()
+    if not selected:
+        return {}
+    participants: dict[str, Any] = {}
+    team_ids: list[str] = [uuid for kind, uuid in selected if kind == "team"]
+    user_ids: list[str] = [uuid for kind, uuid in selected if kind == "user"]
+    if user_ids:
+        participants["user_uuids"] = user_ids
+    if team_ids:
+        participants["team_uuids"] = team_ids
+    return participants
+
+
 def parse_participants(
     users: tuple[str, ...],
     teams: tuple[str, ...],

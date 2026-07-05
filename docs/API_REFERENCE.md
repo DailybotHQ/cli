@@ -216,9 +216,9 @@ Creating and configuring forms/check-ins (as opposed to filling them in). All au
 | `form questions edit <uuid> <q_uuid> [... --blocker/--no-blocker]` | `PATCH /v1/forms/<uuid>/questions/<q_uuid>/` | Partial update (non-destructive). |
 | `form questions delete <uuid> <q_uuid>` | `DELETE /v1/forms/<uuid>/questions/<q_uuid>/delete/` | Confirms unless `--yes`. |
 | `form questions reorder <uuid> <q_uuid>...` | `PUT /v1/forms/<uuid>/questions/reorder/` | Unknown UUID → 400. |
-| `checkin create -n NAME [--time --days --timezone \| --schedule-file] [--user --team] [--questions-file \| --interactive] [--report-channel]` | `POST /v1/checkins/create/` | `days` = ISO weekday ints (0=Sun…6=Sat). |
+| `checkin create -n NAME [--time --days --timezone \| --schedule-file] [--user --team] [--questions-file \| --interactive] [--report-channel]` | `POST /v1/checkins/create/` | `days` = ISO weekday ints (0=Sun…6=Sat). **Requires ≥1 participant** — with no `--user`/`--team` an interactive run prompts (default team suggested); non-interactive errors. |
 | `checkin show <uuid>` | `GET /v1/checkins/<uuid>/detail/` | Canonical detail: schedule, resolved `participants`, attached `report_channels`, canonical questions. |
-| `checkin config <uuid> [--name] [--time --days --timezone] [--report-channel] [--active/--inactive]` | `PATCH /v1/checkins/<uuid>/config/` | |
+| `checkin config <uuid> [--name] [--time --days --timezone] [--report-channel] [--user --team] [--active/--inactive]` | `PATCH /v1/checkins/<uuid>/config/` (accepts `participants`) | `--user`/`--team` replace participants. |
 | `checkin archive <uuid>` | `DELETE /v1/checkins/<uuid>/archive/` | Soft-delete (204). Confirms unless `--yes`. |
 | `checkin questions add/edit/delete/reorder` | `.../v1/checkins/<uuid>/questions/...` | Same shapes as form questions (incl. `--blocker`). |
 

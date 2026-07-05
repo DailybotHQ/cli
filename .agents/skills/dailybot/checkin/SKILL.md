@@ -263,9 +263,11 @@ dailybot checkin create -n "Daily Standup" --time 09:00 --days 1,2,3,4,5 \
 dailybot checkin create -n "Daily Standup" --user "Jane Doe" --team "Engineering"
 dailybot checkin create -n "Daily Standup" --interactive   # guided question builder
 
-# Edit config / activate-deactivate / archive. Note: `checkin config` edits the
-# definition; `checkin edit` still edits your *response*, `checkin reset` deletes it.
+# Edit config / participants / activate-deactivate / archive. Note: `checkin config`
+# edits the definition; `checkin edit` still edits your *response*, `checkin reset`
+# deletes it. --user/--team replace participants (a check-in always needs ≥1).
 dailybot checkin config <followup_uuid> --time 10:00 --days 1,2,3,4,5
+dailybot checkin config <followup_uuid> --team "Engineering"
 dailybot checkin config <followup_uuid> --inactive
 dailybot checkin archive <followup_uuid>
 
@@ -288,7 +290,12 @@ dailybot checkin history <followup_uuid> --days 7    # your own; --all/--user ar
 **Schedule:** `--days` are ISO weekday integers (0=Sunday … 6=Saturday); `--time`
 is `HH:MM`; `--timezone` is an IANA name. Or pass `--schedule-file`
 (`{"days": [...], "time": "HH:MM", "timezone": "..."}`). **Participants:**
-repeatable `--user` / `--team` accept a name or a UUID. **Question types** match
+repeatable `--user` / `--team` accept a name or a UUID. **A check-in must have at
+least one participant** (a team or a person) — it only triggers for its
+participants. If you create with no `--user`/`--team`, an interactive terminal
+prompts you to pick some (the default team is suggested); a non-interactive run
+(agent/script) errors instead of creating an empty check-in. Add or replace
+participants later with `checkin config --user/--team`. **Question types** match
 forms: `text`, `multiple_choice` (needs `--options`), `boolean` (no options),
 `numeric`; up to 50. Tag the blocker question with `--blocker`.
 

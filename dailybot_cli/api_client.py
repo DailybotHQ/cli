@@ -449,8 +449,9 @@ class DailyBotClient:
         schedule: dict[str, Any] | None = None,
         report_channels: list[str] | None = None,
         is_active: bool | None = None,
+        participants: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
-        """PATCH /v1/checkins/<followup_uuid>/config/ — edit name/schedule/channels/active."""
+        """PATCH /v1/checkins/<followup_uuid>/config/ — edit name/schedule/channels/active/participants."""
         payload: dict[str, Any] = {}
         if name is not None:
             payload["name"] = name
@@ -460,6 +461,8 @@ class DailyBotClient:
             payload["report_channels"] = report_channels
         if is_active is not None:
             payload["is_active"] = is_active
+        if participants is not None:
+            payload["participants"] = participants
         response: httpx.Response = httpx.patch(
             f"{self.api_url}/v1/checkins/{followup_uuid}/config/",
             json=payload,

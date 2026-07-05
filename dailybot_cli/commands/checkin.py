@@ -7,6 +7,7 @@ import click
 
 from dailybot_cli.api_client import APIError
 from dailybot_cli.commands.authoring_helpers import (
+    AuthoringError,
     build_question,
     build_question_edit_fields,
     build_questions_interactively,
@@ -14,6 +15,7 @@ from dailybot_cli.commands.authoring_helpers import (
     parse_participants,
     parse_questions_file,
     parse_schedule,
+    prompt_participants_interactively,
 )
 from dailybot_cli.commands.public_api_helpers import (
     confirm_write,
@@ -287,12 +289,25 @@ def checkin_create(
       dailybot checkin create -n "Daily Standup" --time 09:00 --days 1,2,3,4,5 \\
         --timezone America/New_York --questions-file questions.json
       dailybot checkin create -n "Standup" --user "Jane Doe" --team "Eng" --json
+
+    \b
+    A check-in must have at least one participant (a team or a person) — it only
+    triggers for its participants. If you pass neither --user nor --team, an
+    interactive terminal prompts you to pick some (the default team is suggested);
+    a non-interactive run errors instead of creating an empty check-in.
     """
     client = require_auth()
     schedule: dict[str, Any] | None = parse_schedule(
         days=days, time=time_, timezone=timezone, schedule_file=schedule_file
     )
     participants: dict[str, Any] = parse_participants(users, teams, client)
+    if not participants and not json_mode:
+        participants = prompt_participants_interactively(client)
+    if not participants:
+        raise AuthoringError(
+            "A check-in must have at least one participant (a team or a person). "
+            "Add --user and/or --team."
+        )
     if interactive:
         questions: list[dict[str, Any]] | None = build_questions_interactively()
     elif questions_file:
@@ -329,6 +344,8 @@ def checkin_create(
     multiple=True,
     help="Report-channel UUID (repeatable); replaces the check-in's channels.",
 )
+@click.option("--user", "users", multiple=True, help="Participant user (name or UUID; repeatable).")
+@click.option("--team", "teams", multiple=True, help="Participant team (name or UUID; repeatable).")
 @click.option("--active/--inactive", "is_active", default=None, help="Activate or deactivate.")
 @click.option("--json", "json_mode", is_flag=True, help="Emit machine-readable JSON to stdout.")
 def checkin_config(
@@ -338,27 +355,39 @@ def checkin_config(
     days: str | None,
     timezone: str | None,
     report_channels: tuple[str, ...],
+    users: tuple[str, ...],
+    teams: tuple[str, ...],
     is_active: bool | None,
     json_mode: bool,
 ) -> None:
-    """Edit a check-in's configuration (name, schedule, channels, active state).
+    """Edit a check-in's configuration (name, schedule, channels, participants, active).
 
     \b
     Distinct from `checkin edit`, which edits your own response. This edits the
-    check-in definition (role-gated server-side).
+    check-in definition (role-gated server-side). --user/--team replace the
+    check-in's participants (a check-in always needs at least one).
 
     \b
     Examples:
       dailybot checkin config <followup_uuid> --time 10:00 --days 1,2,3,4,5
+      dailybot checkin config <followup_uuid> --team "Engineering"
       dailybot checkin config <followup_uuid> --inactive
     """
     schedule: dict[str, Any] | None = parse_schedule(days=days, time=time_, timezone=timezone)
-    if name is None and schedule is None and not report_channels and is_active is None:
+    if (
+        name is None
+        and schedule is None
+        and not report_channels
+        and not users
+        and not teams
+        and is_active is None
+    ):
         raise click.UsageError(
             "Nothing to edit. Pass --name, --time/--days/--timezone, "
-            "--report-channel, or --active/--inactive."
+            "--report-channel, --user/--team, or --active/--inactive."
         )
     client = require_auth()
+    participants: dict[str, Any] = parse_participants(users, teams, client)
     try:
         with console.status("Updating check-in..."):
             result: dict[str, Any] = client.update_checkin_config(
@@ -367,6 +396,7 @@ def checkin_config(
                 schedule=schedule,
                 report_channels=list(report_channels) if report_channels else None,
                 is_active=is_active,
+                participants=participants or None,
             )
     except APIError as exc:
         exit_for_api_error(exc, json_mode)

@@ -34,6 +34,7 @@ class TestCheckinCreate:
         with _auth(), _client() as cls:
             client: MagicMock = cls.return_value
             client.create_checkin.return_value = CHECKIN_PAYLOAD
+            client.list_teams.return_value = [{"uuid": "t-1", "name": "Eng"}]
             result = runner.invoke(
                 cli,
                 [
@@ -47,11 +48,24 @@ class TestCheckinCreate:
                     "1,2,3,4,5",
                     "--timezone",
                     "UTC",
+                    "--team",
+                    "Eng",
                 ],
             )
         assert result.exit_code == 0
         schedule = client.create_checkin.call_args[1]["schedule"]
         assert schedule == {"days": [1, 2, 3, 4, 5], "time": "09:00", "timezone": "UTC"}
+
+    def test_create_without_participants_is_rejected(self, runner: CliRunner) -> None:
+        # Non-interactive create with no --user/--team must error, never create empty.
+        with _auth(), _client() as cls:
+            client: MagicMock = cls.return_value
+            result = runner.invoke(
+                cli, ["checkin", "create", "-n", "Standup", "--time", "09:00", "--days", "1"]
+            )
+            client.create_checkin.assert_not_called()
+        assert result.exit_code != 0
+        assert "at least one participant" in result.output
 
     def test_create_resolves_participants(self, runner: CliRunner) -> None:
         with _auth(), _client() as cls:
@@ -97,6 +111,15 @@ class TestCheckinConfig:
             result = runner.invoke(cli, ["checkin", "config", "fu-1", "--time", "10:00"])
         assert result.exit_code == 0
         assert client.update_checkin_config.call_args[1]["schedule"] == {"time": "10:00"}
+
+    def test_config_participants_forwarded(self, runner: CliRunner) -> None:
+        with _auth(), _client() as cls:
+            client: MagicMock = cls.return_value
+            client.update_checkin_config.return_value = CHECKIN_PAYLOAD
+            client.list_teams.return_value = [{"uuid": "t-1", "name": "Eng"}]
+            result = runner.invoke(cli, ["checkin", "config", "fu-1", "--team", "Eng"])
+        assert result.exit_code == 0
+        assert client.update_checkin_config.call_args[1]["participants"] == {"team_uuids": ["t-1"]}
 
 
 class TestCheckinArchive:

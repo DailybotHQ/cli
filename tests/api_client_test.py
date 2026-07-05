@@ -1113,6 +1113,16 @@ class TestCheckinsAuthoring:
 
         assert mock_patch.call_args[1]["json"] == {"name": "Renamed"}
 
+    def test_update_checkin_config_sends_participants(self, client: DailyBotClient) -> None:
+        mock_response: MagicMock = MagicMock(spec=httpx.Response)
+        mock_response.status_code = 200
+        mock_response.json.return_value = {"id": "followup-uuid"}
+
+        with patch("httpx.patch", return_value=mock_response) as mock_patch:
+            client.update_checkin_config("followup-uuid", participants={"team_uuids": ["t-1"]})
+
+        assert mock_patch.call_args[1]["json"] == {"participants": {"team_uuids": ["t-1"]}}
+
     def test_archive_checkin(self, client: DailyBotClient) -> None:
         mock_response: MagicMock = MagicMock(spec=httpx.Response)
         mock_response.status_code = 204

@@ -90,9 +90,21 @@ class TestCheckinLifecycle:
             client.update_checkin_config.return_value = checkin
             client.list_checkin_responses.return_value = [{"uuid": "r1"}]
             client.archive_checkin.return_value = {}
+            client.list_teams.return_value = [{"uuid": "t-1", "name": "Eng"}]
 
             steps: list[list[str]] = [
-                ["checkin", "create", "-n", "Standup", "--time", "09:00", "--days", "1,2,3"],
+                [
+                    "checkin",
+                    "create",
+                    "-n",
+                    "Standup",
+                    "--time",
+                    "09:00",
+                    "--days",
+                    "1,2,3",
+                    "--team",
+                    "Eng",
+                ],
                 ["checkin", "questions", "add", "fu-1", "--type", "text", "--question", "Today?"],
                 ["checkin", "questions", "edit", "fu-1", "q1", "--question", "Focus?"],
                 ["checkin", "questions", "reorder", "fu-1", "q1"],
