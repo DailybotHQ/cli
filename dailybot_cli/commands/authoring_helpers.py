@@ -837,14 +837,19 @@ def parse_participants(
     ambiguous or unknown names raise the same friendly errors as other commands.
     """
     participants: dict[str, Any] = {}
-    if users:
-        directory: list[dict[str, Any]] = client.list_users()
-        participants["user_uuids"] = [
-            resolve_user_by_name_or_uuid(directory, identifier)[0] for identifier in users
-        ]
-    if teams:
-        team_directory: list[dict[str, Any]] = client.list_teams()
-        participants["team_uuids"] = [
-            resolve_team_by_name_or_uuid(team_directory, identifier)[0] for identifier in teams
-        ]
+    try:
+        if users:
+            directory: list[dict[str, Any]] = client.list_users()
+            participants["user_uuids"] = [
+                resolve_user_by_name_or_uuid(directory, identifier)[0] for identifier in users
+            ]
+        if teams:
+            team_directory: list[dict[str, Any]] = client.list_teams()
+            participants["team_uuids"] = [
+                resolve_team_by_name_or_uuid(team_directory, identifier)[0] for identifier in teams
+            ]
+    except ValueError as exc:
+        # The shared resolvers raise ValueError for unknown/ambiguous names; surface
+        # it as a friendly authoring error instead of an uncaught traceback.
+        raise AuthoringError(str(exc)) from exc
     return participants

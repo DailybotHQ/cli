@@ -490,6 +490,14 @@ class TestParseParticipants:
         assert parse_participants((), (), client) == {}
         client.list_users.assert_not_called()
 
+    def test_unknown_user_raises_authoring_error(self) -> None:
+        # The resolver raises ValueError; parse_participants must translate it to a
+        # friendly AuthoringError instead of leaking an uncaught traceback.
+        client: MagicMock = MagicMock()
+        client.list_users.return_value = [{"uuid": "u-1", "full_name": "Jane Doe"}]
+        with pytest.raises(AuthoringError):
+            parse_participants(("nobody@example.com",), (), client)
+
 
 class TestAuthoringDisplay:
     def test_report_channels_table(self) -> None:
