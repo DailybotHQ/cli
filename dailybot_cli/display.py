@@ -509,17 +509,27 @@ def _print_participants(participants: dict[str, Any]) -> None:
 
 
 def _print_attached_channels(channels: list[dict[str, Any]]) -> None:
-    """Render report channels attached to a form/check-in ({id, type, reporting_enabled})."""
+    """Render report channels attached to a form/check-in.
+
+    Detail returns ``{id, name, platform, type, reporting_enabled}``. Legacy
+    entries written before names were resolved carry empty ``name``/``platform``,
+    so the channel id is shown as a fallback.
+    """
     if not channels:
         return
     table: Table = Table(title="Report Channels", border_style="cyan")
-    table.add_column("Channel ID", style="bold")
-    table.add_column("Type")
+    table.add_column("Channel", style="bold")
+    table.add_column("Platform")
+    table.add_column("Channel ID", style="dim")
     table.add_column("Reporting")
     for channel in channels:
+        channel_id: str = str(channel.get("id") or channel.get("uuid") or "")
+        name: str = str(channel.get("name") or "")
+        display_name: str = f"#{name}" if name else channel_id
         table.add_row(
-            str(channel.get("id") or channel.get("uuid") or ""),
-            str(channel.get("type") or ""),
+            display_name,
+            str(channel.get("platform") or ""),
+            channel_id,
             "on" if channel.get("reporting_enabled", True) else "off",
         )
     console.print(table)

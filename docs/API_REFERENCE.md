@@ -490,7 +490,7 @@ key, so all of these commands work with `DAILYBOT_API_KEY` set even without
 | `PATCH` | `/v1/forms/<uuid>/responses/<resp_uuid>/` | `{ content: { ... } }` | Updated response | Own always; owner/admin may edit anyone (audited) |
 | `POST` | `/v1/forms/<uuid>/responses/<resp_uuid>/transition/` | `{ to_state, note? }` | Updated response | 403 = `form_response_change_state_forbidden` or `final_state_locked` |
 | `DELETE` | `/v1/forms/<uuid>/responses/<resp_uuid>/` | — | 204 | Author / owner / admin |
-| `GET` | `/v1/report-channels/` | — | `{ channels: [{ id, name, platform, type }], total }` (also accepts `{results}` / bare list) | `channels list`; `id` feeds `--report-channel` |
+| `GET` | `/v1/report-channels/` | `?name` (prefix filter), `?limit` (both optional) | `{ channels: [{ id, name, platform, type }], total }` (also accepts `{results}` / bare list) | `channels list`; `id` feeds `--report-channel` |
 | `GET` | `/v1/forms/` | `?include=questions`, `?include_archived=true` | `[{ id, name, is_active, is_archived, questions? }]` | `form list`; archived hidden unless opted in |
 | `POST` | `/v1/forms/create/` | `{ name, questions?: [...], report_channels?: [...] }` | `{ id, name, is_active, is_archived, questions, report_channels }` | Role-gated; `form create` |
 | `PATCH` | `/v1/forms/<uuid>/config/` | `{ name?, report_channels? }` | Form | `form edit` |
@@ -502,7 +502,7 @@ key, so all of these commands work with `DAILYBOT_API_KEY` set even without
 | `POST` | `/v1/checkins/<followup_uuid>/responses/` | `{ responses: [{ uuid, index, response }], last_question_index?, response_date? }` | `{ uuid }` | |
 | `GET` | `/v1/checkins/` | — | `{ results: [{ id, name, ... }], next? }` (or bare list) | Paginated; terminal check-in flows |
 | `GET` | `/v1/checkins/<followup_uuid>/` | — | `{ ... }` | v2 retrieve serializer (different shape) |
-| `GET` | `/v1/checkins/<followup_uuid>/detail/` | — | `{ id, name, is_archived, schedule, questions, participants: {users,teams}, report_channels }` | **Canonical** authoring read; `checkin show` |
+| `GET` | `/v1/checkins/<followup_uuid>/detail/` | — | `{ id, name, is_archived, schedule, questions, participants: {users,teams}, report_channels: [{id,name,platform,type,reporting_enabled}] }` | **Canonical** authoring read; `checkin show` |
 | `GET` | `/v1/templates/<template_uuid>/` | `?render_special_vars=true&followup_id=<uuid>` | `{ questions: [...] }` | Question definitions for a check-in |
 | `GET` | `/v1/checkins/<followup_uuid>/responses/` | `?date_start&date_end`, `?all=true`, `?user` | `[{ ... }]` | History; `all`/`user` admin/owner-only |
 | `PUT` | `/v1/checkins/<followup_uuid>/responses/` | `{ responses: [...], last_question_index? }` | Updated response | `/checkin edit` |

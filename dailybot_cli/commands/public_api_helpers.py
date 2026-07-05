@@ -99,6 +99,10 @@ ERROR_CODE_MESSAGES: dict[str, str] = {
     "form_not_found": "Form not found.",
     "checkin_not_found": "Check-in not found.",
     "question_not_found": "Question not found on this form or check-in.",
+    "report_channel_not_found": (
+        "Report channel not found — run `dailybot channels list` to see the "
+        "channels available in your organization."
+    ),
 }
 
 

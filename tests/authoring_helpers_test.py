@@ -282,7 +282,15 @@ class TestAuthoringDisplay:
                         "users": [{"uuid": "u1", "name": "Jane Doe"}],
                         "teams": [{"uuid": "t1", "name": "Engineering"}],
                     },
-                    "report_channels": [{"id": "C1", "type": "channel", "reporting_enabled": True}],
+                    "report_channels": [
+                        {
+                            "id": "C1",
+                            "name": "general",
+                            "platform": "slack",
+                            "type": "channel",
+                            "reporting_enabled": True,
+                        }
+                    ],
                     "questions": [
                         {
                             "uuid": "q1",
@@ -300,6 +308,20 @@ class TestAuthoringDisplay:
         assert "Jane Doe" in output
         assert "Engineering" in output
         assert "Done?" in output
+        assert "#general" in output  # channel resolved to its name (Finding 3)
+
+    def test_attached_channel_falls_back_to_id_when_unnamed(self) -> None:
+        with display.console.capture() as capture:
+            display.print_checkin_detail(
+                {
+                    "id": "fu-1",
+                    "name": "Standup",
+                    "report_channels": [{"id": "C_LEGACY", "type": "channel"}],
+                    "questions": [],
+                }
+            )
+        # Legacy entries with no name fall back to the raw channel id.
+        assert "C_LEGACY" in capture.get()
 
     def test_forms_table_shows_archived_status(self) -> None:
         with display.console.capture() as capture:

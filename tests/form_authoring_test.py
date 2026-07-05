@@ -65,6 +65,20 @@ class TestFormCreate:
         assert client.create_form.call_args[1]["report_channels"] == ["chan-1"]
         client.update_form_config.assert_not_called()
 
+    def test_create_bogus_channel_shows_friendly_error(self, runner: CliRunner) -> None:
+        with _auth(), _client() as cls:
+            client: MagicMock = cls.return_value
+            client.create_form.side_effect = APIError(
+                status_code=400,
+                detail="Report channel 'NOT_REAL' not found in organization.",
+                code="report_channel_not_found",
+            )
+            result = runner.invoke(
+                cli, ["form", "create", "-n", "Retro", "--report-channel", "NOT_REAL"]
+            )
+        assert result.exit_code != 0
+        assert "dailybot channels list" in result.output
+
     def test_create_invalid_question_type_fails_fast(
         self, runner: CliRunner, tmp_path: Any
     ) -> None:
