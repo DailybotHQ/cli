@@ -42,9 +42,9 @@ LOGIC_OPERATORS: tuple[str, ...] = (
     "ends_with",
     "not_ends_with",
     "lower_than",
-    "lower_or_equal_to",
+    "lower_or_equal_than",
     "greater_than",
-    "greater_or_equal_to",
+    "greater_or_equal_than",
 )
 LOGIC_ACTIONS: tuple[str, ...] = ("jump_to", "trigger_checkin", "trigger_form")
 LOGIC_CONNECTORS: tuple[str, ...] = ("and", "or")
