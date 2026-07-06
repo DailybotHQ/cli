@@ -1108,6 +1108,28 @@ class TestCheckinsAuthoring:
             "frequency_type": "weekly",
         }
 
+    def test_create_checkin_sends_generate_short_question(self, client: DailyBotClient) -> None:
+        mock_response: MagicMock = MagicMock(spec=httpx.Response)
+        mock_response.status_code = 201
+        mock_response.json.return_value = {"id": "followup-uuid"}
+
+        with patch("httpx.post", return_value=mock_response) as mock_post:
+            client.create_checkin("Standup", generate_short_question=True)
+
+        assert mock_post.call_args[1]["json"]["generate_short_question"] is True
+
+    def test_create_checkin_omits_generate_short_question_by_default(
+        self, client: DailyBotClient
+    ) -> None:
+        mock_response: MagicMock = MagicMock(spec=httpx.Response)
+        mock_response.status_code = 201
+        mock_response.json.return_value = {"id": "followup-uuid"}
+
+        with patch("httpx.post", return_value=mock_response) as mock_post:
+            client.create_checkin("Standup")
+
+        assert "generate_short_question" not in mock_post.call_args[1]["json"]
+
     def test_update_checkin_config_sends_is_active_false(self, client: DailyBotClient) -> None:
         mock_response: MagicMock = MagicMock(spec=httpx.Response)
         mock_response.status_code = 200

@@ -75,6 +75,10 @@ ERROR_CODE_MESSAGES: dict[str, str] = {
         "Multiple-choice questions need at least one option (--options)."
     ),
     "question_label_required": "Question text is required.",
+    "short_question_required": (
+        'Each question needs a report title. Pass --short-question "<title>", or '
+        "--ai-short-question to let Dailybot generate it."
+    ),
     "questions_limit_exceeded": "Too many questions (the limit is 50).",
     "form_name_required": "A name is required.",
     "invalid_schedule_days": ("Schedule days must be integers 0-6 (0=Sunday .. 6=Saturday)."),

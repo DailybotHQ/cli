@@ -89,6 +89,34 @@ class TestFormCreate:
                 ],
             )
         assert result.exit_code == 0
+        # --ai-short-question forwards the request-level server opt-in.
+        assert client.create_form.call_args[1]["generate_short_question"] is True
+
+    def test_short_question_required_error_is_friendly(self, runner: CliRunner) -> None:
+        with _auth(), _client() as cls:
+            client: MagicMock = cls.return_value
+            client.add_form_question.side_effect = APIError(
+                status_code=400,
+                detail="Question at index 0: a short_question is required.",
+                code="short_question_required",
+            )
+            result = runner.invoke(
+                cli,
+                [
+                    "form",
+                    "questions",
+                    "add",
+                    "form-uuid",
+                    "--type",
+                    "text",
+                    "--question",
+                    "Q?",
+                    "--short-question",
+                    "T",
+                ],
+            )
+        assert result.exit_code != 0
+        assert "--ai-short-question" in result.output
 
     def test_create_with_report_channel_inline(self, runner: CliRunner) -> None:
         with _auth(), _client() as cls:

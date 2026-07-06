@@ -288,7 +288,10 @@ class TestCheckinQuestions:
                 ],
             )
         assert result.exit_code == 0
-        assert client.add_checkin_question.call_args[0][1]["question_type"] == "boolean"
+        payload = client.add_checkin_question.call_args[0][1]
+        assert payload["question_type"] == "boolean"
+        # --ai-short-question forwards the server opt-in on the question payload.
+        assert payload["generate_short_question"] is True
 
     def test_add_with_blocker(self, runner: CliRunner) -> None:
         with _auth(), _client() as cls:

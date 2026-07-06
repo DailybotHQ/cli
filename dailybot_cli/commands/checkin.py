@@ -482,6 +482,7 @@ def checkin_create(
                 questions=questions,
                 report_channels=list(report_channels) if report_channels else None,
                 config=config or None,
+                generate_short_question=ai_short_question,
             )
     except APIError as exc:
         exit_for_api_error(exc, json_mode)
@@ -677,6 +678,8 @@ def checkin_questions_add(
         is_blocker=is_blocker,
         **extras,
     )
+    if ai_short_question:
+        payload["generate_short_question"] = True
     try:
         with console.status("Adding question..."):
             result: dict[str, Any] = client.add_checkin_question(followup_uuid, payload)

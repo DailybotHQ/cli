@@ -423,11 +423,14 @@ class DailyBotClient:
         questions: list[dict[str, Any]] | None = None,
         report_channels: list[str] | None = None,
         config: dict[str, Any] | None = None,
+        generate_short_question: bool = False,
     ) -> dict[str, Any]:
         """POST /v1/checkins/create/ — create a check-in with schedule + questions.
 
         ``config`` carries the extra scheduling/behavior fields (frequency,
         reminders, timezone mode, submission rules, privacy, …) merged inline.
+        ``generate_short_question`` opts into AI report-title generation for
+        questions that were seeded without an explicit ``short_question``.
         """
         payload: dict[str, Any] = {"name": name}
         if schedule is not None:
@@ -438,6 +441,8 @@ class DailyBotClient:
             payload["questions"] = questions
         if report_channels is not None:
             payload["report_channels"] = report_channels
+        if generate_short_question:
+            payload["generate_short_question"] = True
         if config:
             payload.update(config)
         response: httpx.Response = httpx.post(
@@ -759,13 +764,20 @@ class DailyBotClient:
         questions: list[dict[str, Any]] | None = None,
         *,
         report_channels: list[str] | None = None,
+        generate_short_question: bool = False,
     ) -> dict[str, Any]:
-        """POST /v1/forms/create/ — create a form with optional questions + channels."""
+        """POST /v1/forms/create/ — create a form with optional questions + channels.
+
+        ``generate_short_question`` opts into AI report-title generation for
+        questions seeded without an explicit ``short_question``.
+        """
         payload: dict[str, Any] = {"name": name}
         if questions:
             payload["questions"] = questions
         if report_channels:
             payload["report_channels"] = report_channels
+        if generate_short_question:
+            payload["generate_short_question"] = True
         response: httpx.Response = httpx.post(
             f"{self.api_url}/v1/forms/create/",
             json=payload,
