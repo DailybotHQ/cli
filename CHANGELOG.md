@@ -9,6 +9,14 @@ Do not edit it by hand — your edits will be overwritten on the next release.
 
 <!-- version list -->
 
+## v1.17.1 (2026-07-06)
+
+### Bug Fixes
+
+- **forms,checkin**: Require at least one question at create (questions_required)
+  ([`e29f25b`](https://github.com/DailybotHQ/cli/commit/e29f25b0114b1f8a18b7114065f099043719ab3c))
+
+
 ## v1.17.0 (2026-07-06)
 
 ### Bug Fixes
