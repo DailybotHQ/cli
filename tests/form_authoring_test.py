@@ -225,6 +225,29 @@ class TestFormConfig:
         cfg = client.update_form_config.call_args[1]["config"]
         assert cfg == {"workflow": {"enabled": False}, "command_enabled": False}
 
+    def test_config_no_approvers_clears(self, runner: CliRunner) -> None:
+        with _auth(), _client() as cls:
+            client: MagicMock = cls.return_value
+            client.update_form_config.return_value = FORM_PAYLOAD
+            result = runner.invoke(cli, ["form", "config", "form-uuid", "--no-approvers"])
+        assert result.exit_code == 0
+        cfg = client.update_form_config.call_args[1]["config"]
+        assert cfg == {"approvers": {"user_uuids": [], "team_uuids": []}}
+
+    def test_config_approver_by_email(self, runner: CliRunner) -> None:
+        with _auth(), _client() as cls:
+            client: MagicMock = cls.return_value
+            client.update_form_config.return_value = FORM_PAYLOAD
+            client.list_users.return_value = [
+                {"uuid": "u-1", "full_name": "Jane", "email": "jane@example.com"},
+            ]
+            result = runner.invoke(
+                cli, ["form", "config", "form-uuid", "--approver-user", "jane@example.com"]
+            )
+        assert result.exit_code == 0
+        cfg = client.update_form_config.call_args[1]["config"]
+        assert cfg["approvers"] == {"user_uuids": ["u-1"], "team_uuids": []}
+
     def test_config_nothing_to_edit(self, runner: CliRunner) -> None:
         with _auth(), _client():
             result = runner.invoke(cli, ["form", "config", "form-uuid"])

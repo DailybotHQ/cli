@@ -613,6 +613,25 @@ class TestFormWorkflowAndAudience:
         with pytest.raises(AuthoringError):
             resolve_form_config(client, command="release", no_command=True)
 
+    def test_no_approvers_clears(self) -> None:
+        client: MagicMock = MagicMock()
+        cfg = resolve_form_config(client, no_approvers=True)
+        assert cfg["approvers"] == {"user_uuids": [], "team_uuids": []}
+
+    def test_no_approvers_conflict(self) -> None:
+        client: MagicMock = MagicMock()
+        client.list_users.return_value = [{"uuid": "u-1", "full_name": "Jane"}]
+        with pytest.raises(AuthoringError):
+            resolve_form_config(client, approver_users=("Jane",), no_approvers=True)
+
+    def test_resolve_participants_by_email(self) -> None:
+        client: MagicMock = MagicMock()
+        client.list_users.return_value = [
+            {"uuid": "u-1", "full_name": "Jane Doe", "email": "jane@example.com"},
+        ]
+        result = parse_participants(("jane@example.com",), (), client)
+        assert result == {"user_uuids": ["u-1"]}
+
 
 class TestParseParticipants:
     def test_resolves_users_and_teams(self) -> None:

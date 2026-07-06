@@ -956,6 +956,7 @@ def resolve_form_config(
     use_for_approval: bool | None = None,
     approver_users: tuple[str, ...] = (),
     approver_teams: tuple[str, ...] = (),
+    no_approvers: bool = False,
     command: str | None = None,
     no_command: bool = False,
 ) -> dict[str, Any]:
@@ -967,8 +968,14 @@ def resolve_form_config(
     """
     if command is not None and no_command:
         raise AuthoringError("Pass either --command NAME or --no-command, not both.")
+    if no_approvers and (approver_users or approver_teams):
+        raise AuthoringError(
+            "Pass either --approver-user/--approver-team or --no-approvers, not both."
+        )
     approvers: dict[str, Any] | None = None
-    if approver_users or approver_teams:
+    if no_approvers:
+        approvers = {"user_uuids": [], "team_uuids": []}
+    elif approver_users or approver_teams:
         resolved: dict[str, Any] = parse_participants(approver_users, approver_teams, client)
         # Full-replace: send both keys so the approver set is unambiguous.
         approvers = {

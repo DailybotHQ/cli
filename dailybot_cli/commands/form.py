@@ -132,10 +132,16 @@ def _form_config_flag_options(func: Callable[..., Any]) -> Callable[..., Any]:
             help="File new submissions for approval.",
         ),
         click.option(
-            "--approver-user", "approver_users", multiple=True, help="Approver (name or UUID)."
+            "--approver-user",
+            "approver_users",
+            multiple=True,
+            help="Approver (name, email, or UUID).",
         ),
         click.option(
             "--approver-team", "approver_teams", multiple=True, help="Approver team (name or UUID)."
+        ),
+        click.option(
+            "--no-approvers", "no_approvers", is_flag=True, help="Clear the approver list."
         ),
         click.option("--command", "command", default=None, help="ChatOps shortcut name."),
         click.option(

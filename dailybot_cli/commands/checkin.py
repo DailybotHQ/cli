@@ -394,7 +394,9 @@ def checkin_edit(
 @click.option("--days", default=None, help="Comma-separated weekdays 0-6 (0=Sunday .. 6=Saturday).")
 @click.option("--timezone", default=None, help="IANA timezone (e.g. America/New_York).")
 @click.option("--schedule-file", default=None, help="Path to a JSON schedule object.")
-@click.option("--user", "users", multiple=True, help="Participant user (name or UUID; repeatable).")
+@click.option(
+    "--user", "users", multiple=True, help="Participant user (name, email, or UUID; repeatable)."
+)
 @click.option("--team", "teams", multiple=True, help="Participant team (name or UUID; repeatable).")
 @click.option("--questions-file", default=None, help="Path to a JSON array of question objects.")
 @click.option(
@@ -507,7 +509,9 @@ def checkin_create(
     multiple=True,
     help="Report-channel UUID (repeatable); replaces the check-in's channels.",
 )
-@click.option("--user", "users", multiple=True, help="Participant user (name or UUID; repeatable).")
+@click.option(
+    "--user", "users", multiple=True, help="Participant user (name, email, or UUID; repeatable)."
+)
 @click.option("--team", "teams", multiple=True, help="Participant team (name or UUID; repeatable).")
 @click.option("--active/--inactive", "is_active", default=None, help="Activate or deactivate.")
 @_config_flag_options

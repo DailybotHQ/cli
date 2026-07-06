@@ -325,13 +325,23 @@ def resolve_user_by_name_or_uuid(
     users: list[dict[str, Any]],
     identifier: str,
 ) -> tuple[str, str]:
-    """Resolve a user UUID and display name from a UUID or name fragment."""
+    """Resolve a user UUID and display name from a UUID, email, or name fragment."""
     if UUID_PATTERN.match(identifier):
         for user in users:
             if user.get("uuid") == identifier:
                 name: str = str(user.get("full_name") or identifier)
                 return identifier, name
         return identifier, identifier
+
+    if "@" in identifier:
+        email_matches: list[dict[str, Any]] = [
+            user for user in users if str(user.get("email", "")).lower() == identifier.lower()
+        ]
+        if len(email_matches) == 1:
+            hit: dict[str, Any] = email_matches[0]
+            return str(hit["uuid"]), str(hit.get("full_name") or hit.get("email") or hit["uuid"])
+        if not email_matches:
+            raise ValueError(f'No user found with email "{identifier}".')
 
     exact_matches: list[dict[str, Any]] = [
         user for user in users if str(user.get("full_name", "")).lower() == identifier.lower()
