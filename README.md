@@ -311,6 +311,14 @@ dailybot form questions edit <form_uuid> <question_uuid> --question "Reworded?"
 dailybot form questions delete <form_uuid> <question_uuid>
 dailybot form questions reorder <form_uuid> <q3> <q1> <q2>
 
+# Create/configure a form with full config (workflow, permissions, command, sharing)
+dailybot form create -n "Release Flow" --state "Draft:#ccc" --state "Released:#2ecc71" \
+  --command release --can-edit owner_and_admins --report-channel <channel_uuid>
+dailybot form config <form_uuid> --anonymous --public --require-identity
+dailybot form config <form_uuid> --can-see restricted --can-see-team "Engineering"
+dailybot form config <form_uuid> --approval --approver-user "Jane Doe"
+dailybot form config <form_uuid> --no-workflow --no-command
+
 # Create a check-in with a schedule, participants, and questions
 dailybot checkin create -n "Daily Standup" --time 09:00 --days 1,2,3,4,5 \
   --timezone America/New_York --questions-file questions.json

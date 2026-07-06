@@ -924,6 +924,30 @@ class TestFormsAuthoring:
 
         assert mock_post.call_args[1]["json"] == {"name": "Retro"}
 
+    def test_create_form_merges_config(self, client: DailyBotClient) -> None:
+        mock_response: MagicMock = MagicMock(spec=httpx.Response)
+        mock_response.status_code = 201
+        mock_response.json.return_value = {"id": "form-uuid"}
+
+        with patch("httpx.post", return_value=mock_response) as mock_post:
+            client.create_form("Retro", config={"is_anonymous": True, "command": "retro"})
+
+        assert mock_post.call_args[1]["json"] == {
+            "name": "Retro",
+            "is_anonymous": True,
+            "command": "retro",
+        }
+
+    def test_update_form_config_merges_config(self, client: DailyBotClient) -> None:
+        mock_response: MagicMock = MagicMock(spec=httpx.Response)
+        mock_response.status_code = 200
+        mock_response.json.return_value = {"id": "form-uuid"}
+
+        with patch("httpx.patch", return_value=mock_response) as mock_patch:
+            client.update_form_config("form-uuid", config={"workflow": {"enabled": False}})
+
+        assert mock_patch.call_args[1]["json"] == {"workflow": {"enabled": False}}
+
     def test_create_form_with_report_channels_inline(self, client: DailyBotClient) -> None:
         mock_response: MagicMock = MagicMock(spec=httpx.Response)
         mock_response.status_code = 201

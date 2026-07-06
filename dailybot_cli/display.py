@@ -702,42 +702,81 @@ def _state_label_lookup(form_data: dict[str, Any]) -> dict[str, str]:
     return {str(s.get("key")): str(s.get("label") or s.get("key")) for s in states if s.get("key")}
 
 
+def _audience_label(audience: Any) -> str:
+    """Render a form permission audience (``who_can_edit`` etc.) for the panel."""
+    if not isinstance(audience, dict):
+        return str(audience or "")
+    mode: str = str(audience.get("mode") or "")
+    if mode == "restricted":
+        users: int = len(audience.get("user_uuids") or [])
+        teams: int = len(audience.get("team_uuids") or [])
+        return f"restricted ({users} user(s), {teams} team(s))"
+    return mode
+
+
+def _form_workflow(form_data: dict[str, Any]) -> tuple[bool, list[dict[str, Any]]]:
+    """Return (enabled, states) from the canonical nested ``workflow`` object."""
+    workflow: Any = form_data.get("workflow")
+    if isinstance(workflow, dict):
+        return bool(workflow.get("enabled")), list(workflow.get("states") or [])
+    return False, []
+
+
 def print_form_detail(form_data: dict[str, Any]) -> None:
-    """Render a form payload — metadata, workflow config, and questions."""
+    """Render a form payload — metadata, config, workflow states, and questions."""
     table: Table = Table(show_header=False, box=None, padding=(0, 2))
     table.add_column(style="bold")
     table.add_column()
     table.add_row("Name", str(form_data.get("name", "")))
     table.add_row("UUID", str(form_data.get("id", "")))
-    slug: str = str(form_data.get("slug", "") or "")
-    if slug:
-        table.add_row("Slug", slug)
-    workflow_enabled: bool = bool(form_data.get("workflow_enabled"))
-    table.add_row("Workflow", "[green]enabled[/green]" if workflow_enabled else "disabled")
-    if workflow_enabled:
+    if form_data.get("is_active") is False:
+        table.add_row("Status", "[yellow]inactive[/yellow]")
+    if form_data.get("is_archived"):
+        table.add_row("Status", "[yellow]archived[/yellow]")
+    enabled, states = _form_workflow(form_data)
+    table.add_row("Workflow", "[green]enabled[/green]" if enabled else "disabled")
+    if enabled:
         table.add_row(
             "Reopen from final",
             "yes" if form_data.get("allow_reopen_from_final_state") else "no",
         )
-    if form_data.get("is_archived"):
-        table.add_row("Status", "[yellow]archived[/yellow]")
+    if form_data.get("command_enabled") and form_data.get("command"):
+        table.add_row("Command", f"@dailybot {form_data.get('command')}")
+    behaviors: list[str] = []
+    if form_data.get("is_anonymous"):
+        behaviors.append("anonymous")
+    if form_data.get("allow_public_responses"):
+        public: str = "public"
+        if form_data.get("brand_with_logo"):
+            public += " +brand"
+        if form_data.get("require_email_and_name"):
+            public += " +identity"
+        behaviors.append(public)
+    if form_data.get("use_for_approval"):
+        behaviors.append("approval flow")
+    if behaviors:
+        table.add_row("Settings", ", ".join(behaviors))
+    for label, key in (
+        ("Can edit", "who_can_edit"),
+        ("Can see", "who_can_see_responses"),
+        ("Can change states", "who_can_change_states"),
+    ):
+        audience: str = _audience_label(form_data.get(key))
+        if audience:
+            table.add_row(label, audience)
     console.print(Panel(table, title="[bold]Form[/bold]", border_style="cyan"))
 
     _print_attached_channels(form_data.get("report_channels") or [])
 
-    if workflow_enabled:
+    if enabled and states:
         states_table: Table = Table(title="Workflow States", border_style="cyan")
         states_table.add_column("Order", style="dim", justify="right")
         states_table.add_column("Key", style="bold")
         states_table.add_column("Label")
         states_table.add_column("Color", style="dim")
-        config: Any = form_data.get("workflow_config") or {}
-        states: list[dict[str, Any]] = (
-            list(config.get("states", [])) if isinstance(config, dict) else []
-        )
-        for state in states:
+        for index, state in enumerate(states):
             states_table.add_row(
-                str(state.get("order", "")),
+                str(state.get("order", index)),
                 str(state.get("key", "")),
                 str(state.get("label", "")),
                 str(state.get("color", "")),

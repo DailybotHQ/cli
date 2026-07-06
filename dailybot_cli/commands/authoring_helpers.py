@@ -84,6 +84,14 @@ CRON_FIELD_COUNT: int = 5
 _DATE_PATTERN: re.Pattern[str] = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 _REPORT_TIME_PATTERN: re.Pattern[str] = re.compile(r"^\d{2}:\d{2}(:\d{2})?$")
 
+# Form configuration (mirror the server contract so the CLI fails fast). Forms have
+# permission audiences, a workflow state machine, an approval flow, and a ChatOps
+# command instead of the check-in scheduling/participant surface.
+FORM_PERMISSION_MODES: tuple[str, ...] = ("everyone", "owner_and_admins", "restricted")
+WORKFLOW_MAX_STATES: int = 20
+_COMMAND_PATTERN: re.Pattern[str] = re.compile(r"^[a-z0-9][a-z0-9_-]{0,30}$")
+_HEX_COLOR_PATTERN: re.Pattern[str] = re.compile(r"^#[0-9a-fA-F]{3,8}$")
+
 
 class AuthoringError(click.ClickException):
     """A user-facing validation error for authoring input.
@@ -763,6 +771,209 @@ def build_checkin_config(
         config["frequency_cron"] = frequency_cron
 
     return config
+
+
+def parse_workflow_states(states: tuple[str, ...]) -> list[dict[str, str]]:
+    """Parse ``--state "Label:#color"`` flags into ``[{label, color}]``.
+
+    The server derives ``key``/``order``; the client sends label + hex color.
+    Fails fast on an empty label, a missing/invalid color, or too many states.
+    """
+    parsed: list[dict[str, str]] = []
+    for raw in states:
+        if ":" not in raw:
+            raise AuthoringError(
+                f'Invalid --state \'{raw}\'. Use "Label:#RRGGBB" (e.g. "Draft:#cccccc").'
+            )
+        label, color = raw.rsplit(":", 1)
+        label = label.strip()
+        color = color.strip()
+        if not label:
+            raise AuthoringError(f"Invalid --state '{raw}': the label is empty.")
+        if not _HEX_COLOR_PATTERN.match(color):
+            raise AuthoringError(
+                f"Invalid --state color '{color}' for '{label}'. Use a hex color like #3498db."
+            )
+        parsed.append({"label": label, "color": color})
+    if len(parsed) > WORKFLOW_MAX_STATES:
+        raise AuthoringError(
+            f"Too many workflow states ({len(parsed)}); the limit is {WORKFLOW_MAX_STATES}."
+        )
+    return parsed
+
+
+def build_workflow(states: tuple[str, ...], no_workflow: bool) -> dict[str, Any] | None:
+    """Build the ``workflow`` object from ``--state`` flags / ``--no-workflow``.
+
+    Returns ``{"enabled": False}`` to turn states off, ``{"enabled": True,
+    "states": [...]}`` when states are given, or ``None`` when neither was passed
+    (so the field is omitted from the partial update).
+    """
+    if no_workflow:
+        if states:
+            raise AuthoringError("Pass either --state ... or --no-workflow, not both.")
+        return {"enabled": False}
+    if states:
+        return {"enabled": True, "states": parse_workflow_states(states)}
+    return None
+
+
+def build_form_audience(
+    mode: str | None,
+    users: tuple[str, ...],
+    teams: tuple[str, ...],
+    client: DailyBotClient,
+    flag: str,
+) -> dict[str, Any] | None:
+    """Build a permission-audience object (``who_can_edit`` etc.).
+
+    Explicit ``--{flag}-user`` / ``--{flag}-team`` imply ``restricted`` and are
+    resolved from names/UUIDs. Otherwise ``mode`` must be ``everyone`` or
+    ``owner_and_admins``. Returns ``None`` when nothing was provided.
+    """
+    if users or teams:
+        if mode not in (None, "restricted"):
+            raise AuthoringError(
+                f"--{flag} {mode} conflicts with --{flag}-user/--{flag}-team "
+                "(those imply 'restricted')."
+            )
+        resolved: dict[str, Any] = parse_participants(users, teams, client)
+        audience: dict[str, Any] = {"mode": "restricted"}
+        audience.update(resolved)
+        return audience
+    if mode is None:
+        return None
+    normalized: str = _check_enum(mode, FORM_PERMISSION_MODES, f"--{flag}")
+    if normalized == "restricted":
+        raise AuthoringError(
+            f"--{flag} restricted needs --{flag}-user and/or --{flag}-team to name who."
+        )
+    return {"mode": normalized}
+
+
+def validate_command(command: str) -> str:
+    """Validate a ChatOps command shortcut name against the server charset."""
+    normalized: str = command.strip().lower()
+    if not _COMMAND_PATTERN.match(normalized):
+        raise AuthoringError(
+            f"Invalid --command '{command}'. Use 1-31 chars: lowercase letters, "
+            "digits, '-' or '_', starting with a letter or digit."
+        )
+    return normalized
+
+
+def build_form_config(
+    *,
+    is_active: bool | None = None,
+    is_anonymous: bool | None = None,
+    allow_public_responses: bool | None = None,
+    require_email_and_name: bool | None = None,
+    brand_with_logo: bool | None = None,
+    allow_reopen_from_final_state: bool | None = None,
+    workflow: dict[str, Any] | None = None,
+    who_can_edit: dict[str, Any] | None = None,
+    who_can_see_responses: dict[str, Any] | None = None,
+    who_can_change_states: dict[str, Any] | None = None,
+    use_for_approval: bool | None = None,
+    approvers: dict[str, Any] | None = None,
+    command_enabled: bool | None = None,
+    command: str | None = None,
+) -> dict[str, Any]:
+    """Assemble a validated form-config dict from create/config flags.
+
+    Only fields the caller supplied (non-``None``) are included, so ``config`` stays
+    a partial update. Structured values (workflow, audiences, approvers) arrive
+    already built/validated from the command layer. The server remains authoritative
+    (and rejects unknown fields with 400 ``unknown_field``).
+    """
+    config: dict[str, Any] = {}
+    for flag, field in (
+        (is_active, "is_active"),
+        (is_anonymous, "is_anonymous"),
+        (allow_public_responses, "allow_public_responses"),
+        (require_email_and_name, "require_email_and_name"),
+        (brand_with_logo, "brand_with_logo"),
+        (allow_reopen_from_final_state, "allow_reopen_from_final_state"),
+        (use_for_approval, "use_for_approval"),
+    ):
+        if flag is not None:
+            config[field] = flag
+    for value, field in (
+        (workflow, "workflow"),
+        (who_can_edit, "who_can_edit"),
+        (who_can_see_responses, "who_can_see_responses"),
+        (who_can_change_states, "who_can_change_states"),
+        (approvers, "approvers"),
+    ):
+        if value is not None:
+            config[field] = value
+    if command is not None:
+        config["command"] = validate_command(command)
+        config["command_enabled"] = True
+    elif command_enabled is False:
+        config["command_enabled"] = False
+    return config
+
+
+def resolve_form_config(
+    client: DailyBotClient,
+    *,
+    is_active: bool | None = None,
+    is_anonymous: bool | None = None,
+    allow_public_responses: bool | None = None,
+    require_email_and_name: bool | None = None,
+    brand_with_logo: bool | None = None,
+    allow_reopen_from_final_state: bool | None = None,
+    states: tuple[str, ...] = (),
+    no_workflow: bool = False,
+    can_edit: str | None = None,
+    can_edit_users: tuple[str, ...] = (),
+    can_edit_teams: tuple[str, ...] = (),
+    can_see: str | None = None,
+    can_see_users: tuple[str, ...] = (),
+    can_see_teams: tuple[str, ...] = (),
+    can_change_states: str | None = None,
+    change_states_users: tuple[str, ...] = (),
+    change_states_teams: tuple[str, ...] = (),
+    use_for_approval: bool | None = None,
+    approver_users: tuple[str, ...] = (),
+    approver_teams: tuple[str, ...] = (),
+    command: str | None = None,
+    no_command: bool = False,
+) -> dict[str, Any]:
+    """Turn the shared form-config flags into a validated ``config`` dict.
+
+    Resolves the three permission audiences and the approver list (names/UUIDs) via
+    the client, builds the workflow object, and defers field validation to
+    ``build_form_config``. Returns only the keys the caller supplied.
+    """
+    if command is not None and no_command:
+        raise AuthoringError("Pass either --command NAME or --no-command, not both.")
+    approvers: dict[str, Any] | None = None
+    if approver_users or approver_teams:
+        approvers = parse_participants(approver_users, approver_teams, client)
+    return build_form_config(
+        is_active=is_active,
+        is_anonymous=is_anonymous,
+        allow_public_responses=allow_public_responses,
+        require_email_and_name=require_email_and_name,
+        brand_with_logo=brand_with_logo,
+        allow_reopen_from_final_state=allow_reopen_from_final_state,
+        workflow=build_workflow(states, no_workflow),
+        who_can_edit=build_form_audience(
+            can_edit, can_edit_users, can_edit_teams, client, "can-edit"
+        ),
+        who_can_see_responses=build_form_audience(
+            can_see, can_see_users, can_see_teams, client, "can-see"
+        ),
+        who_can_change_states=build_form_audience(
+            can_change_states, change_states_users, change_states_teams, client, "can-change-states"
+        ),
+        use_for_approval=use_for_approval,
+        approvers=approvers,
+        command=command,
+        command_enabled=False if no_command else None,
+    )
 
 
 def build_questions_interactively(ai_short_question: bool = False) -> list[dict[str, Any]]:

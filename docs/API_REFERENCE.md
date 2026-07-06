@@ -208,8 +208,11 @@ Creating and configuring forms/check-ins (as opposed to filling them in). All au
 | Command | HTTP | Notes |
 |---|---|---|
 | `form list [--include-archived]` | `GET /v1/forms/` (`?include_archived=true`) | Archived forms hidden by default; flagged in a Status column when shown. |
-| `form create -n NAME [--questions-file F] [--interactive] [--report-channel UUID]` | `POST /v1/forms/create/` (`name`, `questions?`, `report_channels?` all inline) | Question types: `text`, `multiple_choice`, `boolean`, `numeric`; ≤ 50. |
-| `form edit <uuid> [--name] [--report-channel]` | `PATCH /v1/forms/<uuid>/config/` | |
+| `form create -n NAME [--questions-file F] [--interactive] [--report-channel UUID] [config flags]` | `POST /v1/forms/create/` (`name`, `questions?`, `report_channels?`, config all inline) | Question types: `text`, `multiple_choice`, `boolean`, `numeric`; ≤ 50. Config flags below. |
+| `form edit <uuid> [--name] [--report-channel]` | `PATCH /v1/forms/<uuid>/config/` | Thin subset of `form config`. |
+| `form config <uuid> [--name] [--report-channel] [config flags]` | `PATCH /v1/forms/<uuid>/config/` | Full form config (partial). Flags below. |
+
+**Form config flags** (on `create` + `config`; only the ones you pass change): `--active/--inactive`, `--anonymous/--no-anonymous`, `--public/--no-public`, `--brand/--no-brand`, `--require-identity/--no-require-identity`, `--reopen-from-final/--no-reopen-from-final`, `--state "Label:#color"` (repeatable, ordered — enables the workflow) / `--no-workflow`, `--can-edit`/`--can-see`/`--can-change-states` (`everyone`/`owner_and_admins`, or `restricted` via `--{scope}-user`/`--{scope}-team`), `--approval/--no-approval` + `--approver-user`/`--approver-team`, `--command NAME`/`--no-command`. Sent inline; the server rejects unknown fields with `400 unknown_field` and validates each (`workflow_requires_states`, `invalid_workflow_state`, `invalid_permission_audience`, `invalid_approvers`, `invalid_command`, `command_already_exists`). Detail echoes them back. Forms may have zero questions (by design). Unlike check-ins, form `is_anonymous` is freely toggleable (no `anonymous_irreversible`).
 | `form archive <uuid>` | `DELETE /v1/forms/<uuid>/archive/` | Soft-delete (204). Confirms unless `--yes`. |
 | `form questions list <uuid>` | `GET /v1/forms/<uuid>/` | Canonical question shape (see below). |
 | `form questions add <uuid> --type --question [--options] [--required/--optional] [--blocker] [extras]` | `POST /v1/forms/<uuid>/questions/` | `multiple_choice` requires `--options`; `boolean` takes none. `--blocker` tags the blocker question. Extras below. |
@@ -499,7 +502,7 @@ key, so all of these commands work with `DAILYBOT_API_KEY` set even without
 | `GET` | `/v1/report-channels/` | `?name` (prefix filter), `?limit` (both optional) | `{ channels: [{ id, name, platform, type }], total }` (also accepts `{results}` / bare list) | `channels list`; `id` feeds `--report-channel` |
 | `GET` | `/v1/forms/` | `?include=questions`, `?include_archived=true` | `[{ id, name, is_active, is_archived, questions? }]` | `form list`; archived hidden unless opted in |
 | `POST` | `/v1/forms/create/` | `{ name, questions?: [...], report_channels?: [...] }` | `{ id, name, is_active, is_archived, questions, report_channels }` | Role-gated; `form create` |
-| `PATCH` | `/v1/forms/<uuid>/config/` | `{ name?, report_channels? }` | Form | `form edit` |
+| `PATCH` | `/v1/forms/<uuid>/config/` | `{ name?, report_channels?, is_active?, is_anonymous?, allow_public_responses?, require_email_and_name?, brand_with_logo?, allow_reopen_from_final_state?, workflow?, who_can_edit?, who_can_see_responses?, who_can_change_states?, use_for_approval?, approvers?, command_enabled?, command? }` | Form | `form edit` / `form config` |
 | `DELETE` | `/v1/forms/<uuid>/archive/` | — | 204 (sets `is_active=false` + `is_archived=true`) | `form archive` (soft-delete) |
 | `POST` | `/v1/forms/<uuid>/questions/` | `{ question_type, question, options?, required?, is_blocker? }` | Question | `form questions add` |
 | `PATCH` | `/v1/forms/<uuid>/questions/<q_uuid>/` | partial | Question | `form questions edit` |

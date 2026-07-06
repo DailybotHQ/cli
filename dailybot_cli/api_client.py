@@ -765,11 +765,14 @@ class DailyBotClient:
         *,
         report_channels: list[str] | None = None,
         generate_short_question: bool = False,
+        config: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
         """POST /v1/forms/create/ — create a form with optional questions + channels.
 
         ``generate_short_question`` opts into AI report-title generation for
-        questions seeded without an explicit ``short_question``.
+        questions seeded without an explicit ``short_question``. ``config`` carries
+        the form-level fields (privacy/workflow/permissions/anonymous/public/approval/
+        command) merged inline.
         """
         payload: dict[str, Any] = {"name": name}
         if questions:
@@ -778,6 +781,8 @@ class DailyBotClient:
             payload["report_channels"] = report_channels
         if generate_short_question:
             payload["generate_short_question"] = True
+        if config:
+            payload.update(config)
         response: httpx.Response = httpx.post(
             f"{self.api_url}/v1/forms/create/",
             json=payload,
@@ -792,13 +797,20 @@ class DailyBotClient:
         *,
         name: str | None = None,
         report_channels: list[str] | None = None,
+        config: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
-        """PATCH /v1/forms/<form_uuid>/config/ — edit name and/or report channels."""
+        """PATCH /v1/forms/<form_uuid>/config/ — edit name, channels, and/or config.
+
+        ``config`` carries the form-level fields (workflow/permissions/anonymous/
+        public/approval/command) merged inline; only the keys present change.
+        """
         payload: dict[str, Any] = {}
         if name is not None:
             payload["name"] = name
         if report_channels is not None:
             payload["report_channels"] = report_channels
+        if config:
+            payload.update(config)
         response: httpx.Response = httpx.patch(
             f"{self.api_url}/v1/forms/{form_uuid}/config/",
             json=payload,

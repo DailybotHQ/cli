@@ -101,6 +101,27 @@ ERROR_CODE_MESSAGES: dict[str, str] = {
         "The CLI acts within your role and can't elevate."
     ),
     "form_not_found": "Form not found.",
+    "form_name_too_short": "Form name is too short (minimum 3 characters).",
+    # Form configuration (workflow / permissions / approval / command)
+    "workflow_requires_states": (
+        'A workflow needs at least one state. Pass --state "Label:#color" (or '
+        "--no-workflow to turn states off)."
+    ),
+    "invalid_workflow_state": (
+        'Invalid workflow state. Use --state "Label:#color" with a non-empty label and a hex color.'
+    ),
+    "invalid_permission_audience": (
+        "Invalid permission audience. Use everyone / owner_and_admins, or restricted "
+        "with at least one user/team."
+    ),
+    "invalid_approvers": "Invalid approvers. Name at least one user or team to approve.",
+    "invalid_command": (
+        "Invalid --command. Use 1-31 chars: lowercase letters, digits, '-' or '_', "
+        "starting with a letter or digit."
+    ),
+    "command_already_exists": (
+        "That ChatOps command is already used by another form. Pick a different --command."
+    ),
     "checkin_not_found": "Check-in not found.",
     "question_not_found": "Question not found on this form or check-in.",
     "invalid_question_variations": (

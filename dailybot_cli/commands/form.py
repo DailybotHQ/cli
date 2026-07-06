@@ -1,5 +1,6 @@
 """Form commands for the user-scoped public API."""
 
+from collections.abc import Callable
 from typing import Any
 
 import click
@@ -14,6 +15,7 @@ from dailybot_cli.commands.authoring_helpers import (
     question_extras_options,
     require_short_question,
     require_short_questions,
+    resolve_form_config,
     resolve_question_extras,
 )
 from dailybot_cli.commands.public_api_helpers import (
@@ -50,6 +52,98 @@ def _maybe_load_form(client: DailyBotClient, form_uuid: str) -> dict[str, Any] |
         return client.get_form(form_uuid)
     except APIError:
         return None
+
+
+def _form_config_flag_options(func: Callable[..., Any]) -> Callable[..., Any]:
+    """Attach the shared form-configuration flags to create + config.
+
+    Dest names match ``authoring_helpers.resolve_form_config`` kwargs so the
+    callback can forward them as ``**config_flags``. Toggle flags default to
+    ``None`` (unset → not sent), keeping ``config`` a partial update.
+    """
+    options: list[Callable[..., Any]] = [
+        click.option("--active/--inactive", "is_active", default=None, help="Activate/deactivate."),
+        click.option(
+            "--anonymous/--no-anonymous",
+            "is_anonymous",
+            default=None,
+            help="Collect responses anonymously.",
+        ),
+        click.option(
+            "--public/--no-public",
+            "allow_public_responses",
+            default=None,
+            help="Allow public (shared-link) responses.",
+        ),
+        click.option(
+            "--brand/--no-brand",
+            "brand_with_logo",
+            default=None,
+            help="Brand the public form with your org logo.",
+        ),
+        click.option(
+            "--require-identity/--no-require-identity",
+            "require_email_and_name",
+            default=None,
+            help="Make email + name mandatory on public responses.",
+        ),
+        click.option(
+            "--reopen-from-final/--no-reopen-from-final",
+            "allow_reopen_from_final_state",
+            default=None,
+            help="Allow moving a response out of the final state.",
+        ),
+        click.option(
+            "--state",
+            "states",
+            multiple=True,
+            help='Workflow state "Label:#color" (repeatable, ordered). Enables the workflow.',
+        ),
+        click.option(
+            "--no-workflow", "no_workflow", is_flag=True, help="Turn the workflow/states off."
+        ),
+        click.option(
+            "--can-edit", "can_edit", default=None, help="everyone / owner_and_admins / restricted."
+        ),
+        click.option("--can-edit-user", "can_edit_users", multiple=True, help="Restricted editor."),
+        click.option("--can-edit-team", "can_edit_teams", multiple=True, help="Restricted editor."),
+        click.option(
+            "--can-see", "can_see", default=None, help="everyone / owner_and_admins / restricted."
+        ),
+        click.option("--can-see-user", "can_see_users", multiple=True, help="Restricted viewer."),
+        click.option("--can-see-team", "can_see_teams", multiple=True, help="Restricted viewer."),
+        click.option(
+            "--can-change-states",
+            "can_change_states",
+            default=None,
+            help="everyone / owner_and_admins / restricted.",
+        ),
+        click.option(
+            "--change-states-user", "change_states_users", multiple=True, help="Restricted mover."
+        ),
+        click.option(
+            "--change-states-team", "change_states_teams", multiple=True, help="Restricted mover."
+        ),
+        click.option(
+            "--approval/--no-approval",
+            "use_for_approval",
+            default=None,
+            help="File new submissions for approval.",
+        ),
+        click.option(
+            "--approver-user", "approver_users", multiple=True, help="Approver (name or UUID)."
+        ),
+        click.option(
+            "--approver-team", "approver_teams", multiple=True, help="Approver team (name or UUID)."
+        ),
+        click.option("--command", "command", default=None, help="ChatOps shortcut name."),
+        click.option(
+            "--no-command", "no_command", is_flag=True, help="Remove the ChatOps shortcut."
+        ),
+    ]
+    for option in reversed(options):
+        func = option(func)
+    return func
 
 
 @click.group()
@@ -438,6 +532,7 @@ def form_delete(
     help="Let Dailybot's AI generate each question's report title instead of "
     "requiring a 'short_question' on every question.",
 )
+@_form_config_flag_options
 @click.option("--json", "json_mode", is_flag=True, help="Emit machine-readable JSON to stdout.")
 def form_create(
     name: str,
@@ -446,21 +541,24 @@ def form_create(
     report_channels: tuple[str, ...],
     ai_short_question: bool,
     json_mode: bool,
+    **config_flags: Any,
 ) -> None:
-    """Create a form (optionally seeded with questions).
+    """Create a form (optionally seeded with questions and full config).
 
     \b
     Creating forms is role-gated server-side (admins/managers as applicable).
     Seed questions with --questions-file or --interactive, or add them later via
     `dailybot form questions add`. Each seeded question needs a report title
-    (--short-question / "short_question") unless you pass --ai-short-question.
+    (--short-question / "short_question") unless you pass --ai-short-question. The
+    config flags (workflow states, permissions, anonymous/public/approval, command)
+    mirror the web Setup tab.
 
     \b
     Examples:
       dailybot form create --name "Sprint Retro"
       dailybot form create -n "Retro" --questions-file questions.json
-      dailybot form create -n "Retro" --interactive
-      dailybot form create -n "Retro" --report-channel <channel_uuid> --json
+      dailybot form create -n "Release" --state "Draft:#ccc" --state "Done:#2ecc71" \\
+        --command release --can-edit owner_and_admins --report-channel <channel_uuid>
     """
     client = require_auth()
     if interactive:
@@ -471,6 +569,7 @@ def form_create(
         questions = None
     if questions:
         require_short_questions(questions, ai_short_question)
+    config: dict[str, Any] = resolve_form_config(client, **config_flags)
     try:
         with console.status("Creating form..."):
             result: dict[str, Any] = client.create_form(
@@ -478,6 +577,7 @@ def form_create(
                 questions,
                 report_channels=list(report_channels) if report_channels else None,
                 generate_short_question=ai_short_question,
+                config=config or None,
             )
     except APIError as exc:
         exit_for_api_error(exc, json_mode)
@@ -520,6 +620,63 @@ def form_edit(
                 form_uuid,
                 name=name,
                 report_channels=list(report_channels) if report_channels else None,
+            )
+    except APIError as exc:
+        exit_for_api_error(exc, json_mode)
+
+    if json_mode:
+        emit_json(result)
+        return
+    print_success(f"Form {form_uuid} updated.")
+    print_form_created(result, updated=True)
+
+
+@form.command("config")
+@click.argument("form_uuid")
+@click.option("--name", "-n", default=None, help="New form name.")
+@click.option(
+    "--report-channel",
+    "report_channels",
+    multiple=True,
+    help="Report-channel UUID (repeatable); replaces the form's channels.",
+)
+@_form_config_flag_options
+@click.option("--json", "json_mode", is_flag=True, help="Emit machine-readable JSON to stdout.")
+def form_config(
+    form_uuid: str,
+    name: str | None,
+    report_channels: tuple[str, ...],
+    json_mode: bool,
+    **config_flags: Any,
+) -> None:
+    """Edit a form's full configuration (partial update).
+
+    \b
+    Superset of `form edit`: name + channels plus workflow states, permissions,
+    anonymous/public/approval settings, and the ChatOps command — mirroring the web
+    Setup tab. Only the flags you pass change; role-gated server-side.
+
+    \b
+    Examples:
+      dailybot form config <form_uuid> --inactive --command release
+      dailybot form config <form_uuid> --state "Draft:#ccc" --state "Done:#2ecc71"
+      dailybot form config <form_uuid> --anonymous --public --require-identity
+      dailybot form config <form_uuid> --can-see restricted --can-see-team "Eng"
+      dailybot form config <form_uuid> --approval --approver-user "Jane Doe"
+    """
+    client = require_auth()
+    config: dict[str, Any] = resolve_form_config(client, **config_flags)
+    if name is None and not report_channels and not config:
+        raise click.UsageError(
+            "Nothing to edit. Pass --name, --report-channel, or a config flag (see --help)."
+        )
+    try:
+        with console.status("Updating form..."):
+            result: dict[str, Any] = client.update_form_config(
+                form_uuid,
+                name=name,
+                report_channels=list(report_channels) if report_channels else None,
+                config=config or None,
             )
     except APIError as exc:
         exit_for_api_error(exc, json_mode)

@@ -12,17 +12,23 @@ from dailybot_cli.commands.authoring_helpers import (
     MAX_QUESTIONS,
     AuthoringError,
     build_checkin_config,
+    build_form_audience,
+    build_form_config,
     build_question,
     build_question_edit_fields,
     build_question_logic,
     build_variations,
+    build_workflow,
     parse_options,
     parse_participants,
     parse_questions_file,
     parse_schedule,
+    parse_workflow_states,
     require_short_question,
     require_short_questions,
+    resolve_form_config,
     resolve_question_extras,
+    validate_command,
     validate_logic,
     validate_short_question,
 )
@@ -500,6 +506,110 @@ class TestBuildCheckinConfig:
             build_checkin_config(frequency_cron="0 9 * *")  # only 4 fields
 
 
+class TestBuildFormConfig:
+    def test_empty_when_nothing_passed(self) -> None:
+        assert build_form_config() == {}
+
+    def test_toggles_forwarded(self) -> None:
+        cfg = build_form_config(is_active=False, is_anonymous=True, use_for_approval=True)
+        assert cfg == {"is_active": False, "is_anonymous": True, "use_for_approval": True}
+
+    def test_command_sets_enabled(self) -> None:
+        cfg = build_form_config(command="Release")
+        assert cfg == {"command": "release", "command_enabled": True}
+
+    def test_no_command_disables(self) -> None:
+        assert build_form_config(command_enabled=False) == {"command_enabled": False}
+
+    def test_invalid_command_rejected(self) -> None:
+        with pytest.raises(AuthoringError):
+            build_form_config(command="Bad Command!")
+
+
+class TestFormWorkflowAndAudience:
+    def test_parse_states(self) -> None:
+        assert parse_workflow_states(("Draft:#ccc", "Done:#2ecc71")) == [
+            {"label": "Draft", "color": "#ccc"},
+            {"label": "Done", "color": "#2ecc71"},
+        ]
+
+    def test_state_missing_color_rejected(self) -> None:
+        with pytest.raises(AuthoringError):
+            parse_workflow_states(("Draft",))
+
+    def test_state_bad_color_rejected(self) -> None:
+        with pytest.raises(AuthoringError):
+            parse_workflow_states(("Draft:blue",))
+
+    def test_state_empty_label_rejected(self) -> None:
+        with pytest.raises(AuthoringError):
+            parse_workflow_states((":#ccc",))
+
+    def test_too_many_states_rejected(self) -> None:
+        with pytest.raises(AuthoringError):
+            parse_workflow_states(tuple(f"S{i}:#cccccc" for i in range(21)))
+
+    def test_build_workflow_enabled(self) -> None:
+        assert build_workflow(("Draft:#ccc",), False) == {
+            "enabled": True,
+            "states": [{"label": "Draft", "color": "#ccc"}],
+        }
+
+    def test_build_workflow_disabled(self) -> None:
+        assert build_workflow((), True) == {"enabled": False}
+
+    def test_build_workflow_none(self) -> None:
+        assert build_workflow((), False) is None
+
+    def test_build_workflow_conflict_rejected(self) -> None:
+        with pytest.raises(AuthoringError):
+            build_workflow(("Draft:#ccc",), True)
+
+    def test_audience_simple_mode(self) -> None:
+        client: MagicMock = MagicMock()
+        assert build_form_audience("everyone", (), (), client, "can-edit") == {"mode": "everyone"}
+
+    def test_audience_restricted_resolves(self) -> None:
+        client: MagicMock = MagicMock()
+        client.list_teams.return_value = [{"uuid": "t-1", "name": "Eng"}]
+        result = build_form_audience(None, (), ("Eng",), client, "can-see")
+        assert result == {"mode": "restricted", "team_uuids": ["t-1"]}
+
+    def test_audience_restricted_without_who_rejected(self) -> None:
+        client: MagicMock = MagicMock()
+        with pytest.raises(AuthoringError):
+            build_form_audience("restricted", (), (), client, "can-edit")
+
+    def test_audience_none(self) -> None:
+        client: MagicMock = MagicMock()
+        assert build_form_audience(None, (), (), client, "can-edit") is None
+
+    def test_validate_command_normalizes(self) -> None:
+        assert validate_command("Release") == "release"
+
+    def test_resolve_form_config_full(self) -> None:
+        client: MagicMock = MagicMock()
+        client.list_teams.return_value = [{"uuid": "t-1", "name": "Eng"}]
+        cfg = resolve_form_config(
+            client,
+            is_anonymous=True,
+            states=("Draft:#ccc",),
+            can_edit="owner_and_admins",
+            change_states_teams=("Eng",),
+            command="release",
+        )
+        assert cfg["is_anonymous"] is True
+        assert cfg["workflow"] == {"enabled": True, "states": [{"label": "Draft", "color": "#ccc"}]}
+        assert cfg["who_can_edit"] == {"mode": "owner_and_admins"}
+        assert cfg["who_can_change_states"] == {"mode": "restricted", "team_uuids": ["t-1"]}
+        assert cfg["command"] == "release"
+
+    def test_resolve_form_config_command_conflict(self) -> None:
+        client: MagicMock = MagicMock()
+        with pytest.raises(AuthoringError):
+            resolve_form_config(client, command="release", no_command=True)
+
+
 class TestParseParticipants:
     def test_resolves_users_and_teams(self) -> None:
         client: MagicMock = MagicMock()
@@ -737,3 +847,33 @@ class TestAuthoringDisplay:
             )
         output: str = capture.get()
         assert "archived" in output
+
+    def test_form_detail_renders_full_config(self) -> None:
+        with display.console.capture() as capture:
+            display.print_form_detail(
+                {
+                    "id": "f-1",
+                    "name": "Release Flow",
+                    "is_anonymous": True,
+                    "allow_public_responses": True,
+                    "require_email_and_name": True,
+                    "command_enabled": True,
+                    "command": "release",
+                    "who_can_edit": {"mode": "owner_and_admins"},
+                    "who_can_see_responses": {"mode": "restricted", "team_uuids": ["t-1"]},
+                    "workflow": {
+                        "enabled": True,
+                        "states": [
+                            {"key": "draft", "label": "Draft", "color": "#ccc", "order": 0},
+                            {"key": "done", "label": "Done", "color": "#2ecc71", "order": 1},
+                        ],
+                    },
+                    "questions": [],
+                }
+            )
+        output: str = capture.get()
+        assert "@dailybot release" in output
+        assert "anonymous" in output and "public" in output
+        assert "owner_and_admins" in output
+        assert "restricted" in output
+        assert "Draft" in output and "Done" in output

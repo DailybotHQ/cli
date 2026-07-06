@@ -538,6 +538,13 @@ dailybot form list --include-archived    # includes archived, flagged in a Statu
 # Edit config / archive (soft-delete). Note: `form archive` is the definition;
 # `form delete` still removes a *response*.
 dailybot form edit <form_uuid> --name "Updated Retro" --report-channel <channel_uuid>
+# Full config (superset of `form edit`) — mirrors the web Setup tab:
+dailybot form config <form_uuid> --state "Draft:#ccc" --state "Released:#2ecc71"  # workflow
+dailybot form config <form_uuid> --anonymous --public --require-identity --brand
+dailybot form config <form_uuid> --can-edit owner_and_admins --can-see restricted --can-see-team "Eng"
+dailybot form config <form_uuid> --approval --approver-user "Jane Doe"
+dailybot form config <form_uuid> --command release        # ChatOps: @dailybot release
+dailybot form config <form_uuid> --no-workflow --no-command --inactive
 dailybot form archive <form_uuid>
 
 # Manage questions (--blocker tags the blocker question)

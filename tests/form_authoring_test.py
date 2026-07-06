@@ -174,6 +174,89 @@ class TestFormEdit:
         assert "Nothing to edit" in result.output
 
 
+class TestFormConfig:
+    def test_create_forwards_full_config(self, runner: CliRunner) -> None:
+        with _auth(), _client() as cls:
+            client: MagicMock = cls.return_value
+            client.create_form.return_value = FORM_PAYLOAD
+            client.list_teams.return_value = [{"uuid": "t-1", "name": "Eng"}]
+            result = runner.invoke(
+                cli,
+                [
+                    "form",
+                    "create",
+                    "-n",
+                    "Release",
+                    "--state",
+                    "Draft:#cccccc",
+                    "--state",
+                    "Done:#2ecc71",
+                    "--anonymous",
+                    "--command",
+                    "release",
+                    "--can-edit",
+                    "owner_and_admins",
+                    "--can-see",
+                    "restricted",
+                    "--can-see-team",
+                    "Eng",
+                ],
+            )
+        assert result.exit_code == 0
+        cfg = client.create_form.call_args[1]["config"]
+        assert cfg["is_anonymous"] is True
+        assert cfg["command"] == "release" and cfg["command_enabled"] is True
+        assert cfg["workflow"]["states"][1] == {"label": "Done", "color": "#2ecc71"}
+        assert cfg["who_can_edit"] == {"mode": "owner_and_admins"}
+        assert cfg["who_can_see_responses"] == {"mode": "restricted", "team_uuids": ["t-1"]}
+
+    def test_config_forwards_partial(self, runner: CliRunner) -> None:
+        with _auth(), _client() as cls:
+            client: MagicMock = cls.return_value
+            client.update_form_config.return_value = FORM_PAYLOAD
+            result = runner.invoke(
+                cli, ["form", "config", "form-uuid", "--no-workflow", "--no-command"]
+            )
+        assert result.exit_code == 0
+        cfg = client.update_form_config.call_args[1]["config"]
+        assert cfg == {"workflow": {"enabled": False}, "command_enabled": False}
+
+    def test_config_nothing_to_edit(self, runner: CliRunner) -> None:
+        with _auth(), _client():
+            result = runner.invoke(cli, ["form", "config", "form-uuid"])
+        assert result.exit_code != 0
+        assert "Nothing to edit" in result.output
+
+    def test_config_bad_state_color_fails_fast(self, runner: CliRunner) -> None:
+        with _auth(), _client() as cls:
+            result = runner.invoke(cli, ["form", "config", "form-uuid", "--state", "Bad:blue"])
+            cls.return_value.update_form_config.assert_not_called()
+        assert result.exit_code != 0
+        assert "hex color" in result.output
+
+    def test_command_already_exists_error_is_friendly(self, runner: CliRunner) -> None:
+        with _auth(), _client() as cls:
+            client: MagicMock = cls.return_value
+            client.update_form_config.side_effect = APIError(
+                status_code=400,
+                detail="Command already used.",
+                code="command_already_exists",
+            )
+            result = runner.invoke(cli, ["form", "config", "form-uuid", "--command", "release"])
+        assert result.exit_code != 0
+        assert "already used by another form" in result.output
+
+    def test_unknown_field_error_is_friendly(self, runner: CliRunner) -> None:
+        with _auth(), _client() as cls:
+            client: MagicMock = cls.return_value
+            client.update_form_config.side_effect = APIError(
+                status_code=400, detail="Unknown field(s): x", code="unknown_field"
+            )
+            result = runner.invoke(cli, ["form", "config", "form-uuid", "--anonymous"])
+        assert result.exit_code != 0
+        assert "upgrade" in result.output
+
+
 class TestFormArchive:
     def test_archive_confirmed(self, runner: CliRunner) -> None:
         with _auth(), _client() as cls:
