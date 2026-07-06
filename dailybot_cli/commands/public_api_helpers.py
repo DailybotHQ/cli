@@ -80,6 +80,10 @@ ERROR_CODE_MESSAGES: dict[str, str] = {
         "--ai-short-question to let Dailybot generate it."
     ),
     "questions_limit_exceeded": "Too many questions (the limit is 50).",
+    "questions_required": (
+        "At least one question is required. Seed questions with --questions-file or --interactive."
+    ),
+    "invalid_question_data": "A question payload is malformed. Check the question fields.",
     "form_name_required": "A name is required.",
     "invalid_schedule_days": ("Schedule days must be integers 0-6 (0=Sunday .. 6=Saturday)."),
     "invalid_schedule_time": "Schedule time must be in HH:MM format (e.g. 09:00).",

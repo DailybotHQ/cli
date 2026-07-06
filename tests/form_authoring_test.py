@@ -24,6 +24,16 @@ def runner() -> CliRunner:
     return CliRunner()
 
 
+@pytest.fixture
+def qfile(tmp_path: Any) -> str:
+    """A minimal one-question file — questions are required at create time."""
+    path = tmp_path / "q.json"
+    path.write_text(
+        json.dumps([{"question_type": "text", "question": "Q?", "short_question": "Q"}])
+    )
+    return str(path)
+
+
 def _auth() -> Any:
     return patch("dailybot_cli.commands.public_api_helpers.get_agent_auth", return_value="tok")
 
@@ -33,12 +43,22 @@ def _client() -> Any:
 
 
 class TestFormCreate:
-    def test_create_minimal(self, runner: CliRunner) -> None:
+    def test_create_minimal(self, runner: CliRunner, qfile: str) -> None:
         with _auth(), _client() as cls:
             cls.return_value.create_form.return_value = FORM_PAYLOAD
-            result = runner.invoke(cli, ["form", "create", "--name", "Retro"])
+            result = runner.invoke(
+                cli, ["form", "create", "--name", "Retro", "--questions-file", qfile]
+            )
         assert result.exit_code == 0
         assert "Retro" in result.output
+
+    def test_create_without_questions_is_rejected(self, runner: CliRunner) -> None:
+        # Questions are required at create time (server: questions_required).
+        with _auth(), _client() as cls:
+            result = runner.invoke(cli, ["form", "create", "--name", "Retro"])
+            cls.return_value.create_form.assert_not_called()
+        assert result.exit_code != 0
+        assert "at least one question" in result.output
 
     def test_create_with_questions_file(self, runner: CliRunner, tmp_path: Any) -> None:
         qfile = tmp_path / "q.json"
@@ -118,19 +138,29 @@ class TestFormCreate:
         assert result.exit_code != 0
         assert "--ai-short-question" in result.output
 
-    def test_create_with_report_channel_inline(self, runner: CliRunner) -> None:
+    def test_create_with_report_channel_inline(self, runner: CliRunner, qfile: str) -> None:
         with _auth(), _client() as cls:
             client: MagicMock = cls.return_value
             client.create_form.return_value = FORM_PAYLOAD
             result = runner.invoke(
-                cli, ["form", "create", "-n", "Retro", "--report-channel", "chan-1"]
+                cli,
+                [
+                    "form",
+                    "create",
+                    "-n",
+                    "Retro",
+                    "--report-channel",
+                    "chan-1",
+                    "--questions-file",
+                    qfile,
+                ],
             )
         assert result.exit_code == 0
         # Report channels go directly in the create body — no follow-up config call.
         assert client.create_form.call_args[1]["report_channels"] == ["chan-1"]
         client.update_form_config.assert_not_called()
 
-    def test_create_bogus_channel_shows_friendly_error(self, runner: CliRunner) -> None:
+    def test_create_bogus_channel_shows_friendly_error(self, runner: CliRunner, qfile: str) -> None:
         with _auth(), _client() as cls:
             client: MagicMock = cls.return_value
             client.create_form.side_effect = APIError(
@@ -139,7 +169,17 @@ class TestFormCreate:
                 code="report_channel_not_found",
             )
             result = runner.invoke(
-                cli, ["form", "create", "-n", "Retro", "--report-channel", "NOT_REAL"]
+                cli,
+                [
+                    "form",
+                    "create",
+                    "-n",
+                    "Retro",
+                    "--report-channel",
+                    "NOT_REAL",
+                    "--questions-file",
+                    qfile,
+                ],
             )
         assert result.exit_code != 0
         assert "dailybot channels list" in result.output
@@ -175,7 +215,7 @@ class TestFormEdit:
 
 
 class TestFormConfig:
-    def test_create_forwards_full_config(self, runner: CliRunner) -> None:
+    def test_create_forwards_full_config(self, runner: CliRunner, qfile: str) -> None:
         with _auth(), _client() as cls:
             client: MagicMock = cls.return_value
             client.create_form.return_value = FORM_PAYLOAD
@@ -187,6 +227,8 @@ class TestFormConfig:
                     "create",
                     "-n",
                     "Release",
+                    "--questions-file",
+                    qfile,
                     "--state",
                     "Draft:#cccccc",
                     "--state",

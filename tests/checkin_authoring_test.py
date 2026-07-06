@@ -1,5 +1,7 @@
 """Tests for check-in authoring commands (create/config/archive/questions)."""
 
+import json
+from pathlib import Path
 from typing import Any
 from unittest.mock import MagicMock, patch
 
@@ -22,6 +24,16 @@ def runner() -> CliRunner:
     return CliRunner()
 
 
+@pytest.fixture
+def qfile(tmp_path: Path) -> str:
+    """A minimal one-question file — questions are required at create time."""
+    path = tmp_path / "q.json"
+    path.write_text(
+        json.dumps([{"question_type": "text", "question": "Q?", "short_question": "Q"}])
+    )
+    return str(path)
+
+
 def _auth() -> Any:
     return patch("dailybot_cli.commands.public_api_helpers.get_agent_auth", return_value="tok")
 
@@ -31,7 +43,7 @@ def _client() -> Any:
 
 
 class TestCheckinCreate:
-    def test_create_with_schedule(self, runner: CliRunner) -> None:
+    def test_create_with_schedule(self, runner: CliRunner, qfile: str) -> None:
         with _auth(), _client() as cls:
             client: MagicMock = cls.return_value
             client.create_checkin.return_value = CHECKIN_PAYLOAD
@@ -51,13 +63,15 @@ class TestCheckinCreate:
                     "UTC",
                     "--team",
                     "Eng",
+                    "--questions-file",
+                    qfile,
                 ],
             )
         assert result.exit_code == 0
         schedule = client.create_checkin.call_args[1]["schedule"]
         assert schedule == {"days": [1, 2, 3, 4, 5], "time": "09:00", "timezone": "UTC"}
 
-    def test_create_forwards_config_flags(self, runner: CliRunner) -> None:
+    def test_create_forwards_config_flags(self, runner: CliRunner, qfile: str) -> None:
         with _auth(), _client() as cls:
             client: MagicMock = cls.return_value
             client.create_checkin.return_value = CHECKIN_PAYLOAD
@@ -76,6 +90,8 @@ class TestCheckinCreate:
                     "--reminders",
                     "2",
                     "--no-future",
+                    "--questions-file",
+                    qfile,
                 ],
             )
         assert result.exit_code == 0
@@ -85,6 +101,16 @@ class TestCheckinCreate:
             "reminders_max_count": 2,
             "allow_future_responses": False,
         }
+
+    def test_create_without_questions_is_rejected(self, runner: CliRunner) -> None:
+        # Questions are required at create time (server: questions_required).
+        with _auth(), _client() as cls:
+            client: MagicMock = cls.return_value
+            client.list_teams.return_value = [{"uuid": "t-1", "name": "Eng"}]
+            result = runner.invoke(cli, ["checkin", "create", "-n", "Standup", "--team", "Eng"])
+            client.create_checkin.assert_not_called()
+        assert result.exit_code != 0
+        assert "at least one question" in result.output
 
     def test_create_without_participants_is_rejected(self, runner: CliRunner) -> None:
         # Non-interactive create with no --user/--team must error, never create empty.
@@ -97,7 +123,7 @@ class TestCheckinCreate:
         assert result.exit_code != 0
         assert "at least one participant" in result.output
 
-    def test_create_resolves_participants(self, runner: CliRunner) -> None:
+    def test_create_resolves_participants(self, runner: CliRunner, qfile: str) -> None:
         with _auth(), _client() as cls:
             client: MagicMock = cls.return_value
             client.create_checkin.return_value = CHECKIN_PAYLOAD
@@ -105,7 +131,18 @@ class TestCheckinCreate:
             client.list_teams.return_value = [{"uuid": "t-1", "name": "Eng"}]
             result = runner.invoke(
                 cli,
-                ["checkin", "create", "-n", "Standup", "--user", "Jane Doe", "--team", "Eng"],
+                [
+                    "checkin",
+                    "create",
+                    "-n",
+                    "Standup",
+                    "--user",
+                    "Jane Doe",
+                    "--team",
+                    "Eng",
+                    "--questions-file",
+                    qfile,
+                ],
             )
         assert result.exit_code == 0
         participants = client.create_checkin.call_args[1]["participants"]

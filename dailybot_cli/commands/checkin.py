@@ -20,6 +20,7 @@ from dailybot_cli.commands.authoring_helpers import (
     parse_schedule,
     prompt_participants_interactively,
     question_extras_options,
+    require_questions,
     require_short_question,
     require_short_questions,
     resolve_question_extras,
@@ -437,10 +438,11 @@ def checkin_create(
     """Create a check-in with a schedule, participants, questions, and config.
 
     \b
-    Creating check-ins is role-gated server-side (admins/managers). Seed questions
-    with --questions-file or --interactive, or add them later with
-    `dailybot checkin questions add`. The scheduling/behavior flags (frequency,
-    reminders, timezone mode, submission rules, privacy) mirror the web UI.
+    Creating check-ins is role-gated server-side (admins/managers). A check-in must
+    have at least one question at create time — seed them with --questions-file or
+    --interactive (add/edit/remove more later with `dailybot checkin questions`). The
+    scheduling/behavior flags (frequency, reminders, timezone mode, submission rules,
+    privacy) mirror the web UI.
 
     \b
     Examples:
@@ -475,8 +477,8 @@ def checkin_create(
         questions = parse_questions_file(questions_file)
     else:
         questions = None
-    if questions:
-        require_short_questions(questions, ai_short_question)
+    require_questions(questions, "check-in")
+    require_short_questions(questions or [], ai_short_question)
     try:
         with console.status("Creating check-in..."):
             result: dict[str, Any] = client.create_checkin(
