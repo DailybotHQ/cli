@@ -1,7 +1,7 @@
 ---
 name: dailybot
-description: Official Dailybot agent skill pack — report progress, check messages, send emails, announce agent status, complete check-ins, give kudos (to users or teams), resolve teams, run the full forms lifecycle (list, submit, update, transition between workflow states), send/edit chat messages on the team's Slack/Teams/Discord/Google Chat (including report-style threads), and ask the Dailybot AI a question headlessly. Routes to the right sub-skill based on intent. Use when the developer mentions Dailybot or wants to interact with their team.
-version: "1.7.1"
+description: Official Dailybot agent skill pack — report progress, check messages, send emails, announce agent status, complete check-ins, give kudos (to users or teams), resolve teams, run the full forms lifecycle (list, submit, update, transition between workflow states), **author check-ins and forms from scratch** (create/configure questions, workflow states, permissions, reminders, scheduling, AI settings, sharing), send/edit chat messages on the team's Slack/Teams/Discord/Google Chat (including report-style threads), and ask the Dailybot AI a question headlessly. Routes to the right sub-skill based on intent. Use when the developer mentions Dailybot or wants to interact with their team.
+version: "1.8.1"
 documentation_url: https://api.dailybot.com/skill.md
 user-invocable: true
 metadata: {"openclaw":{"emoji":"📡","homepage":"https://dailybot.com","requires":{"anyBins":["dailybot","curl"]},"primaryEnv":"DAILYBOT_API_KEY","install":[{"id":"cli-install-script","kind":"download","url":"https://cli.dailybot.com/install.sh","label":"Install Dailybot CLI (official script — preferred on Linux/macOS)"},{"id":"pip","kind":"pip","package":"dailybot-cli","bins":["dailybot"],"label":"Install Dailybot CLI via pip (fallback if binary fails)"}]}}
@@ -21,7 +21,7 @@ This is the canonical, first-party integration. Source of truth:
 
 ## What it does
 
-Ten coordinated capabilities, with smart routing between them:
+Eleven coordinated capabilities, with smart routing between them:
 
 | Capability | Sub-skill | When it fires |
 |------------|-----------|---------------|
@@ -31,10 +31,10 @@ Ten coordinated capabilities, with smart routing between them:
 | **Email** | `dailybot-email` | Explicit user request, with mandatory pre-send safety checks |
 | **Chat** | `dailybot-chat` | Developer wants to send / edit a bot message on Slack, Teams, Discord, or Google Chat — to a channel, DMs, or whole team. Supports report-style threads (headline + replies in one call) and editing the parent or any reply afterward |
 | **Health & status** | `dailybot-health` | Long-running sessions; periodic heartbeats |
-| **Check-ins** | `dailybot-checkin` | Full check-in lifecycle: list/status, complete, inspect questions, history, edit, reset, backfill/future-date — plus **authoring** (create/config/archive + questions) on CLI ≥ 1.17.0 |
+| **Check-ins** | `dailybot-checkin` | Full check-in lifecycle: list/status, complete, inspect questions, history, edit, reset, backfill/future-date — **plus authoring**: create/configure a check-in (schedule, participants, reminders, privacy, smart/AI) and manage its questions |
 | **Kudos** | `dailybot-kudos` | Developer wants to recognize a teammate or a whole team's contribution |
 | **Teams** | `dailybot-teams` | List teams, inspect members, or resolve a team name → UUID (used as a resolver by other skills) |
-| **Forms** | `dailybot-forms` | Developer wants to list, submit, update, or transition forms — including workflow-state forms with audience permissions — plus **authoring** (create/config/archive + questions) on CLI ≥ 1.17.0 |
+| **Forms** | `dailybot-forms` | Developer wants to list, submit, update, or transition forms — including workflow-state forms with audience permissions — **plus authoring**: create/configure a form (workflow states, permissions, anonymous/public/approval, ChatOps command) and manage its questions |
 | **Report channels** | `dailybot-channels` | Discover report-channel UUIDs to attach to forms/check-ins with `--report-channel` (CLI ≥ 1.17.0) |
 
 ## Install
@@ -53,6 +53,11 @@ fallback). Full guide: [`docs/INSTALLATION.md`](https://github.com/DailybotHQ/ag
 > [pypi.org/project/dailybot-cli/1.10.0/](https://pypi.org/project/dailybot-cli/1.10.0/)).
 >
 > Requires **Python >= 3.10**. The 1.10.0 wheel is `py3-none-any` (pure Python).
+>
+> **Current published version:** [`dailybot-cli 1.17.1`](https://pypi.org/project/dailybot-cli/) —
+> what `pip install --upgrade dailybot-cli` (or `dailybot upgrade`) resolves to
+> today. Everything below is additive on top of the 1.10.0 minimum; the
+> per-feature floors say which release first shipped each sub-skill.
 >
 > **`1.11.0` enhancement (optional):** `dailybot agent update` echoes the
 > report's placement link as a `View:` line. Older CLIs still report fine —
@@ -91,17 +96,6 @@ fallback). Full guide: [`docs/INSTALLATION.md`](https://github.com/DailybotHQ/ag
 > status / show / history / edit / reset` plus backfill/future-dating — all
 > headless with `--json`. See [`checkin/SKILL.md`](checkin/SKILL.md) § "The full
 > check-in lifecycle". Below 1.15.0 only `checkin list` + `complete` exist.
->
-> **`1.17.0` floor for forms & check-ins *authoring*** (paired with the matching
-> API server rollout): `dailybot channels list`, `form create / edit / archive`,
-> the `form questions` subgroup, extended `form responses` (`--all` / `--user` /
-> `--from` / `--to`), owner/admin editing of another user's response, and
-> `checkin create / config / archive` + the `checkin questions` subgroup all
-> first ship in 1.17.0. This is what lets an agent **author and configure** forms
-> and check-ins (not just fill them in), role-permission-gated server-side. Below
-> 1.17.0 only the fill-in commands exist. The authoring sections of
-> [`forms/SKILL.md`](forms/SKILL.md) and [`checkin/SKILL.md`](checkin/SKILL.md),
-> and the [`channels/SKILL.md`](channels/SKILL.md) sub-skill, require this minimum.
 
 ### Why this minimum
 
@@ -161,6 +155,23 @@ the prebuilt binary on Linux x86_64, or pipx / uv tool / pip --user elsewhere.
 Full safety story (SHA-256 sidecar, cross-origin diff, optional cosign): see
 [`shared/auth.md`](shared/auth.md).
 
+#### Pinning a specific version
+
+Every install method defaults to the latest release but can pin an exact
+version — useful when a developer needs to reproduce a known-good setup or
+match a floor a sub-skill requires (**since `dailybot-cli >= 1.16.0`** for the
+installer scripts; `pip` and Homebrew work on any version):
+
+| Channel | Pin a version |
+|---------|---------------|
+| pip      | `pip install dailybot-cli==<version>` |
+| Homebrew | installs latest only — pin via `pip install dailybot-cli==<version>` |
+| Universal installer | `curl -sSL https://cli.dailybot.com/install.sh \| DAILYBOT_VERSION=<version> bash` (or `\| bash -s -- --version <version>`) |
+| Windows PowerShell | `$env:DAILYBOT_VERSION='<version>'; irm https://cli.dailybot.com/install.ps1 \| iex` |
+
+Prefer `pip install dailybot-cli==<version>` when the developer already has
+Python — it is the most portable pin and works on every CLI release.
+
 ## Why use the official skill
 
 - **First-party.** Built by the Dailybot team and kept in sync with the
@@ -205,11 +216,13 @@ the full step-by-step workflow.
 | "check messages", "do I have messages?", "what should I work on?", "any instructions?" | **Messages** → read [`messages/SKILL.md`](messages/SKILL.md) |
 | "email this to Alice", "send an email", "send a summary to the team" | **Email** → read [`email/SKILL.md`](email/SKILL.md) |
 | "go online", "announce status", "health check" | **Health** → read [`health/SKILL.md`](health/SKILL.md) |
-| "complete my check-in", "fill in my standup", "check-in status", "what does my standup ask?", "check-in history", "edit / reset my check-in", "submit my standup for yesterday", "create a standup", "add a question to the check-in", "change the standup schedule" | **Checkin** → read [`checkin/SKILL.md`](checkin/SKILL.md) |
+| "complete my check-in", "fill in my standup", "check-in status", "what does my standup ask?", "check-in history", "edit / reset my check-in", "submit my standup for yesterday" | **Checkin** → read [`checkin/SKILL.md`](checkin/SKILL.md) |
+| "create a check-in", "set up a daily standup", "configure the standup's schedule/reminders/participants", "add a question to the check-in", "make this check-in smart/AI", "archive the check-in" | **Checkin (authoring)** → read [`checkin/SKILL.md`](checkin/SKILL.md) |
+| "create a form", "set up a release checklist form", "add workflow states / a ChatOps command / approvers", "make the form anonymous/public", "who can edit/see this form", "add a question / conditional logic to the form", "archive the form" | **Forms (authoring)** → read [`forms/SKILL.md`](forms/SKILL.md) |
 | "give kudos to Jane", "recognize Alice", "kudos al equipo Engineering", "felicita al team de QA" | **Kudos** → read [`kudos/SKILL.md`](kudos/SKILL.md) |
 | "list my teams", "who's in QA?", "resolve the Engineering team", or another skill needs a team UUID | **Teams** → read [`teams/SKILL.md`](teams/SKILL.md) |
-| "list my forms", "submit the retro form", "continue my release-form draft", "transition the release to released", "show me the last form response", "create a form", "add / reorder questions", "archive the form", "read everyone's responses" | **Forms** → read [`forms/SKILL.md`](forms/SKILL.md) |
-| "which channels can Dailybot post to?", "list report channels", "I need a channel UUID for the form" | **Channels** → read [`channels/SKILL.md`](channels/SKILL.md) |
+| "list my forms", "submit the retro form", "continue my release-form draft", "transition the release to released", "show me the last form response" | **Forms** → read [`forms/SKILL.md`](forms/SKILL.md) |
+| "which channels can Dailybot post to?", "list report channels", "I need a channel UUID for the form / check-in" | **Channels** → read [`channels/SKILL.md`](channels/SKILL.md) |
 | "send a Slack message", "DM Sergio in chat", "post the deploy report to #releases (with a thread)", "edit that chat message I just sent", "ping the Engineering team in chat" | **Chat** → read [`chat/SKILL.md`](chat/SKILL.md) |
 
 ### Auto-activation (no explicit request)

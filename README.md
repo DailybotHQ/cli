@@ -2,6 +2,8 @@
 
 The command-line bridge between **humans** and **agents**. [Dailybot](https://www.dailybot.com) connects your team — whether they work in Slack, Google Chat, Discord, Microsoft Teams, or the web — with AI agents and automated workflows. The CLI brings that power to your terminal: progress reports, observability, health checks, messaging, and workflow automation for modern teams.
 
+> 🤖 **Using an AI coding agent?** The CLI is even better paired with the **[Dailybot agent skill](https://github.com/DailybotHQ/agent-skill)** — a playbook that teaches Claude Code, Cursor, Codex, Gemini, and Copilot *when* and *how* to use these commands (report progress, complete check-ins, run and **author** forms & check-ins, give kudos, send chat messages). Install it with `npx skills add DailybotHQ/agent-skill`. See [For agents → pair with the agent skill](#pair-with-the-dailybot-agent-skill).
+
 ## Installation
 
 ```bash
@@ -462,6 +464,24 @@ All user-scoped commands (`checkin`, `form`, `kudos`, `user`, `team`) use struct
 ## For agents
 
 Any software agent — AI coding assistants, CI jobs, deploy scripts, bots — can report activity through the CLI. This lets teams get visibility into what automated processes are doing, alongside human updates. Dailybot interconnects agents and humans with work analysis, progress reports, observability, and automations.
+
+### Pair with the Dailybot agent skill
+
+If you're an **AI coding agent** (Claude Code, Cursor, OpenAI Codex, Gemini CLI, GitHub Copilot, …), the CLI works best alongside the **[Dailybot agent skill pack](https://github.com/DailybotHQ/agent-skill)**. The CLI is the *tool*; the skill is the *playbook* — it teaches the agent **when** and **how** to use these commands, with step-by-step workflows and safety rails for each capability:
+
+- **Report progress** at the right moments (not too noisy, not too quiet)
+- **Complete check-ins** and **submit / update / transition form responses**
+- **Author** check-ins and forms end-to-end — questions, workflow states, permissions, reminders, conditional logic
+- **Give kudos**, **send/edit chat messages** (Slack/Teams/Discord/Google Chat), **discover report channels**, and **ask the Dailybot AI**
+
+```bash
+# Install the skill pack (skills.sh — also works via OpenClaw or git clone + setup.sh)
+npx skills add DailybotHQ/agent-skill
+```
+
+Once installed, your agent **auto-routes by intent** — "report this to Dailybot", "create a release form", "complete my standup", "give kudos to Jane" — to the matching sub-skill, and reports progress on its own after meaningful work. Full install guide and sub-skill catalog: **[github.com/DailybotHQ/agent-skill](https://github.com/DailybotHQ/agent-skill)**.
+
+> This repo **dogfoods** the skill: the pack is vendored at [`.agents/skills/dailybot/`](.agents/skills/dailybot/) so any agent working on the CLI uses it too.
 
 ### Quick start (interactive)
 
