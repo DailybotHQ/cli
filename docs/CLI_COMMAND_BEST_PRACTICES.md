@@ -190,6 +190,26 @@ Add a `@click.group` when:
 
 If you only have 1–2 related commands, keep them as top-level commands and re-evaluate later.
 
+### Nested subgroups for a sub-noun
+
+When a command group owns a collection that itself has a lifecycle, nest a second
+group rather than flattening verbs onto the parent. `form questions add/edit/
+delete/reorder/list` (and the parallel `checkin questions ...`) are a
+`@form.group("questions")` under the `form` group — this keeps `form add` from
+being ambiguous with adding a *response* vs a *question*. When the parent already
+has verbs operating on a different noun (e.g. `form delete` removes a *response*),
+pick distinct verbs for the definition-level actions (`form archive`,
+`checkin config`, `checkin archive`) instead of overloading the existing verb.
+
+### File-or-flag-or-interactive input
+
+For structured input (e.g. a list of questions), offer three parallel paths that
+converge on the **same validated builder**: a `--…-file` JSON path, inline flags,
+and `--interactive` (questionary). Route all three through one validation helper
+(`authoring_helpers.build_question`) so the rules are identical regardless of
+entry point, and guard `--interactive` with a non-TTY check that points the user
+at the file/flag path.
+
 ## When to Use `questionary` vs `click.prompt`
 
 | Use `click.prompt` | Use `questionary` |

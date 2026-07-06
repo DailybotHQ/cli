@@ -10,16 +10,24 @@ pip install dailybot-cli
 
 Requires Python 3.10+.
 
-**Install a specific version** — append `==<version>` to pin an exact release:
+**Install a specific version** — append a version specifier. Use `==` to pin an
+exact release, or `>=` to set a **minimum floor** (installs the newest release at
+or above it):
 
 ```bash
-pip install dailybot-cli==1.15.0
+pip install dailybot-cli==1.15.0     # exactly 1.15.0
+pip install "dailybot-cli>=1.15.0"   # 1.15.0 or newer — picks the latest available
 ```
 
 ### Alternative installation methods
 
-Every method installs the **latest** release by default. Where a specific
-version can be pinned, the pinned form is shown right below the default one.
+Every method installs the **latest** release by default. Where a version can be
+pinned, the pinned form is shown right below the default one. Two pinning styles
+are supported everywhere `DAILYBOT_VERSION` / `--version` is accepted:
+
+- **Exact** — `1.15.0` (or `==1.15.0`) installs precisely that release.
+- **Minimum floor** — `>=1.15.0` installs the newest release at or above `1.15.0`,
+  so you get any later version automatically while guaranteeing a lower bound.
 
 **macOS (Homebrew)**
 
@@ -41,18 +49,24 @@ curl -sSL https://cli.dailybot.com/install.sh | bash
 ```
 
 Pin a version with the `DAILYBOT_VERSION` environment variable **or** the
-`--version` flag — both do the same thing, so use whichever reads better:
+`--version` flag — both do the same thing, so use whichever reads better. Each
+accepts an exact version or a `>=` minimum floor:
 
 ```bash
-# environment variable
+# exact version, environment variable
 curl -sSL https://cli.dailybot.com/install.sh | DAILYBOT_VERSION=1.15.0 bash
 
-# or the equivalent flag (note the `-s --` that forwards args through bash)
+# exact version, equivalent flag (note the `-s --` that forwards args through bash)
 curl -sSL https://cli.dailybot.com/install.sh | bash -s -- --version 1.15.0
+
+# minimum floor — installs 1.15.0 or the newest release above it
+curl -sSL https://cli.dailybot.com/install.sh | DAILYBOT_VERSION='>=1.15.0' bash
 ```
 
-A pinned version installs the matching Linux binary when one exists, and
-otherwise falls back to `pip install dailybot-cli==<version>`.
+An exact pin installs the matching Linux binary when one exists, otherwise falls
+back to `pip install dailybot-cli==<version>`. A `>=` floor installs the latest
+binary when it satisfies the floor, otherwise falls back to
+`pip install "dailybot-cli>=<version>"`.
 
 **Native Windows PowerShell** (only if you don't have WSL2 or Git Bash)
 
@@ -61,10 +75,15 @@ irm https://cli.dailybot.com/install.ps1 | iex
 ```
 
 Pin a version by setting `DAILYBOT_VERSION` before running the script (piping
-to `iex` can't take arguments, so the environment variable is the only way):
+to `iex` can't take arguments, so the environment variable is the only way).
+An exact version or a `>=` minimum floor both work:
 
 ```powershell
+# exact version
 $env:DAILYBOT_VERSION = '1.15.0'; irm https://cli.dailybot.com/install.ps1 | iex
+
+# minimum floor — installs 1.15.0 or the newest release above it
+$env:DAILYBOT_VERSION = '>=1.15.0'; irm https://cli.dailybot.com/install.ps1 | iex
 ```
 
 Requires Python 3.10+ on PATH. Wraps `pipx` / `uv tool` / `pip --user`.
@@ -205,8 +224,14 @@ dailybot form responses <form_uuid>
 dailybot form responses <form_uuid> --state qa --json
 dailybot form responses <form_uuid> --latest --json   # continue where you left off
 
+# Admins/owners: list everyone's responses, filter by user and date range
+# (server-enforced — a member passing --all/--user gets 403)
+dailybot form responses <form_uuid> --all --from 2026-01-01 --to 2026-06-30
+dailybot form responses <form_uuid> --user <user_uuid> --json
+
 # Operate on a single response
 dailybot form response get <form_uuid> <response_uuid>
+# You may edit your own response; a form owner / org admin may edit anyone's
 dailybot form update <form_uuid> <response_uuid> --content '{"<q-uuid>":"PR #4242"}'
 dailybot form transition <form_uuid> <response_uuid> qa --note "QA assigned"
 dailybot form delete <form_uuid> <response_uuid>
@@ -246,6 +271,113 @@ Guided mode (`form submit` without `--content`) fetches the form's question list
 | `--content` | `-c` | JSON map of `{"<question_uuid>": "<answer>"}`. Prompts when omitted. |
 | `--yes` | `-y` | Skip the confirmation prompt. |
 | `--json` | | Emit machine-readable JSON to stdout. |
+
+---
+
+## Authoring forms & check-ins
+
+Beyond filling them in, you can **create and configure** forms and check-ins from
+the CLI — create with questions, manage questions, set schedules and report
+channels, and archive. Authoring is **role-gated on the server** (admins /
+managers / form owners, as applicable); the CLI acts within your role and never
+elevates — an out-of-role action returns a clear `403`. Both a login session and
+an API key work.
+
+```bash
+# Discover report channels to attach to forms/check-ins
+dailybot channels list
+dailybot channels list --json
+
+# Create a form (empty, or seeded from a questions file, or interactively)
+dailybot form create --name "Sprint Retro"
+dailybot form create -n "Sprint Retro" --questions-file questions.json
+dailybot form create -n "Sprint Retro" --interactive
+dailybot form create -n "Sprint Retro" --report-channel <channel_uuid>
+
+# Edit a form's name / report channels, or archive it (soft-delete)
+dailybot form edit <form_uuid> --name "Updated Retro" --report-channel <channel_uuid>
+dailybot form archive <form_uuid>
+
+# Manage a form's questions
+dailybot form questions list <form_uuid>
+dailybot form questions add <form_uuid> --type text --question "What went well?"
+dailybot form questions add <form_uuid> --type multiple_choice \
+  --question "Sprint rating?" --options "Excellent,Good,Average,Poor"
+# Per-question extras: report title, alternate phrasings, conditional logic
+dailybot form questions add <form_uuid> --type text --question "What went well?" \
+  --short-question "Wins" --variation "What are you proud of?"
+dailybot form questions edit <form_uuid> <question_uuid> --logic-file branching.json
+dailybot form questions edit <form_uuid> <question_uuid> --question "Reworded?"
+dailybot form questions delete <form_uuid> <question_uuid>
+dailybot form questions reorder <form_uuid> <q3> <q1> <q2>
+
+# Create/configure a form with full config (workflow, permissions, command, sharing)
+dailybot form create -n "Release Flow" --state "Draft:#ccc" --state "Released:#2ecc71" \
+  --command release --can-edit owner_and_admins --report-channel <channel_uuid>
+dailybot form config <form_uuid> --anonymous --public --require-identity
+dailybot form config <form_uuid> --can-see restricted --can-see-team "Engineering"
+dailybot form config <form_uuid> --approval --approver-user "Jane Doe"
+dailybot form config <form_uuid> --no-workflow --no-command
+
+# Create a check-in with a schedule, participants, and questions
+dailybot checkin create -n "Daily Standup" --time 09:00 --days 1,2,3,4,5 \
+  --timezone America/New_York --questions-file questions.json
+dailybot checkin create -n "Daily Standup" --user "Jane Doe" --team "Engineering"
+
+# Edit a check-in's configuration, activate/deactivate, or archive it
+dailybot checkin config <followup_uuid> --time 10:00 --days 1,2,3,4,5
+dailybot checkin config <followup_uuid> --reminders 3 --reminder-interval 30 \
+  --reminder-tone persuasive --privacy everyone
+# Smart/AI + advanced scheduling (100% parity with the web UI)
+dailybot checkin config <followup_uuid> --smart --intelligence --max-clarifying 2
+dailybot checkin config <followup_uuid> --frequency-advanced custom --cron "0 9 * * 1,3,5"
+dailybot checkin config <followup_uuid> --inactive
+dailybot checkin archive <followup_uuid>
+
+# Manage a check-in's questions (same subcommands as forms)
+dailybot checkin questions add <followup_uuid> --type text --question "Focus today?"
+dailybot checkin questions reorder <followup_uuid> <q2> <q1>
+```
+
+> **Question types:** `text`, `multiple_choice`, `boolean`, `numeric` (the complete
+> catalog). `multiple_choice` needs `--options`; `boolean` auto-generates Yes/No
+> (don't pass options). Up to 50 questions per form/check-in.
+>
+> **Per-question extras** (on `questions add`/`edit`, forms and check-ins):
+> `--short-question` (title shown in web & chat reports), `--variation` (repeatable
+> alternate phrasings), and conditional logic via `--logic-file` or the inline
+> `--jump-if-equals VALUE --jump-to N` shortcut.
+>
+> **A report title is required** when adding/seeding a question — pass
+> `--short-question "..."` (or `--ai-short-question` to let Dailybot generate it).
+
+### Command naming (why authoring uses distinct verbs)
+
+The existing `form delete` / `form update` and `checkin edit` / `checkin reset`
+operate on **responses**. To avoid ambiguity, authoring the definitions uses
+distinct verbs: **`form archive`**, **`checkin config`**, and
+**`checkin archive`**.
+
+### `--questions-file` format
+
+A JSON array of question objects (`type`/`label` or `question_type`/`question`
+both work):
+
+```json
+[
+  {"question_type": "text", "question": "What went well?", "required": true},
+  {"question_type": "multiple_choice", "question": "Rating?", "options": ["1", "2", "3"]},
+  {"question_type": "boolean", "question": "Any blockers?"}
+]
+```
+
+### `--schedule-file` format
+
+```json
+{"days": [1, 2, 3, 4, 5], "time": "09:00", "timezone": "America/New_York"}
+```
+
+`days` are ISO weekday integers (0 = Sunday … 6 = Saturday).
 
 ---
 

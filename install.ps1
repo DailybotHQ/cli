@@ -19,10 +19,16 @@ $Package    = 'dailybot-cli'
 $Command    = 'dailybot'
 $MinPython  = [version]'3.10'
 
-# Install a specific version instead of the latest by setting the
-# DAILYBOT_VERSION environment variable before running the script:
-#   $env:DAILYBOT_VERSION = '1.15.0'; irm https://cli.dailybot.com/install.ps1 | iex
-# An empty value means "install the latest published version".
+# Install a specific version, or a minimum version floor, instead of the latest
+# by setting the DAILYBOT_VERSION environment variable before running the script:
+#   $env:DAILYBOT_VERSION = '1.15.0';   irm https://cli.dailybot.com/install.ps1 | iex   # exact
+#   $env:DAILYBOT_VERSION = '>=1.15.0'; irm https://cli.dailybot.com/install.ps1 | iex   # floor
+#
+# Accepted forms:
+#   (empty)     install the latest published version
+#   1.15.0      install exactly 1.15.0
+#   ==1.15.0    install exactly 1.15.0 (explicit form of the above)
+#   >=1.15.0    install the newest published version at or above 1.15.0
 $Version    = $env:DAILYBOT_VERSION
 
 function Write-Info    { param([string]$msg) Write-Host "==> $msg" -ForegroundColor Cyan }
@@ -36,8 +42,10 @@ function Has-Cmd {
 }
 
 function Get-PackageSpec {
-    # "dailybot-cli" or "dailybot-cli==<version>" when a version is pinned.
-    if ($Version) { return "$Package==$Version" }
+    # "dailybot-cli", "dailybot-cli==<version>" (exact pin) or
+    # "dailybot-cli>=<version>" (minimum floor). pip natively resolves ">=" to
+    # the newest matching release. $VersionOp/$VersionNum are set in Main.
+    if ($VersionNum) { return "$Package$VersionOp$VersionNum" }
     return $Package
 }
 
@@ -132,14 +140,38 @@ function Add-LocalBinToPath {
 
 # === Main =================================================================
 
+# Split an optional comparison operator from the numeric version. $VersionOp is
+# '' (latest), '==' (exact pin) or '>=' (minimum floor); $VersionNum is the bare
+# number. Unsupported operators are rejected up front.
+$VersionOp  = ''
+$VersionNum = ''
 if ($Version) {
+    if ($Version.StartsWith('>=')) {
+        $VersionOp = '>='; $VersionNum = $Version.Substring(2)
+    } elseif ($Version.StartsWith('==')) {
+        $VersionOp = '=='; $VersionNum = $Version.Substring(2)
+    } elseif ($Version -match '[<>~!=]') {
+        Write-Err "Unsupported version specifier '$Version'. Use an exact version (1.15.0 or ==1.15.0) or a minimum floor (>=1.15.0)."
+        exit 1
+    } else {
+        $VersionOp = '=='; $VersionNum = $Version
+    }
+
+    # Tolerate whitespace around the number (e.g. '>= 1.15.0').
+    $VersionNum = $VersionNum.Trim()
+
     # Reject anything that is not a plain version token so it cannot be
     # smuggled into the pip spec.
-    if ($Version -notmatch '^[0-9A-Za-z.+-]+$') {
-        Write-Err "Invalid version '$Version'. Expected a version like 1.15.0."
+    if ($VersionNum -notmatch '^[0-9A-Za-z.+-]+$') {
+        Write-Err "Invalid version '$VersionNum'. Expected a version like 1.15.0."
         exit 1
     }
-    Write-Info "Requested Dailybot CLI version: $Version"
+
+    if ($VersionOp -eq '>=') {
+        Write-Info "Requested Dailybot CLI: >=$VersionNum (minimum floor — installing the newest at or above it)"
+    } else {
+        Write-Info "Requested Dailybot CLI version: $VersionNum"
+    }
 }
 
 Write-Info "Detecting Python..."

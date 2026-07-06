@@ -1,10 +1,24 @@
 """Form commands for the user-scoped public API."""
 
+from collections.abc import Callable
 from typing import Any
 
 import click
 
 from dailybot_cli.api_client import APIError, DailyBotClient
+from dailybot_cli.commands.authoring_helpers import (
+    build_question,
+    build_question_edit_fields,
+    build_questions_interactively,
+    check_report_channels,
+    parse_options,
+    parse_questions_file,
+    question_extras_options,
+    require_short_question,
+    require_short_questions,
+    resolve_form_config,
+    resolve_question_extras,
+)
 from dailybot_cli.commands.public_api_helpers import (
     confirm_write,
     emit_json,
@@ -19,11 +33,16 @@ from dailybot_cli.commands.user_scoped_actions import (
 )
 from dailybot_cli.display import (
     console,
+    print_archived,
+    print_form_created,
     print_form_detail,
     print_form_response_deleted,
     print_form_response_detail,
     print_form_response_state,
     print_form_responses_table,
+    print_question,
+    print_questions_table,
+    print_reordered,
     print_success,
 )
 
@@ -36,6 +55,104 @@ def _maybe_load_form(client: DailyBotClient, form_uuid: str) -> dict[str, Any] |
         return None
 
 
+def _form_config_flag_options(func: Callable[..., Any]) -> Callable[..., Any]:
+    """Attach the shared form-configuration flags to create + config.
+
+    Dest names match ``authoring_helpers.resolve_form_config`` kwargs so the
+    callback can forward them as ``**config_flags``. Toggle flags default to
+    ``None`` (unset → not sent), keeping ``config`` a partial update.
+    """
+    options: list[Callable[..., Any]] = [
+        click.option("--active/--inactive", "is_active", default=None, help="Activate/deactivate."),
+        click.option(
+            "--anonymous/--no-anonymous",
+            "is_anonymous",
+            default=None,
+            help="Collect responses anonymously.",
+        ),
+        click.option(
+            "--public/--no-public",
+            "allow_public_responses",
+            default=None,
+            help="Allow public (shared-link) responses.",
+        ),
+        click.option(
+            "--brand/--no-brand",
+            "brand_with_logo",
+            default=None,
+            help="Brand the public form with your org logo.",
+        ),
+        click.option(
+            "--require-identity/--no-require-identity",
+            "require_email_and_name",
+            default=None,
+            help="Make email + name mandatory on public responses.",
+        ),
+        click.option(
+            "--reopen-from-final/--no-reopen-from-final",
+            "allow_reopen_from_final_state",
+            default=None,
+            help="Allow moving a response out of the final state.",
+        ),
+        click.option(
+            "--state",
+            "states",
+            multiple=True,
+            help='Workflow state "Label:#color" (repeatable, ordered). Enables the workflow.',
+        ),
+        click.option(
+            "--no-workflow", "no_workflow", is_flag=True, help="Turn the workflow/states off."
+        ),
+        click.option(
+            "--can-edit", "can_edit", default=None, help="everyone / owner_and_admins / restricted."
+        ),
+        click.option("--can-edit-user", "can_edit_users", multiple=True, help="Restricted editor."),
+        click.option("--can-edit-team", "can_edit_teams", multiple=True, help="Restricted editor."),
+        click.option(
+            "--can-see", "can_see", default=None, help="everyone / owner_and_admins / restricted."
+        ),
+        click.option("--can-see-user", "can_see_users", multiple=True, help="Restricted viewer."),
+        click.option("--can-see-team", "can_see_teams", multiple=True, help="Restricted viewer."),
+        click.option(
+            "--can-change-states",
+            "can_change_states",
+            default=None,
+            help="everyone / owner_and_admins / restricted.",
+        ),
+        click.option(
+            "--change-states-user", "change_states_users", multiple=True, help="Restricted mover."
+        ),
+        click.option(
+            "--change-states-team", "change_states_teams", multiple=True, help="Restricted mover."
+        ),
+        click.option(
+            "--approval/--no-approval",
+            "use_for_approval",
+            default=None,
+            help="File new submissions for approval.",
+        ),
+        click.option(
+            "--approver-user",
+            "approver_users",
+            multiple=True,
+            help="Approver (name, email, or UUID).",
+        ),
+        click.option(
+            "--approver-team", "approver_teams", multiple=True, help="Approver team (name or UUID)."
+        ),
+        click.option(
+            "--no-approvers", "no_approvers", is_flag=True, help="Clear the approver list."
+        ),
+        click.option("--command", "command", default=None, help="ChatOps shortcut name."),
+        click.option(
+            "--no-command", "no_command", is_flag=True, help="Remove the ChatOps shortcut."
+        ),
+    ]
+    for option in reversed(options):
+        func = option(func)
+    return func
+
+
 @click.group()
 def form() -> None:
     """Manage forms with your Dailybot session.
@@ -46,20 +163,27 @@ def form() -> None:
 
 
 @form.command("list")
+@click.option(
+    "--include-archived",
+    is_flag=True,
+    help="Include archived forms (hidden by default).",
+)
 @click.option("--json", "json_mode", is_flag=True, help="Emit machine-readable JSON to stdout.")
-def form_list(json_mode: bool) -> None:
+def form_list(include_archived: bool, json_mode: bool) -> None:
     """List forms visible to you.
 
     \b
     Acts as you. You can only see and act on what you could in the webapp.
+    Archived forms are hidden unless you pass --include-archived.
 
     \b
     Examples:
       dailybot form list
+      dailybot form list --include-archived
       dailybot form list --json
     """
     client = require_auth()
-    execute_form_list(client, json_mode=json_mode)
+    execute_form_list(client, json_mode=json_mode, include_archived=include_archived)
 
 
 @form.command("get")
@@ -134,6 +258,17 @@ def form_submit(
 @click.argument("form_uuid")
 @click.option("--state", default=None, help="Filter by current_state (workflow forms only).")
 @click.option(
+    "--all",
+    "all_responses",
+    is_flag=True,
+    help="List everyone's responses (admin/owner only; a member gets 403).",
+)
+@click.option("--user", default=None, help="Filter to one user's responses (admin/owner only).")
+@click.option(
+    "--from", "date_from", default=None, help="Responses on/after this date (YYYY-MM-DD)."
+)
+@click.option("--to", "date_to", default=None, help="Responses on/before this date (YYYY-MM-DD).")
+@click.option(
     "--latest",
     is_flag=True,
     help="Return only the most recent response (continue where you left off).",
@@ -142,24 +277,38 @@ def form_submit(
 def form_responses(
     form_uuid: str,
     state: str | None,
+    all_responses: bool,
+    user: str | None,
+    date_from: str | None,
+    date_to: str | None,
     latest: bool,
     json_mode: bool,
 ) -> None:
-    """List your own responses on a form.
+    """List responses on a form.
 
     \b
-    Acts as you. The server returns only responses you authored.
+    Acts as you. By default the server returns only responses you authored.
+    --all / --user surface others' responses and are admin/owner-only
+    (server-enforced — a member receives 403). --from / --to narrow the window.
 
     \b
     Examples:
       dailybot form responses <form_uuid>
       dailybot form responses <form_uuid> --state qa --json
-      dailybot form responses <form_uuid> --latest --json
+      dailybot form responses <form_uuid> --all --from 2026-01-01 --to 2026-06-30
+      dailybot form responses <form_uuid> --user <user_uuid> --json
     """
     client = require_auth()
     try:
         with console.status("Fetching responses..."):
-            responses: list[dict[str, Any]] = client.list_form_responses(form_uuid, state=state)
+            responses: list[dict[str, Any]] = client.list_form_responses(
+                form_uuid,
+                state=state,
+                all_responses=all_responses,
+                user=user,
+                date_from=date_from,
+                date_to=date_to,
+            )
     except APIError as exc:
         exit_for_api_error(exc, json_mode)
 
@@ -223,10 +372,12 @@ def form_update(
     assume_yes: bool,
     json_mode: bool,
 ) -> None:
-    """Patch new answers into one of your own in-progress responses.
+    """Patch new answers into a response.
 
     \b
-    Own-only. Admins are NOT elevated to other users' responses here.
+    The server authorizes by role: you may always edit your own response, and a
+    form owner / org admin may edit anyone's (audited as metadata.last_edited_by).
+    A non-privileged edit of someone else's response returns 403.
 
     \b
     Examples:
@@ -361,3 +512,454 @@ def form_delete(
         return
 
     print_form_response_deleted(form_uuid, response_uuid)
+
+
+@form.command("create")
+@click.option("--name", "-n", required=True, help="Form name.")
+@click.option(
+    "--questions-file",
+    default=None,
+    help="Path to a JSON array of question objects to seed the form.",
+)
+@click.option(
+    "--interactive",
+    is_flag=True,
+    help="Build questions interactively (requires a terminal).",
+)
+@click.option(
+    "--report-channel",
+    "report_channels",
+    multiple=True,
+    help="Report-channel UUID (repeatable). See `dailybot channels list`.",
+)
+@click.option(
+    "--ai-short-question",
+    "ai_short_question",
+    is_flag=True,
+    help="Let Dailybot's AI generate each question's report title instead of "
+    "requiring a 'short_question' on every question.",
+)
+@_form_config_flag_options
+@click.option("--json", "json_mode", is_flag=True, help="Emit machine-readable JSON to stdout.")
+def form_create(
+    name: str,
+    questions_file: str | None,
+    interactive: bool,
+    report_channels: tuple[str, ...],
+    ai_short_question: bool,
+    json_mode: bool,
+    **config_flags: Any,
+) -> None:
+    """Create a form (optionally seeded with questions and full config).
+
+    \b
+    Creating forms is role-gated server-side (admins/managers as applicable).
+    Seed questions with --questions-file or --interactive, or add them later via
+    `dailybot form questions add`. Each seeded question needs a report title
+    (--short-question / "short_question") unless you pass --ai-short-question. The
+    config flags (workflow states, permissions, anonymous/public/approval, command)
+    mirror the web Setup tab.
+
+    \b
+    Examples:
+      dailybot form create --name "Sprint Retro"
+      dailybot form create -n "Retro" --questions-file questions.json
+      dailybot form create -n "Release" --state "Draft:#ccc" --state "Done:#2ecc71" \\
+        --command release --can-edit owner_and_admins --report-channel <channel_uuid>
+    """
+    client = require_auth()
+    check_report_channels(report_channels)
+    if interactive:
+        questions: list[dict[str, Any]] | None = build_questions_interactively(ai_short_question)
+    elif questions_file:
+        questions = parse_questions_file(questions_file)
+    else:
+        questions = None
+    if questions:
+        require_short_questions(questions, ai_short_question)
+    config: dict[str, Any] = resolve_form_config(client, **config_flags)
+    try:
+        with console.status("Creating form..."):
+            result: dict[str, Any] = client.create_form(
+                name,
+                questions,
+                report_channels=list(report_channels) if report_channels else None,
+                generate_short_question=ai_short_question,
+                config=config or None,
+            )
+    except APIError as exc:
+        exit_for_api_error(exc, json_mode)
+
+    if json_mode:
+        emit_json(result)
+        return
+    print_form_created(result)
+
+
+@form.command("edit")
+@click.argument("form_uuid")
+@click.option("--name", "-n", default=None, help="New form name.")
+@click.option(
+    "--report-channel",
+    "report_channels",
+    multiple=True,
+    help="Report-channel UUID (repeatable); replaces the form's channels.",
+)
+@click.option("--json", "json_mode", is_flag=True, help="Emit machine-readable JSON to stdout.")
+def form_edit(
+    form_uuid: str,
+    name: str | None,
+    report_channels: tuple[str, ...],
+    json_mode: bool,
+) -> None:
+    """Edit a form's name and/or report channels.
+
+    \b
+    Examples:
+      dailybot form edit <form_uuid> --name "Updated Retro"
+      dailybot form edit <form_uuid> --report-channel <channel_uuid> --json
+    """
+    if name is None and not report_channels:
+        raise click.UsageError("Nothing to edit. Pass --name and/or --report-channel.")
+    client = require_auth()
+    check_report_channels(report_channels)
+    try:
+        with console.status("Updating form..."):
+            result: dict[str, Any] = client.update_form_config(
+                form_uuid,
+                name=name,
+                report_channels=list(report_channels) if report_channels else None,
+            )
+    except APIError as exc:
+        exit_for_api_error(exc, json_mode)
+
+    if json_mode:
+        emit_json(result)
+        return
+    print_success(f"Form {form_uuid} updated.")
+    print_form_created(result, updated=True)
+
+
+@form.command("config")
+@click.argument("form_uuid")
+@click.option("--name", "-n", default=None, help="New form name.")
+@click.option(
+    "--report-channel",
+    "report_channels",
+    multiple=True,
+    help="Report-channel UUID (repeatable); replaces the form's channels.",
+)
+@_form_config_flag_options
+@click.option("--json", "json_mode", is_flag=True, help="Emit machine-readable JSON to stdout.")
+def form_config(
+    form_uuid: str,
+    name: str | None,
+    report_channels: tuple[str, ...],
+    json_mode: bool,
+    **config_flags: Any,
+) -> None:
+    """Edit a form's full configuration (partial update).
+
+    \b
+    Superset of `form edit`: name + channels plus workflow states, permissions,
+    anonymous/public/approval settings, and the ChatOps command — mirroring the web
+    Setup tab. Only the flags you pass change; role-gated server-side.
+
+    \b
+    Examples:
+      dailybot form config <form_uuid> --inactive --command release
+      dailybot form config <form_uuid> --state "Draft:#ccc" --state "Done:#2ecc71"
+      dailybot form config <form_uuid> --anonymous --public --require-identity
+      dailybot form config <form_uuid> --can-see restricted --can-see-team "Eng"
+      dailybot form config <form_uuid> --approval --approver-user "Jane Doe"
+    """
+    client = require_auth()
+    check_report_channels(report_channels)
+    config: dict[str, Any] = resolve_form_config(client, **config_flags)
+    if name is None and not report_channels and not config:
+        raise click.UsageError(
+            "Nothing to edit. Pass --name, --report-channel, or a config flag (see --help)."
+        )
+    try:
+        with console.status("Updating form..."):
+            result: dict[str, Any] = client.update_form_config(
+                form_uuid,
+                name=name,
+                report_channels=list(report_channels) if report_channels else None,
+                config=config or None,
+            )
+    except APIError as exc:
+        exit_for_api_error(exc, json_mode)
+
+    if json_mode:
+        emit_json(result)
+        return
+    print_success(f"Form {form_uuid} updated.")
+    print_form_created(result, updated=True)
+
+
+@form.command("archive")
+@click.argument("form_uuid")
+@click.option("--yes", "-y", "assume_yes", is_flag=True, help="Skip the confirmation prompt.")
+@click.option("--json", "json_mode", is_flag=True, help="Emit machine-readable JSON to stdout.")
+def form_archive(form_uuid: str, assume_yes: bool, json_mode: bool) -> None:
+    """Archive (soft-delete) a form.
+
+    \b
+    Data is preserved server-side. This is distinct from `form delete`, which
+    removes an individual response.
+
+    \b
+    Examples:
+      dailybot form archive <form_uuid>
+      dailybot form archive <form_uuid> --yes
+    """
+    client = require_auth()
+    confirm_write(
+        [f"Form UUID: {form_uuid}", "This will archive (soft-delete) the form."],
+        assume_yes,
+    )
+    try:
+        with console.status("Archiving form..."):
+            client.archive_form(form_uuid)
+    except APIError as exc:
+        exit_for_api_error(exc, json_mode)
+
+    if json_mode:
+        emit_json({"archived": True, "form_uuid": form_uuid})
+        return
+    print_archived("form", form_uuid)
+
+
+@form.group("questions")
+def form_questions() -> None:
+    """Manage a form's questions (list / add / edit / delete / reorder)."""
+
+
+@form_questions.command("list")
+@click.argument("form_uuid")
+@click.option("--json", "json_mode", is_flag=True, help="Emit machine-readable JSON to stdout.")
+def form_questions_list(form_uuid: str, json_mode: bool) -> None:
+    """List a form's questions.
+
+    \b
+    Examples:
+      dailybot form questions list <form_uuid>
+    """
+    client = require_auth()
+    try:
+        with console.status("Loading form..."):
+            data: dict[str, Any] = client.get_form(form_uuid)
+    except APIError as exc:
+        exit_for_api_error(exc, json_mode)
+
+    questions: list[dict[str, Any]] = data.get("questions") or []
+    if json_mode:
+        emit_json(questions)
+        return
+    print_questions_table(questions)
+
+
+@form_questions.command("add")
+@click.argument("form_uuid")
+@click.option(
+    "--type", "question_type", required=True, help="text/multiple_choice/boolean/numeric."
+)
+@click.option("--question", required=True, help="The question text.")
+@click.option("--options", default=None, help="Comma-separated options (multiple_choice only).")
+@click.option("--required/--optional", "required", default=True, help="Mark the question required.")
+@click.option(
+    "--blocker/--no-blocker",
+    "is_blocker",
+    default=False,
+    help="Tag this as the blocker question.",
+)
+@question_extras_options
+@click.option(
+    "--ai-short-question",
+    "ai_short_question",
+    is_flag=True,
+    help="Skip --short-question and let Dailybot's AI generate the report title.",
+)
+@click.option("--json", "json_mode", is_flag=True, help="Emit machine-readable JSON to stdout.")
+def form_questions_add(
+    form_uuid: str,
+    question_type: str,
+    question: str,
+    options: str | None,
+    required: bool,
+    is_blocker: bool,
+    ai_short_question: bool,
+    json_mode: bool,
+    **extra_flags: Any,
+) -> None:
+    """Add a question to a form.
+
+    \b
+    A report title (--short-question) is required unless you pass
+    --ai-short-question. Other extras: --variation (repeatable), and logic via
+    --logic-file or inline --jump-if-equals/--jump-to.
+
+    \b
+    Examples:
+      dailybot form questions add <form_uuid> --type text \\
+        --question "What went well?" --short-question "Wins"
+      dailybot form questions add <form_uuid> --type multiple_choice \\
+        --question "Rating?" --options "Excellent,Good,Average,Poor" --ai-short-question
+      dailybot form questions add <form_uuid> --type boolean --question "Ship it?" \\
+        --short-question "Ship" --jump-if-equals "No" --jump-to 4
+    """
+    client = require_auth()
+    require_short_question(extra_flags.get("short_question"), ai_short_question)
+    extras: dict[str, Any] = resolve_question_extras(**extra_flags)
+    payload: dict[str, Any] = build_question(
+        question_type,
+        question,
+        options=parse_options(options),
+        required=required,
+        is_blocker=is_blocker,
+        **extras,
+    )
+    if ai_short_question:
+        payload["generate_short_question"] = True
+    try:
+        with console.status("Adding question..."):
+            result: dict[str, Any] = client.add_form_question(form_uuid, payload)
+    except APIError as exc:
+        exit_for_api_error(exc, json_mode)
+
+    if json_mode:
+        emit_json(result)
+        return
+    print_success("Question added.")
+    print_question(result)
+
+
+@form_questions.command("edit")
+@click.argument("form_uuid")
+@click.argument("question_uuid")
+@click.option("--question", default=None, help="New question text.")
+@click.option("--type", "question_type", default=None, help="New question type.")
+@click.option("--options", default=None, help="New comma-separated options (multiple_choice).")
+@click.option("--required/--optional", "required", default=None, help="Toggle required.")
+@click.option(
+    "--blocker/--no-blocker",
+    "is_blocker",
+    default=None,
+    help="Toggle the blocker tag.",
+)
+@question_extras_options
+@click.option("--json", "json_mode", is_flag=True, help="Emit machine-readable JSON to stdout.")
+def form_questions_edit(
+    form_uuid: str,
+    question_uuid: str,
+    question: str | None,
+    question_type: str | None,
+    options: str | None,
+    required: bool | None,
+    is_blocker: bool | None,
+    json_mode: bool,
+    **extra_flags: Any,
+) -> None:
+    """Update a question's text, type, options, required, blocker, or extras.
+
+    \b
+    Extras: --short-question (report title), --variation (repeatable), and logic
+    via --logic-file or inline --jump-if-equals/--jump-to.
+
+    \b
+    Examples:
+      dailybot form questions edit <form_uuid> <question_uuid> --question "Reworded?"
+      dailybot form questions edit <form_uuid> <question_uuid> --optional
+      dailybot form questions edit <form_uuid> <question_uuid> \\
+        --short-question "Rating" --variation "How would you rate it?"
+    """
+    extras: dict[str, Any] = resolve_question_extras(**extra_flags)
+    fields: dict[str, Any] = build_question_edit_fields(
+        question, question_type, options, required, is_blocker, **extras
+    )
+    if not fields:
+        raise click.UsageError(
+            "Nothing to edit. Pass --question, --type, --options, --required, --blocker, "
+            "--short-question, --variation, or logic (--logic-file / --jump-if-equals + --jump-to)."
+        )
+    client = require_auth()
+    try:
+        with console.status("Updating question..."):
+            result: dict[str, Any] = client.update_form_question(form_uuid, question_uuid, fields)
+    except APIError as exc:
+        exit_for_api_error(exc, json_mode)
+
+    if json_mode:
+        emit_json(result)
+        return
+    print_success("Question updated.")
+    print_question(result)
+
+
+@form_questions.command("delete")
+@click.argument("form_uuid")
+@click.argument("question_uuid")
+@click.option("--yes", "-y", "assume_yes", is_flag=True, help="Skip the confirmation prompt.")
+@click.option("--json", "json_mode", is_flag=True, help="Emit machine-readable JSON to stdout.")
+def form_questions_delete(
+    form_uuid: str,
+    question_uuid: str,
+    assume_yes: bool,
+    json_mode: bool,
+) -> None:
+    """Remove a question from a form.
+
+    \b
+    Examples:
+      dailybot form questions delete <form_uuid> <question_uuid>
+      dailybot form questions delete <form_uuid> <question_uuid> --yes
+    """
+    client = require_auth()
+    confirm_write(
+        [
+            f"Form UUID: {form_uuid}",
+            f"Question UUID: {question_uuid}",
+            "This will permanently remove the question.",
+        ],
+        assume_yes,
+    )
+    try:
+        with console.status("Deleting question..."):
+            client.delete_form_question(form_uuid, question_uuid)
+    except APIError as exc:
+        exit_for_api_error(exc, json_mode)
+
+    if json_mode:
+        emit_json({"deleted": True, "form_uuid": form_uuid, "question_uuid": question_uuid})
+        return
+    print_success(f"Question {question_uuid} deleted.")
+
+
+@form_questions.command("reorder")
+@click.argument("form_uuid")
+@click.argument("question_uuids", nargs=-1, required=True)
+@click.option("--json", "json_mode", is_flag=True, help="Emit machine-readable JSON to stdout.")
+def form_questions_reorder(
+    form_uuid: str,
+    question_uuids: tuple[str, ...],
+    json_mode: bool,
+) -> None:
+    """Set a new question order (pass question UUIDs in the desired order).
+
+    \b
+    Examples:
+      dailybot form questions reorder <form_uuid> <q3> <q1> <q2>
+    """
+    client = require_auth()
+    order: list[str] = list(question_uuids)
+    try:
+        with console.status("Reordering questions..."):
+            client.reorder_form_questions(form_uuid, order)
+    except APIError as exc:
+        exit_for_api_error(exc, json_mode)
+
+    if json_mode:
+        emit_json({"reordered": True, "form_uuid": form_uuid, "order": order})
+        return
+    print_reordered("form", order)

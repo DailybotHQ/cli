@@ -866,7 +866,14 @@ class TestFormLifecycle:
         payload: list[dict[str, Any]] = json.loads(result.output)
         assert len(payload) == 1
         assert payload[0]["id"] == "r1"
-        mock_client.list_form_responses.assert_called_once_with("form-uuid-1", state=None)
+        mock_client.list_form_responses.assert_called_once_with(
+            "form-uuid-1",
+            state=None,
+            all_responses=False,
+            user=None,
+            date_from=None,
+            date_to=None,
+        )
 
     @patch("dailybot_cli.commands.public_api_helpers.get_agent_auth")
     @patch("dailybot_cli.commands.public_api_helpers.DailyBotClient")
@@ -882,7 +889,14 @@ class TestFormLifecycle:
 
         result = runner.invoke(cli, ["form", "responses", "form-uuid-1", "--state", "qa", "--json"])
         assert result.exit_code == 0
-        mock_client.list_form_responses.assert_called_once_with("form-uuid-1", state="qa")
+        mock_client.list_form_responses.assert_called_once_with(
+            "form-uuid-1",
+            state="qa",
+            all_responses=False,
+            user=None,
+            date_from=None,
+            date_to=None,
+        )
 
     @patch("dailybot_cli.commands.public_api_helpers.get_agent_auth")
     @patch("dailybot_cli.commands.public_api_helpers.DailyBotClient")
@@ -1132,19 +1146,31 @@ class TestCheckinExtendedCommands:
         self, mock_client_cls: MagicMock, mock_get_auth: MagicMock, runner: CliRunner
     ) -> None:
         client: MagicMock = self._client(mock_client_cls, mock_get_auth)
-        client.get_checkin.return_value = {
-            "uuid": "f1",
+        client.get_checkin_detail.return_value = {
+            "id": "f1",
             "name": "Standup",
-            "template": {"uuid": "t1"},
-        }
-        client.get_template.return_value = {
-            "questions": [{"uuid": "q1", "question": "Done?", "question_type": "text_field"}]
+            "is_archived": False,
+            "schedule": {"days": [1, 2, 3], "time": "09:00", "timezone": "UTC"},
+            "questions": [
+                {
+                    "uuid": "q1",
+                    "index": 0,
+                    "question": "Done?",
+                    "question_type": "text",
+                    "required": True,
+                    "is_blocker": False,
+                    "choices": [],
+                }
+            ],
+            "participants": {"users": [{"uuid": "u1", "name": "Jane Doe"}], "teams": []},
+            "report_channels": [{"id": "C1", "type": "channel", "reporting_enabled": True}],
         }
         result = runner.invoke(cli, ["checkin", "show", "f1", "--json"])
         assert result.exit_code == 0
         payload: dict[str, Any] = json.loads(result.output)
         assert payload["questions"][0]["uuid"] == "q1"
-        client.get_template.assert_called_once_with("t1", followup_uuid="f1")
+        assert payload["participants"]["users"][0]["name"] == "Jane Doe"
+        client.get_checkin_detail.assert_called_once_with("f1")
 
     @patch("dailybot_cli.commands.public_api_helpers.get_agent_auth")
     @patch("dailybot_cli.commands.public_api_helpers.DailyBotClient")

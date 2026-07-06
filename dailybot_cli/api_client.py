@@ -256,6 +256,7 @@ class DailyBotClient:
         date: str | None = None,
         include_summary: bool = False,
         include_pending_users: bool = False,
+        include_archived: bool = False,
     ) -> list[dict[str, Any]]:
         """GET /v1/checkins/ — fetch visible check-ins with optional completion state."""
         results: list[dict[str, Any]] = []
@@ -266,6 +267,8 @@ class DailyBotClient:
             params["include_summary"] = "true"
         if include_pending_users:
             params["include_pending_users"] = "true"
+        if include_archived:
+            params["include_archived"] = "true"
         url: str | None = f"{self.api_url}/v1/checkins/"
         pages_fetched: int = 0
         while url is not None and pages_fetched < _MAX_LIST_PAGES:
@@ -298,6 +301,21 @@ class DailyBotClient:
         )
         return self._handle_response(response)
 
+    def get_checkin_detail(self, followup_uuid: str) -> dict[str, Any]:
+        """GET /v1/checkins/<followup_uuid>/detail/ — canonical authoring read.
+
+        Returns the check-in with the canonical question shape, resolved
+        ``participants`` (users/teams with names), attached ``report_channels``
+        and the ``is_archived`` flag — the shape aligned with form detail. Use
+        this for authoring/verification rather than the v2 retrieve serializer.
+        """
+        response: httpx.Response = httpx.get(
+            f"{self.api_url}/v1/checkins/{followup_uuid}/detail/",
+            headers=self._headers(),
+            timeout=self.timeout,
+        )
+        return self._handle_response(response)
+
     def get_template(
         self,
         template_uuid: str,
@@ -322,13 +340,25 @@ class DailyBotClient:
         *,
         date_start: str | None = None,
         date_end: str | None = None,
+        all_responses: bool = False,
+        user: str | None = None,
     ) -> list[dict[str, Any]]:
-        """GET /v1/checkins/<followup_uuid>/responses/."""
+        """GET /v1/checkins/<followup_uuid>/responses/.
+
+        Without filters the server returns only the caller's own responses.
+        ``all_responses`` / ``user`` are admin/owner-only server-side (a member
+        receives 403). Note check-ins use ``date_start`` / ``date_end`` (forms
+        use ``date_from`` / ``date_to``).
+        """
         params: dict[str, str] = {}
         if date_start:
             params["date_start"] = date_start
         if date_end:
             params["date_end"] = date_end
+        if all_responses:
+            params["all"] = "true"
+        if user:
+            params["user"] = user
         response: httpx.Response = httpx.get(
             f"{self.api_url}/v1/checkins/{followup_uuid}/responses/",
             headers=self._headers(),
@@ -382,6 +412,152 @@ class DailyBotClient:
         )
         return self._handle_response(response)
 
+    # --- Check-ins authoring ---
+
+    def create_checkin(
+        self,
+        name: str,
+        *,
+        schedule: dict[str, Any] | None = None,
+        participants: dict[str, Any] | None = None,
+        questions: list[dict[str, Any]] | None = None,
+        report_channels: list[str] | None = None,
+        config: dict[str, Any] | None = None,
+        generate_short_question: bool = False,
+    ) -> dict[str, Any]:
+        """POST /v1/checkins/create/ — create a check-in with schedule + questions.
+
+        ``config`` carries the extra scheduling/behavior fields (frequency,
+        reminders, timezone mode, submission rules, privacy, …) merged inline.
+        ``generate_short_question`` opts into AI report-title generation for
+        questions that were seeded without an explicit ``short_question``.
+        """
+        payload: dict[str, Any] = {"name": name}
+        if schedule is not None:
+            payload["schedule"] = schedule
+        if participants is not None:
+            payload["participants"] = participants
+        if questions:
+            payload["questions"] = questions
+        if report_channels is not None:
+            payload["report_channels"] = report_channels
+        if generate_short_question:
+            payload["generate_short_question"] = True
+        if config:
+            payload.update(config)
+        response: httpx.Response = httpx.post(
+            f"{self.api_url}/v1/checkins/create/",
+            json=payload,
+            headers=self._headers(),
+            timeout=self.timeout,
+        )
+        return self._handle_response(response)
+
+    def update_checkin_config(
+        self,
+        followup_uuid: str,
+        *,
+        name: str | None = None,
+        schedule: dict[str, Any] | None = None,
+        report_channels: list[str] | None = None,
+        is_active: bool | None = None,
+        participants: dict[str, Any] | None = None,
+        config: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        """PATCH /v1/checkins/<followup_uuid>/config/ — edit config (partial update).
+
+        ``config`` carries the extra scheduling/behavior fields (frequency,
+        reminders, timezone mode, submission rules, privacy, …); only the keys
+        present are changed.
+        """
+        payload: dict[str, Any] = {}
+        if name is not None:
+            payload["name"] = name
+        if schedule is not None:
+            payload["schedule"] = schedule
+        if report_channels is not None:
+            payload["report_channels"] = report_channels
+        if is_active is not None:
+            payload["is_active"] = is_active
+        if participants is not None:
+            payload["participants"] = participants
+        if config:
+            payload.update(config)
+        response: httpx.Response = httpx.patch(
+            f"{self.api_url}/v1/checkins/{followup_uuid}/config/",
+            json=payload,
+            headers=self._headers(),
+            timeout=self.timeout,
+        )
+        return self._handle_response(response)
+
+    def archive_checkin(self, followup_uuid: str) -> dict[str, Any]:
+        """DELETE /v1/checkins/<followup_uuid>/archive/ — soft-delete a check-in (204)."""
+        response: httpx.Response = httpx.request(
+            "DELETE",
+            f"{self.api_url}/v1/checkins/{followup_uuid}/archive/",
+            headers=self._headers(),
+            timeout=self.timeout,
+        )
+        return self._handle_response(response)
+
+    def add_checkin_question(
+        self,
+        followup_uuid: str,
+        question: dict[str, Any],
+    ) -> dict[str, Any]:
+        """POST /v1/checkins/<followup_uuid>/questions/ — add a question."""
+        response: httpx.Response = httpx.post(
+            f"{self.api_url}/v1/checkins/{followup_uuid}/questions/",
+            json=question,
+            headers=self._headers(),
+            timeout=self.timeout,
+        )
+        return self._handle_response(response)
+
+    def update_checkin_question(
+        self,
+        followup_uuid: str,
+        question_uuid: str,
+        fields: dict[str, Any],
+    ) -> dict[str, Any]:
+        """PATCH /v1/checkins/<followup_uuid>/questions/<question_uuid>/ — update a question."""
+        response: httpx.Response = httpx.patch(
+            f"{self.api_url}/v1/checkins/{followup_uuid}/questions/{question_uuid}/",
+            json=fields,
+            headers=self._headers(),
+            timeout=self.timeout,
+        )
+        return self._handle_response(response)
+
+    def delete_checkin_question(
+        self,
+        followup_uuid: str,
+        question_uuid: str,
+    ) -> dict[str, Any]:
+        """DELETE /v1/checkins/<followup_uuid>/questions/<question_uuid>/delete/ (204)."""
+        response: httpx.Response = httpx.request(
+            "DELETE",
+            f"{self.api_url}/v1/checkins/{followup_uuid}/questions/{question_uuid}/delete/",
+            headers=self._headers(),
+            timeout=self.timeout,
+        )
+        return self._handle_response(response)
+
+    def reorder_checkin_questions(
+        self,
+        followup_uuid: str,
+        order: list[str],
+    ) -> dict[str, Any]:
+        """PUT /v1/checkins/<followup_uuid>/questions/reorder/ — set a new question order."""
+        response: httpx.Response = httpx.put(
+            f"{self.api_url}/v1/checkins/{followup_uuid}/questions/reorder/",
+            json={"question_uuids": order},
+            headers=self._headers(),
+            timeout=self.timeout,
+        )
+        return self._handle_response(response)
+
     def get_mood(self, mood_date: str | None = None) -> dict[str, Any]:
         """GET /v1/mood/track/ — fetch today's mood response."""
         params: dict[str, str] = {}
@@ -408,9 +584,15 @@ class DailyBotClient:
         )
         return self._handle_response(response)
 
-    def list_forms(self, *, include_questions: bool = False) -> list[dict[str, Any]]:
-        """GET /v1/forms/ — optionally expand question definitions per form."""
-        params: dict[str, str] = {"include": "questions"} if include_questions else {}
+    def list_forms(
+        self, *, include_questions: bool = False, include_archived: bool = False
+    ) -> list[dict[str, Any]]:
+        """GET /v1/forms/ — optionally expand questions and include archived forms."""
+        params: dict[str, str] = {}
+        if include_questions:
+            params["include"] = "questions"
+        if include_archived:
+            params["include_archived"] = "true"
         response: httpx.Response = httpx.get(
             f"{self.api_url}/v1/forms/",
             headers=self._headers(),
@@ -449,11 +631,29 @@ class DailyBotClient:
         form_uuid: str,
         *,
         state: str | None = None,
+        all_responses: bool = False,
+        user: str | None = None,
+        date_from: str | None = None,
+        date_to: str | None = None,
     ) -> list[dict[str, Any]]:
-        """GET /v1/forms/<form_uuid>/responses/ — list the caller's own responses."""
+        """GET /v1/forms/<form_uuid>/responses/ — list responses.
+
+        Without filters the server returns only the caller's own responses.
+        ``all_responses`` / ``user`` are admin/owner-only server-side (a member
+        receives 403); ``date_from`` / ``date_to`` (``YYYY-MM-DD``) narrow the
+        window for anyone.
+        """
         params: dict[str, str] = {}
         if state:
             params["state"] = state
+        if all_responses:
+            params["all"] = "true"
+        if user:
+            params["user"] = user
+        if date_from:
+            params["date_from"] = date_from
+        if date_to:
+            params["date_to"] = date_to
         response: httpx.Response = httpx.get(
             f"{self.api_url}/v1/forms/{form_uuid}/responses/",
             headers=self._headers(),
@@ -530,15 +730,177 @@ class DailyBotClient:
         )
         return self._handle_response(response)
 
-    def list_users(self, *, include_inactive: bool = False) -> list[dict[str, Any]]:
+    # --- Report channels ---
+
+    def list_report_channels(self) -> list[dict[str, Any]]:
+        """GET /v1/report-channels/ — reporting channels available to the caller.
+
+        The endpoint returns ``{"channels": [{id, name, platform, type}], "total": N}``;
+        older/other deployments may return ``{"results": [...]}`` or a bare list.
+        All three are accepted.
+        """
+        response: httpx.Response = httpx.get(
+            f"{self.api_url}/v1/report-channels/",
+            headers=self._headers(),
+            timeout=self.timeout,
+        )
+        if response.status_code >= 400:
+            self._handle_response(response)
+        body: Any = response.json()
+        if isinstance(body, dict):
+            if "channels" in body:
+                return list(body.get("channels", []))
+            if "results" in body:
+                return list(body.get("results", []))
+        if isinstance(body, list):
+            return body
+        return []
+
+    # --- Forms authoring ---
+
+    def create_form(
+        self,
+        name: str,
+        questions: list[dict[str, Any]] | None = None,
+        *,
+        report_channels: list[str] | None = None,
+        generate_short_question: bool = False,
+        config: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        """POST /v1/forms/create/ — create a form with optional questions + channels.
+
+        ``generate_short_question`` opts into AI report-title generation for
+        questions seeded without an explicit ``short_question``. ``config`` carries
+        the form-level fields (privacy/workflow/permissions/anonymous/public/approval/
+        command) merged inline.
+        """
+        payload: dict[str, Any] = {"name": name}
+        if questions:
+            payload["questions"] = questions
+        if report_channels:
+            payload["report_channels"] = report_channels
+        if generate_short_question:
+            payload["generate_short_question"] = True
+        if config:
+            payload.update(config)
+        response: httpx.Response = httpx.post(
+            f"{self.api_url}/v1/forms/create/",
+            json=payload,
+            headers=self._headers(),
+            timeout=self.timeout,
+        )
+        return self._handle_response(response)
+
+    def update_form_config(
+        self,
+        form_uuid: str,
+        *,
+        name: str | None = None,
+        report_channels: list[str] | None = None,
+        config: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        """PATCH /v1/forms/<form_uuid>/config/ — edit name, channels, and/or config.
+
+        ``config`` carries the form-level fields (workflow/permissions/anonymous/
+        public/approval/command) merged inline; only the keys present change.
+        """
+        payload: dict[str, Any] = {}
+        if name is not None:
+            payload["name"] = name
+        if report_channels is not None:
+            payload["report_channels"] = report_channels
+        if config:
+            payload.update(config)
+        response: httpx.Response = httpx.patch(
+            f"{self.api_url}/v1/forms/{form_uuid}/config/",
+            json=payload,
+            headers=self._headers(),
+            timeout=self.timeout,
+        )
+        return self._handle_response(response)
+
+    def archive_form(self, form_uuid: str) -> dict[str, Any]:
+        """DELETE /v1/forms/<form_uuid>/archive/ — soft-delete a form (204)."""
+        response: httpx.Response = httpx.request(
+            "DELETE",
+            f"{self.api_url}/v1/forms/{form_uuid}/archive/",
+            headers=self._headers(),
+            timeout=self.timeout,
+        )
+        return self._handle_response(response)
+
+    def add_form_question(
+        self,
+        form_uuid: str,
+        question: dict[str, Any],
+    ) -> dict[str, Any]:
+        """POST /v1/forms/<form_uuid>/questions/ — add a question to a form."""
+        response: httpx.Response = httpx.post(
+            f"{self.api_url}/v1/forms/{form_uuid}/questions/",
+            json=question,
+            headers=self._headers(),
+            timeout=self.timeout,
+        )
+        return self._handle_response(response)
+
+    def update_form_question(
+        self,
+        form_uuid: str,
+        question_uuid: str,
+        fields: dict[str, Any],
+    ) -> dict[str, Any]:
+        """PATCH /v1/forms/<form_uuid>/questions/<question_uuid>/ — update a question."""
+        response: httpx.Response = httpx.patch(
+            f"{self.api_url}/v1/forms/{form_uuid}/questions/{question_uuid}/",
+            json=fields,
+            headers=self._headers(),
+            timeout=self.timeout,
+        )
+        return self._handle_response(response)
+
+    def delete_form_question(
+        self,
+        form_uuid: str,
+        question_uuid: str,
+    ) -> dict[str, Any]:
+        """DELETE /v1/forms/<form_uuid>/questions/<question_uuid>/delete/ (204)."""
+        response: httpx.Response = httpx.request(
+            "DELETE",
+            f"{self.api_url}/v1/forms/{form_uuid}/questions/{question_uuid}/delete/",
+            headers=self._headers(),
+            timeout=self.timeout,
+        )
+        return self._handle_response(response)
+
+    def reorder_form_questions(
+        self,
+        form_uuid: str,
+        order: list[str],
+    ) -> dict[str, Any]:
+        """PUT /v1/forms/<form_uuid>/questions/reorder/ — set a new question order."""
+        response: httpx.Response = httpx.put(
+            f"{self.api_url}/v1/forms/{form_uuid}/questions/reorder/",
+            json={"question_uuids": order},
+            headers=self._headers(),
+            timeout=self.timeout,
+        )
+        return self._handle_response(response)
+
+    def list_users(
+        self, *, include_inactive: bool = False, include_email: bool = False
+    ) -> list[dict[str, Any]]:
         """GET /v1/users/ — fetch all pages and return the combined results list.
 
         By default returns only members with ``is_active`` truthy. Pass
         ``include_inactive=True`` to get the unfiltered server response (useful
         for admin / audit flows that need to surface deactivated accounts).
+        ``include_email=True`` requests the ``email`` field (server-gated to
+        admins/managers; silently omitted otherwise) so callers can resolve a
+        person by email.
         """
         results: list[dict[str, Any]] = []
-        url: str | None = f"{self.api_url}/v1/users/"
+        base_url: str = f"{self.api_url}/v1/users/"
+        url: str | None = f"{base_url}?include_email=true" if include_email else base_url
         pages_fetched: int = 0
         while url is not None and pages_fetched < _MAX_LIST_PAGES:
             response: httpx.Response = httpx.get(

@@ -491,31 +491,138 @@ def print_checkin_status_table(checkins: list[dict[str, Any]], *, date_label: st
     console.print(table)
 
 
-def print_checkin_detail(checkin: dict[str, Any], questions: list[dict[str, Any]]) -> None:
-    """Display a check-in's configuration and question definitions."""
-    lines: list[str] = [f"[bold]{_checkin_name(checkin)}[/bold]", f"UUID: {_checkin_uuid(checkin)}"]
-    schedule: dict[str, Any] = checkin.get("schedule") or {}
-    for label, key in (("Frequency", "frequency"), ("Time", "time"), ("Timezone", "timezone")):
-        value: Any = checkin.get(key) or schedule.get(key)
+def _print_participants(participants: dict[str, Any]) -> None:
+    """Render resolved check-in participants (users/teams with names)."""
+    users: list[dict[str, Any]] = participants.get("users") or []
+    teams: list[dict[str, Any]] = participants.get("teams") or []
+    if not users and not teams:
+        return
+    table: Table = Table(title="Participants", border_style="cyan")
+    table.add_column("Type")
+    table.add_column("Name", style="bold")
+    table.add_column("UUID", style="dim")
+    for user in users:
+        table.add_row("user", str(user.get("name") or ""), str(user.get("uuid") or ""))
+    for team in teams:
+        table.add_row("team", str(team.get("name") or ""), str(team.get("uuid") or ""))
+    console.print(table)
+
+
+def _print_attached_channels(channels: list[dict[str, Any]]) -> None:
+    """Render report channels attached to a form/check-in.
+
+    Detail returns ``{id, name, platform, type, reporting_enabled}``. Legacy
+    entries written before names were resolved carry empty ``name``/``platform``,
+    so the channel id is shown as a fallback.
+    """
+    if not channels:
+        return
+    table: Table = Table(title="Report Channels", border_style="cyan")
+    table.add_column("Channel", style="bold")
+    table.add_column("Platform")
+    table.add_column("Channel ID", style="dim")
+    table.add_column("Reporting")
+    for channel in channels:
+        channel_id: str = str(channel.get("id") or channel.get("uuid") or "")
+        name: str = str(channel.get("name") or "")
+        display_name: str = f"#{name}" if name else channel_id
+        table.add_row(
+            display_name,
+            str(channel.get("platform") or ""),
+            channel_id,
+            "on" if channel.get("reporting_enabled", True) else "off",
+        )
+    console.print(table)
+
+
+def _checkin_config_lines(detail: dict[str, Any]) -> list[str]:
+    """Summarize the scheduling/behavior config for the check-in panel.
+
+    Only surfaces fields that are present and meaningful, so pre-config check-ins
+    render exactly as before.
+    """
+    lines: list[str] = []
+    freq: Any = detail.get("frequency_type")
+    every: Any = detail.get("frequency")
+    if freq:
+        lines.append(f"Frequency: {freq}" + (f" (every {every})" if every and every != 1 else ""))
+    advanced: Any = detail.get("frequency_advanced")
+    if advanced and advanced != "disabled":
+        cron: Any = detail.get("frequency_cron")
+        lines.append(f"Advanced: {advanced}" + (f" ({cron})" if cron else ""))
+    if detail.get("start_on"):
+        span: str = str(detail.get("start_on"))
+        if detail.get("end_on"):
+            span += f" → {detail.get('end_on')}"
+        lines.append(f"Runs: {span}")
+    if detail.get("use_participant_timezone"):
+        lines.append("Timezone: each participant's own")
+    reminders: Any = detail.get("reminders_max_count")
+    if isinstance(reminders, int) and reminders > 0:
+        interval: Any = detail.get("reminders_frequency_time")
+        cond: Any = detail.get("reminders_trigger_condition")
+        extra: str = f" every {interval}m" if interval else ""
+        extra += f" ({cond})" if cond else ""
+        tone: Any = detail.get("reminder_tone")
+        extra += f", {tone} tone" if tone else ""
+        lines.append(f"Reminders: {reminders}{extra}")
+    elif reminders == 0:
+        lines.append("Reminders: off")
+    if detail.get("is_smart_checkin"):
+        ai_bits: list[str] = ["smart"]
+        if detail.get("is_intelligence_enabled"):
+            ai_bits.append("intelligence")
+        clarifying: Any = detail.get("max_clarifying_questions")
+        if isinstance(clarifying, int) and clarifying > 0:
+            ai_bits.append(f"{clarifying} clarifying Qs")
+        lines.append("AI: " + ", ".join(ai_bits))
+    flags: list[str] = []
+    if detail.get("is_anonymous"):
+        flags.append("anonymous")
+    if detail.get("use_user_defined_work_days"):
+        flags.append("respects work days")
+    if detail.get("allow_past_responses") is False:
+        flags.append("no past reports")
+    if detail.get("allow_future_responses") is False:
+        flags.append("no future reports")
+    if flags:
+        lines.append("Options: " + ", ".join(flags))
+    privacy: Any = detail.get("privacy")
+    if privacy:
+        lines.append(f"Privacy: {privacy}")
+    return lines
+
+
+def print_checkin_detail(detail: dict[str, Any]) -> None:
+    """Display a check-in from the canonical ``/detail/`` endpoint.
+
+    Consumes ``{name, schedule, questions, participants, report_channels,
+    is_archived}`` with the canonical question shape shared with forms.
+    """
+    name: str = str(detail.get("name") or "")
+    uuid: str = str(detail.get("id") or detail.get("uuid") or "")
+    lines: list[str] = [f"[bold]{name}[/bold]", f"UUID: {uuid}"]
+    if detail.get("is_archived"):
+        lines.append("[yellow]archived[/yellow]")
+    schedule: dict[str, Any] = detail.get("schedule") or {}
+    days: Any = schedule.get("days")
+    if days is not None:
+        lines.append(f"Days: {days}")
+    for label, key in (("Time", "time"), ("Timezone", "timezone")):
+        value: Any = schedule.get(key)
         if value:
             lines.append(f"{label}: {value}")
+    lines.extend(_checkin_config_lines(detail))
     console.print(Panel("\n".join(lines), title="Check-in", border_style="cyan"))
+
+    _print_participants(detail.get("participants") or {})
+    _print_attached_channels(detail.get("report_channels") or [])
+
+    questions: list[dict[str, Any]] = detail.get("questions") or []
     if not questions:
         print_info("No questions defined for this check-in.")
         return
-    table: Table = Table(title="Questions", border_style="cyan")
-    table.add_column("#", justify="right")
-    table.add_column("Question", style="bold")
-    table.add_column("Type")
-    table.add_column("Question UUID", style="dim")
-    for index, question in enumerate(questions):
-        table.add_row(
-            str(index),
-            str(question.get("question") or question.get("text") or ""),
-            str(question.get("question_type") or question.get("type") or "text"),
-            str(question.get("uuid") or question.get("id") or ""),
-        )
-    console.print(table)
+    console.print(_question_rows(questions))
 
 
 def print_checkin_history_table(responses: list[dict[str, Any]]) -> None:
@@ -546,10 +653,13 @@ def print_forms_table(forms: list[dict[str, Any]]) -> None:
         print_info("No forms visible to you.")
         return
 
+    show_status: bool = any(form.get("is_archived") for form in forms)
     table: Table = Table(title="Forms", border_style="cyan")
     table.add_column("Name", style="bold")
     table.add_column("Form UUID", style="dim")
     table.add_column("Questions", style="dim", justify="right")
+    if show_status:
+        table.add_column("Status")
     for form in forms:
         form_id: str = str(form.get("id") or "")
         if not form_id:
@@ -558,11 +668,14 @@ def print_forms_table(forms: list[dict[str, Any]]) -> None:
             form.get("questions") or form.get("template_questions") or form.get("fields") or []
         )
         count_str: str = str(question_count) if question_count else "—"
-        table.add_row(
-            str(form.get("name", "")),
-            form_id,
-            count_str,
-        )
+        row: list[Any] = [str(form.get("name", "")), form_id, count_str]
+        if show_status:
+            row.append(
+                Text("archived", style="yellow")
+                if form.get("is_archived")
+                else Text("active", style="green")
+            )
+        table.add_row(*row)
     console.print(table)
 
 
@@ -589,38 +702,83 @@ def _state_label_lookup(form_data: dict[str, Any]) -> dict[str, str]:
     return {str(s.get("key")): str(s.get("label") or s.get("key")) for s in states if s.get("key")}
 
 
+def _audience_label(audience: Any) -> str:
+    """Render a form permission audience (``who_can_edit`` etc.) for the panel."""
+    if not isinstance(audience, dict):
+        return str(audience or "")
+    mode: str = str(audience.get("mode") or "")
+    if mode == "restricted":
+        users: int = len(audience.get("user_uuids") or [])
+        teams: int = len(audience.get("team_uuids") or [])
+        return f"restricted ({users} user(s), {teams} team(s))"
+    return mode
+
+
+def _form_workflow(form_data: dict[str, Any]) -> tuple[bool, list[dict[str, Any]]]:
+    """Return (enabled, states) from the canonical nested ``workflow`` object."""
+    workflow: Any = form_data.get("workflow")
+    if isinstance(workflow, dict):
+        return bool(workflow.get("enabled")), list(workflow.get("states") or [])
+    return False, []
+
+
 def print_form_detail(form_data: dict[str, Any]) -> None:
-    """Render a form payload — metadata, workflow config, and questions."""
+    """Render a form payload — metadata, config, workflow states, and questions."""
     table: Table = Table(show_header=False, box=None, padding=(0, 2))
     table.add_column(style="bold")
     table.add_column()
     table.add_row("Name", str(form_data.get("name", "")))
     table.add_row("UUID", str(form_data.get("id", "")))
-    slug: str = str(form_data.get("slug", "") or "")
-    if slug:
-        table.add_row("Slug", slug)
-    workflow_enabled: bool = bool(form_data.get("workflow_enabled"))
-    table.add_row("Workflow", "[green]enabled[/green]" if workflow_enabled else "disabled")
-    if workflow_enabled:
+    if form_data.get("is_active") is False:
+        table.add_row("Status", "[yellow]inactive[/yellow]")
+    if form_data.get("is_archived"):
+        table.add_row("Status", "[yellow]archived[/yellow]")
+    enabled, states = _form_workflow(form_data)
+    table.add_row("Workflow", "[green]enabled[/green]" if enabled else "disabled")
+    if enabled:
         table.add_row(
             "Reopen from final",
             "yes" if form_data.get("allow_reopen_from_final_state") else "no",
         )
+    if form_data.get("command_enabled") and form_data.get("command"):
+        table.add_row("Command", f"@dailybot {form_data.get('command')}")
+    behaviors: list[str] = []
+    if form_data.get("is_anonymous"):
+        behaviors.append("anonymous")
+    if form_data.get("allow_public_responses"):
+        public: str = "public"
+        if form_data.get("brand_with_logo"):
+            public += " +brand"
+        if form_data.get("require_email_and_name"):
+            public += " +identity"
+        behaviors.append(public)
+    if form_data.get("use_for_approval"):
+        behaviors.append("approval flow")
+    if behaviors:
+        table.add_row("Settings", ", ".join(behaviors))
+    if form_data.get("public_url"):
+        table.add_row("Public URL", str(form_data.get("public_url")))
+    for label, key in (
+        ("Can edit", "who_can_edit"),
+        ("Can see", "who_can_see_responses"),
+        ("Can change states", "who_can_change_states"),
+    ):
+        audience: str = _audience_label(form_data.get(key))
+        if audience:
+            table.add_row(label, audience)
     console.print(Panel(table, title="[bold]Form[/bold]", border_style="cyan"))
 
-    if workflow_enabled:
+    _print_attached_channels(form_data.get("report_channels") or [])
+
+    if enabled and states:
         states_table: Table = Table(title="Workflow States", border_style="cyan")
         states_table.add_column("Order", style="dim", justify="right")
         states_table.add_column("Key", style="bold")
         states_table.add_column("Label")
         states_table.add_column("Color", style="dim")
-        config: Any = form_data.get("workflow_config") or {}
-        states: list[dict[str, Any]] = (
-            list(config.get("states", [])) if isinstance(config, dict) else []
-        )
-        for state in states:
+        for index, state in enumerate(states):
             states_table.add_row(
-                str(state.get("order", "")),
+                str(state.get("order", index)),
                 str(state.get("key", "")),
                 str(state.get("label", "")),
                 str(state.get("color", "")),
@@ -629,19 +787,7 @@ def print_form_detail(form_data: dict[str, Any]) -> None:
 
     questions: list[dict[str, Any]] = list(form_data.get("questions", []) or [])
     if questions:
-        q_table: Table = Table(title="Questions", border_style="cyan")
-        q_table.add_column("#", justify="right", style="dim")
-        q_table.add_column("UUID", style="dim")
-        q_table.add_column("Question", style="bold")
-        q_table.add_column("Type", style="dim")
-        for index, question in enumerate(questions, start=1):
-            q_table.add_row(
-                str(index),
-                str(question.get("uuid") or question.get("id") or ""),
-                str(question.get("question") or question.get("text") or ""),
-                str(question.get("question_type") or question.get("type") or ""),
-            )
-        console.print(q_table)
+        console.print(_question_rows(questions))
 
 
 def print_form_response_state(
@@ -839,3 +985,141 @@ def print_users_table(users: list[dict[str, Any]]) -> None:
             str(user.get("uuid") or ""),
         )
     console.print(table)
+
+
+def _choice_labels(question: dict[str, Any]) -> list[str]:
+    """Extract display labels from a canonical ``choices`` list.
+
+    The contract returns ``choices`` as ``[{"label", "value"}]`` on every read
+    path; a bare-string element is tolerated defensively but not expected.
+    """
+    raw: Any = question.get("choices") or []
+    if not isinstance(raw, list):
+        return []
+    labels: list[str] = []
+    for item in raw:
+        if isinstance(item, dict):
+            label: Any = item.get("label") or item.get("value")
+            if label:
+                labels.append(str(label))
+        elif item:
+            labels.append(str(item))
+    return labels
+
+
+def _question_rows(questions: list[dict[str, Any]]) -> Table:
+    """Build a questions table shared by the authoring renderers.
+
+    Every authoring/read endpoint returns the canonical question shape
+    (``uuid`` / ``index`` / ``question`` / ``question_type`` / ``required`` /
+    ``is_blocker`` / ``choices``), so no field-name normalization is needed.
+    Multiple-choice options render as a dim line under the question text.
+    """
+    table: Table = Table(title="Questions", border_style="cyan")
+    table.add_column("#", justify="right")
+    table.add_column("Question")
+    table.add_column("Type")
+    table.add_column("Required")
+    table.add_column("Blocker")
+    table.add_column("Question UUID", style="dim")
+    for index, question in enumerate(questions):
+        question_cell: Text = Text(str(question.get("question", "")), style="bold")
+        labels: list[str] = _choice_labels(question)
+        if labels:
+            question_cell.append("\n" + ", ".join(labels), style="dim")
+        short_q: Any = question.get("short_question")
+        if short_q and str(short_q) != str(question.get("question", "")):
+            question_cell.append(f"\n↳ report title: {short_q}", style="dim")
+        variations: Any = question.get("variations")
+        if variations:
+            question_cell.append(f"\n↳ {len(variations)} variation(s)", style="dim")
+        if question.get("logic"):
+            question_cell.append("\n↳ conditional logic", style="dim")
+        blocker_cell: Text = (
+            Text("yes", style="red") if question.get("is_blocker") else Text("—", style="dim")
+        )
+        table.add_row(
+            str(question.get("index", index)),
+            question_cell,
+            str(question.get("question_type", "")),
+            "yes" if question.get("required", True) else "no",
+            blocker_cell,
+            str(question.get("uuid", "")),
+        )
+    return table
+
+
+def print_report_channels(channels: list[dict[str, Any]]) -> None:
+    """Display the reporting channels available to the caller."""
+    if not channels:
+        print_info("No report channels available.")
+        return
+    table: Table = Table(title=f"Report Channels ({len(channels)})", border_style="cyan")
+    table.add_column("Name", style="bold")
+    table.add_column("Platform")
+    table.add_column("UUID", style="dim")
+    for channel in channels:
+        table.add_row(
+            str(channel.get("name") or ""),
+            str(channel.get("platform") or ""),
+            str(channel.get("uuid") or channel.get("id") or ""),
+        )
+    console.print(table)
+
+
+def print_form_created(form: dict[str, Any], *, updated: bool = False) -> None:
+    """Display a created (or, with ``updated=True``, edited) form + question summary."""
+    name: str = str(form.get("name") or "")
+    form_id: str = str(form.get("id") or form.get("uuid") or "")
+    title: str = "Form Updated" if updated else "Form Created"
+    lines: list[str] = [f"[bold]{name}[/bold]", f"ID: {form_id}"]
+    if form.get("public_url"):
+        lines.append(f"Public URL: {form.get('public_url')}")
+    console.print(Panel("\n".join(lines), title=f"[bold]{title}[/bold]", border_style="green"))
+    questions: list[dict[str, Any]] = form.get("questions") or []
+    if questions:
+        console.print(_question_rows(questions))
+
+
+def print_checkin_created(checkin: dict[str, Any], *, updated: bool = False) -> None:
+    """Display a created (or, with ``updated=True``, edited) check-in + summary."""
+    name: str = str(checkin.get("name") or "")
+    checkin_id: str = str(checkin.get("id") or checkin.get("uuid") or "")
+    lines: list[str] = [f"[bold]{name}[/bold]", f"ID: {checkin_id}"]
+    schedule: dict[str, Any] = checkin.get("schedule") or {}
+    if schedule:
+        days: Any = schedule.get("days")
+        if days is not None:
+            lines.append(f"Days: {days}")
+        for label, key in (("Time", "time"), ("Timezone", "timezone")):
+            value: Any = schedule.get(key)
+            if value:
+                lines.append(f"{label}: {value}")
+    title: str = "Check-in Updated" if updated else "Check-in Created"
+    console.print(Panel("\n".join(lines), title=f"[bold]{title}[/bold]", border_style="green"))
+    questions: list[dict[str, Any]] = checkin.get("questions") or []
+    if questions:
+        console.print(_question_rows(questions))
+
+
+def print_question(question: dict[str, Any]) -> None:
+    """Display a single question after an add/update."""
+    console.print(_question_rows([question]))
+
+
+def print_questions_table(questions: list[dict[str, Any]]) -> None:
+    """Display a form/check-in's questions."""
+    if not questions:
+        print_info("No questions defined.")
+        return
+    console.print(_question_rows(questions))
+
+
+def print_archived(kind: str, uuid: str) -> None:
+    """Confirm that a form or check-in was archived (soft-deleted)."""
+    print_success(f"{kind.capitalize()} {uuid} archived.")
+
+
+def print_reordered(kind: str, order: list[str]) -> None:
+    """Confirm that questions were reordered."""
+    print_success(f"{kind.capitalize()} questions reordered ({len(order)} items).")

@@ -249,6 +249,92 @@ prompts — handy for humans; agents should use the headless commands above.
 
 ---
 
+## Step 3.6 — Authoring check-ins (`dailybot-cli >= 1.17.0`)
+
+Beyond completing check-ins, you can **create and configure** them. Authoring is
+**role-gated on the server** (admins/managers) — the CLI validates shape only and
+surfaces the server's `403`; it never elevates. Works under a login session **or**
+an API key.
+
+```bash
+# Create a check-in with a schedule, participants, and questions
+dailybot checkin create -n "Daily Standup" --time 09:00 --days 1,2,3,4,5 \
+  --timezone America/New_York --questions-file questions.json
+dailybot checkin create -n "Daily Standup" --user "Jane Doe" --team "Engineering"
+dailybot checkin create -n "Daily Standup" --interactive   # guided question builder
+
+# Edit config / participants / activate-deactivate / archive. Note: `checkin config`
+# edits the definition; `checkin edit` still edits your *response*, `checkin reset`
+# deletes it. --user/--team replace participants (a check-in always needs ≥1).
+dailybot checkin config <followup_uuid> --time 10:00 --days 1,2,3,4,5
+dailybot checkin config <followup_uuid> --team "Engineering"
+dailybot checkin config <followup_uuid> --reminders 3 --reminder-interval 30
+dailybot checkin config <followup_uuid> --no-past --privacy everyone --inactive
+dailybot checkin archive <followup_uuid>
+
+# Manage questions (same shapes as form questions; --blocker tags the blocker Q)
+dailybot checkin questions add <followup_uuid> --type text --question "Focus today?"
+dailybot checkin questions add <followup_uuid> --type boolean --question "Any blockers?" --blocker
+# Per-question extras: report title, alternate phrasings, and conditional logic
+dailybot checkin questions add <followup_uuid> --type text --question "What did you do?" \
+  --short-question "Yesterday" --variation "What did you accomplish?"
+dailybot checkin questions edit <followup_uuid> <question_uuid> \
+  --jump-if-equals "No" --jump-to -1        # inline single-jump logic
+dailybot checkin questions edit <followup_uuid> <question_uuid> --logic-file branching.json
+dailybot checkin questions edit <followup_uuid> <question_uuid> --question "Need help?"
+dailybot checkin questions edit <followup_uuid> <question_uuid> --blocker
+dailybot checkin questions delete <followup_uuid> <question_uuid> --yes
+dailybot checkin questions reorder <followup_uuid> <q2> <q1>
+
+# Read a check-in back — canonical detail: schedule, resolved participants
+# (names), attached report channels, and canonical questions in one call
+dailybot checkin show <followup_uuid> --json
+
+# Admin/owner: read everyone's response history, filtered by user
+dailybot checkin history <followup_uuid> --days 7    # your own; --all/--user are on `responses` API
+```
+
+**Schedule:** `--days` are ISO weekday integers (0=Sunday … 6=Saturday); `--time`
+is `HH:MM`; `--timezone` is an IANA name. Or pass `--schedule-file`
+(`{"days": [...], "time": "HH:MM", "timezone": "..."}`). **Full config** (create +
+config, partial): `--start-on/--end-on`, `--frequency weekly` (monthly/custom
+cadences are driven by `--frequency-advanced`),
+`--every N`, `--trigger-based/--fixed-time`,
+`--participant-timezone/--custom-timezone`, `--reminders 0-5`,
+`--reminder-interval 0-60`, `--reminder-condition smart_frequency|fixed_frequency`,
+`--work-days/--no-work-days`, `--allow-early/--no-early`, `--allow-past/--no-past`,
+`--allow-future/--no-future`, `--anonymous/--no-anonymous`, `--privacy <level>`,
+`--one-by-one/--aggregated`, `--intro/--outro`, `--report-time HH:MM`,
+`--reminder-tone standard|persuasive`, `--smart/--no-smart`,
+`--intelligence/--no-intelligence` (needs `--smart`), `--max-clarifying 0-5`
+(needs `--intelligence`), `--frequency-advanced disabled|monthly|custom`,
+`--cron "0 9 * * 1,3,5"` — full 100% parity with the web's Frequency +
+Additional-settings panels (only the computed `summary` stays read-only);
+`checkin show` echoes them all back.
+**Participants:**
+repeatable `--user` / `--team` accept a name or a UUID. **A check-in must have at
+least one participant** (a team or a person) — it only triggers for its
+participants. If you create with no `--user`/`--team`, an interactive terminal
+prompts you to pick some (the default team is suggested); a non-interactive run
+(agent/script) errors instead of creating an empty check-in. Add or replace
+participants later with `checkin config --user/--team`. **Question types** match
+forms: `text`, `multiple_choice` (needs `--options`), `boolean` (no options),
+`numeric`; up to 50 (this is the complete catalog). Tag the blocker question with
+`--blocker`. **Per-question extras** (`questions add`/`edit`): `--short-question`
+(report title, ≤512 chars), `--variation` (repeatable, ≤10), and conditional logic
+via `--logic-file` or inline `--jump-if-equals VALUE --jump-to N` (`-1` = end).
+**A report title is required** when adding/seeding a question — pass
+`--short-question` (or `--ai-short-question` to let Dailybot generate it). Empty
+question text is rejected server-side.
+
+**Reading back (`checkin show`):** returns the canonical detail shape — schedule,
+`participants` (users/teams resolved to names), attached `report_channels`, and
+`questions` in the canonical `{uuid, index, question, question_type, required,
+is_blocker, choices}` form (identical to form detail). Use it to verify a
+check-in you just created — who's assigned, where it reports, and question order.
+
+---
+
 ## Step 4 — HTTP Fallback (when CLI is unavailable)
 
 See [`../shared/http-fallback.md`](../shared/http-fallback.md) for base patterns.

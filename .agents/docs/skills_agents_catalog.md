@@ -26,10 +26,11 @@ The full pack lives under [`.agents/skills/dailybot/`](../skills/dailybot/) (rou
 | `dailybot-messages` | [`skills/dailybot/messages/SKILL.md`](../skills/dailybot/messages/SKILL.md) | Polling for instructions sent to this agent by teammates |
 | `dailybot-health` | [`skills/dailybot/health/SKILL.md`](../skills/dailybot/health/SKILL.md) | Announcing online/offline status on long sessions |
 | `dailybot-email` | [`skills/dailybot/email/SKILL.md`](../skills/dailybot/email/SKILL.md) | Sending email on the agent's behalf (with mandatory pre-send safety checks) |
-| `dailybot-checkin` | [`skills/dailybot/checkin/SKILL.md`](../skills/dailybot/checkin/SKILL.md) | Listing and completing pending check-ins (user-scoped) |
+| `dailybot-checkin` | [`skills/dailybot/checkin/SKILL.md`](../skills/dailybot/checkin/SKILL.md) | Listing/completing check-ins + authoring (create/config/archive + questions, CLI ≥ 1.17.0) |
 | `dailybot-kudos` | [`skills/dailybot/kudos/SKILL.md`](../skills/dailybot/kudos/SKILL.md) | Giving kudos to a teammate or a whole team |
 | `dailybot-teams` | [`skills/dailybot/teams/SKILL.md`](../skills/dailybot/teams/SKILL.md) | Listing / resolving teams (the resolver `dailybot-kudos` and `dailybot-chat` delegate to) |
-| `dailybot-forms` | [`skills/dailybot/forms/SKILL.md`](../skills/dailybot/forms/SKILL.md) | Listing, submitting, updating, or transitioning form responses |
+| `dailybot-forms` | [`skills/dailybot/forms/SKILL.md`](../skills/dailybot/forms/SKILL.md) | Listing/submitting/updating/transitioning responses + authoring (create/config/archive + questions, CLI ≥ 1.17.0) |
+| `dailybot-channels` | [`skills/dailybot/channels/SKILL.md`](../skills/dailybot/channels/SKILL.md) | Discovering report-channel UUIDs for `--report-channel` (CLI ≥ 1.17.0) |
 | `dailybot-chat` | [`skills/dailybot/chat/SKILL.md`](../skills/dailybot/chat/SKILL.md) | Sending / editing Dailybot bot messages on Slack / Teams / Discord / Google Chat (DMs, channels, teams; report-style threads; in-place edits). Requires `dailybot-cli >= 1.13.0` |
 
 ### Deep Work Plan skill pack (vendored from [`DailybotHQ/deepworkplan-skill`](https://github.com/DailybotHQ/deepworkplan-skill))
@@ -81,7 +82,9 @@ Persona definitions. Use these as the system prompt / role when spawning a sub-a
 | Send a Slack/Teams/Discord/Google Chat message (DM, channel, team; report-style threads) | `dailybot-chat` | (any) |
 | Recognize a teammate or a whole team | `dailybot-kudos` | (any) |
 | Complete a pending check-in / standup | `dailybot-checkin` | (any) |
+| Create / configure a check-in or form (author) | `dailybot-checkin` / `dailybot-forms` | (any) |
 | Submit / transition / update a form response | `dailybot-forms` | (any) |
+| Find a report-channel UUID for authoring | `dailybot-channels` | (any) |
 
 ## Conventions
 

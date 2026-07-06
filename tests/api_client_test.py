@@ -205,6 +205,22 @@ class TestDailyBotClientPublicApi:
         assert result["template"] == "template-uuid"
         assert mock_get.call_args[0][0].endswith("/v1/checkins/followup-uuid/")
 
+    def test_get_checkin_detail(self, client: DailyBotClient) -> None:
+        mock_response: MagicMock = MagicMock(spec=httpx.Response)
+        mock_response.status_code = 200
+        mock_response.json.return_value = {
+            "id": "followup-uuid",
+            "name": "Standup",
+            "questions": [{"uuid": "q1", "index": 0, "required": True, "is_blocker": False}],
+            "participants": {"users": [{"uuid": "u1", "name": "Jane Doe"}], "teams": []},
+        }
+
+        with patch("httpx.get", return_value=mock_response) as mock_get:
+            result: dict[str, Any] = client.get_checkin_detail("followup-uuid")
+
+        assert result["participants"]["users"][0]["name"] == "Jane Doe"
+        assert mock_get.call_args[0][0].endswith("/v1/checkins/followup-uuid/detail/")
+
     def test_list_checkin_responses(self, client: DailyBotClient) -> None:
         mock_response: MagicMock = MagicMock(spec=httpx.Response)
         mock_response.status_code = 200
@@ -301,6 +317,16 @@ class TestDailyBotClientPublicApi:
         assert result[0]["id"] == "form-uuid"
         assert "Bearer test-token" in mock_get.call_args[1]["headers"]["Authorization"]
         assert mock_get.call_args[1].get("params", {}) == {}
+
+    def test_list_forms_include_archived(self, client: DailyBotClient) -> None:
+        mock_response: MagicMock = MagicMock(spec=httpx.Response)
+        mock_response.status_code = 200
+        mock_response.json.return_value = [{"id": "form-uuid", "is_archived": True}]
+
+        with patch("httpx.get", return_value=mock_response) as mock_get:
+            client.list_forms(include_archived=True)
+
+        assert mock_get.call_args[1]["params"] == {"include_archived": "true"}
 
     def test_list_forms_with_questions(self, client: DailyBotClient) -> None:
         mock_response: MagicMock = MagicMock(spec=httpx.Response)
@@ -405,6 +431,16 @@ class TestDailyBotClientPublicApi:
             result: list[dict[str, Any]] = client.list_users(include_inactive=True)
 
         assert len(result) == 2
+
+    def test_list_users_include_email_adds_query(self, client: DailyBotClient) -> None:
+        page: MagicMock = MagicMock(spec=httpx.Response)
+        page.status_code = 200
+        page.json.return_value = {"results": [], "next": None}
+
+        with patch("httpx.get", return_value=page) as mock_get:
+            client.list_users(include_email=True)
+
+        assert mock_get.call_args[0][0].endswith("/v1/users/?include_email=true")
 
     def test_list_users_page_cap(self, client: DailyBotClient) -> None:
         """Pagination must stop at _MAX_LIST_PAGES even if the backend keeps returning next."""
@@ -804,6 +840,16 @@ class TestDailyBotClientCheckinsExtended:
         call_kwargs: dict[str, Any] = mock_get.call_args[1]
         assert call_kwargs["params"] == {"date": "2026-07-01", "include_summary": "true"}
 
+    def test_list_checkins_include_archived(self, client: DailyBotClient) -> None:
+        mock_response: MagicMock = MagicMock(spec=httpx.Response)
+        mock_response.status_code = 200
+        mock_response.json.return_value = {"results": [], "next": None}
+
+        with patch("httpx.get", return_value=mock_response) as mock_get:
+            client.list_checkins(include_archived=True)
+
+        assert mock_get.call_args[1]["params"] == {"include_archived": "true"}
+
     def test_delete_checkin_response_uses_date_range(self, client: DailyBotClient) -> None:
         mock_response: MagicMock = MagicMock(spec=httpx.Response)
         mock_response.status_code = 200
@@ -817,3 +863,446 @@ class TestDailyBotClientCheckinsExtended:
         call_kwargs: dict[str, Any] = mock_request.call_args[1]
         assert call_kwargs["params"] == {"date_start": "2026-07-01", "date_end": "2026-07-01"}
         assert result["deleted_count"] == 1
+
+
+class TestFormsAuthoring:
+    def test_list_report_channels(self, client: DailyBotClient) -> None:
+        mock_response: MagicMock = MagicMock(spec=httpx.Response)
+        mock_response.status_code = 200
+        mock_response.json.return_value = [
+            {"uuid": "chan-1", "name": "#engineering", "platform": "slack"},
+        ]
+
+        with patch("httpx.get", return_value=mock_response) as mock_get:
+            result: list[dict[str, Any]] = client.list_report_channels()
+
+        assert mock_get.call_args[0][0].endswith("/v1/report-channels/")
+        assert result[0]["uuid"] == "chan-1"
+        assert "Bearer test-token" in mock_get.call_args[1]["headers"]["Authorization"]
+
+    def test_list_report_channels_unwraps_results(self, client: DailyBotClient) -> None:
+        mock_response: MagicMock = MagicMock(spec=httpx.Response)
+        mock_response.status_code = 200
+        mock_response.json.return_value = {"results": [{"uuid": "chan-1"}]}
+
+        with patch("httpx.get", return_value=mock_response):
+            result: list[dict[str, Any]] = client.list_report_channels()
+
+        assert result == [{"uuid": "chan-1"}]
+
+    def test_list_report_channels_unwraps_channels_key(self, client: DailyBotClient) -> None:
+        # The live endpoint returns {"channels": [...], "total": N}.
+        mock_response: MagicMock = MagicMock(spec=httpx.Response)
+        mock_response.status_code = 200
+        mock_response.json.return_value = {
+            "channels": [
+                {"id": "C04C1GL9RH8", "name": "general", "platform": "slack", "type": "channel"},
+            ],
+            "total": 1,
+        }
+
+        with patch("httpx.get", return_value=mock_response):
+            result: list[dict[str, Any]] = client.list_report_channels()
+
+        assert len(result) == 1
+        assert result[0]["id"] == "C04C1GL9RH8"
+        assert result[0]["name"] == "general"
+
+    def test_create_form_with_questions(self, client: DailyBotClient) -> None:
+        mock_response: MagicMock = MagicMock(spec=httpx.Response)
+        mock_response.status_code = 201
+        mock_response.json.return_value = {"id": "form-uuid", "name": "Retro"}
+
+        questions: list[dict[str, Any]] = [
+            {"question_type": "text", "question": "What went well?"},
+        ]
+        with patch("httpx.post", return_value=mock_response) as mock_post:
+            result: dict[str, Any] = client.create_form("Retro", questions)
+
+        call_kwargs: dict[str, Any] = mock_post.call_args[1]
+        assert mock_post.call_args[0][0].endswith("/v1/forms/create/")
+        assert call_kwargs["json"] == {"name": "Retro", "questions": questions}
+        assert result["id"] == "form-uuid"
+
+    def test_create_form_omits_empty_questions(self, client: DailyBotClient) -> None:
+        mock_response: MagicMock = MagicMock(spec=httpx.Response)
+        mock_response.status_code = 201
+        mock_response.json.return_value = {"id": "form-uuid"}
+
+        with patch("httpx.post", return_value=mock_response) as mock_post:
+            client.create_form("Retro")
+
+        assert mock_post.call_args[1]["json"] == {"name": "Retro"}
+
+    def test_create_form_merges_config(self, client: DailyBotClient) -> None:
+        mock_response: MagicMock = MagicMock(spec=httpx.Response)
+        mock_response.status_code = 201
+        mock_response.json.return_value = {"id": "form-uuid"}
+
+        with patch("httpx.post", return_value=mock_response) as mock_post:
+            client.create_form("Retro", config={"is_anonymous": True, "command": "retro"})
+
+        assert mock_post.call_args[1]["json"] == {
+            "name": "Retro",
+            "is_anonymous": True,
+            "command": "retro",
+        }
+
+    def test_update_form_config_merges_config(self, client: DailyBotClient) -> None:
+        mock_response: MagicMock = MagicMock(spec=httpx.Response)
+        mock_response.status_code = 200
+        mock_response.json.return_value = {"id": "form-uuid"}
+
+        with patch("httpx.patch", return_value=mock_response) as mock_patch:
+            client.update_form_config("form-uuid", config={"workflow": {"enabled": False}})
+
+        assert mock_patch.call_args[1]["json"] == {"workflow": {"enabled": False}}
+
+    def test_create_form_with_report_channels_inline(self, client: DailyBotClient) -> None:
+        mock_response: MagicMock = MagicMock(spec=httpx.Response)
+        mock_response.status_code = 201
+        mock_response.json.return_value = {"id": "form-uuid"}
+
+        with patch("httpx.post", return_value=mock_response) as mock_post:
+            client.create_form("Retro", report_channels=["chan-1", "chan-2"])
+
+        assert mock_post.call_args[1]["json"] == {
+            "name": "Retro",
+            "report_channels": ["chan-1", "chan-2"],
+        }
+
+    def test_update_form_config(self, client: DailyBotClient) -> None:
+        mock_response: MagicMock = MagicMock(spec=httpx.Response)
+        mock_response.status_code = 200
+        mock_response.json.return_value = {"id": "form-uuid", "name": "Renamed"}
+
+        with patch("httpx.patch", return_value=mock_response) as mock_patch:
+            client.update_form_config("form-uuid", name="Renamed", report_channels=["chan-1"])
+
+        call_kwargs: dict[str, Any] = mock_patch.call_args[1]
+        assert mock_patch.call_args[0][0].endswith("/v1/forms/form-uuid/config/")
+        assert call_kwargs["json"] == {"name": "Renamed", "report_channels": ["chan-1"]}
+
+    def test_update_form_config_sends_only_provided_fields(self, client: DailyBotClient) -> None:
+        mock_response: MagicMock = MagicMock(spec=httpx.Response)
+        mock_response.status_code = 200
+        mock_response.json.return_value = {"id": "form-uuid"}
+
+        with patch("httpx.patch", return_value=mock_response) as mock_patch:
+            client.update_form_config("form-uuid", name="Only name")
+
+        assert mock_patch.call_args[1]["json"] == {"name": "Only name"}
+
+    def test_archive_form(self, client: DailyBotClient) -> None:
+        mock_response: MagicMock = MagicMock(spec=httpx.Response)
+        mock_response.status_code = 204
+        mock_response.json.return_value = {}
+
+        with patch("httpx.request", return_value=mock_response) as mock_request:
+            result: dict[str, Any] = client.archive_form("form-uuid")
+
+        assert mock_request.call_args[0][0] == "DELETE"
+        assert mock_request.call_args[0][1].endswith("/v1/forms/form-uuid/archive/")
+        assert result == {}
+
+    def test_add_form_question(self, client: DailyBotClient) -> None:
+        mock_response: MagicMock = MagicMock(spec=httpx.Response)
+        mock_response.status_code = 201
+        mock_response.json.return_value = {"uuid": "q-new"}
+
+        question: dict[str, Any] = {"question_type": "numeric", "question": "1-10?"}
+        with patch("httpx.post", return_value=mock_response) as mock_post:
+            result: dict[str, Any] = client.add_form_question("form-uuid", question)
+
+        assert mock_post.call_args[0][0].endswith("/v1/forms/form-uuid/questions/")
+        assert mock_post.call_args[1]["json"] == question
+        assert result["uuid"] == "q-new"
+
+    def test_update_form_question(self, client: DailyBotClient) -> None:
+        mock_response: MagicMock = MagicMock(spec=httpx.Response)
+        mock_response.status_code = 200
+        mock_response.json.return_value = {"uuid": "q1"}
+
+        with patch("httpx.patch", return_value=mock_response) as mock_patch:
+            client.update_form_question("form-uuid", "q1", {"question": "New text?"})
+
+        assert mock_patch.call_args[0][0].endswith("/v1/forms/form-uuid/questions/q1/")
+        assert mock_patch.call_args[1]["json"] == {"question": "New text?"}
+
+    def test_delete_form_question(self, client: DailyBotClient) -> None:
+        mock_response: MagicMock = MagicMock(spec=httpx.Response)
+        mock_response.status_code = 204
+        mock_response.json.return_value = {}
+
+        with patch("httpx.request", return_value=mock_response) as mock_request:
+            client.delete_form_question("form-uuid", "q1")
+
+        assert mock_request.call_args[0][0] == "DELETE"
+        assert mock_request.call_args[0][1].endswith("/v1/forms/form-uuid/questions/q1/delete/")
+
+    def test_reorder_form_questions(self, client: DailyBotClient) -> None:
+        mock_response: MagicMock = MagicMock(spec=httpx.Response)
+        mock_response.status_code = 200
+        mock_response.json.return_value = {"reordered": True}
+
+        with patch("httpx.put", return_value=mock_response) as mock_put:
+            client.reorder_form_questions("form-uuid", ["q2", "q1"])
+
+        assert mock_put.call_args[0][0].endswith("/v1/forms/form-uuid/questions/reorder/")
+        assert mock_put.call_args[1]["json"] == {"question_uuids": ["q2", "q1"]}
+
+    def test_list_form_responses_admin_filters(self, client: DailyBotClient) -> None:
+        mock_response: MagicMock = MagicMock(spec=httpx.Response)
+        mock_response.status_code = 200
+        mock_response.json.return_value = [{"id": "r1"}]
+
+        with patch("httpx.get", return_value=mock_response) as mock_get:
+            client.list_form_responses(
+                "form-uuid",
+                all_responses=True,
+                user="user-uuid",
+                date_from="2026-01-01",
+                date_to="2026-12-31",
+            )
+
+        assert mock_get.call_args[1]["params"] == {
+            "all": "true",
+            "user": "user-uuid",
+            "date_from": "2026-01-01",
+            "date_to": "2026-12-31",
+        }
+
+    def test_archive_form_raises_api_error_with_code(self, client: DailyBotClient) -> None:
+        mock_response: MagicMock = MagicMock(spec=httpx.Response)
+        mock_response.status_code = 403
+        mock_response.json.return_value = {"detail": "Forbidden", "code": "form_edit_forbidden"}
+
+        with (
+            patch("httpx.request", return_value=mock_response),
+            pytest.raises(APIError) as exc_info,
+        ):
+            client.archive_form("form-uuid")
+
+        assert exc_info.value.code == "form_edit_forbidden"
+        assert exc_info.value.status_code == 403
+
+
+class TestCheckinsAuthoring:
+    def test_create_checkin(self, client: DailyBotClient) -> None:
+        mock_response: MagicMock = MagicMock(spec=httpx.Response)
+        mock_response.status_code = 201
+        mock_response.json.return_value = {"id": "followup-uuid", "name": "Standup"}
+
+        schedule: dict[str, Any] = {"days": [1, 2, 3], "time": "09:00", "timezone": "UTC"}
+        participants: dict[str, Any] = {"user_uuids": ["u1"], "team_uuids": []}
+        questions: list[dict[str, Any]] = [{"question_type": "text", "question": "Yesterday?"}]
+        with patch("httpx.post", return_value=mock_response) as mock_post:
+            result: dict[str, Any] = client.create_checkin(
+                "Standup",
+                schedule=schedule,
+                participants=participants,
+                questions=questions,
+                report_channels=["chan-1"],
+            )
+
+        call_kwargs: dict[str, Any] = mock_post.call_args[1]
+        assert mock_post.call_args[0][0].endswith("/v1/checkins/create/")
+        assert call_kwargs["json"] == {
+            "name": "Standup",
+            "schedule": schedule,
+            "participants": participants,
+            "questions": questions,
+            "report_channels": ["chan-1"],
+        }
+        assert result["id"] == "followup-uuid"
+
+    def test_create_checkin_minimal(self, client: DailyBotClient) -> None:
+        mock_response: MagicMock = MagicMock(spec=httpx.Response)
+        mock_response.status_code = 201
+        mock_response.json.return_value = {"id": "followup-uuid"}
+
+        with patch("httpx.post", return_value=mock_response) as mock_post:
+            client.create_checkin("Standup")
+
+        assert mock_post.call_args[1]["json"] == {"name": "Standup"}
+
+    def test_create_checkin_merges_config(self, client: DailyBotClient) -> None:
+        mock_response: MagicMock = MagicMock(spec=httpx.Response)
+        mock_response.status_code = 201
+        mock_response.json.return_value = {"id": "followup-uuid"}
+
+        with patch("httpx.post", return_value=mock_response) as mock_post:
+            client.create_checkin(
+                "Standup", config={"reminders_max_count": 3, "frequency_type": "weekly"}
+            )
+
+        assert mock_post.call_args[1]["json"] == {
+            "name": "Standup",
+            "reminders_max_count": 3,
+            "frequency_type": "weekly",
+        }
+
+    def test_create_checkin_sends_generate_short_question(self, client: DailyBotClient) -> None:
+        mock_response: MagicMock = MagicMock(spec=httpx.Response)
+        mock_response.status_code = 201
+        mock_response.json.return_value = {"id": "followup-uuid"}
+
+        with patch("httpx.post", return_value=mock_response) as mock_post:
+            client.create_checkin("Standup", generate_short_question=True)
+
+        assert mock_post.call_args[1]["json"]["generate_short_question"] is True
+
+    def test_create_checkin_omits_generate_short_question_by_default(
+        self, client: DailyBotClient
+    ) -> None:
+        mock_response: MagicMock = MagicMock(spec=httpx.Response)
+        mock_response.status_code = 201
+        mock_response.json.return_value = {"id": "followup-uuid"}
+
+        with patch("httpx.post", return_value=mock_response) as mock_post:
+            client.create_checkin("Standup")
+
+        assert "generate_short_question" not in mock_post.call_args[1]["json"]
+
+    def test_update_checkin_config_sends_is_active_false(self, client: DailyBotClient) -> None:
+        mock_response: MagicMock = MagicMock(spec=httpx.Response)
+        mock_response.status_code = 200
+        mock_response.json.return_value = {"id": "followup-uuid", "is_active": False}
+
+        with patch("httpx.patch", return_value=mock_response) as mock_patch:
+            client.update_checkin_config("followup-uuid", is_active=False)
+
+        assert mock_patch.call_args[0][0].endswith("/v1/checkins/followup-uuid/config/")
+        assert mock_patch.call_args[1]["json"] == {"is_active": False}
+
+    def test_update_checkin_config_partial(self, client: DailyBotClient) -> None:
+        mock_response: MagicMock = MagicMock(spec=httpx.Response)
+        mock_response.status_code = 200
+        mock_response.json.return_value = {"id": "followup-uuid"}
+
+        with patch("httpx.patch", return_value=mock_response) as mock_patch:
+            client.update_checkin_config("followup-uuid", name="Renamed")
+
+        assert mock_patch.call_args[1]["json"] == {"name": "Renamed"}
+
+    def test_update_checkin_config_sends_participants(self, client: DailyBotClient) -> None:
+        mock_response: MagicMock = MagicMock(spec=httpx.Response)
+        mock_response.status_code = 200
+        mock_response.json.return_value = {"id": "followup-uuid"}
+
+        with patch("httpx.patch", return_value=mock_response) as mock_patch:
+            client.update_checkin_config("followup-uuid", participants={"team_uuids": ["t-1"]})
+
+        assert mock_patch.call_args[1]["json"] == {"participants": {"team_uuids": ["t-1"]}}
+
+    def test_update_checkin_config_merges_config(self, client: DailyBotClient) -> None:
+        mock_response: MagicMock = MagicMock(spec=httpx.Response)
+        mock_response.status_code = 200
+        mock_response.json.return_value = {"id": "followup-uuid"}
+
+        with patch("httpx.patch", return_value=mock_response) as mock_patch:
+            client.update_checkin_config(
+                "followup-uuid", config={"reminders_max_count": 2, "allow_past_responses": False}
+            )
+
+        assert mock_patch.call_args[1]["json"] == {
+            "reminders_max_count": 2,
+            "allow_past_responses": False,
+        }
+
+    def test_archive_checkin(self, client: DailyBotClient) -> None:
+        mock_response: MagicMock = MagicMock(spec=httpx.Response)
+        mock_response.status_code = 204
+        mock_response.json.return_value = {}
+
+        with patch("httpx.request", return_value=mock_response) as mock_request:
+            result: dict[str, Any] = client.archive_checkin("followup-uuid")
+
+        assert mock_request.call_args[0][0] == "DELETE"
+        assert mock_request.call_args[0][1].endswith("/v1/checkins/followup-uuid/archive/")
+        assert result == {}
+
+    def test_add_checkin_question(self, client: DailyBotClient) -> None:
+        mock_response: MagicMock = MagicMock(spec=httpx.Response)
+        mock_response.status_code = 201
+        mock_response.json.return_value = {"uuid": "q-new"}
+
+        question: dict[str, Any] = {"question_type": "boolean", "question": "Blockers?"}
+        with patch("httpx.post", return_value=mock_response) as mock_post:
+            client.add_checkin_question("followup-uuid", question)
+
+        assert mock_post.call_args[0][0].endswith("/v1/checkins/followup-uuid/questions/")
+        assert mock_post.call_args[1]["json"] == question
+
+    def test_update_checkin_question(self, client: DailyBotClient) -> None:
+        mock_response: MagicMock = MagicMock(spec=httpx.Response)
+        mock_response.status_code = 200
+        mock_response.json.return_value = {"uuid": "q1"}
+
+        with patch("httpx.patch", return_value=mock_response) as mock_patch:
+            client.update_checkin_question("followup-uuid", "q1", {"question": "New?"})
+
+        assert mock_patch.call_args[0][0].endswith("/v1/checkins/followup-uuid/questions/q1/")
+        assert mock_patch.call_args[1]["json"] == {"question": "New?"}
+
+    def test_delete_checkin_question(self, client: DailyBotClient) -> None:
+        mock_response: MagicMock = MagicMock(spec=httpx.Response)
+        mock_response.status_code = 204
+        mock_response.json.return_value = {}
+
+        with patch("httpx.request", return_value=mock_response) as mock_request:
+            client.delete_checkin_question("followup-uuid", "q1")
+
+        assert mock_request.call_args[0][0] == "DELETE"
+        assert mock_request.call_args[0][1].endswith(
+            "/v1/checkins/followup-uuid/questions/q1/delete/"
+        )
+
+    def test_reorder_checkin_questions(self, client: DailyBotClient) -> None:
+        mock_response: MagicMock = MagicMock(spec=httpx.Response)
+        mock_response.status_code = 200
+        mock_response.json.return_value = {"reordered": True}
+
+        with patch("httpx.put", return_value=mock_response) as mock_put:
+            client.reorder_checkin_questions("followup-uuid", ["q2", "q1"])
+
+        assert mock_put.call_args[0][0].endswith("/v1/checkins/followup-uuid/questions/reorder/")
+        assert mock_put.call_args[1]["json"] == {"question_uuids": ["q2", "q1"]}
+
+    def test_list_checkin_responses_admin_filters(self, client: DailyBotClient) -> None:
+        mock_response: MagicMock = MagicMock(spec=httpx.Response)
+        mock_response.status_code = 200
+        mock_response.json.return_value = [{"uuid": "r1"}]
+
+        with patch("httpx.get", return_value=mock_response) as mock_get:
+            client.list_checkin_responses(
+                "followup-uuid",
+                all_responses=True,
+                user="user-uuid",
+                date_start="2026-01-01",
+                date_end="2026-12-31",
+            )
+
+        assert mock_get.call_args[1]["params"] == {
+            "date_start": "2026-01-01",
+            "date_end": "2026-12-31",
+            "all": "true",
+            "user": "user-uuid",
+        }
+
+    def test_archive_checkin_raises_api_error_with_code(self, client: DailyBotClient) -> None:
+        mock_response: MagicMock = MagicMock(spec=httpx.Response)
+        mock_response.status_code = 403
+        mock_response.json.return_value = {
+            "detail": "Forbidden",
+            "code": "checkin_permission_denied",
+        }
+
+        with (
+            patch("httpx.request", return_value=mock_response),
+            pytest.raises(APIError) as exc_info,
+        ):
+            client.archive_checkin("followup-uuid")
+
+        assert exc_info.value.code == "checkin_permission_denied"
+        assert exc_info.value.status_code == 403

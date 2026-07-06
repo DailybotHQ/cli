@@ -515,6 +515,84 @@ Only the **author, form owner, or org admin** can delete a response (server-enfo
 
 ---
 
+## Step 11.5 — Authoring forms (`dailybot-cli >= 1.17.0`)
+
+Beyond filling forms in, you can **create and configure** them. Authoring is
+**role-gated on the server** (form owners / admins / managers, as applicable) —
+the CLI performs only shape validation and surfaces the server's `403`; it never
+elevates. Works under a login session **or** an API key.
+
+```bash
+# Discover report channels (channel UUIDs feed --report-channel)
+dailybot channels list --json
+
+# Create a form — empty, seeded from a JSON file, or interactively
+dailybot form create --name "Sprint Retro"
+dailybot form create -n "Sprint Retro" --questions-file questions.json
+dailybot form create -n "Sprint Retro" --interactive
+
+# List forms — archived forms are hidden unless you ask for them
+dailybot form list                       # active only
+dailybot form list --include-archived    # includes archived, flagged in a Status column
+
+# Edit config / archive (soft-delete). Note: `form archive` is the definition;
+# `form delete` still removes a *response*.
+dailybot form edit <form_uuid> --name "Updated Retro" --report-channel <channel_uuid>
+# Full config (superset of `form edit`) — mirrors the web Setup tab:
+dailybot form config <form_uuid> --state "Draft:#ccc" --state "Released:#2ecc71"  # workflow
+dailybot form config <form_uuid> --anonymous --public --require-identity --brand
+dailybot form config <form_uuid> --can-edit owner_and_admins --can-see restricted --can-see-team "Eng"
+dailybot form config <form_uuid> --approval --approver-user "Jane Doe"
+dailybot form config <form_uuid> --command release        # ChatOps: @dailybot release
+dailybot form config <form_uuid> --no-workflow --no-command --inactive
+dailybot form archive <form_uuid>
+
+# Manage questions (--blocker tags the blocker question)
+dailybot form questions list <form_uuid>
+dailybot form questions add <form_uuid> --type text --question "What went well?"
+dailybot form questions add <form_uuid> --type multiple_choice \
+  --question "Rating?" --options "Excellent,Good,Average,Poor"
+dailybot form questions add <form_uuid> --type boolean --question "Blocking?" --blocker
+# Per-question extras: report title, alternate phrasings, conditional logic
+dailybot form questions add <form_uuid> --type text --question "What went well?" \
+  --short-question "Wins" --variation "What are you proud of?"
+dailybot form questions edit <form_uuid> <question_uuid> --logic-file branching.json
+dailybot form questions edit <form_uuid> <question_uuid> --question "Reworded?"
+dailybot form questions edit <form_uuid> <question_uuid> --blocker
+dailybot form questions delete <form_uuid> <question_uuid> --yes
+dailybot form questions reorder <form_uuid> <q3> <q1> <q2>
+
+# Admin/owner: read everyone's responses, filtered by user and date
+dailybot form responses <form_uuid> --all --from 2026-01-01 --to 2026-06-30 --json
+dailybot form responses <form_uuid> --user <user_uuid> --json
+
+# Admin/owner may edit anyone's response (author may always edit their own;
+# a non-privileged edit of another user's response returns 403)
+dailybot form update <form_uuid> <response_uuid> --content '{"<q_uuid>":"corrected"}'
+```
+
+**Question types:** `text`, `multiple_choice`, `boolean`, `numeric` (the complete
+catalog). `multiple_choice` requires `--options`; `boolean` auto-generates Yes/No
+(no options); up to 50 questions. `--questions-file` is a JSON array of
+`{question_type, question, options?, required?, is_blocker?, short_question?,
+variations?, logic?}` objects (`type`/`label` aliases also accepted). Any question
+may be tagged the **blocker** question with `--blocker` (or `"is_blocker": true` in
+the file). **Per-question extras** on `questions add`/`edit`: `--short-question`
+(report title, ≤512 chars), `--variation` (repeatable, ≤10), and conditional logic
+via `--logic-file` (a `{"rules": {...}}` object) or inline
+`--jump-if-equals VALUE --jump-to N`. **A report title is required** when
+adding/seeding a question — pass `--short-question` / `"short_question"` (or
+`--ai-short-question` to let Dailybot generate it). Empty question text is rejected
+server-side.
+
+**Reading questions back:** every read path (`form get`, `form questions list`,
+check-in `detail`) returns the canonical shape
+`{uuid, index, question, question_type, required, is_blocker, choices}`. For
+`multiple_choice`, `choices` is a list of `{label, value}` objects (display the
+`label`); for other types `choices` is `[]`.
+
+---
+
 ## Step 12 — Multi-turn Lifecycle Examples
 
 ### Example A — Non-workflow form ("Team Feedback")

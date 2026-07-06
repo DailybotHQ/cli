@@ -67,6 +67,119 @@ ERROR_CODE_MESSAGES: dict[str, str] = {
         "The check-in's questions changed since you fetched them. Re-run and try again."
     ),
     "response_date_format_is_invalid": "Invalid date. Use YYYY-MM-DD.",
+    # Forms & check-ins authoring (create/edit/questions/responses)
+    "invalid_question_type": (
+        "Invalid question type. Use one of: text, multiple_choice, boolean, numeric."
+    ),
+    "multiple_choice_requires_options": (
+        "Multiple-choice questions need at least one option (--options)."
+    ),
+    "question_label_required": "Question text is required.",
+    "short_question_required": (
+        'Each question needs a report title. Pass --short-question "<title>", or '
+        "--ai-short-question to let Dailybot generate it."
+    ),
+    "questions_limit_exceeded": "Too many questions (the limit is 50).",
+    "form_name_required": "A name is required.",
+    "invalid_schedule_days": ("Schedule days must be integers 0-6 (0=Sunday .. 6=Saturday)."),
+    "invalid_schedule_time": "Schedule time must be in HH:MM format (e.g. 09:00).",
+    "invalid_timezone": "Unknown timezone. Use an IANA name (e.g. America/New_York).",
+    "checkin_permission_denied": (
+        "Your role doesn't allow authoring check-ins. Ask an admin or manager. "
+        "The CLI acts within your role and can't elevate."
+    ),
+    "form_edit_forbidden": (
+        "You don't have permission to edit this form (you're not the owner or an admin). "
+        "The CLI acts within your role and can't elevate."
+    ),
+    "form_response_view_all_forbidden": (
+        "Only admins/owners can list everyone's responses (--all / --user). "
+        "Without them you see only your own. The CLI acts within your role."
+    ),
+    "form_response_edit_forbidden": (
+        "You can only edit your own response unless you're the form owner or an admin. "
+        "The CLI acts within your role and can't elevate."
+    ),
+    "form_not_found": "Form not found.",
+    "form_name_too_short": "Form name is too short (minimum 3 characters).",
+    # Form configuration (workflow / permissions / approval / command)
+    "workflow_requires_states": (
+        'A workflow needs at least one state. Pass --state "Label:#color" (or '
+        "--no-workflow to turn states off)."
+    ),
+    "invalid_workflow_state": (
+        'Invalid workflow state. Use --state "Label:#color" with a non-empty label and a hex color.'
+    ),
+    "invalid_permission_audience": (
+        "Invalid permission audience. Use everyone / owner_and_admins, or restricted "
+        "with at least one user/team."
+    ),
+    "invalid_approvers": "Invalid approvers. Name at least one user or team to approve.",
+    "invalid_command": (
+        "Invalid --command. Use 1-31 chars: lowercase letters, digits, '-' or '_', "
+        "starting with a letter or digit."
+    ),
+    "command_already_exists": (
+        "That ChatOps command is already used by another form. Pick a different --command."
+    ),
+    "checkin_not_found": "Check-in not found.",
+    "question_not_found": "Question not found on this form or check-in.",
+    # Question reorder validation
+    "question_uuids_required": "Reorder needs the list of question UUIDs to order.",
+    "question_uuids_incomplete": (
+        "Reorder must include ALL of the resource's question UUIDs, not a subset."
+    ),
+    "question_uuids_duplicate": "Reorder has a duplicate question UUID — list each one once.",
+    "invalid_question_variations": (
+        "Invalid question variations. Pass up to 10 non-empty alternate phrasings."
+    ),
+    # invalid_question_logic is intentionally NOT mapped: the server's detail names
+    # the offending operator/target and lists the valid values for the question
+    # type, which is more actionable than any generic message we could substitute.
+    "anonymous_irreversible": (
+        "An anonymous check-in cannot be made non-anonymous. Create a new check-in "
+        "if you need non-anonymous responses."
+    ),
+    "report_channel_not_found": (
+        "Report channel not found — run `dailybot channels list` to see the "
+        "channels available in your organization."
+    ),
+    "too_many_report_channels": "Too many report channels — the limit is 3.",
+    "checkin_requires_participant": (
+        "A check-in must have at least one participant (a team or a person). "
+        "Add --user and/or --team."
+    ),
+    # Check-in configuration validation
+    "unknown_field": (
+        "The server rejected an unrecognized field. Update the CLI "
+        "(`dailybot upgrade`) — this build sent a field the API doesn't accept yet."
+    ),
+    "invalid_start_on": "Invalid start date. Use YYYY-MM-DD.",
+    "invalid_end_on": "Invalid end date. Use YYYY-MM-DD.",
+    "invalid_frequency_type": (
+        "Invalid --frequency. Only 'weekly' is accepted; for monthly or custom "
+        "cadences use --frequency-advanced (monthly / custom, with --cron for custom)."
+    ),
+    "invalid_frequency": "Invalid --every. Must be an integer >= 1.",
+    "invalid_reminder_count": "Invalid --reminders. Must be an integer 0-5.",
+    "invalid_reminder_interval": "Invalid --reminder-interval. Must be 0-60 minutes.",
+    "invalid_reminder_condition": (
+        "Invalid --reminder-condition. Use smart_frequency or fixed_frequency."
+    ),
+    "invalid_privacy": "Invalid --privacy value. See `dailybot checkin config --help`.",
+    "invalid_time_for_report": "Invalid --report-time. Use HH:MM.",
+    "invalid_reminder_tone": "Invalid --reminder-tone. Use standard or persuasive.",
+    "invalid_max_clarifying_questions": "Invalid --max-clarifying. Must be an integer 0-5.",
+    "intelligence_requires_smart_checkin": (
+        "AI features need smart mode. Enable --smart before --intelligence, and "
+        "--intelligence before --max-clarifying."
+    ),
+    "invalid_frequency_cron": (
+        "Invalid --cron. Use a 5-field cron expression (e.g. '0 9 * * 1,3,5')."
+    ),
+    "invalid_frequency_advanced": (
+        "Invalid --frequency-advanced. Use disabled, monthly, or custom."
+    ),
 }
 
 
@@ -212,13 +325,30 @@ def resolve_user_by_name_or_uuid(
     users: list[dict[str, Any]],
     identifier: str,
 ) -> tuple[str, str]:
-    """Resolve a user UUID and display name from a UUID or name fragment."""
+    """Resolve a user UUID and display name from a UUID, email, or name fragment."""
     if UUID_PATTERN.match(identifier):
         for user in users:
             if user.get("uuid") == identifier:
                 name: str = str(user.get("full_name") or identifier)
                 return identifier, name
         return identifier, identifier
+
+    if "@" in identifier:
+        email_matches: list[dict[str, Any]] = [
+            user for user in users if str(user.get("email", "")).lower() == identifier.lower()
+        ]
+        if len(email_matches) == 1:
+            hit: dict[str, Any] = email_matches[0]
+            return str(hit["uuid"]), str(hit.get("full_name") or hit.get("email") or hit["uuid"])
+        if not email_matches:
+            # The directory only exposes emails to admins/managers; if no user has
+            # an email at all, the caller can't resolve by email — hint at that.
+            if not any(user.get("email") for user in users):
+                raise ValueError(
+                    f'Cannot resolve "{identifier}" by email — email lookup needs '
+                    "admin/manager permissions. Use the person's name or UUID instead."
+                )
+            raise ValueError(f'No user found with email "{identifier}".')
 
     exact_matches: list[dict[str, Any]] = [
         user for user in users if str(user.get("full_name", "")).lower() == identifier.lower()

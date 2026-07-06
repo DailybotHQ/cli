@@ -84,7 +84,8 @@ The user-scoped commands (`checkin`, `form`, `kudos`, `user`) operate within the
 - **`dailybot user list`** — intentionally omits email addresses from both table and JSON output. This is a PII-minimization measure for an open-source CLI. UUIDs are exposed for programmatic use (e.g., `--to <uuid>` in kudos).
 - **`dailybot kudos give`** — prevents self-kudos client-side. The receiver is resolved by name against the user directory; ambiguous matches are rejected rather than guessed.
 - **Pagination safety** — `list_users()` caps at `_MAX_LIST_PAGES = 50` pages to prevent unbounded loops against a misbehaving backend.
-- **Confirmation prompts** — `checkin complete`, `form submit`, and `kudos give` show a confirmation before team-visible writes. `--yes` skips it for non-interactive/scripted use.
+- **Confirmation prompts** — `checkin complete`, `form submit`, `kudos give`, and the destructive authoring commands (`form archive`, `checkin archive`, `form/checkin questions delete`) show a confirmation before a team-visible or irreversible write. `--yes` skips it for non-interactive/scripted use.
+- **Forms & check-ins authoring** (`channels list`; `form/checkin create/edit/config/archive` + `questions` subgroups; extended `form responses --all/--user`; owner/admin editing of another user's response) — all authorization is **enforced server-side by role** and reuses the existing permission model (no new permission types). The CLI performs only shape/format validation (question types, options, schedule) and surfaces the server's `403` codes with role-aware messages; it never approximates roles or elevates locally. Both a login session and an API key go through the identical `_headers()` path.
 - **Exit codes** — structured exit codes (2–7) enable safe scripting without parsing error messages. See [API_REFERENCE.md](API_REFERENCE.md) for the full table.
 
 ## API Key Lifecycle
