@@ -552,7 +552,7 @@ class DailyBotClient:
         """PUT /v1/checkins/<followup_uuid>/questions/reorder/ — set a new question order."""
         response: httpx.Response = httpx.put(
             f"{self.api_url}/v1/checkins/{followup_uuid}/questions/reorder/",
-            json={"order": order},
+            json={"question_uuids": order},
             headers=self._headers(),
             timeout=self.timeout,
         )
@@ -880,7 +880,7 @@ class DailyBotClient:
         """PUT /v1/forms/<form_uuid>/questions/reorder/ — set a new question order."""
         response: httpx.Response = httpx.put(
             f"{self.api_url}/v1/forms/{form_uuid}/questions/reorder/",
-            json={"order": order},
+            json={"question_uuids": order},
             headers=self._headers(),
             timeout=self.timeout,
         )

@@ -1039,7 +1039,7 @@ class TestFormsAuthoring:
             client.reorder_form_questions("form-uuid", ["q2", "q1"])
 
         assert mock_put.call_args[0][0].endswith("/v1/forms/form-uuid/questions/reorder/")
-        assert mock_put.call_args[1]["json"] == {"order": ["q2", "q1"]}
+        assert mock_put.call_args[1]["json"] == {"question_uuids": ["q2", "q1"]}
 
     def test_list_form_responses_admin_filters(self, client: DailyBotClient) -> None:
         mock_response: MagicMock = MagicMock(spec=httpx.Response)
@@ -1257,7 +1257,7 @@ class TestCheckinsAuthoring:
             client.reorder_checkin_questions("followup-uuid", ["q2", "q1"])
 
         assert mock_put.call_args[0][0].endswith("/v1/checkins/followup-uuid/questions/reorder/")
-        assert mock_put.call_args[1]["json"] == {"order": ["q2", "q1"]}
+        assert mock_put.call_args[1]["json"] == {"question_uuids": ["q2", "q1"]}
 
     def test_list_checkin_responses_admin_filters(self, client: DailyBotClient) -> None:
         mock_response: MagicMock = MagicMock(spec=httpx.Response)
