@@ -9,6 +9,131 @@ Do not edit it by hand — your edits will be overwritten on the next release.
 
 <!-- version list -->
 
+## v1.17.0 (2026-07-06)
+
+### Bug Fixes
+
+- **checkin**: Frequency_type is weekly-only; monthly/custom via frequency_advanced
+  ([`c1d24ff`](https://github.com/DailybotHQ/cli/commit/c1d24ff1c2aca0480147e003849c56e2477c57c9))
+
+- **checkin**: Friendly error for an unresolvable --user/--team participant
+  ([`423668b`](https://github.com/DailybotHQ/cli/commit/423668bc201d670131176328bb6790f5b8f74a43))
+
+- **cli**: Harden authoring validation and error mapping - Task 8 of
+  PLAN_agent_forms_checkins_authoring
+  ([`6c7f261`](https://github.com/DailybotHQ/cli/commit/6c7f261c38b8ea41a27691c516e851ca78489768))
+
+- **client**: Question reorder sent the wrong field name (silent no-op)
+  ([`218b4a6`](https://github.com/DailybotHQ/cli/commit/218b4a6d6fa932d3a11a2a007c2132b9361e2bb7))
+
+- **client**: Unwrap {"channels": [...]} from the report-channels endpoint
+  ([`0b0d20f`](https://github.com/DailybotHQ/cli/commit/0b0d20f083566a12aaee086a79e312a4eb9172f8))
+
+- **forms,checkin**: Correct numeric logic operator spelling (_than suffix)
+  ([`bdc0a7e`](https://github.com/DailybotHQ/cli/commit/bdc0a7e952732823f9714a61d901f645992cd49f))
+
+### Chores
+
+- **security**: Security review of authoring feature - Task 12 of
+  PLAN_agent_forms_checkins_authoring
+  ([`b734d22`](https://github.com/DailybotHQ/cli/commit/b734d226ae1ac069874ceb4cb7c26b4ac681aefe))
+
+### Documentation
+
+- Document forms/check-ins authoring commands - Task 10 of PLAN_agent_forms_checkins_authoring
+  ([`ac03d08`](https://github.com/DailybotHQ/cli/commit/ac03d08dd7753a7de48ea23c0eba63db96766869))
+
+- **skill**: Sync vendored dailybot skill with authoring - Task 11 of
+  PLAN_agent_forms_checkins_authoring
+  ([`c870893`](https://github.com/DailybotHQ/cli/commit/c870893bbcb2ee8ea29c018aa0c2f97e2fd928e4))
+
+### Features
+
+- **checkin**: Expose smart/AI, reminder tone & advanced cron config (100% web parity)
+  ([`648311c`](https://github.com/DailybotHQ/cli/commit/648311c3af9a7c9aef236b2c5ca27c8fed1710e4))
+
+- **checkin**: Full check-in configuration via create + config flags
+  ([`68f7337`](https://github.com/DailybotHQ/cli/commit/68f7337a8a61f7a168d4aa1ba7eee595a8a4b9cb))
+
+- **checkin**: Map server-side checkin_requires_participant error
+  ([`a8eb201`](https://github.com/DailybotHQ/cli/commit/a8eb201a7c62df6e94c214ea4795d060ad2b3186))
+
+- **checkin**: Require at least one participant; edit participants via config
+  ([`a7ca34f`](https://github.com/DailybotHQ/cli/commit/a7ca34facb2bb0cfaf70b7a8d6cc9a1d266a9482))
+
+- **cli**: Add channels list command - Task 4 of PLAN_agent_forms_checkins_authoring
+  ([`d0628a7`](https://github.com/DailybotHQ/cli/commit/d0628a76747e86c40e1691d11f9b46e7f0662bc6))
+
+- **cli**: Add check-in authoring commands - Task 6 of PLAN_agent_forms_checkins_authoring
+  ([`5464066`](https://github.com/DailybotHQ/cli/commit/5464066af5532ea4980c69cfe32c46eeb4cadda8))
+
+- **cli**: Add form authoring commands - Task 5 of PLAN_agent_forms_checkins_authoring
+  ([`aaf4874`](https://github.com/DailybotHQ/cli/commit/aaf4874790c332bc061d35ea90bebac03e7bfb09))
+
+- **cli**: Add forms/check-ins authoring helpers and display - Task 3 of
+  PLAN_agent_forms_checkins_authoring
+  ([`e7b2f18`](https://github.com/DailybotHQ/cli/commit/e7b2f18a374a79577fbdc32999552a9f8fbdad75))
+
+- **cli**: Add interactive question builder - Task 7 of PLAN_agent_forms_checkins_authoring
+  ([`db6dc41`](https://github.com/DailybotHQ/cli/commit/db6dc417995270e79c639f6c4f333862cc0b7aeb))
+
+- **client**: Add check-ins authoring methods - Task 2 of PLAN_agent_forms_checkins_authoring
+  ([`8aa8b75`](https://github.com/DailybotHQ/cli/commit/8aa8b757ab7c051c293075d62f8ee89946b15a2c))
+
+- **client**: Add report-channel + forms authoring methods - Task 1 of
+  PLAN_agent_forms_checkins_authoring
+  ([`5b4e0b7`](https://github.com/DailybotHQ/cli/commit/5b4e0b7679cee33c45206eab0747149df0af143a))
+
+- **client**: Request include_email so email resolution works (admin/manager)
+  ([`3f9a2cd`](https://github.com/DailybotHQ/cli/commit/3f9a2cd702ef0b2158487cfdc917734c2638bb1c))
+
+- **display**: Render report-channel names + map report_channel_not_found
+  ([`3a76674`](https://github.com/DailybotHQ/cli/commit/3a766745670afd8a7be48415df9e05b7be11753f))
+
+- **forms**: Align authoring surface to the finalized canonical contract
+  ([`235ad93`](https://github.com/DailybotHQ/cli/commit/235ad93b9392f753808c5e2a763b56fe2cd4fc95))
+
+- **forms**: Full form config authoring — workflow, permissions, approval, command
+  ([`cf2f4d7`](https://github.com/DailybotHQ/cli/commit/cf2f4d7dc093786d6c98aa4e1d80661944583b9e))
+
+- **forms,checkin**: Finalize question logic — required else, forward jumps, full operator set
+  ([`1e95efe`](https://github.com/DailybotHQ/cli/commit/1e95efe4dca6ae5752d7c5d04b60cb0b22234e93))
+
+- **forms,checkin**: Forward generate_short_question opt-in + map short_question_required
+  ([`5bffa88`](https://github.com/DailybotHQ/cli/commit/5bffa88fcb655e3e42b1984dbaf744fcc87cca47))
+
+- **forms,checkin**: Map reorder validation codes + explicit full-replace audiences
+  ([`7c1ce87`](https://github.com/DailybotHQ/cli/commit/7c1ce87b706377adbe1dde620913831b428dd238))
+
+- **forms,checkin**: Per-question extras (short title, variations, logic) + error mapping
+  ([`c1d22dd`](https://github.com/DailybotHQ/cli/commit/c1d22dd1674970907a89e8bbcecc0881591ffefb))
+
+- **forms,checkin**: Require an explicit short_question unless --ai-short-question
+  ([`db869b1`](https://github.com/DailybotHQ/cli/commit/db869b10e12d25a3c32651f940402a80b17d8ebf))
+
+- **forms,checkin**: Resolve users by email + --no-approvers to clear approvers
+  ([`f894dd9`](https://github.com/DailybotHQ/cli/commit/f894dd944cea2c6d477327cc03e81c0ea3aaa55e))
+
+- **forms,checkin**: Surface public_url + enforce the 3 report-channel cap
+  ([`e23b06c`](https://github.com/DailybotHQ/cli/commit/e23b06cbd5811786b9d3a8c3fc1916a5b1da8f5d))
+
+- **release**: Support minimum-version floor in installers
+  ([`13d4a15`](https://github.com/DailybotHQ/cli/commit/13d4a156bb48a8417408a51f55e0682a7a39eeec))
+
+### Refactoring
+
+- **cli**: Attach report_channels inline on form create
+  ([`128a821`](https://github.com/DailybotHQ/cli/commit/128a821db24989d9aaaef7757433baac5979c3bf))
+
+- **display**: Drop question-shape fallbacks now the API contract is canonical
+  ([`e8a13bb`](https://github.com/DailybotHQ/cli/commit/e8a13bb58ea458de452d557adb5c65afdb259eba))
+
+### Testing
+
+- **cli**: Add authoring lifecycle integration tests - Task 9 of PLAN_agent_forms_checkins_authoring
+  ([`7bb74cf`](https://github.com/DailybotHQ/cli/commit/7bb74cf621c49221f6433e9fddeb56d4eb3acab4))
+
+
 ## v1.16.0 (2026-07-03)
 
 ### Features
