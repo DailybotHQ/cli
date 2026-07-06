@@ -341,6 +341,13 @@ def resolve_user_by_name_or_uuid(
             hit: dict[str, Any] = email_matches[0]
             return str(hit["uuid"]), str(hit.get("full_name") or hit.get("email") or hit["uuid"])
         if not email_matches:
+            # The directory only exposes emails to admins/managers; if no user has
+            # an email at all, the caller can't resolve by email — hint at that.
+            if not any(user.get("email") for user in users):
+                raise ValueError(
+                    f'Cannot resolve "{identifier}" by email — email lookup needs '
+                    "admin/manager permissions. Use the person's name or UUID instead."
+                )
             raise ValueError(f'No user found with email "{identifier}".')
 
     exact_matches: list[dict[str, Any]] = [

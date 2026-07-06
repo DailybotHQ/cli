@@ -886,15 +886,21 @@ class DailyBotClient:
         )
         return self._handle_response(response)
 
-    def list_users(self, *, include_inactive: bool = False) -> list[dict[str, Any]]:
+    def list_users(
+        self, *, include_inactive: bool = False, include_email: bool = False
+    ) -> list[dict[str, Any]]:
         """GET /v1/users/ — fetch all pages and return the combined results list.
 
         By default returns only members with ``is_active`` truthy. Pass
         ``include_inactive=True`` to get the unfiltered server response (useful
         for admin / audit flows that need to surface deactivated accounts).
+        ``include_email=True`` requests the ``email`` field (server-gated to
+        admins/managers; silently omitted otherwise) so callers can resolve a
+        person by email.
         """
         results: list[dict[str, Any]] = []
-        url: str | None = f"{self.api_url}/v1/users/"
+        base_url: str = f"{self.api_url}/v1/users/"
+        url: str | None = f"{base_url}?include_email=true" if include_email else base_url
         pages_fetched: int = 0
         while url is not None and pages_fetched < _MAX_LIST_PAGES:
             response: httpx.Response = httpx.get(

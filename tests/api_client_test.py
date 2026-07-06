@@ -432,6 +432,16 @@ class TestDailyBotClientPublicApi:
 
         assert len(result) == 2
 
+    def test_list_users_include_email_adds_query(self, client: DailyBotClient) -> None:
+        page: MagicMock = MagicMock(spec=httpx.Response)
+        page.status_code = 200
+        page.json.return_value = {"results": [], "next": None}
+
+        with patch("httpx.get", return_value=page) as mock_get:
+            client.list_users(include_email=True)
+
+        assert mock_get.call_args[0][0].endswith("/v1/users/?include_email=true")
+
     def test_list_users_page_cap(self, client: DailyBotClient) -> None:
         """Pagination must stop at _MAX_LIST_PAGES even if the backend keeps returning next."""
         from dailybot_cli.api_client import _MAX_LIST_PAGES
