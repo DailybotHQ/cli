@@ -9,6 +9,14 @@ Do not edit it by hand — your edits will be overwritten on the next release.
 
 <!-- version list -->
 
+## v1.17.2 (2026-07-06)
+
+### Documentation
+
+- **skill**: Sync vendored skill to 1.8.1 + recommend the agent skill for AI agents
+  ([`e8c9f30`](https://github.com/DailybotHQ/cli/commit/e8c9f303df56e0ead346f7fd56c5d32d8cf5877b))
+
+
 ## v1.17.1 (2026-07-06)
 
 ### Bug Fixes
