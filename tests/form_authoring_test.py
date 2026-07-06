@@ -208,7 +208,11 @@ class TestFormConfig:
         assert cfg["command"] == "release" and cfg["command_enabled"] is True
         assert cfg["workflow"]["states"][1] == {"label": "Done", "color": "#2ecc71"}
         assert cfg["who_can_edit"] == {"mode": "owner_and_admins"}
-        assert cfg["who_can_see_responses"] == {"mode": "restricted", "team_uuids": ["t-1"]}
+        assert cfg["who_can_see_responses"] == {
+            "mode": "restricted",
+            "user_uuids": [],
+            "team_uuids": ["t-1"],
+        }
 
     def test_config_forwards_partial(self, runner: CliRunner) -> None:
         with _auth(), _client() as cls:
@@ -419,6 +423,18 @@ class TestFormQuestions:
             result = runner.invoke(cli, ["form", "questions", "reorder", "form-uuid", "q2", "q1"])
         assert result.exit_code == 0
         assert client.reorder_form_questions.call_args[0][1] == ["q2", "q1"]
+
+    def test_reorder_incomplete_error_is_friendly(self, runner: CliRunner) -> None:
+        with _auth(), _client() as cls:
+            client: MagicMock = cls.return_value
+            client.reorder_form_questions.side_effect = APIError(
+                status_code=400,
+                detail="question_uuids must include ALL question UUIDs for this resource.",
+                code="question_uuids_incomplete",
+            )
+            result = runner.invoke(cli, ["form", "questions", "reorder", "form-uuid", "q1"])
+        assert result.exit_code != 0
+        assert "ALL" in result.output
 
 
 class TestFormListArchived:

@@ -573,7 +573,7 @@ class TestFormWorkflowAndAudience:
         client: MagicMock = MagicMock()
         client.list_teams.return_value = [{"uuid": "t-1", "name": "Eng"}]
         result = build_form_audience(None, (), ("Eng",), client, "can-see")
-        assert result == {"mode": "restricted", "team_uuids": ["t-1"]}
+        assert result == {"mode": "restricted", "user_uuids": [], "team_uuids": ["t-1"]}
 
     def test_audience_restricted_without_who_rejected(self) -> None:
         client: MagicMock = MagicMock()
@@ -601,7 +601,11 @@ class TestFormWorkflowAndAudience:
         assert cfg["is_anonymous"] is True
         assert cfg["workflow"] == {"enabled": True, "states": [{"label": "Draft", "color": "#ccc"}]}
         assert cfg["who_can_edit"] == {"mode": "owner_and_admins"}
-        assert cfg["who_can_change_states"] == {"mode": "restricted", "team_uuids": ["t-1"]}
+        assert cfg["who_can_change_states"] == {
+            "mode": "restricted",
+            "user_uuids": [],
+            "team_uuids": ["t-1"],
+        }
         assert cfg["command"] == "release"
 
     def test_resolve_form_config_command_conflict(self) -> None:

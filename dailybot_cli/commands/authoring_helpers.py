@@ -838,9 +838,13 @@ def build_form_audience(
                 "(those imply 'restricted')."
             )
         resolved: dict[str, Any] = parse_participants(users, teams, client)
-        audience: dict[str, Any] = {"mode": "restricted"}
-        audience.update(resolved)
-        return audience
+        # Server uses full-replace semantics (an omitted key means empty), so send
+        # both keys explicitly to make the replace self-documenting.
+        return {
+            "mode": "restricted",
+            "user_uuids": resolved.get("user_uuids", []),
+            "team_uuids": resolved.get("team_uuids", []),
+        }
     if mode is None:
         return None
     normalized: str = _check_enum(mode, FORM_PERMISSION_MODES, f"--{flag}")
@@ -951,7 +955,12 @@ def resolve_form_config(
         raise AuthoringError("Pass either --command NAME or --no-command, not both.")
     approvers: dict[str, Any] | None = None
     if approver_users or approver_teams:
-        approvers = parse_participants(approver_users, approver_teams, client)
+        resolved: dict[str, Any] = parse_participants(approver_users, approver_teams, client)
+        # Full-replace: send both keys so the approver set is unambiguous.
+        approvers = {
+            "user_uuids": resolved.get("user_uuids", []),
+            "team_uuids": resolved.get("team_uuids", []),
+        }
     return build_form_config(
         is_active=is_active,
         is_anonymous=is_anonymous,

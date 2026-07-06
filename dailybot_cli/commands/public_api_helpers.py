@@ -124,6 +124,12 @@ ERROR_CODE_MESSAGES: dict[str, str] = {
     ),
     "checkin_not_found": "Check-in not found.",
     "question_not_found": "Question not found on this form or check-in.",
+    # Question reorder validation
+    "question_uuids_required": "Reorder needs the list of question UUIDs to order.",
+    "question_uuids_incomplete": (
+        "Reorder must include ALL of the resource's question UUIDs, not a subset."
+    ),
+    "question_uuids_duplicate": "Reorder has a duplicate question UUID — list each one once.",
     "invalid_question_variations": (
         "Invalid question variations. Pass up to 10 non-empty alternate phrasings."
     ),
