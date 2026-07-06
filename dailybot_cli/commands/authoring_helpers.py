@@ -24,6 +24,8 @@ from dailybot_cli.display import print_error
 VALID_QUESTION_TYPES: tuple[str, ...] = ("text", "multiple_choice", "boolean", "numeric")
 # Server-side ceiling; mirrored here so the CLI fails fast on obviously-too-many.
 MAX_QUESTIONS: int = 50
+# Report-channel cap (forms + check-ins); server rejects > 3 with too_many_report_channels.
+MAX_REPORT_CHANNELS: int = 3
 # Per-question extras (short report title + alternate phrasings). Limits mirror
 # the server contract so the CLI fails fast; the server stays authoritative.
 SHORT_QUESTION_MAX_LEN: int = 512
@@ -155,6 +157,18 @@ def question_extras_options(func: Any) -> Any:
     for option in reversed(options):
         func = option(func)
     return func
+
+
+def check_report_channels(report_channels: tuple[str, ...]) -> None:
+    """Fail fast when more than ``MAX_REPORT_CHANNELS`` channels are attached.
+
+    Mirrors the server cap (``too_many_report_channels``) for forms and check-ins.
+    """
+    if len(report_channels) > MAX_REPORT_CHANNELS:
+        raise AuthoringError(
+            f"Too many report channels ({len(report_channels)}); the limit is "
+            f"{MAX_REPORT_CHANNELS}."
+        )
 
 
 def parse_options(raw: str | None) -> list[str] | None:

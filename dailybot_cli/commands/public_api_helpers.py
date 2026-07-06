@@ -144,6 +144,7 @@ ERROR_CODE_MESSAGES: dict[str, str] = {
         "Report channel not found — run `dailybot channels list` to see the "
         "channels available in your organization."
     ),
+    "too_many_report_channels": "Too many report channels — the limit is 3.",
     "checkin_requires_participant": (
         "A check-in must have at least one participant (a team or a person). "
         "Add --user and/or --team."

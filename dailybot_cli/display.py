@@ -756,6 +756,8 @@ def print_form_detail(form_data: dict[str, Any]) -> None:
         behaviors.append("approval flow")
     if behaviors:
         table.add_row("Settings", ", ".join(behaviors))
+    if form_data.get("public_url"):
+        table.add_row("Public URL", str(form_data.get("public_url")))
     for label, key in (
         ("Can edit", "who_can_edit"),
         ("Can see", "who_can_see_responses"),
@@ -1070,13 +1072,10 @@ def print_form_created(form: dict[str, Any], *, updated: bool = False) -> None:
     name: str = str(form.get("name") or "")
     form_id: str = str(form.get("id") or form.get("uuid") or "")
     title: str = "Form Updated" if updated else "Form Created"
-    console.print(
-        Panel(
-            f"[bold]{name}[/bold]\nID: {form_id}",
-            title=f"[bold]{title}[/bold]",
-            border_style="green",
-        )
-    )
+    lines: list[str] = [f"[bold]{name}[/bold]", f"ID: {form_id}"]
+    if form.get("public_url"):
+        lines.append(f"Public URL: {form.get('public_url')}")
+    console.print(Panel("\n".join(lines), title=f"[bold]{title}[/bold]", border_style="green"))
     questions: list[dict[str, Any]] = form.get("questions") or []
     if questions:
         console.print(_question_rows(questions))

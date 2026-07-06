@@ -13,6 +13,7 @@ from dailybot_cli.commands.authoring_helpers import (
     build_question,
     build_question_edit_fields,
     build_questions_interactively,
+    check_report_channels,
     parse_options,
     parse_participants,
     parse_questions_file,
@@ -453,6 +454,7 @@ def checkin_create(
     a non-interactive run errors instead of creating an empty check-in.
     """
     client = require_auth()
+    check_report_channels(report_channels)
     schedule: dict[str, Any] | None = parse_schedule(
         days=days, time=time_, timezone=timezone, schedule_file=schedule_file
     )
@@ -539,6 +541,7 @@ def checkin_config(
       dailybot checkin config <followup_uuid> --reminders 3 --reminder-interval 30
       dailybot checkin config <followup_uuid> --no-past --privacy everyone --inactive
     """
+    check_report_channels(report_channels)
     schedule: dict[str, Any] | None = parse_schedule(days=days, time=time_, timezone=timezone)
     config: dict[str, Any] = build_checkin_config(**config_flags)
     if (

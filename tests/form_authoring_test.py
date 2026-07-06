@@ -238,6 +238,42 @@ class TestFormConfig:
         assert result.exit_code != 0
         assert "hex color" in result.output
 
+    def test_too_many_report_channels_fails_fast(self, runner: CliRunner) -> None:
+        with _auth(), _client() as cls:
+            result = runner.invoke(
+                cli,
+                [
+                    "form",
+                    "config",
+                    "form-uuid",
+                    "--report-channel",
+                    "c1",
+                    "--report-channel",
+                    "c2",
+                    "--report-channel",
+                    "c3",
+                    "--report-channel",
+                    "c4",
+                ],
+            )
+            cls.return_value.update_form_config.assert_not_called()
+        assert result.exit_code != 0
+        assert "limit is 3" in result.output
+
+    def test_public_url_shown_after_config(self, runner: CliRunner) -> None:
+        with _auth(), _client() as cls:
+            client: MagicMock = cls.return_value
+            client.update_form_config.return_value = {
+                "id": "form-uuid",
+                "name": "Retro",
+                "allow_public_responses": True,
+                "public_url": "https://app.dailybot.com/forms/form-uuid/responses/create/",
+                "questions": [],
+            }
+            result = runner.invoke(cli, ["form", "config", "form-uuid", "--public"])
+        assert result.exit_code == 0
+        assert "https://app.dailybot.com/forms/form-uuid/responses/create/" in result.output
+
     def test_command_already_exists_error_is_friendly(self, runner: CliRunner) -> None:
         with _auth(), _client() as cls:
             client: MagicMock = cls.return_value

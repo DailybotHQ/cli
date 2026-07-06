@@ -10,6 +10,7 @@ from dailybot_cli.commands.authoring_helpers import (
     build_question,
     build_question_edit_fields,
     build_questions_interactively,
+    check_report_channels,
     parse_options,
     parse_questions_file,
     question_extras_options,
@@ -561,6 +562,7 @@ def form_create(
         --command release --can-edit owner_and_admins --report-channel <channel_uuid>
     """
     client = require_auth()
+    check_report_channels(report_channels)
     if interactive:
         questions: list[dict[str, Any]] | None = build_questions_interactively(ai_short_question)
     elif questions_file:
@@ -614,6 +616,7 @@ def form_edit(
     if name is None and not report_channels:
         raise click.UsageError("Nothing to edit. Pass --name and/or --report-channel.")
     client = require_auth()
+    check_report_channels(report_channels)
     try:
         with console.status("Updating form..."):
             result: dict[str, Any] = client.update_form_config(
@@ -665,6 +668,7 @@ def form_config(
       dailybot form config <form_uuid> --approval --approver-user "Jane Doe"
     """
     client = require_auth()
+    check_report_channels(report_channels)
     config: dict[str, Any] = resolve_form_config(client, **config_flags)
     if name is None and not report_channels and not config:
         raise click.UsageError(
