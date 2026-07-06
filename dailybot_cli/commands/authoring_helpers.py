@@ -159,6 +159,19 @@ def question_extras_options(func: Any) -> Any:
     return func
 
 
+def require_questions(questions: list[dict[str, Any]] | None, resource: str) -> None:
+    """Fail fast when a create call has no questions.
+
+    The server requires at least one question at create time (``questions_required``);
+    ``resource`` is ``"form"`` or ``"check-in"`` for the message.
+    """
+    if not questions:
+        raise AuthoringError(
+            f"A {resource} must have at least one question. Seed questions with "
+            "--questions-file or --interactive."
+        )
+
+
 def check_report_channels(report_channels: tuple[str, ...]) -> None:
     """Fail fast when more than ``MAX_REPORT_CHANNELS`` channels are attached.
 

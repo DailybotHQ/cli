@@ -91,7 +91,11 @@ class TestFormLifecycle:
 
 
 class TestCheckinLifecycle:
-    def test_full_checkin_authoring_flow(self, runner: CliRunner) -> None:
+    def test_full_checkin_authoring_flow(self, runner: CliRunner, tmp_path: Any) -> None:
+        qfile = tmp_path / "q.json"
+        qfile.write_text(
+            json.dumps([{"question_type": "text", "question": "Q?", "short_question": "Q"}])
+        )
         checkin: dict[str, Any] = {"id": "fu-1", "name": "Standup", "questions": []}
         with _auth(), _client() as cls:
             client: MagicMock = cls.return_value
@@ -117,6 +121,8 @@ class TestCheckinLifecycle:
                     "1,2,3",
                     "--team",
                     "Eng",
+                    "--questions-file",
+                    str(qfile),
                 ],
                 [
                     "checkin",
@@ -202,10 +208,16 @@ class TestErrorPaths:
 
 
 class TestJsonMode:
-    def test_create_form_json(self, runner: CliRunner) -> None:
+    def test_create_form_json(self, runner: CliRunner, tmp_path: Any) -> None:
+        qfile = tmp_path / "q.json"
+        qfile.write_text(
+            json.dumps([{"question_type": "text", "question": "Q?", "short_question": "Q"}])
+        )
         with _auth(), _client() as cls:
             cls.return_value.create_form.return_value = {"id": "f-1", "name": "Retro"}
-            result = runner.invoke(cli, ["form", "create", "-n", "Retro", "--json"])
+            result = runner.invoke(
+                cli, ["form", "create", "-n", "Retro", "--json", "--questions-file", str(qfile)]
+            )
         assert result.exit_code == 0
         assert json.loads(result.output)["id"] == "f-1"
 

@@ -14,6 +14,7 @@ from dailybot_cli.commands.authoring_helpers import (
     parse_options,
     parse_questions_file,
     question_extras_options,
+    require_questions,
     require_short_question,
     require_short_questions,
     resolve_form_config,
@@ -550,15 +551,15 @@ def form_create(
     json_mode: bool,
     **config_flags: Any,
 ) -> None:
-    """Create a form (optionally seeded with questions and full config).
+    """Create a form (seeded with questions and full config).
 
     \b
-    Creating forms is role-gated server-side (admins/managers as applicable).
-    Seed questions with --questions-file or --interactive, or add them later via
-    `dailybot form questions add`. Each seeded question needs a report title
-    (--short-question / "short_question") unless you pass --ai-short-question. The
-    config flags (workflow states, permissions, anonymous/public/approval, command)
-    mirror the web Setup tab.
+    Creating forms is role-gated server-side (admins/managers as applicable). A form
+    must have at least one question at create time — seed them with --questions-file
+    or --interactive (add/edit/remove more later via `dailybot form questions`). Each
+    seeded question needs a report title (--short-question / "short_question") unless
+    you pass --ai-short-question. The config flags (workflow states, permissions,
+    anonymous/public/approval, command) mirror the web Setup tab.
 
     \b
     Examples:
@@ -575,8 +576,8 @@ def form_create(
         questions = parse_questions_file(questions_file)
     else:
         questions = None
-    if questions:
-        require_short_questions(questions, ai_short_question)
+    require_questions(questions, "form")
+    require_short_questions(questions or [], ai_short_question)
     config: dict[str, Any] = resolve_form_config(client, **config_flags)
     try:
         with console.status("Creating form..."):

@@ -1,6 +1,7 @@
 """Security-focused tests for authoring commands: error mapping, confirmations,
 no-secret-leakage, and client-side validation running before any network call."""
 
+import json
 from typing import Any
 from unittest.mock import MagicMock, patch
 
@@ -124,14 +125,20 @@ class TestDestructiveConfirmations:
 
 
 class TestNoSecretLeakage:
-    def test_token_not_in_output(self, runner: CliRunner) -> None:
+    def test_token_not_in_output(self, runner: CliRunner, tmp_path: Any) -> None:
         secret: str = "super-secret-bearer-token-value"
+        qfile = tmp_path / "q.json"
+        qfile.write_text(
+            json.dumps([{"question_type": "text", "question": "Q?", "short_question": "Q"}])
+        )
         with _auth(), _client() as cls:
             client: MagicMock = cls.return_value
             client.token = secret
             client.api_key = "super-secret-api-key"
             client.create_form.return_value = {"id": "f-1", "name": "Retro", "questions": []}
-            result = runner.invoke(cli, ["form", "create", "-n", "Retro"])
+            result = runner.invoke(
+                cli, ["form", "create", "-n", "Retro", "--questions-file", str(qfile)]
+            )
         assert result.exit_code == 0
         assert secret not in result.output
         assert "super-secret-api-key" not in result.output
