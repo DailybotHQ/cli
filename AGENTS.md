@@ -473,7 +473,7 @@ dailybot agent update --name "Claude Code" --milestone \
   --metadata '{"model":"claude-opus-4-7","plan":"PLAN_agent_profiles","repo":"cli"}'
 ```
 
-Full philosophy, what to report, and what to skip: [.agents/skills/dailybot/report/SKILL.md](.agents/skills/dailybot/report/SKILL.md) (part of the vendored Dailybot agent skill pack at `.agents/skills/dailybot/`, v1.8.1, which also ships the `chat`, `kudos`, `teams`, `channels`, and the full `forms` / `checkin` **authoring** sub-skills — create/configure forms & check-ins, questions, workflow, permissions). Key rules:
+Full philosophy, what to report, and what to skip: [.agents/skills/dailybot/report/SKILL.md](.agents/skills/dailybot/report/SKILL.md) (part of the vendored Dailybot agent skill pack at `.agents/skills/dailybot/`, v1.8.3, which also ships the `chat`, `kudos`, `teams`, `channels`, and the full `forms` / `checkin` **authoring** sub-skills — create/configure forms & check-ins, questions, workflow, permissions). Key rules:
 
 - 1–3 sentences, **always in English**
 - Focus on WHAT + WHY, never "Agent completed…"
