@@ -9,6 +9,14 @@ Do not edit it by hand — your edits will be overwritten on the next release.
 
 <!-- version list -->
 
+## v1.18.0 (2026-07-07)
+
+### Features
+
+- **checkin**: Align responses listing with restored all-participants default
+  ([`407d3ee`](https://github.com/DailybotHQ/cli/commit/407d3ee67271d0a10d22e8f7f3e04b9ae2c9697b))
+
+
 ## v1.17.2 (2026-07-06)
 
 ### Documentation
