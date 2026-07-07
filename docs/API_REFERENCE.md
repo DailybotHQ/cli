@@ -137,13 +137,13 @@ Shows each check-in with its pending/completed state for a date (default today).
 
 Introspects a check-in's configuration and question definitions. Calls `GET /v1/checkins/<uuid>/` + `GET /v1/templates/<template_uuid>/?render_special_vars=true&followup_id=<uuid>`.
 
-#### `dailybot checkin history <followup_uuid> [--days N | --from YYYY-MM-DD --to YYYY-MM-DD] [--json]`
+#### `dailybot checkin history <followup_uuid> [--days N | --from YYYY-MM-DD --to YYYY-MM-DD] [--user <uuid>] [--json]`
 
-Lists your response history for a check-in over a date range. Calls `GET /v1/checkins/<uuid>/responses/?date_start=...&date_end=...`.
+Lists response history for a check-in over a date range. Calls `GET /v1/checkins/<uuid>/responses/?date_start=...&date_end=...`. Check-ins are team-wide, so the endpoint returns **all participants'** responses by default (unlike forms, which default to the caller's own). `--user <uuid>` narrows to one participant for admin/manager callers; a member always sees only their own responses (server-side guard, no 403). `?all=true` is a no-op — the default already returns everyone.
 
 #### `dailybot checkin edit <followup_uuid> [-a index=response]... [--date YYYY-MM-DD] [--yes] [--json]`
 
-Edits an existing response: fetches it (`GET .../responses/`), applies `-a` overrides (or prompts each question with the current answer as default when a terminal is attached), then `PUT /v1/checkins/<uuid>/responses/`.
+Edits an existing response: fetches it (`GET .../responses/?user=<caller>`, scoped to the caller's own response since the endpoint otherwise returns all participants), applies `-a` overrides (or prompts each question with the current answer as default when a terminal is attached), then `PUT /v1/checkins/<uuid>/responses/`.
 
 #### `dailybot checkin reset <followup_uuid> [--date YYYY-MM-DD] [--yes] [--json]`
 
@@ -513,7 +513,7 @@ key, so all of these commands work with `DAILYBOT_API_KEY` set even without
 | `GET` | `/v1/checkins/<followup_uuid>/` | — | `{ ... }` | v2 retrieve serializer (different shape) |
 | `GET` | `/v1/checkins/<followup_uuid>/detail/` | — | `{ id, name, is_archived, schedule, questions, participants: {users,teams}, report_channels: [{id,name,platform,type,reporting_enabled}] }` | **Canonical** authoring read; `checkin show` |
 | `GET` | `/v1/templates/<template_uuid>/` | `?render_special_vars=true&followup_id=<uuid>` | `{ questions: [...] }` | Question definitions for a check-in |
-| `GET` | `/v1/checkins/<followup_uuid>/responses/` | `?date_start&date_end`, `?all=true`, `?user` | `[{ ... }]` | History; `all`/`user` admin/owner-only |
+| `GET` | `/v1/checkins/<followup_uuid>/responses/` | `?date_start&date_end`, `?user` (`?all=true` = no-op) | `[{ ... }]` | History; default = **all participants**. `user` narrows (admin/manager); members guarded to own |
 | `PUT` | `/v1/checkins/<followup_uuid>/responses/` | `{ responses: [...], last_question_index? }` | Updated response | `/checkin edit` |
 | `DELETE` | `/v1/checkins/<followup_uuid>/responses/` | `?date_start&date_end` | 204 | `/checkin reset` |
 | `POST` | `/v1/checkins/create/` | `{ name, schedule?, participants?, questions?, report_channels? }` | Check-in | Role-gated; `checkin create` |

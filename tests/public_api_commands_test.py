@@ -1186,6 +1186,22 @@ class TestCheckinExtendedCommands:
         payload: dict[str, Any] = json.loads(result.output)
         assert payload["count"] == 1
         client.list_checkin_responses.assert_called_once()
+        assert client.list_checkin_responses.call_args.kwargs["user"] is None
+
+    @patch("dailybot_cli.commands.public_api_helpers.get_agent_auth")
+    @patch("dailybot_cli.commands.public_api_helpers.DailyBotClient")
+    def test_checkin_history_user_filter_forwarded(
+        self, mock_client_cls: MagicMock, mock_get_auth: MagicMock, runner: CliRunner
+    ) -> None:
+        client: MagicMock = self._client(mock_client_cls, mock_get_auth)
+        client.list_checkin_responses.return_value = []
+        result = runner.invoke(
+            cli, ["checkin", "history", "f1", "--days", "7", "--user", "u-42", "--json"]
+        )
+        assert result.exit_code == 0
+        payload: dict[str, Any] = json.loads(result.output)
+        assert payload["user"] == "u-42"
+        assert client.list_checkin_responses.call_args.kwargs["user"] == "u-42"
 
     @patch("dailybot_cli.commands.public_api_helpers.get_agent_auth")
     @patch("dailybot_cli.commands.public_api_helpers.DailyBotClient")
@@ -1220,6 +1236,28 @@ class TestCheckinExtendedCommands:
         new_responses: list[dict[str, Any]] = client.update_checkin_response.call_args.args[1]
         assert new_responses[0]["response"] == "new"
         assert new_responses[1]["response"] == "keep"
+
+    @patch("dailybot_cli.commands.user_scoped_actions.get_current_user_uuid")
+    @patch("dailybot_cli.commands.public_api_helpers.get_agent_auth")
+    @patch("dailybot_cli.commands.public_api_helpers.DailyBotClient")
+    def test_checkin_edit_scopes_prefill_to_self(
+        self,
+        mock_client_cls: MagicMock,
+        mock_get_auth: MagicMock,
+        mock_self_uuid: MagicMock,
+        runner: CliRunner,
+    ) -> None:
+        # The responses endpoint now returns every participant by default, so the
+        # pre-fill read must be scoped to the caller's own UUID.
+        mock_self_uuid.return_value = "me-uuid"
+        client: MagicMock = self._client(mock_client_cls, mock_get_auth)
+        client.list_checkin_responses.return_value = [
+            {"responses": [{"uuid": "q1", "index": 0, "response": "old"}]}
+        ]
+        client.update_checkin_response.return_value = {"uuid": "r1"}
+        result = runner.invoke(cli, ["checkin", "edit", "f1", "-a", "0=new", "--json"])
+        assert result.exit_code == 0
+        assert client.list_checkin_responses.call_args.kwargs["user"] == "me-uuid"
 
     @patch("dailybot_cli.commands.public_api_helpers.get_agent_auth")
     @patch("dailybot_cli.commands.public_api_helpers.DailyBotClient")
