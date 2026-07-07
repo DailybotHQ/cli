@@ -39,10 +39,11 @@ _STRONG_NUDGE_TEMPLATE: str = (
 _SOFT_NUDGE_MESSAGE: str = (
     "Dailybot reminder: there has been sustained work this session without a "
     "progress report. If a meaningful unit of work is complete — including "
-    "non-commit work such as research, analysis, or written documents — send "
-    "a progress report now using the dailybot-report skill (or `dailybot "
-    "agent update`). If nothing significant happened yet, run `dailybot hook "
-    "dismiss` to silence this reminder for an hour."
+    "completed research, analysis, architecture decisions, written documents, "
+    "or plans, even without commits — send a progress report now using the "
+    "dailybot-report skill (or `dailybot agent update`). If nothing significant "
+    "happened yet, run `dailybot hook dismiss` to silence this reminder for "
+    "an hour."
 )
 _LOGIN_NUDGE_MESSAGE: str = (
     "The Dailybot CLI is installed but not authenticated, so progress reports "

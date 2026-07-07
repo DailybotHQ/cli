@@ -126,6 +126,7 @@ class TestHookStop:
         frozen_now["now"] = NOW + timedelta(minutes=ledger.DEFAULT_MIN_INTERVAL_MINUTES + 1)
         result = runner.invoke(cli, ["hook", "stop"])
         assert "research" in result.output
+        assert "architecture decisions" in result.output
         assert "dailybot hook dismiss" in result.output
 
     def test_internal_error_still_exits_zero(
