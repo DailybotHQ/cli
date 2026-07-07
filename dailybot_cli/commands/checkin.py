@@ -297,20 +297,32 @@ def checkin_show(followup_uuid: str, json_mode: bool) -> None:
 @click.option("--days", type=int, default=None, help="Look back N days from today.")
 @click.option("--from", "date_from", default=None, help="Range start (YYYY-MM-DD).")
 @click.option("--to", "date_to", default=None, help="Range end (YYYY-MM-DD).")
+@click.option(
+    "--user",
+    default=None,
+    help="Filter to one participant's responses (admin/manager only; a member sees only their own).",
+)
 @click.option("--json", "json_mode", is_flag=True, help="Emit machine-readable JSON to stdout.")
 def checkin_history(
     followup_uuid: str,
     days: int | None,
     date_from: str | None,
     date_to: str | None,
+    user: str | None,
     json_mode: bool,
 ) -> None:
-    """Show your response history for a check-in.
+    """Show a check-in's response history.
+
+    \b
+    By default this lists every participant's responses in the range (check-ins
+    are team-wide). Pass --user to narrow to one participant — admin/manager only;
+    a member always sees only their own responses.
 
     \b
     Examples:
       dailybot checkin history <followup_uuid> --days 7
       dailybot checkin history <followup_uuid> --from 2026-06-01 --to 2026-06-30 --json
+      dailybot checkin history <followup_uuid> --user <user_uuid> --days 30
     """
     client = require_auth()
     execute_checkin_history(
@@ -319,6 +331,7 @@ def checkin_history(
         days=days,
         date_from=date_from,
         date_to=date_to,
+        user=user,
         json_mode=json_mode,
     )
 

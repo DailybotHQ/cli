@@ -513,6 +513,13 @@ class DailybotChatApp(App[None]):
 
     def _load_editable_checkin_candidates(self) -> list[dict[str, Any]]:
         today: str = date.today().isoformat()
+        # Check-in responses default to all participants, so scope to the caller's
+        # own response before picking one to edit. Unknown user (e.g. API-key auth)
+        # falls back to the first response returned.
+        try:
+            self_uuid: str | None = self._get_current_user_uuid()
+        except APIError:
+            self_uuid = None
         candidates: list[dict[str, Any]] = []
         for checkin in self.client.list_checkins():
             followup_uuid: str = str(checkin.get("id") or checkin.get("followup_uuid") or "")
@@ -522,6 +529,7 @@ class DailybotChatApp(App[None]):
                 followup_uuid,
                 date_start=today,
                 date_end=today,
+                user=self_uuid,
             )
             if responses:
                 candidates.append({"checkin": checkin, "response": responses[0]})

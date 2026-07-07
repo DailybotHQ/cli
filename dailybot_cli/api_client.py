@@ -345,10 +345,14 @@ class DailyBotClient:
     ) -> list[dict[str, Any]]:
         """GET /v1/checkins/<followup_uuid>/responses/.
 
-        Without filters the server returns only the caller's own responses.
-        ``all_responses`` / ``user`` are admin/owner-only server-side (a member
-        receives 403). Note check-ins use ``date_start`` / ``date_end`` (forms
-        use ``date_from`` / ``date_to``).
+        Without a ``user`` filter the server returns **all participants'**
+        responses in the date range — check-ins default to the whole team, unlike
+        forms (which default to the caller's own). ``user`` narrows to one
+        participant for admin/manager callers; a member caller has the requested
+        UUID ignored and only ever receives their own responses (server-side
+        guard, no 403). ``all_responses`` is a no-op kept for backward
+        compatibility — the default already returns everything. Note check-ins use
+        ``date_start`` / ``date_end`` (forms use ``date_from`` / ``date_to``).
         """
         params: dict[str, str] = {}
         if date_start:

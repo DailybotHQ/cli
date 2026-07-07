@@ -243,6 +243,40 @@ class TestDailyBotClientPublicApi:
             "date_end": "2026-07-01",
         }
 
+    def test_list_checkin_responses_user_filter(self, client: DailyBotClient) -> None:
+        mock_response: MagicMock = MagicMock(spec=httpx.Response)
+        mock_response.status_code = 200
+        mock_response.json.return_value = {"results": [], "next": None}
+
+        with patch("httpx.get", return_value=mock_response) as mock_get:
+            client.list_checkin_responses(
+                "followup-uuid",
+                date_start="2026-07-01",
+                date_end="2026-07-31",
+                user="user-uuid",
+            )
+
+        # Default sends no `all` param; `user` narrows to one participant.
+        assert mock_get.call_args[1]["params"] == {
+            "date_start": "2026-07-01",
+            "date_end": "2026-07-31",
+            "user": "user-uuid",
+        }
+
+    def test_list_checkin_responses_all_is_backward_compatible_noop(
+        self, client: DailyBotClient
+    ) -> None:
+        mock_response: MagicMock = MagicMock(spec=httpx.Response)
+        mock_response.status_code = 200
+        mock_response.json.return_value = {"results": [], "next": None}
+
+        # `all_responses=True` is accepted (legacy callers) even though the server
+        # already returns all participants by default.
+        with patch("httpx.get", return_value=mock_response) as mock_get:
+            client.list_checkin_responses("followup-uuid", all_responses=True)
+
+        assert mock_get.call_args[1]["params"] == {"all": "true"}
+
     def test_update_checkin_response(self, client: DailyBotClient) -> None:
         mock_response: MagicMock = MagicMock(spec=httpx.Response)
         mock_response.status_code = 200
