@@ -9,6 +9,14 @@ Do not edit it by hand — your edits will be overwritten on the next release.
 
 <!-- version list -->
 
+## v1.18.1 (2026-07-07)
+
+### Documentation
+
+- **docs**: Bump README install examples to 1.18.0
+  ([`109bd20`](https://github.com/DailybotHQ/cli/commit/109bd20ad230ae7baa5b011f35005fc958a26520))
+
+
 ## v1.18.0 (2026-07-07)
 
 ### Features
