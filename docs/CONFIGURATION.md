@@ -34,7 +34,7 @@ The Dailybot CLI persists state in `~/.config/dailybot/` by default. The path ca
 | `profile` | string slug | Selects an entry in the global `agents.json` for credentials |
 | `default_metadata` | object | Shallow-merged into every report's `--metadata` (inline keys win per-key) |
 | `vars` | object | Free-form repo variables for scripts, skills, and automation. The CLI carries this key but never sends it in reports or warnings. |
-| `report` | object | Per-repo policy for the `dailybot hook` reminders: `{ "min_interval_minutes": 30, "nudge": true }`. `nudge: false` silences end-of-turn report reminders for the repo. See [AGENT_HOOKS.md](AGENT_HOOKS.md). |
+| `report` | object | Per-repo policy for the `dailybot hook` reminders: `{ "min_interval_minutes": 30, "nudge": true, "mode": "balanced", "soft_turn_threshold": 8 }`. `nudge: false` silences end-of-turn report reminders for the repo; `mode: "continuous"` lowers the soft-nudge thresholds (interval `20`, turns `5` when those keys are omitted) so research/docs-heavy repos are reminded about non-commit work sooner; `soft_turn_threshold` overrides the agent-turns-without-a-report count before a soft nudge. Invalid `mode`/`soft_turn_threshold` values fall back to the defaults. Requires CLI `>= 1.19.0` (older CLIs ignore `mode`/`soft_turn_threshold`). See [AGENT_HOOKS.md](AGENT_HOOKS.md). |
 
 **Security rule:** a `key` field is rejected with a hard error — credentials must never be committed. The file is plain text and lives in the repo, so it must remain free of secrets. Unknown future keys log a one-line warning and are ignored (forward compatibility). Malformed JSON falls back to the global config with a warning.
 

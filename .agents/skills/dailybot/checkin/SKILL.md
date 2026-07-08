@@ -1,7 +1,7 @@
 ---
 name: dailybot-checkin
 description: Drive the full check-in lifecycle via Dailybot — list and complete pending check-ins, see pending/completed status for a day, inspect a check-in's questions and schedule, browse response history, edit or reset a submitted response, and backfill or future-date responses. Also authors check-ins — create and configure a check-in (schedule, participants, reminders, privacy, smart/AI) and manage its questions (types, report titles, variations, conditional logic). Works headless with an API key. Use when the developer asks to fill in their standup, answer daily questions, check what check-ins they have, edit or reset a check-in, review past responses, or create/configure a check-in. Do not use for free-text progress reports — those go through dailybot-report.
-version: "1.8.4"
+version: "1.8.5"
 documentation_url: https://api.dailybot.com/skill.md
 user-invocable: true
 metadata: {"openclaw":{"emoji":"✅","homepage":"https://dailybot.com","requires":{"anyBins":["dailybot","curl"]},"primaryEnv":"DAILYBOT_API_KEY","install":[{"id":"cli-install-script","kind":"download","url":"https://cli.dailybot.com/install.sh","label":"Install Dailybot CLI (official script — preferred on Linux/macOS)"},{"id":"pip","kind":"pip","package":"dailybot-cli","bins":["dailybot"],"label":"Install Dailybot CLI via pip (fallback if binary fails)"}]}}
@@ -260,7 +260,7 @@ prompts — handy for humans; agents should use the headless commands above.
 > `checkin config`, `checkin archive`, the `checkin questions add|edit|delete|reorder`
 > group, resolving people by email, the smart/AI flags, and the **create requires
 > ≥ 1 question** rule (`questions_required`) — ships in CLI **1.17.1** (current
-> published release: **1.19.0**). The response lifecycle above works on older CLIs; only authoring
+> published release: the latest on PyPI). The response lifecycle above works on older CLIs; only authoring
 > needs 1.17.1. If `dailybot --version` is below that, run `dailybot upgrade`.
 
 Everything above **answers** a check-in. This section **builds** one. As of the

@@ -1,7 +1,7 @@
 ---
 name: dailybot
 description: Official Dailybot agent skill pack — report progress, check messages, send emails, announce agent status, complete check-ins, give kudos (to users or teams), resolve teams, run the full forms lifecycle (list, submit, update, transition between workflow states), **author check-ins and forms from scratch** (create/configure questions, workflow states, permissions, reminders, scheduling, AI settings, sharing), send/edit chat messages on the team's Slack/Teams/Discord/Google Chat (including report-style threads), and ask the Dailybot AI a question headlessly. Routes to the right sub-skill based on intent. Use when the developer mentions Dailybot or wants to interact with their team.
-version: "1.8.4"
+version: "1.8.5"
 documentation_url: https://api.dailybot.com/skill.md
 user-invocable: true
 metadata: {"openclaw":{"emoji":"📡","homepage":"https://dailybot.com","requires":{"anyBins":["dailybot","curl"]},"primaryEnv":"DAILYBOT_API_KEY","install":[{"id":"cli-install-script","kind":"download","url":"https://cli.dailybot.com/install.sh","label":"Install Dailybot CLI (official script — preferred on Linux/macOS)"},{"id":"pip","kind":"pip","package":"dailybot-cli","bins":["dailybot"],"label":"Install Dailybot CLI via pip (fallback if binary fails)"}]}}
@@ -18,6 +18,36 @@ across humans and agents in the same workspace.
 
 This is the canonical, first-party integration. Source of truth:
 <https://github.com/DailybotHQ/agent-skill>. License: MIT.
+
+## Start here (first run)
+
+This skill is a **self-sufficient entry point**: whether you arrive from the web
+(<https://api.dailybot.com/skill.md>) or simply install this skill from a
+registry, the setup is the same — and it lives **here, in the shipped files, so
+no network fetch is required** to know what to do. Run first-run setup in order:
+
+1. **Install the Dailybot CLI (with consent).** This skill is the prompt layer;
+   the `dailybot` CLI is the integration surface. If it is missing, follow
+   [`shared/auth.md`](shared/auth.md) — it proposes the checksum-verified
+   installer and installs **only after the developer confirms**. Confirm with
+   `dailybot --version` (minimum `>= 1.10.0`; hooks in step 3 need `>= 1.12.0`,
+   and continuous mode in step 4 needs `>= 1.19.0`).
+2. **Authenticate.** `dailybot login` (email OTP) **or** set `DAILYBOT_API_KEY` —
+   see [`shared/auth.md`](shared/auth.md). Credentials are stored owner-only
+   (`0600`) and masked in all output.
+3. **Turn on autonomous reporting (opt-in).** So reporting fires without invoking
+   the skill each session, offer the auto-activation trigger and the `dailybot hook`
+   lifecycle enforcement in [`report/SKILL.md`](report/SKILL.md) Step 0 / Step 0b.
+   Both are shown to the developer verbatim and written **only on consent**, each
+   with an uninstall marker.
+4. **Make reporting proactive for this repo.** Commit a `.dailybot/profile.json`
+   with a `report` block. For research/docs-heavy repos, set `"mode": "continuous"`
+   so non-commit work (research, analysis, design docs, plans) is nudged sooner —
+   see [`report/hooks.md`](report/hooks.md) § Per-repo controls.
+
+Then route by intent (below). What this skill will and will **not** do on your
+machine — permissions, consent guarantees, and a self-audit you can run — is in
+[`TRUST.md`](TRUST.md).
 
 ## What it does
 
@@ -45,7 +75,11 @@ npx skills add DailybotHQ/agent-skill
 
 Six install methods are supported (skills.sh CLI, OpenClaw native, git
 clone + `setup.sh`, conversational, manual per-agent, and HTTP-only
-fallback). Full guide: [`docs/INSTALLATION.md`](https://github.com/DailybotHQ/agent-skill/blob/main/docs/INSTALLATION.md).
+fallback). Full guide (online): [`docs/INSTALLATION.md`](https://github.com/DailybotHQ/agent-skill/blob/main/docs/INSTALLATION.md).
+
+Installing the skill sets up the **prompt layer** only. Everything an agent needs
+to then install and authenticate the `dailybot` CLI, and to turn on autonomous
+reporting, ships **inside this skill** — follow **[Start here (first run)](#start-here-first-run)** above. No external page is required.
 
 ## Required Dailybot CLI version
 
@@ -54,9 +88,10 @@ fallback). Full guide: [`docs/INSTALLATION.md`](https://github.com/DailybotHQ/ag
 >
 > Requires **Python >= 3.10**. The 1.10.0 wheel is `py3-none-any` (pure Python).
 >
-> **Current published version:** [`dailybot-cli 1.19.0`](https://pypi.org/project/dailybot-cli/) —
-> what `pip install --upgrade dailybot-cli` (or `dailybot upgrade`) resolves to
-> today. Everything below is additive on top of the 1.10.0 minimum; the
+> **Current published version:** the latest [`dailybot-cli`](https://pypi.org/project/dailybot-cli/)
+> release on PyPI — what `pip install --upgrade dailybot-cli` (or `dailybot
+> upgrade`) resolves to today; run `dailybot version --check` to see the exact
+> number. Everything below is additive on top of the 1.10.0 minimum; the
 > per-feature floors say which release first shipped each sub-skill.
 >
 > **`1.11.0` enhancement (optional):** `dailybot agent update` echoes the

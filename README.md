@@ -17,8 +17,8 @@ exact release, or `>=` to set a **minimum floor** (installs the newest release a
 or above it):
 
 ```bash
-pip install dailybot-cli==1.19.0     # exactly 1.19.0
-pip install "dailybot-cli>=1.19.0"   # 1.19.0 or newer — picks the latest available
+pip install dailybot-cli==1.19.1     # exactly 1.19.1
+pip install "dailybot-cli>=1.19.1"   # 1.19.1 or newer — picks the latest available
 ```
 
 ### Alternative installation methods
@@ -27,8 +27,8 @@ Every method installs the **latest** release by default. Where a version can be
 pinned, the pinned form is shown right below the default one. Two pinning styles
 are supported everywhere `DAILYBOT_VERSION` / `--version` is accepted:
 
-- **Exact** — `1.19.0` (or `==1.19.0`) installs precisely that release.
-- **Minimum floor** — `>=1.19.0` installs the newest release at or above `1.19.0`,
+- **Exact** — `1.19.1` (or `==1.19.1`) installs precisely that release.
+- **Minimum floor** — `>=1.19.1` installs the newest release at or above `1.19.1`,
   so you get any later version automatically while guaranteeing a lower bound.
 
 **macOS (Homebrew)**
@@ -41,7 +41,7 @@ Homebrew always installs the latest published formula. To pin a specific
 version, install with pip instead:
 
 ```bash
-pip install dailybot-cli==1.19.0
+pip install dailybot-cli==1.19.1
 ```
 
 **Linux, WSL2, or Git Bash on Windows (binary or pip fallback)**
@@ -56,13 +56,13 @@ accepts an exact version or a `>=` minimum floor:
 
 ```bash
 # exact version, environment variable
-curl -sSL https://cli.dailybot.com/install.sh | DAILYBOT_VERSION=1.19.0 bash
+curl -sSL https://cli.dailybot.com/install.sh | DAILYBOT_VERSION=1.19.1 bash
 
 # exact version, equivalent flag (note the `-s --` that forwards args through bash)
-curl -sSL https://cli.dailybot.com/install.sh | bash -s -- --version 1.19.0
+curl -sSL https://cli.dailybot.com/install.sh | bash -s -- --version 1.19.1
 
-# minimum floor — installs 1.19.0 or the newest release above it
-curl -sSL https://cli.dailybot.com/install.sh | DAILYBOT_VERSION='>=1.19.0' bash
+# minimum floor — installs 1.19.1 or the newest release above it
+curl -sSL https://cli.dailybot.com/install.sh | DAILYBOT_VERSION='>=1.19.1' bash
 ```
 
 An exact pin installs the matching Linux binary when one exists, otherwise falls
@@ -82,10 +82,10 @@ An exact version or a `>=` minimum floor both work:
 
 ```powershell
 # exact version
-$env:DAILYBOT_VERSION = '1.19.0'; irm https://cli.dailybot.com/install.ps1 | iex
+$env:DAILYBOT_VERSION = '1.19.1'; irm https://cli.dailybot.com/install.ps1 | iex
 
-# minimum floor — installs 1.19.0 or the newest release above it
-$env:DAILYBOT_VERSION = '>=1.19.0'; irm https://cli.dailybot.com/install.ps1 | iex
+# minimum floor — installs 1.19.1 or the newest release above it
+$env:DAILYBOT_VERSION = '>=1.19.1'; irm https://cli.dailybot.com/install.ps1 | iex
 ```
 
 Requires Python 3.10+ on PATH. Wraps `pipx` / `uv tool` / `pip --user`.

@@ -1,7 +1,7 @@
 ---
 name: dailybot-report
 description: Report work progress to Dailybot. Activate after completing a discrete task or subtask, or after any batch of edits that modifies 3 or more files. Compose a standup-style update describing what changed and why.
-version: "1.8.4"
+version: "1.8.5"
 documentation_url: https://api.dailybot.com/skill.md
 user-invocable: true
 metadata: {"openclaw":{"emoji":"📡","homepage":"https://dailybot.com","requires":{"anyBins":["dailybot","curl"]},"primaryEnv":"DAILYBOT_API_KEY","install":[{"id":"cli-install-script","kind":"download","url":"https://cli.dailybot.com/install.sh","label":"Install Dailybot CLI (official script — preferred on Linux/macOS)"},{"id":"pip","kind":"pip","package":"dailybot-cli","bins":["dailybot"],"label":"Install Dailybot CLI via pip (fallback if binary fails)"}]}}
@@ -151,6 +151,12 @@ content, merge rules, and uninstall path. The **same consent rules as Step
 consent. A repo-level config (`.claude/settings.json`, `.cursor/hooks.json`,
 …) committed to the repository gives the whole team autonomous reporting on
 clone — offer that when the developer is in a shared project.
+
+Once hooks are wired, consider the repo's **report cadence**. For research- or
+docs-heavy repos where much of the valuable work never lands as a commit, add
+`"report": {"mode": "continuous"}` to the committed `.dailybot/profile.json` so
+non-commit work (research, analysis, design docs, plans) is nudged sooner (a
+lower interval and turn threshold). See [`hooks.md`](hooks.md) § Per-repo controls.
 
 If the developer declines, continue to Step 1 and do not re-ask in the same
 session. The Step 0a trigger still provides (probabilistic) coverage.
