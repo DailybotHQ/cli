@@ -34,7 +34,7 @@ RUN curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg | d
     && apt-get clean && rm -rf /var/lib/apt/lists/*
 
 # Install Dailybot CLI (system-wide; pip drops the binary in /usr/local/bin/, available to dev-user)
-RUN curl -sSL https://cli.dailybot.com/install.sh | DAILYBOT_VERSION='>=1.18.0' bash
+RUN curl -sSL https://cli.dailybot.com/install.sh | DAILYBOT_VERSION='>=1.19.1' bash
 
 # Install all Python dev/runtime deps from the repo's lock file.
 # This single COPY/RUN pair is the only build cache layer pip touches — it
