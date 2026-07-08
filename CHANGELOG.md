@@ -9,6 +9,14 @@ Do not edit it by hand — your edits will be overwritten on the next release.
 
 <!-- version list -->
 
+## v1.19.1 (2026-07-08)
+
+### Documentation
+
+- **skill**: Sync vendored dailybot skill pack to 1.8.4
+  ([`e93d3ea`](https://github.com/DailybotHQ/cli/commit/e93d3ea4230ae89932b95af16a5277eb7c8fd7e1))
+
+
 ## v1.19.0 (2026-07-08)
 
 ### Chores
