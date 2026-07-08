@@ -40,9 +40,12 @@ GLOBAL_STATE_FILENAME: str = "_global.json"
 # Nudge policy defaults. `min_interval_minutes` is overridable per repo via
 # the `report` block in `.dailybot/profile.json`.
 DEFAULT_MIN_INTERVAL_MINUTES: int = 30
+DEFAULT_CONTINUOUS_MIN_INTERVAL_MINUTES: int = 20
 NUDGE_COOLDOWN_MINUTES: int = 15
 DEFAULT_SNOOZE_MINUTES: int = 60
 SOFT_NUDGE_TURN_THRESHOLD: int = 8
+DEFAULT_CONTINUOUS_SOFT_TURN_THRESHOLD: int = 5
+VALID_REPORT_MODES: frozenset[str] = frozenset({"balanced", "continuous"})
 LOGIN_NUDGE_INTERVAL_HOURS: int = 24
 GIT_TIMEOUT_SECS: float = 5.0
 
@@ -234,6 +237,8 @@ def _repo_policy(cwd: Path) -> dict[str, Any]:
     policy: dict[str, Any] = {
         "min_interval_minutes": DEFAULT_MIN_INTERVAL_MINUTES,
         "nudge": True,
+        "mode": "balanced",
+        "soft_turn_threshold": SOFT_NUDGE_TURN_THRESHOLD,
     }
     path: Path | None = find_repo_profile_path(cwd)
     if not path:
@@ -247,9 +252,24 @@ def _repo_policy(cwd: Path) -> dict[str, Any]:
         return policy
     if isinstance(report.get("nudge"), bool):
         policy["nudge"] = report["nudge"]
+    mode_raw: Any = report.get("mode")
+    if isinstance(mode_raw, str) and mode_raw in VALID_REPORT_MODES:
+        policy["mode"] = mode_raw
+    interval_explicit: bool = False
     interval: Any = report.get("min_interval_minutes")
     if isinstance(interval, int) and not isinstance(interval, bool) and interval > 0:
         policy["min_interval_minutes"] = interval
+        interval_explicit = True
+    threshold_explicit: bool = False
+    threshold: Any = report.get("soft_turn_threshold")
+    if isinstance(threshold, int) and not isinstance(threshold, bool) and threshold > 0:
+        policy["soft_turn_threshold"] = threshold
+        threshold_explicit = True
+    if policy["mode"] == "continuous":
+        if not interval_explicit:
+            policy["min_interval_minutes"] = DEFAULT_CONTINUOUS_MIN_INTERVAL_MINUTES
+        if not threshold_explicit:
+            policy["soft_turn_threshold"] = DEFAULT_CONTINUOUS_SOFT_TURN_THRESHOLD
     return policy
 
 
@@ -394,8 +414,11 @@ def evaluate_stop(cwd: Path | None = None) -> dict[str, Any] | None:
         else:
             anchor: datetime | None = last_report_at or _parse_iso(entry.get("first_seen_at"))
             interval_ok: bool = anchor is None or now - anchor >= interval
+            turn_threshold: int = int(
+                policy.get("soft_turn_threshold") or SOFT_NUDGE_TURN_THRESHOLD
+            )
             has_soft_signal: bool = bool(entry.get("work_pending")) or (
-                entry["turns_since_report"] >= SOFT_NUDGE_TURN_THRESHOLD
+                entry["turns_since_report"] >= turn_threshold
             )
             if interval_ok and has_soft_signal:
                 decision = {"kind": "soft", "commit_count": 0}

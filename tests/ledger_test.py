@@ -260,6 +260,67 @@ class TestEvaluateStop:
         result: dict | None = ledger.evaluate_stop(repo)
         assert result is not None and result["kind"] == "commits"
 
+    def test_continuous_mode_soft_nudge_at_five_turns(
+        self, config_dir: Path, repo: Path, frozen_now: dict
+    ) -> None:
+        (repo / ".dailybot").mkdir(exist_ok=True)
+        (repo / ".dailybot" / "profile.json").write_text(
+            json.dumps({"report": {"mode": "continuous"}})
+        )
+        ledger.evaluate_stop(repo)  # baseline
+        for _ in range(ledger.DEFAULT_CONTINUOUS_SOFT_TURN_THRESHOLD):
+            ledger.evaluate_stop(repo)
+        frozen_now["now"] = NOW + timedelta(
+            minutes=ledger.DEFAULT_CONTINUOUS_MIN_INTERVAL_MINUTES + 1
+        )
+        result: dict | None = ledger.evaluate_stop(repo)
+        assert result is not None
+        assert result["kind"] == "soft"
+
+    def test_soft_turn_threshold_override(
+        self, config_dir: Path, repo: Path, frozen_now: dict
+    ) -> None:
+        (repo / ".dailybot").mkdir(exist_ok=True)
+        (repo / ".dailybot" / "profile.json").write_text(
+            json.dumps({"report": {"soft_turn_threshold": 3}})
+        )
+        ledger.evaluate_stop(repo)  # baseline
+        for _ in range(3):
+            ledger.evaluate_stop(repo)
+        frozen_now["now"] = NOW + timedelta(minutes=ledger.DEFAULT_MIN_INTERVAL_MINUTES + 1)
+        result: dict | None = ledger.evaluate_stop(repo)
+        assert result is not None
+        assert result["kind"] == "soft"
+
+    def test_invalid_mode_falls_back_to_balanced(
+        self, config_dir: Path, repo: Path, frozen_now: dict
+    ) -> None:
+        (repo / ".dailybot").mkdir(exist_ok=True)
+        (repo / ".dailybot" / "profile.json").write_text(
+            json.dumps({"report": {"mode": "aggressive"}})
+        )
+        ledger.evaluate_stop(repo)  # baseline
+        for _ in range(ledger.DEFAULT_CONTINUOUS_SOFT_TURN_THRESHOLD):
+            ledger.evaluate_stop(repo)
+        frozen_now["now"] = NOW + timedelta(minutes=ledger.DEFAULT_MIN_INTERVAL_MINUTES + 1)
+        assert ledger.evaluate_stop(repo) is None  # balanced default is 8 turns
+
+    def test_continuous_mode_default_min_interval_twenty(
+        self, config_dir: Path, repo: Path, frozen_now: dict
+    ) -> None:
+        (repo / ".dailybot").mkdir(exist_ok=True)
+        (repo / ".dailybot" / "profile.json").write_text(
+            json.dumps({"report": {"mode": "continuous"}})
+        )
+        ledger.evaluate_stop(repo)  # baseline
+        ledger.record_activity(repo)
+        frozen_now["now"] = NOW + timedelta(minutes=19)
+        assert ledger.evaluate_stop(repo) is None  # continuous default is 20 min
+        frozen_now["now"] = NOW + timedelta(minutes=21)
+        result: dict | None = ledger.evaluate_stop(repo)
+        assert result is not None
+        assert result["kind"] == "soft"
+
     def test_non_git_dir_is_silent(
         self, config_dir: Path, tmp_path: Path, frozen_now: dict
     ) -> None:

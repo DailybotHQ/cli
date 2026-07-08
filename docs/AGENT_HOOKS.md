@@ -139,7 +139,7 @@ sequenceDiagram
     S->>G: rev-list last_reported_commit..HEAD
     alt unreported commits > 0
         S-->>H: strong reminder (N commits)
-    else work_pending or turns >= 8 (after min interval)
+    else work_pending or turns >= threshold (after min interval)
         S-->>H: soft reminder (covers non-commit work)
     else nothing accumulated
         S-->>H: silence (exit 0)
@@ -247,15 +247,36 @@ The committed repo profile gains an optional `report` block:
   "default_metadata": {"repo": "cli"},
   "report": {
     "min_interval_minutes": 30,
-    "nudge": true
+    "nudge": true,
+    "mode": "balanced",
+    "soft_turn_threshold": 8
   }
 }
 ```
 
 | Key | Default | Effect |
 |-----|---------|--------|
-| `min_interval_minutes` | `30` | Minimum time between reports before reminders resume |
+| `min_interval_minutes` | `30` (`20` when `mode` is `continuous` and this key is omitted) | Minimum time between reports before reminders resume |
 | `nudge` | `true` | `false` silences `dailybot hook stop` for the repo entirely |
+| `mode` | `"balanced"` | `"continuous"` lowers the soft-nudge thresholds for research-heavy repos |
+| `soft_turn_threshold` | `8` (`5` when `mode` is `continuous` and this key is omitted) | Agent turns without a report before a soft nudge is eligible |
+
+Invalid `mode` values are ignored (falls back to `"balanced"`). Invalid
+`soft_turn_threshold` values are ignored (falls back to the mode default).
+Existing repos without these keys keep the current behavior.
+
+**Continuous mode example** — teams that want more frequent reminders for
+non-commit work (research, docs, analysis):
+
+```json
+{
+  "report": {
+    "mode": "continuous",
+    "min_interval_minutes": 20,
+    "nudge": true
+  }
+}
+```
 
 Policy (shared, committed) lives in the repo; state (private, mutable) lives
 in the per-machine ledger. Credentials live in neither — the existing `key`
