@@ -1,7 +1,7 @@
 ---
 name: dailybot
 description: Official Dailybot agent skill pack — report progress, check messages, send emails, announce agent status, complete check-ins, give kudos (to users or teams), resolve teams, run the full forms lifecycle (list, submit, update, transition between workflow states), **author check-ins and forms from scratch** (create/configure questions, workflow states, permissions, reminders, scheduling, AI settings, sharing), send/edit chat messages on the team's Slack/Teams/Discord/Google Chat (including report-style threads), and ask the Dailybot AI a question headlessly. Routes to the right sub-skill based on intent. Use when the developer mentions Dailybot or wants to interact with their team.
-version: "1.8.3"
+version: "1.8.4"
 documentation_url: https://api.dailybot.com/skill.md
 user-invocable: true
 metadata: {"openclaw":{"emoji":"📡","homepage":"https://dailybot.com","requires":{"anyBins":["dailybot","curl"]},"primaryEnv":"DAILYBOT_API_KEY","install":[{"id":"cli-install-script","kind":"download","url":"https://cli.dailybot.com/install.sh","label":"Install Dailybot CLI (official script — preferred on Linux/macOS)"},{"id":"pip","kind":"pip","package":"dailybot-cli","bins":["dailybot"],"label":"Install Dailybot CLI via pip (fallback if binary fails)"}]}}
@@ -54,7 +54,7 @@ fallback). Full guide: [`docs/INSTALLATION.md`](https://github.com/DailybotHQ/ag
 >
 > Requires **Python >= 3.10**. The 1.10.0 wheel is `py3-none-any` (pure Python).
 >
-> **Current published version:** [`dailybot-cli 1.18.0`](https://pypi.org/project/dailybot-cli/) —
+> **Current published version:** [`dailybot-cli 1.19.0`](https://pypi.org/project/dailybot-cli/) —
 > what `pip install --upgrade dailybot-cli` (or `dailybot upgrade`) resolves to
 > today. Everything below is additive on top of the 1.10.0 minimum; the
 > per-feature floors say which release first shipped each sub-skill.
