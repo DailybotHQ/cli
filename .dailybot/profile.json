@@ -4,7 +4,7 @@
     "repo": "cli"
   },
   "report": {
-    "min_interval_minutes": 30,
+    "mode": "continuous",
     "nudge": true
   }
 }
