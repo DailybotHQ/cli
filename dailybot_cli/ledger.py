@@ -414,7 +414,9 @@ def evaluate_stop(cwd: Path | None = None) -> dict[str, Any] | None:
         else:
             anchor: datetime | None = last_report_at or _parse_iso(entry.get("first_seen_at"))
             interval_ok: bool = anchor is None or now - anchor >= interval
-            turn_threshold: int = int(policy.get("soft_turn_threshold") or SOFT_NUDGE_TURN_THRESHOLD)
+            turn_threshold: int = int(
+                policy.get("soft_turn_threshold") or SOFT_NUDGE_TURN_THRESHOLD
+            )
             has_soft_signal: bool = bool(entry.get("work_pending")) or (
                 entry["turns_since_report"] >= turn_threshold
             )
