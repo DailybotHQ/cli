@@ -625,13 +625,26 @@ def print_checkin_detail(detail: dict[str, Any]) -> None:
     console.print(_question_rows(questions))
 
 
+def _checkin_response_participant(response: dict[str, Any]) -> str:
+    """Best-effort participant label for a check-in response row."""
+    user: Any = response.get("user")
+    if isinstance(user, dict):
+        return str(user.get("full_name") or user.get("name") or user.get("email") or "").strip()
+    return str(response.get("user_full_name") or response.get("user_name") or "").strip()
+
+
 def print_checkin_history_table(responses: list[dict[str, Any]]) -> None:
     """Display a check-in's response history over a date range."""
     if not responses:
         print_info("No responses found in that range.")
         return
+    # Check-in history defaults to all participants; show a Participant column only
+    # when the payload carries who authored each response (single-user views stay clean).
+    show_participant: bool = any(_checkin_response_participant(r) for r in responses)
     table: Table = Table(title=f"Response history ({len(responses)})", border_style="cyan")
     table.add_column("Date")
+    if show_participant:
+        table.add_column("Participant")
     table.add_column("Completed")
     table.add_column("Answers")
     for response in responses:
@@ -643,7 +656,11 @@ def print_checkin_history_table(responses: list[dict[str, Any]]) -> None:
         summary: str = "; ".join(
             str(answer.get("response") or "") for answer in answers if answer.get("response")
         )
-        table.add_row(raw_date or "—", completed, (summary[:80] or "—"))
+        row: list[str] = [raw_date or "—"]
+        if show_participant:
+            row.append(_checkin_response_participant(response) or "—")
+        row.extend([completed, (summary[:80] or "—")])
+        table.add_row(*row)
     console.print(table)
 
 

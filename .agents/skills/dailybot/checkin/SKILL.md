@@ -1,7 +1,7 @@
 ---
 name: dailybot-checkin
 description: Drive the full check-in lifecycle via Dailybot — list and complete pending check-ins, see pending/completed status for a day, inspect a check-in's questions and schedule, browse response history, edit or reset a submitted response, and backfill or future-date responses. Also authors check-ins — create and configure a check-in (schedule, participants, reminders, privacy, smart/AI) and manage its questions (types, report titles, variations, conditional logic). Works headless with an API key. Use when the developer asks to fill in their standup, answer daily questions, check what check-ins they have, edit or reset a check-in, review past responses, or create/configure a check-in. Do not use for free-text progress reports — those go through dailybot-report.
-version: "1.8.1"
+version: "1.8.3"
 documentation_url: https://api.dailybot.com/skill.md
 user-invocable: true
 metadata: {"openclaw":{"emoji":"✅","homepage":"https://dailybot.com","requires":{"anyBins":["dailybot","curl"]},"primaryEnv":"DAILYBOT_API_KEY","install":[{"id":"cli-install-script","kind":"download","url":"https://cli.dailybot.com/install.sh","label":"Install Dailybot CLI (official script — preferred on Linux/macOS)"},{"id":"pip","kind":"pip","package":"dailybot-cli","bins":["dailybot"],"label":"Install Dailybot CLI via pip (fallback if binary fails)"}]}}
@@ -202,9 +202,14 @@ before completing or editing it.
 ```bash
 dailybot checkin history <followup_uuid> --days 7 [--json]
 dailybot checkin history <followup_uuid> --from 2026-06-01 --to 2026-06-30 --json
+dailybot checkin history <followup_uuid> --user <user_uuid> --days 30   # one participant
 ```
 
-Your past responses over a date range (date, completed, answer summary).
+Responses over a date range (date, completed, answer summary). Check-ins are
+team-wide, so this lists **every participant's** responses by default (unlike
+forms, which default to your own). Pass `--user <uuid>` to narrow to one
+participant — that filter is admin/manager only; a member always sees only their
+own responses regardless of the flag.
 
 ### Edit an existing response
 
@@ -254,8 +259,8 @@ prompts — handy for humans; agents should use the headless commands above.
 > **Requires `dailybot-cli >= 1.17.1`.** The authoring surface — `checkin create`,
 > `checkin config`, `checkin archive`, the `checkin questions add|edit|delete|reorder`
 > group, resolving people by email, the smart/AI flags, and the **create requires
-> ≥ 1 question** rule (`questions_required`) — ships in CLI **1.17.1** (the current
-> published release). The response lifecycle above works on older CLIs; only authoring
+> ≥ 1 question** rule (`questions_required`) — ships in CLI **1.17.1** (current
+> published release: **1.18.0**). The response lifecycle above works on older CLIs; only authoring
 > needs 1.17.1. If `dailybot --version` is below that, run `dailybot upgrade`.
 
 Everything above **answers** a check-in. This section **builds** one. As of the
@@ -742,6 +747,36 @@ See [`../shared/http-fallback.md`](../shared/http-fallback.md) for base patterns
 curl -s -H "Authorization: Bearer $DAILYBOT_BEARER_TOKEN" \
   https://api.dailybot.com/v1/cli/status/
 ```
+
+### List responses (history)
+
+```bash
+# Default — ALL participants' responses in the date range (no user scoping)
+curl -s -H "Authorization: Bearer $DAILYBOT_BEARER_TOKEN" \
+  "https://api.dailybot.com/v1/checkins/<followup_uuid>/responses/?date_start=2026-06-01&date_end=2026-06-30"
+
+# Narrow to one participant (admin/manager callers only)
+curl -s -H "Authorization: Bearer $DAILYBOT_BEARER_TOKEN" \
+  "https://api.dailybot.com/v1/checkins/<followup_uuid>/responses/?date_start=2026-06-01&date_end=2026-06-30&user=<user_uuid>"
+```
+
+**Scoping contract for `GET /v1/checkins/<followup_uuid>/responses/`:**
+
+| Scenario | Query params | Result |
+|----------|--------------|--------|
+| See all responses | *(none)* | Every participant's responses in the date range |
+| Filter to one user (admin/manager) | `?user=<user_uuid>` | Only that user's responses |
+| Filter to one user (member) | `?user=<user_uuid>` | Only the caller's own responses (server-side guard) |
+
+- The default returns **all participants' responses** — no user filter is applied.
+- `?all=true` is **not needed** for check-in responses (the default already returns
+  everything). It is accepted as a harmless no-op if a legacy integration still sends it.
+
+> **Check-ins vs. forms differ.** The check-in responses endpoint defaults to
+> **all participants**; the form responses endpoint
+> (`GET /v1/forms/<form_uuid>/responses/`) defaults to the **caller's own** responses
+> and requires `?all=true` (admin/owner with `VIEW_REPORTS`) to widen the scope. This
+> asymmetry is intentional and reflects each endpoint's historical design.
 
 ### Complete a check-in
 

@@ -9,6 +9,38 @@ Do not edit it by hand — your edits will be overwritten on the next release.
 
 <!-- version list -->
 
+## v1.18.2 (2026-07-07)
+
+### Documentation
+
+- **skill**: Sync vendored dailybot skill pack to 1.8.3
+  ([`4d860e6`](https://github.com/DailybotHQ/cli/commit/4d860e6764275fdc09a192aa4d70f3dacd9e1d6d))
+
+
+## v1.18.1 (2026-07-07)
+
+### Documentation
+
+- **docs**: Bump README install examples to 1.18.0
+  ([`109bd20`](https://github.com/DailybotHQ/cli/commit/109bd20ad230ae7baa5b011f35005fc958a26520))
+
+
+## v1.18.0 (2026-07-07)
+
+### Features
+
+- **checkin**: Align responses listing with restored all-participants default
+  ([`407d3ee`](https://github.com/DailybotHQ/cli/commit/407d3ee67271d0a10d22e8f7f3e04b9ae2c9697b))
+
+
+## v1.17.2 (2026-07-06)
+
+### Documentation
+
+- **skill**: Sync vendored skill to 1.8.1 + recommend the agent skill for AI agents
+  ([`e8c9f30`](https://github.com/DailybotHQ/cli/commit/e8c9f303df56e0ead346f7fd56c5d32d8cf5877b))
+
+
 ## v1.17.1 (2026-07-06)
 
 ### Bug Fixes

@@ -15,6 +15,7 @@ from dailybot_cli.commands.public_api_helpers import (
     emit_json,
     exit_for_api_error,
     find_pending_checkin,
+    get_current_user_uuid,
     normalize_checkin_list_json,
     parse_answer_flags,
 )
@@ -595,9 +596,15 @@ def execute_checkin_history(
     days: int | None = None,
     date_from: str | None = None,
     date_to: str | None = None,
+    user: str | None = None,
     json_mode: bool = False,
 ) -> None:
-    """Show a check-in's response history over a date range."""
+    """Show a check-in's response history over a date range.
+
+    The endpoint returns every participant's responses by default; ``user``
+    narrows to one participant (admin/manager only — a member is guarded to
+    their own responses server-side).
+    """
     date_start: str | None = date_from
     date_end: str | None = date_to
     if days is not None:
@@ -607,7 +614,7 @@ def execute_checkin_history(
     try:
         with console.status("Fetching response history..."):
             responses: list[dict[str, Any]] = client.list_checkin_responses(
-                followup_uuid, date_start=date_start, date_end=date_end
+                followup_uuid, date_start=date_start, date_end=date_end, user=user
             )
     except APIError as exc:
         exit_for_api_error(exc, json_mode)
@@ -618,6 +625,7 @@ def execute_checkin_history(
                 "count": len(responses),
                 "date_start": date_start,
                 "date_end": date_end,
+                "user": user,
                 "responses": responses,
             }
         )
@@ -668,10 +676,19 @@ def execute_checkin_edit(
     interactive: bool = False,
 ) -> None:
     """Edit an existing check-in response (override answers, then PUT)."""
+    # The responses endpoint returns all participants by default, so scope the
+    # pre-fill read to the caller's own response. A member is already guarded to
+    # their own server-side; passing the caller's UUID keeps admin/manager callers
+    # from pre-filling another participant's answers. Under API-key auth the
+    # current user is unknown (None) — fall back to the first response as before.
+    self_uuid: str | None = get_current_user_uuid(client)
     try:
         with console.status("Loading current response..."):
             existing: list[dict[str, Any]] = client.list_checkin_responses(
-                followup_uuid, date_start=response_date, date_end=response_date
+                followup_uuid,
+                date_start=response_date,
+                date_end=response_date,
+                user=self_uuid,
             )
     except APIError as exc:
         exit_for_api_error(exc, json_mode)
