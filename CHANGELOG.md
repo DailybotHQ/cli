@@ -9,6 +9,19 @@ Do not edit it by hand — your edits will be overwritten on the next release.
 
 <!-- version list -->
 
+## v1.19.0 (2026-07-08)
+
+### Chores
+
+- **config**: Enable continuous report mode for the cli repo
+  ([`0d77060`](https://github.com/DailybotHQ/cli/commit/0d77060e0910c179fa8e8e5b7c7c698e85913748))
+
+### Code Style
+
+- **hooks**: Wrap long line in ledger to satisfy ruff format gate
+  ([`68b6197`](https://github.com/DailybotHQ/cli/commit/68b619760155fd797af46ed8734dea885ccb6ac5))
+
+
 ## v1.18.2 (2026-07-07)
 
 ### Documentation
