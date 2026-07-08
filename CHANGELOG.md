@@ -9,6 +9,14 @@ Do not edit it by hand — your edits will be overwritten on the next release.
 
 <!-- version list -->
 
+## v1.19.2 (2026-07-08)
+
+### Documentation
+
+- **skill**: Sync vendored skill to 1.8.5 + resolve version-treadmill and config gaps
+  ([`5f58e55`](https://github.com/DailybotHQ/cli/commit/5f58e55fc45f96e167e6a55ce94ba4b18f9e1f79))
+
+
 ## v1.19.1 (2026-07-08)
 
 ### Documentation
