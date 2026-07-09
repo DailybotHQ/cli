@@ -350,7 +350,8 @@ class TestDailyBotClientPublicApi:
 
         assert result[0]["id"] == "form-uuid"
         assert "Bearer test-token" in mock_get.call_args[1]["headers"]["Authorization"]
-        assert mock_get.call_args[1].get("params", {}) == {}
+        # The CLI always requests the envelope on /v1/forms/ via ?paginated=true.
+        assert mock_get.call_args[1]["params"] == {"paginated": "true"}
 
     def test_list_forms_include_archived(self, client: DailyBotClient) -> None:
         mock_response: MagicMock = MagicMock(spec=httpx.Response)
@@ -360,7 +361,10 @@ class TestDailyBotClientPublicApi:
         with patch("httpx.get", return_value=mock_response) as mock_get:
             client.list_forms(include_archived=True)
 
-        assert mock_get.call_args[1]["params"] == {"include_archived": "true"}
+        assert mock_get.call_args[1]["params"] == {
+            "include_archived": "true",
+            "paginated": "true",
+        }
 
     def test_list_forms_with_questions(self, client: DailyBotClient) -> None:
         mock_response: MagicMock = MagicMock(spec=httpx.Response)
@@ -377,7 +381,10 @@ class TestDailyBotClientPublicApi:
             result: list[dict[str, Any]] = client.list_forms(include_questions=True)
 
         assert result[0]["questions"][0]["uuid"] == "q1"
-        assert mock_get.call_args[1]["params"] == {"include": "questions"}
+        assert mock_get.call_args[1]["params"] == {
+            "include": "questions",
+            "paginated": "true",
+        }
 
     def test_get_form(self, client: DailyBotClient) -> None:
         mock_response: MagicMock = MagicMock(spec=httpx.Response)
@@ -577,7 +584,7 @@ class TestDailyBotClientPublicApi:
             result: list[dict[str, Any]] = client.list_form_responses("form-uuid", state="qa")
 
         call_kwargs: dict[str, Any] = mock_get.call_args[1]
-        assert call_kwargs["params"] == {"state": "qa"}
+        assert call_kwargs["params"] == {"state": "qa", "paginated": "true"}
         assert result[0]["current_state"] == "qa"
 
     def test_get_form_response(self, client: DailyBotClient) -> None:
@@ -1104,6 +1111,7 @@ class TestFormsAuthoring:
             "user": "user-uuid",
             "date_from": "2026-01-01",
             "date_to": "2026-12-31",
+            "paginated": "true",
         }
 
     def test_archive_form_raises_api_error_with_code(self, client: DailyBotClient) -> None:
@@ -1340,3 +1348,100 @@ class TestCheckinsAuthoring:
 
         assert exc_info.value.code == "checkin_permission_denied"
         assert exc_info.value.status_code == 403
+
+
+class TestPaginatedGet:
+    """Unit tests for the shared _paginated_get helper (Task 1)."""
+
+    def _resp(self, body: Any, status: int = 200) -> MagicMock:
+        r: MagicMock = MagicMock(spec=httpx.Response)
+        r.status_code = status
+        r.json.return_value = body
+        return r
+
+    def test_envelope_parsing(self, client: DailyBotClient) -> None:
+        page = self._resp(
+            {
+                "count": 2,
+                "next": None,
+                "previous": None,
+                "results": [{"id": "a"}, {"id": "b"}],
+            }
+        )
+        with patch("httpx.get", return_value=page):
+            result = client._paginated_get("http://test-api.example.com/v1/things/")
+        assert [r["id"] for r in result.results] == ["a", "b"]
+        assert result.count == 2
+        assert result.next is None
+        assert result.previous is None
+
+    def test_bare_list_fallback(self, client: DailyBotClient) -> None:
+        page = self._resp([{"id": "a"}, {"id": "b"}, {"id": "c"}])
+        with patch("httpx.get", return_value=page):
+            result = client._paginated_get("http://test-api.example.com/v1/things/")
+        assert len(result.results) == 3
+        assert result.count == 3
+        assert result.next is None
+
+    def test_force_paginated_adds_query_param(self, client: DailyBotClient) -> None:
+        page = self._resp({"count": 0, "next": None, "results": []})
+        with patch("httpx.get", return_value=page) as mock_get:
+            client._paginated_get("http://test-api.example.com/v1/forms/", force_paginated=True)
+        assert mock_get.call_args[1]["params"] == {"paginated": "true"}
+
+    def test_no_paginated_param_by_default(self, client: DailyBotClient) -> None:
+        page = self._resp({"count": 0, "next": None, "results": []})
+        with patch("httpx.get", return_value=page) as mock_get:
+            client._paginated_get("http://test-api.example.com/v1/checkins/")
+        assert "paginated" not in mock_get.call_args[1]["params"]
+
+    def test_page_size_clamped_to_max(self, client: DailyBotClient) -> None:
+        page = self._resp({"count": 0, "next": None, "results": []})
+        with patch("httpx.get", return_value=page) as mock_get:
+            client._paginated_get("http://test-api.example.com/v1/things/", page_size=999)
+        assert mock_get.call_args[1]["params"]["page_size"] == 200
+
+    def test_fetch_all_iterates_next(self, client: DailyBotClient) -> None:
+        first = self._resp(
+            {
+                "count": 3,
+                "next": "http://test-api.example.com/v1/things/?page=2",
+                "results": [{"id": "a"}, {"id": "b"}],
+            }
+        )
+        second = self._resp({"count": 3, "next": None, "results": [{"id": "c"}]})
+        with patch("httpx.get", side_effect=[first, second]) as mock_get:
+            result = client._paginated_get("http://test-api.example.com/v1/things/", fetch_all=True)
+        assert [r["id"] for r in result.results] == ["a", "b", "c"]
+        assert mock_get.call_count == 2
+
+    def test_single_page_mode_stops_after_one_request(self, client: DailyBotClient) -> None:
+        page = self._resp(
+            {
+                "count": 9,
+                "next": "http://test-api.example.com/v1/things/?page=2",
+                "results": [{"id": "a"}],
+            }
+        )
+        with patch("httpx.get", return_value=page) as mock_get:
+            result = client._paginated_get(
+                "http://test-api.example.com/v1/things/", fetch_all=False
+            )
+        assert mock_get.call_count == 1
+        assert len(result.results) == 1
+        assert result.next == "http://test-api.example.com/v1/things/?page=2"
+
+    def test_limit_caps_total_collected(self, client: DailyBotClient) -> None:
+        first = self._resp(
+            {
+                "count": 100,
+                "next": "http://test-api.example.com/v1/things/?page=2",
+                "results": [{"id": "a"}, {"id": "b"}, {"id": "c"}],
+            }
+        )
+        with patch("httpx.get", return_value=first) as mock_get:
+            result = client._paginated_get(
+                "http://test-api.example.com/v1/things/", fetch_all=True, limit=2
+            )
+        assert len(result.results) == 2
+        assert mock_get.call_count == 1

@@ -1,5 +1,6 @@
 """HTTP client for Dailybot CLI API endpoints."""
 
+from dataclasses import dataclass, field
 from typing import Any
 
 import httpx
@@ -7,6 +8,22 @@ import httpx
 from dailybot_cli.config import get_api_key, get_api_url, get_token
 
 _MAX_LIST_PAGES: int = 50  # safety cap for paginated list endpoints
+DEFAULT_PAGE_SIZE: int = 50  # server default page size for paginated list endpoints
+MAX_PAGE_SIZE: int = 200  # server clamps above this; the client clamps too
+
+
+@dataclass
+class PaginatedResult:
+    """Normalized result of a paginated list request.
+
+    Tolerates both the DRF envelope (``{count, next, previous, results}``) and a
+    legacy bare-array response, exposing a single shape to callers.
+    """
+
+    results: list[dict[str, Any]] = field(default_factory=list)
+    count: int | None = None
+    next: str | None = None
+    previous: str | None = None
 
 
 class APIError(Exception):
@@ -109,6 +126,81 @@ class DailyBotClient:
         if response.status_code == 204:
             return {}
         return response.json()
+
+    def _paginated_get(
+        self,
+        url: str,
+        *,
+        params: dict[str, Any] | None = None,
+        page: int | None = None,
+        page_size: int | None = None,
+        fetch_all: bool = False,
+        limit: int | None = None,
+        force_paginated: bool = False,
+    ) -> PaginatedResult:
+        """GET a list endpoint, tolerating both the DRF envelope and a bare array.
+
+        - ``page`` / ``page_size`` are sent when provided; ``page_size`` is clamped
+          to ``[1, MAX_PAGE_SIZE]``. ``limit`` is a legacy alias that also caps the
+          total number of collected items.
+        - ``force_paginated`` adds ``paginated=true`` to the query — required for the
+          two forms endpoints (``/v1/forms/`` and ``/v1/forms/<uuid>/responses/``)
+          that return a bare array unless asked for the envelope.
+        - ``fetch_all`` follows ``next`` (bounded by ``_MAX_LIST_PAGES``); otherwise a
+          single page is returned. A bare-array response has no ``next`` and always
+          terminates after one page.
+        """
+        query: dict[str, Any] = dict(params) if params else {}
+        if force_paginated:
+            query["paginated"] = "true"
+        if page is not None:
+            query["page"] = page
+        effective_page_size: int | None = page_size if page_size is not None else limit
+        if effective_page_size is not None:
+            query["page_size"] = max(1, min(effective_page_size, MAX_PAGE_SIZE))
+
+        collected: list[dict[str, Any]] = []
+        count: int | None = None
+        next_url: str | None = None
+        previous: str | None = None
+        current_url: str | None = url
+        first: bool = True
+        pages_fetched: int = 0
+
+        while current_url is not None and pages_fetched < _MAX_LIST_PAGES:
+            response: httpx.Response = httpx.get(
+                current_url,
+                headers=self._headers(),
+                params=query if first else None,
+                timeout=self.timeout,
+            )
+            if response.status_code >= 400:
+                self._handle_response(response)
+            body: Any = response.json()
+            if isinstance(body, dict) and "results" in body:
+                collected.extend(body.get("results", []))
+                count = body.get("count", count)
+                next_url = body.get("next")
+                previous = body.get("previous", previous)
+            elif isinstance(body, list):
+                collected.extend(body)
+                if count is None:
+                    count = len(body)
+                next_url = None
+            else:
+                next_url = None
+            pages_fetched += 1
+            first = False
+
+            if limit is not None and len(collected) >= limit:
+                collected = collected[:limit]
+                next_url = None
+                break
+            if not fetch_all:
+                break
+            current_url = next_url
+
+        return PaginatedResult(results=collected, count=count, next=next_url, previous=previous)
 
     # --- Auth endpoints ---
 
@@ -259,7 +351,6 @@ class DailyBotClient:
         include_archived: bool = False,
     ) -> list[dict[str, Any]]:
         """GET /v1/checkins/ — fetch visible check-ins with optional completion state."""
-        results: list[dict[str, Any]] = []
         params: dict[str, str] = {}
         if date:
             params["date"] = date
@@ -269,28 +360,10 @@ class DailyBotClient:
             params["include_pending_users"] = "true"
         if include_archived:
             params["include_archived"] = "true"
-        url: str | None = f"{self.api_url}/v1/checkins/"
-        pages_fetched: int = 0
-        while url is not None and pages_fetched < _MAX_LIST_PAGES:
-            response: httpx.Response = httpx.get(
-                url,
-                headers=self._headers(),
-                params=params if pages_fetched == 0 else None,
-                timeout=self.timeout,
-            )
-            if response.status_code >= 400:
-                self._handle_response(response)
-            body: Any = response.json()
-            if isinstance(body, dict) and "results" in body:
-                results.extend(body.get("results", []))
-                url = body.get("next")
-            elif isinstance(body, list):
-                results.extend(body)
-                url = None
-            else:
-                url = None
-            pages_fetched += 1
-        return results
+        result: PaginatedResult = self._paginated_get(
+            f"{self.api_url}/v1/checkins/", params=params, fetch_all=True
+        )
+        return result.results
 
     def get_checkin(self, followup_uuid: str) -> dict[str, Any]:
         """GET /v1/checkins/<followup_uuid>/."""
@@ -363,20 +436,12 @@ class DailyBotClient:
             params["all"] = "true"
         if user:
             params["user"] = user
-        response: httpx.Response = httpx.get(
+        result: PaginatedResult = self._paginated_get(
             f"{self.api_url}/v1/checkins/{followup_uuid}/responses/",
-            headers=self._headers(),
             params=params,
-            timeout=self.timeout,
+            fetch_all=True,
         )
-        if response.status_code >= 400:
-            self._handle_response(response)
-        body: Any = response.json()
-        if isinstance(body, dict) and "results" in body:
-            return list(body.get("results", []))
-        if isinstance(body, list):
-            return body
-        return []
+        return result.results
 
     def update_checkin_response(
         self,
@@ -597,15 +662,13 @@ class DailyBotClient:
             params["include"] = "questions"
         if include_archived:
             params["include_archived"] = "true"
-        response: httpx.Response = httpx.get(
+        result: PaginatedResult = self._paginated_get(
             f"{self.api_url}/v1/forms/",
-            headers=self._headers(),
             params=params,
-            timeout=self.timeout,
+            fetch_all=True,
+            force_paginated=True,
         )
-        if response.status_code >= 400:
-            self._handle_response(response)
-        return response.json()
+        return result.results
 
     def get_form(self, form_uuid: str) -> dict[str, Any]:
         """GET /v1/forms/<form_uuid>/ — form metadata and question definitions."""
@@ -658,20 +721,13 @@ class DailyBotClient:
             params["date_from"] = date_from
         if date_to:
             params["date_to"] = date_to
-        response: httpx.Response = httpx.get(
+        result: PaginatedResult = self._paginated_get(
             f"{self.api_url}/v1/forms/{form_uuid}/responses/",
-            headers=self._headers(),
             params=params,
-            timeout=self.timeout,
+            fetch_all=True,
+            force_paginated=True,
         )
-        if response.status_code >= 400:
-            self._handle_response(response)
-        body: Any = response.json()
-        if isinstance(body, dict) and "results" in body:
-            return list(body.get("results", []))
-        if isinstance(body, list):
-            return body
-        return []
+        return result.results
 
     def get_form_response(
         self,
@@ -902,22 +958,10 @@ class DailyBotClient:
         admins/managers; silently omitted otherwise) so callers can resolve a
         person by email.
         """
-        results: list[dict[str, Any]] = []
         base_url: str = f"{self.api_url}/v1/users/"
-        url: str | None = f"{base_url}?include_email=true" if include_email else base_url
-        pages_fetched: int = 0
-        while url is not None and pages_fetched < _MAX_LIST_PAGES:
-            response: httpx.Response = httpx.get(
-                url,
-                headers=self._headers(),
-                timeout=self.timeout,
-            )
-            if response.status_code >= 400:
-                self._handle_response(response)
-            body: dict[str, Any] = response.json()
-            results.extend(body.get("results", []))
-            url = body.get("next")
-            pages_fetched += 1
+        url: str = f"{base_url}?include_email=true" if include_email else base_url
+        result: PaginatedResult = self._paginated_get(url, fetch_all=True)
+        results: list[dict[str, Any]] = result.results
         if include_inactive:
             return results
         return [u for u in results if u.get("is_active", True)]
@@ -956,28 +1000,8 @@ class DailyBotClient:
 
     def list_teams(self) -> list[dict[str, Any]]:
         """GET /v1/teams/ — server scopes results by role (admin sees all, member sees own)."""
-        results: list[dict[str, Any]] = []
-        url: str | None = f"{self.api_url}/v1/teams/"
-        pages_fetched: int = 0
-        while url is not None and pages_fetched < _MAX_LIST_PAGES:
-            response: httpx.Response = httpx.get(
-                url,
-                headers=self._headers(),
-                timeout=self.timeout,
-            )
-            if response.status_code >= 400:
-                self._handle_response(response)
-            body: Any = response.json()
-            if isinstance(body, dict) and "results" in body:
-                results.extend(body.get("results", []))
-                url = body.get("next")
-            elif isinstance(body, list):
-                results.extend(body)
-                url = None
-            else:
-                url = None
-            pages_fetched += 1
-        return results
+        result: PaginatedResult = self._paginated_get(f"{self.api_url}/v1/teams/", fetch_all=True)
+        return result.results
 
     def get_team(self, team_uuid: str) -> dict[str, Any]:
         """GET /v1/teams/<team_uuid>/"""
