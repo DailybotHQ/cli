@@ -343,15 +343,14 @@ class TestDailyBotClientPublicApi:
     def test_list_forms(self, client: DailyBotClient) -> None:
         mock_response: MagicMock = MagicMock(spec=httpx.Response)
         mock_response.status_code = 200
-        mock_response.json.return_value = [{"id": "form-uuid", "name": "Feedback"}]
+        mock_response.json.return_value = [{"uuid": "form-uuid", "name": "Feedback"}]
 
         with patch("httpx.get", return_value=mock_response) as mock_get:
             result: list[dict[str, Any]] = client.list_forms()
 
-        assert result[0]["id"] == "form-uuid"
+        assert result[0]["uuid"] == "form-uuid"
         assert "Bearer test-token" in mock_get.call_args[1]["headers"]["Authorization"]
-        # The CLI always requests the envelope on /v1/forms/ via ?paginated=true.
-        assert mock_get.call_args[1]["params"] == {"paginated": "true"}
+        assert mock_get.call_args[1]["params"] == {}
 
     def test_list_forms_include_archived(self, client: DailyBotClient) -> None:
         mock_response: MagicMock = MagicMock(spec=httpx.Response)
@@ -363,7 +362,6 @@ class TestDailyBotClientPublicApi:
 
         assert mock_get.call_args[1]["params"] == {
             "include_archived": "true",
-            "paginated": "true",
         }
 
     def test_list_forms_with_questions(self, client: DailyBotClient) -> None:
@@ -383,7 +381,6 @@ class TestDailyBotClientPublicApi:
         assert result[0]["questions"][0]["uuid"] == "q1"
         assert mock_get.call_args[1]["params"] == {
             "include": "questions",
-            "paginated": "true",
         }
 
     def test_get_form(self, client: DailyBotClient) -> None:
@@ -584,7 +581,7 @@ class TestDailyBotClientPublicApi:
             result: list[dict[str, Any]] = client.list_form_responses("form-uuid", state="qa")
 
         call_kwargs: dict[str, Any] = mock_get.call_args[1]
-        assert call_kwargs["params"] == {"state": "qa", "paginated": "true"}
+        assert call_kwargs["params"] == {"state": "qa"}
         assert result[0]["current_state"] == "qa"
 
     def test_get_form_response(self, client: DailyBotClient) -> None:
@@ -786,6 +783,7 @@ class TestAPIError:
         mock_response.status_code = 500
         mock_response.json.side_effect = ValueError("Not JSON")
         mock_response.text = "Internal Server Error"
+        mock_response.headers = {"content-type": "text/plain"}
 
         with patch("httpx.post", return_value=mock_response), pytest.raises(APIError) as exc_info:
             client.request_code("user@example.com")
@@ -1111,7 +1109,6 @@ class TestFormsAuthoring:
             "user": "user-uuid",
             "date_from": "2026-01-01",
             "date_to": "2026-12-31",
-            "paginated": "true",
         }
 
     def test_archive_form_raises_api_error_with_code(self, client: DailyBotClient) -> None:
@@ -1383,11 +1380,12 @@ class TestPaginatedGet:
         assert result.count == 3
         assert result.next is None
 
-    def test_force_paginated_adds_query_param(self, client: DailyBotClient) -> None:
+    def test_forms_no_longer_request_the_envelope(self, client: DailyBotClient) -> None:
+        """Every /v1 list endpoint returns the envelope unconditionally now."""
         page = self._resp({"count": 0, "next": None, "results": []})
         with patch("httpx.get", return_value=page) as mock_get:
-            client._paginated_get("http://test-api.example.com/v1/forms/", force_paginated=True)
-        assert mock_get.call_args[1]["params"] == {"paginated": "true"}
+            client.list_forms()
+        assert "paginated" not in mock_get.call_args[1]["params"]
 
     def test_no_paginated_param_by_default(self, client: DailyBotClient) -> None:
         page = self._resp({"count": 0, "next": None, "results": []})
@@ -1399,7 +1397,7 @@ class TestPaginatedGet:
         page = self._resp({"count": 0, "next": None, "results": []})
         with patch("httpx.get", return_value=page) as mock_get:
             client._paginated_get("http://test-api.example.com/v1/things/", page_size=999)
-        assert mock_get.call_args[1]["params"]["page_size"] == 200
+        assert mock_get.call_args[1]["params"]["page_size"] == 100
 
     def test_fetch_all_iterates_next(self, client: DailyBotClient) -> None:
         first = self._resp(

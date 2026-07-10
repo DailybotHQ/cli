@@ -10,13 +10,40 @@ import httpx
 from dailybot_cli.config import get_api_key, get_api_url, get_token
 
 _MAX_LIST_PAGES: int = 50  # safety cap for paginated list endpoints
-DEFAULT_PAGE_SIZE: int = 50  # server default page size for paginated list endpoints
-MAX_PAGE_SIZE: int = 200  # server clamps above this; the client clamps too
+DEFAULT_PAGE_SIZE: int = 25  # server default page size for paginated list endpoints
+MAX_PAGE_SIZE: int = 100  # server clamps above this; the client clamps too
 
 MAX_RATE_LIMIT_RETRIES: int = 3  # attempts to retry a generic 429 before raising
 DEFAULT_RETRY_AFTER_SECS: float = 1.0  # backoff floor when a 429 omits Retry-After
 # A free-plan daily throttle is NOT transient — retrying can never succeed today.
 FREE_PLAN_DAILY_LIMIT_CODE: str = "free_plan_daily_limit_exceeded"
+
+MAX_FALLBACK_DETAIL_CHARS: int = 160  # cap for a non-JSON error body echoed to the user
+
+
+def _fallback_detail(response: httpx.Response) -> str:
+    """Build an error detail when the body is not the expected JSON envelope.
+
+    A 5xx can return a rendered HTML page. Echoing that verbatim floods the
+    terminal and leaks server internals (tracebacks, settings, file paths), so
+    only short non-HTML bodies are surfaced.
+    """
+    content_type: str = response.headers.get("content-type", "")
+    text: str = (response.text or "").strip()
+    if not text or "html" in content_type.lower() or text.startswith("<"):
+        return f"HTTP {response.status_code}"
+    return text[:MAX_FALLBACK_DETAIL_CHARS]
+
+
+def resource_uuid(payload: dict[str, Any]) -> str:
+    """Return a resource's canonical identifier from an API payload.
+
+    The API is mid-migration from ``id`` to ``uuid``: forms and their responses
+    now expose only ``uuid``, agent resources expose both with the same value,
+    and check-ins / kudos / workflows still expose only ``id``. Reading through
+    this helper keeps every caller correct under all three shapes.
+    """
+    return str(payload.get("uuid") or payload.get("id") or "")
 
 
 @dataclass
@@ -151,8 +178,11 @@ class DailyBotClient:
                 if isinstance(upgrade_url, str):
                     extra["upgrade_url"] = upgrade_url
             except Exception:
-                detail = response.text or f"HTTP {response.status_code}"
-            if response.status_code in (401, 403) and self._agent_auth_mode == "bearer":
+                detail = _fallback_detail(response)
+            # Only a 401 means the session is unusable. A 403 is an authorization
+            # verdict (wrong role, wrong plan) whose server detail explains the
+            # actual cause — overwriting it sends the user into a re-login loop.
+            if response.status_code == 401 and self._agent_auth_mode == "bearer":
                 detail = "Session expired. Run 'dailybot login' to re-authenticate."
             retry_after: float | None = None
             if response.status_code == 429:
@@ -216,23 +246,19 @@ class DailyBotClient:
         page_size: int | None = None,
         fetch_all: bool = False,
         limit: int | None = None,
-        force_paginated: bool = False,
     ) -> PaginatedResult:
         """GET a list endpoint, tolerating both the DRF envelope and a bare array.
 
         - ``page`` / ``page_size`` are sent when provided; ``page_size`` is clamped
           to ``[1, MAX_PAGE_SIZE]``. ``limit`` is a legacy alias that also caps the
           total number of collected items.
-        - ``force_paginated`` adds ``paginated=true`` to the query — required for the
-          two forms endpoints (``/v1/forms/`` and ``/v1/forms/<uuid>/responses/``)
-          that return a bare array unless asked for the envelope.
         - ``fetch_all`` follows ``next`` (bounded by ``_MAX_LIST_PAGES``); otherwise a
-          single page is returned. A bare-array response has no ``next`` and always
-          terminates after one page.
+          single page is returned.
+        - Every ``/v1`` list endpoint now returns the envelope unconditionally. The
+          bare-array branch below is kept only so an older deployment degrades to a
+          single page instead of raising.
         """
         query: dict[str, Any] = dict(params) if params else {}
-        if force_paginated:
-            query["paginated"] = "true"
         if page is not None:
             query["page"] = page
         effective_page_size: int | None = page_size if page_size is not None else limit
@@ -780,8 +806,8 @@ class DailyBotClient:
     ) -> list[dict[str, Any]]:
         """GET /v1/forms/ — optionally expand questions, search, and page.
 
-        Always requests the envelope (``?paginated=true``). When ``meta`` is given
-        it is populated with ``count`` / ``next`` for a pagination footer.
+        When ``meta`` is given it is populated with ``count`` / ``next`` for a
+        pagination footer.
         """
         params: dict[str, Any] = {}
         if include_questions:
@@ -796,7 +822,6 @@ class DailyBotClient:
             page_size=page_size,
             fetch_all=fetch_all,
             limit=limit,
-            force_paginated=True,
         )
         _fill_meta(meta, result)
         return result.results
@@ -868,7 +893,6 @@ class DailyBotClient:
             page_size=page_size,
             fetch_all=fetch_all,
             limit=limit,
-            force_paginated=True,
         )
         _fill_meta(meta, result)
         return result.results
@@ -1210,6 +1234,8 @@ class DailyBotClient:
         self,
         *,
         search: str | None = None,
+        start_date: str | None = None,
+        end_date: str | None = None,
         page: int | None = None,
         page_size: int | None = None,
         fetch_all: bool = True,
@@ -1218,7 +1244,7 @@ class DailyBotClient:
     ) -> list[dict[str, Any]]:
         """GET /v1/workflows/ — list workflows (read-only; plan-gated feature)."""
         params: dict[str, Any] = {}
-        _merge_list_query(params, search=search)
+        _merge_list_query(params, search=search, start_date=start_date, end_date=end_date)
         result: PaginatedResult = self._paginated_get(
             f"{self.api_url}/v1/workflows/",
             params=params,
@@ -1239,14 +1265,35 @@ class DailyBotClient:
         )
         return self._handle_response(response)
 
-    def get_kudos_organization(self) -> dict[str, Any]:
-        """GET /v1/kudos/organization/ — org-wide kudos statistics."""
-        response: httpx.Response = httpx.get(
+    def list_kudos_organization(
+        self,
+        *,
+        search: str | None = None,
+        start_date: str | None = None,
+        end_date: str | None = None,
+        page: int | None = None,
+        page_size: int | None = None,
+        fetch_all: bool = True,
+        limit: int | None = None,
+        meta: dict[str, Any] | None = None,
+    ) -> list[dict[str, Any]]:
+        """GET /v1/kudos/organization/ — every kudos in the org (admin-only).
+
+        The org-wide counterpart of ``list_kudos``, which is scoped to the caller.
+        Returns the same paginated envelope, not an aggregate statistics object.
+        """
+        params: dict[str, Any] = {}
+        _merge_list_query(params, search=search, start_date=start_date, end_date=end_date)
+        result: PaginatedResult = self._paginated_get(
             f"{self.api_url}/v1/kudos/organization/",
-            headers=self._headers(),
-            timeout=self.timeout,
+            params=params,
+            page=page,
+            page_size=page_size,
+            fetch_all=fetch_all,
+            limit=limit,
         )
-        return self._handle_response(response)
+        _fill_meta(meta, result)
+        return result.results
 
     def get_kudos_wall_of_fame(self, *, limit: int | None = None) -> dict[str, Any]:
         """GET /v1/kudos/wall-of-fame/ — leaderboard rankings."""

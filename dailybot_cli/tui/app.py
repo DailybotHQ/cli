@@ -15,7 +15,8 @@ from textual.events import Key
 from textual.widgets import Input, RichLog, Static
 
 from dailybot_cli import __version__
-from dailybot_cli.api_client import APIError, DailyBotClient
+from dailybot_cli.api_client import APIError, DailyBotClient, resource_uuid
+from dailybot_cli.commands.user_scoped_actions import coerce_answer
 from dailybot_cli.tui.commands import (
     COMMAND_CHECKINS,
     COMMAND_CLEAR,
@@ -931,9 +932,7 @@ class DailybotChatApp(App[None]):
         company_value: str | None = self.pending_flow.get("company_value")
         user_uuids: list[str] = [str(user.get("uuid") or "") for user in users if user.get("uuid")]
         team_uuids: list[str] = [
-            str(team.get("uuid") or team.get("id") or "")
-            for team in teams
-            if team.get("uuid") or team.get("id")
+            resource_uuid(team) for team in teams if team.get("uuid") or team.get("id")
         ]
         self.pending_flow = None
         self._set_prompt_hint()
@@ -1095,7 +1094,7 @@ class DailybotChatApp(App[None]):
         try:
             await asyncio.to_thread(
                 self.client.submit_form_response,
-                str(form.get("id") or form.get("uuid") or ""),
+                resource_uuid(form),
                 content,
             )
         except (APIError, httpx.HTTPError) as exc:
@@ -1106,7 +1105,7 @@ class DailybotChatApp(App[None]):
         self._write_dailybot(f"Done — submitted **{self._form_label(form)}**.")
 
     async def _start_form_response_picker(self, form: dict[str, Any], *, purpose: str) -> None:
-        form_uuid: str = str(form.get("id") or form.get("uuid") or "")
+        form_uuid: str = resource_uuid(form)
         self._set_loading(True)
         try:
             form_data, responses = await asyncio.gather(
@@ -1143,8 +1142,8 @@ class DailybotChatApp(App[None]):
         assert self.pending_flow is not None
         form: dict[str, Any] = self.pending_flow["form"]
         purpose: str = str(self.pending_flow.get("purpose") or "view")
-        response_uuid: str = str(selected.get("id") or selected.get("uuid") or "")
-        form_uuid: str = str(form.get("id") or form.get("uuid") or "")
+        response_uuid: str = resource_uuid(selected)
+        form_uuid: str = resource_uuid(form)
         self._set_loading(True)
         try:
             response = await asyncio.to_thread(
@@ -1220,8 +1219,8 @@ class DailybotChatApp(App[None]):
         try:
             await asyncio.to_thread(
                 self.client.update_form_response,
-                str(form.get("id") or form.get("uuid") or ""),
-                str(response.get("id") or response.get("uuid") or ""),
+                resource_uuid(form),
+                resource_uuid(response),
                 content,
             )
         except (APIError, httpx.HTTPError) as exc:
@@ -1276,8 +1275,8 @@ class DailybotChatApp(App[None]):
         try:
             await asyncio.to_thread(
                 self.client.transition_form_response,
-                str(form.get("id") or form.get("uuid") or ""),
-                str(response.get("id") or response.get("uuid") or ""),
+                resource_uuid(form),
+                resource_uuid(response),
                 to_state,
                 note,
             )
@@ -1315,8 +1314,8 @@ class DailybotChatApp(App[None]):
             return
         form: dict[str, Any] = self.pending_flow["form"]
         response: dict[str, Any] = self.pending_flow["response"]
-        form_uuid: str = str(form.get("id") or form.get("uuid") or "")
-        response_uuid: str = str(response.get("id") or response.get("uuid") or "")
+        form_uuid: str = resource_uuid(form)
+        response_uuid: str = resource_uuid(response)
         self.pending_flow = None
         self._set_prompt_hint()
         self._set_loading(True)
@@ -1330,7 +1329,7 @@ class DailybotChatApp(App[None]):
         self._write_dailybot(f"Done — deleted response **{response_uuid}**.")
 
     async def _load_form_detail(self, form: dict[str, Any]) -> dict[str, Any] | None:
-        form_uuid: str = str(form.get("id") or form.get("uuid") or "")
+        form_uuid: str = resource_uuid(form)
         if not form_uuid:
             self._write_error("Selected form has no UUID.")
             return None
@@ -1440,7 +1439,7 @@ class DailybotChatApp(App[None]):
 
     @staticmethod
     def _form_response_id(response: dict[str, Any]) -> str:
-        return str(response.get("id") or response.get("uuid") or "response")
+        return resource_uuid(response) or "response"
 
     @staticmethod
     def _transition_label(transition: dict[str, Any]) -> str:
@@ -1935,12 +1934,11 @@ class DailybotChatApp(App[None]):
     ) -> list[dict[str, Any]]:
         responses: list[dict[str, Any]] = []
         for index, (question, answer) in enumerate(zip(questions, answers, strict=True)):
-            question_uuid: str = str(question.get("uuid") or question.get("id") or "")
             responses.append(
                 {
-                    "uuid": question_uuid,
+                    "uuid": resource_uuid(question),
                     "index": index,
-                    "response": answer,
+                    "response": coerce_answer(question, answer),
                 }
             )
         return responses

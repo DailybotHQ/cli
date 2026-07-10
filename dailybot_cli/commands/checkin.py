@@ -31,7 +31,9 @@ from dailybot_cli.commands.public_api_helpers import (
     enforce_plan_access,
     exit_for_api_error,
     require_auth,
+    validate_user_filter,
 )
+from dailybot_cli.commands.query_options import paging_options
 from dailybot_cli.commands.user_scoped_actions import (
     execute_checkin_complete,
     execute_checkin_edit,
@@ -307,6 +309,7 @@ def checkin_show(followup_uuid: str, json_mode: bool) -> None:
 @click.option(
     "--search", "-s", "search", default=None, help="Filter response content (max 256 chars)."
 )
+@paging_options
 @click.option("--json", "json_mode", is_flag=True, help="Emit machine-readable JSON to stdout.")
 def checkin_history(
     followup_uuid: str,
@@ -315,6 +318,9 @@ def checkin_history(
     date_to: str | None,
     user: str | None,
     search: str | None,
+    page: int | None,
+    page_size: int | None,
+    limit: int | None,
     json_mode: bool,
 ) -> None:
     """Show a check-in's response history.
@@ -330,6 +336,7 @@ def checkin_history(
       dailybot checkin history <followup_uuid> --from 2026-06-01 --to 2026-06-30 --json
       dailybot checkin history <followup_uuid> --user <user_uuid> --days 30
     """
+    validate_user_filter(user)
     client = require_auth()
     execute_checkin_history(
         client,
@@ -339,6 +346,9 @@ def checkin_history(
         date_to=date_to,
         user=user,
         search=search,
+        page=page,
+        page_size=page_size,
+        limit=limit,
         json_mode=json_mode,
     )
 

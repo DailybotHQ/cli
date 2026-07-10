@@ -450,8 +450,8 @@ dailybot kudos list --filter KUDOS_RECEIVED
 dailybot kudos list --filter KUDOS_GIVEN --since 2026-01-01 --until 2026-06-30
 dailybot kudos list --search "release" --all --json
 
-# Org-wide kudos stats
-dailybot kudos org --json
+# Every kudos in the organization (admin-only)
+dailybot kudos org --page-size 20 --since 2026-07-01
 
 # Leaderboard of top kudos recipients
 dailybot kudos wall-of-fame --limit 10
@@ -460,9 +460,9 @@ dailybot kudos wall-of-fame --limit 10
 `dailybot kudos list` accepts the shared list flags (pagination, `--search`, and
 date filters) — see [Listing, search, and pagination](#listing-search-and-pagination).
 
-> `dailybot kudos org` is **API-key-only**: the org-stats endpoint rejects a CLI
-> login (Bearer) session with `403`. Set `DAILYBOT_API_KEY` (or
-> `dailybot config key=...`) before running it.
+> `dailybot kudos org` is **admin-only** and shows the whole organization's kudos
+> feed, where `dailybot kudos list` shows only the ones you gave or received. It
+> accepts the same list flags.
 
 ---
 
@@ -525,7 +525,7 @@ envelope, and list output prints a `Showing X of N` count footer.
 | Flag | Description |
 |------|-------------|
 | `--page N` | Fetch a specific 1-based page. |
-| `--page-size N` | Results per page (max 200). |
+| `--page-size N` | Results per page (max 100). |
 | `--all` | Fetch every page and merge the results. |
 | `--limit N` | Stop after N results. |
 | `--search TEXT` / `--grep TEXT` | Filter by a search term (max 256 chars, truncated client-side). |
@@ -853,7 +853,7 @@ Replies to agent emails land as messages retrievable via `dailybot agent message
 |---------|-------------|
 | `dailybot kudos give` | Give kudos to a user (`--to`), a team (`--team`), or both |
 | `dailybot kudos list` | List kudos you've received or given (`--filter`, search, date flags) |
-| `dailybot kudos org` | Org-wide kudos stats (**API-key-only**) |
+| `dailybot kudos org` | Every kudos in the organization (**admin-only**) |
 | `dailybot kudos wall-of-fame` | Leaderboard of top kudos recipients (`--limit`) |
 
 ### Team

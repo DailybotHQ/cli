@@ -10,7 +10,7 @@ import questionary
 from questionary import Choice, Separator
 
 from dailybot_cli import __version__
-from dailybot_cli.api_client import APIError, DailyBotClient
+from dailybot_cli.api_client import APIError, DailyBotClient, resource_uuid
 from dailybot_cli.commands.auth import _do_login
 from dailybot_cli.commands.chat import ChatPayloadError, build_chat_payload
 from dailybot_cli.commands.kudos import execute_kudos_give
@@ -94,7 +94,7 @@ def _checkin_label(checkin: dict[str, Any]) -> str:
 
 
 def _form_label(form: dict[str, Any]) -> str:
-    name: str = str(form.get("name") or form.get("id") or "Form")
+    name: str = str(form.get("name") or resource_uuid(form) or "Form")
     active: bool = bool(form.get("is_active"))
     suffix: str = "" if active else " [inactive]"
     return f"{name}{suffix}"
@@ -269,7 +269,7 @@ def _submit_form(client: DailyBotClient) -> None:
     if selected is None:
         raise InteractiveAbort()
 
-    form_uuid: str = str(selected.get("id") or "")
+    form_uuid: str = resource_uuid(selected)
     form_name: str = str(selected.get("name") or form_uuid)
     if not form_uuid:
         print_error("Selected form has no UUID.")

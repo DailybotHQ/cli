@@ -26,8 +26,13 @@ from dailybot_cli.commands.public_api_helpers import (
     enforce_plan_access,
     exit_for_api_error,
     require_auth,
+    validate_user_filter,
 )
-from dailybot_cli.commands.query_options import build_query_params, query_options
+from dailybot_cli.commands.query_options import (
+    build_query_params,
+    paging_options,
+    query_options,
+)
 from dailybot_cli.commands.user_scoped_actions import (
     execute_form_list,
     execute_form_submit,
@@ -50,6 +55,16 @@ from dailybot_cli.display import (
     print_reordered,
     print_success,
 )
+
+# The server reuses `invalid_workflow_state` for a malformed `--state
+# "Label:#color"` during authoring. On this listing it means the form has no
+# workflow at all, so the shared message would send the user down the wrong path.
+_RESPONSES_ERROR_OVERRIDES: dict[str, str] = {
+    "invalid_workflow_state": (
+        "This form has no workflow, so --state doesn't apply. Drop the flag, or run "
+        "`dailybot form get <form_uuid>` to see the states a workflow form defines."
+    ),
+}
 
 
 def _maybe_load_form(client: DailyBotClient, form_uuid: str) -> dict[str, Any] | None:
@@ -293,7 +308,11 @@ def form_submit(
 
 @form.command("responses")
 @click.argument("form_uuid")
-@click.option("--state", default=None, help="Filter by current_state (workflow forms only).")
+@click.option(
+    "--state",
+    default=None,
+    help="Filter by workflow state key (e.g. draft, not Draft). Workflow forms only.",
+)
 @click.option(
     "--all",
     "all_responses",
@@ -313,6 +332,7 @@ def form_submit(
     is_flag=True,
     help="Return only the most recent response (continue where you left off).",
 )
+@paging_options
 @click.option("--json", "json_mode", is_flag=True, help="Emit machine-readable JSON to stdout.")
 def form_responses(
     form_uuid: str,
@@ -323,6 +343,9 @@ def form_responses(
     date_to: str | None,
     search: str | None,
     latest: bool,
+    page: int | None,
+    page_size: int | None,
+    limit: int | None,
     json_mode: bool,
 ) -> None:
     """List responses on a form.
@@ -339,6 +362,7 @@ def form_responses(
       dailybot form responses <form_uuid> --all --from 2026-01-01 --to 2026-06-30
       dailybot form responses <form_uuid> --user <user_uuid> --json
     """
+    validate_user_filter(user)
     client = require_auth()
     truncated_search: str | None = search[:256] if search is not None else None
     meta: dict[str, Any] = {}
@@ -352,10 +376,14 @@ def form_responses(
                 date_from=date_from,
                 date_to=date_to,
                 search=truncated_search,
+                page=page,
+                page_size=page_size,
+                fetch_all=page is None and page_size is None and limit is None,
+                limit=limit,
                 meta=meta,
             )
     except APIError as exc:
-        exit_for_api_error(exc, json_mode)
+        exit_for_api_error(exc, json_mode, code_overrides=_RESPONSES_ERROR_OVERRIDES)
 
     if latest:
         responses = responses[:1] if responses else []
@@ -366,7 +394,12 @@ def form_responses(
 
     form_data: dict[str, Any] | None = _maybe_load_form(client, form_uuid)
     print_form_responses_table(form_uuid, responses, form_data)
-    print_pagination_footer(len(responses), meta.get("count"), has_more=bool(meta.get("next")))
+    print_pagination_footer(
+        len(responses),
+        meta.get("count"),
+        has_more=bool(meta.get("next")),
+        more_hint="omit --page/--page-size to fetch every page",
+    )
 
 
 @form.group("response")

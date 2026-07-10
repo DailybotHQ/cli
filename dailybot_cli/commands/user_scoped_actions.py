@@ -7,7 +7,7 @@ from typing import Any
 import click
 import questionary
 
-from dailybot_cli.api_client import APIError, DailyBotClient
+from dailybot_cli.api_client import APIError, DailyBotClient, resource_uuid
 from dailybot_cli.commands.public_api_helpers import (
     EXIT_USAGE_ERROR,
     InteractiveAbort,
@@ -19,7 +19,7 @@ from dailybot_cli.commands.public_api_helpers import (
     normalize_checkin_list_json,
     parse_answer_flags,
 )
-from dailybot_cli.commands.query_options import QuerySpec
+from dailybot_cli.commands.query_options import QuerySpec, resolve_fetch_all
 from dailybot_cli.display import (
     console,
     print_checkin_complete_result,
@@ -83,7 +83,7 @@ def build_checkin_responses(
             {
                 "uuid": question["uuid"],
                 "index": index,
-                "response": answer,
+                "response": coerce_answer(question, answer),
             }
         )
     return responses
@@ -111,9 +111,42 @@ FORM_QUESTION_TYPES_CHOICE: frozenset[str] = frozenset(
 )
 
 
+BOOLEAN_TRUE_ANSWERS: frozenset[str] = frozenset({"true", "yes", "y", "1"})
+BOOLEAN_FALSE_ANSWERS: frozenset[str] = frozenset({"false", "no", "n", "0"})
+
+
+def coerce_answer(question: dict[str, Any], answer: Any) -> Any:
+    """Cast a raw answer to the JSON type its question declares.
+
+    Answers arrive as strings from ``-a index=value`` and from the interactive
+    prompts. The API validates by question type and rejects a boolean question
+    answered with the string ``"false"``.
+    """
+    if not isinstance(answer, str):
+        return answer
+    question_type: str = str(question.get("question_type") or "").lower()
+    if question_type in FORM_QUESTION_TYPES_BOOLEAN:
+        normalized: str = answer.strip().lower()
+        if normalized in BOOLEAN_TRUE_ANSWERS:
+            return True
+        if normalized in BOOLEAN_FALSE_ANSWERS:
+            return False
+        raise ValueError(f'"{answer}" is not a boolean. Answer with yes/no, true/false, or 1/0.')
+    if question_type in FORM_QUESTION_TYPES_NUMERIC:
+        try:
+            return int(answer)
+        except ValueError:
+            pass
+        try:
+            return float(answer)
+        except ValueError:
+            raise ValueError(f'"{answer}" is not a number.') from None
+    return answer
+
+
 def filter_submittable_forms(forms: list[dict[str, Any]]) -> list[dict[str, Any]]:
     """Return forms that have an ID and can be submitted."""
-    return [form for form in forms if form.get("id")]
+    return [form for form in forms if resource_uuid(form)]
 
 
 def extract_form_questions(form_data: dict[str, Any]) -> list[dict[str, Any]]:
@@ -350,7 +383,7 @@ def resolve_form_content(
 def find_form_name(forms: list[dict[str, Any]], form_uuid: str) -> str:
     """Return the display name for a form UUID when known."""
     for form in forms:
-        if form.get("id") == form_uuid:
+        if resource_uuid(form) == form_uuid:
             return str(form.get("name") or form_uuid)
     return form_uuid
 
@@ -421,7 +454,14 @@ def execute_checkin_complete(
         answer_flags,
         interactive=interactive,
     )
-    responses: list[dict[str, Any]] = build_checkin_responses(questions, answers)
+    try:
+        responses: list[dict[str, Any]] = build_checkin_responses(questions, answers)
+    except ValueError as exc:
+        if json_mode:
+            emit_json({"error": str(exc), "status": 0})
+        else:
+            print_error(str(exc))
+        raise SystemExit(EXIT_USAGE_ERROR) from exc
     last_question_index: int = len(responses) - 1
     followup_name: str = str(checkin_data.get("followup_name", followup_uuid))
 
@@ -464,8 +504,7 @@ def execute_form_list(
 ) -> list[dict[str, Any]] | None:
     """Fetch and display forms visible to the user (with question counts)."""
     query: QuerySpec = spec or QuerySpec()
-    # No paging flags → fetch everything (preserves the historical default).
-    fetch_all: bool = query.fetch_all or (query.page is None and query.limit is None)
+    fetch_all: bool = resolve_fetch_all(query)
     meta: dict[str, Any] = {}
     try:
         with console.status("Fetching forms..."):
@@ -615,6 +654,9 @@ def execute_checkin_history(
     date_to: str | None = None,
     user: str | None = None,
     search: str | None = None,
+    page: int | None = None,
+    page_size: int | None = None,
+    limit: int | None = None,
     json_mode: bool = False,
 ) -> None:
     """Show a check-in's response history over a date range.
@@ -639,6 +681,10 @@ def execute_checkin_history(
                 date_end=date_end,
                 user=user,
                 search=truncated_search,
+                page=page,
+                page_size=page_size,
+                fetch_all=page is None and page_size is None and limit is None,
+                limit=limit,
                 meta=meta,
             )
     except APIError as exc:
@@ -656,7 +702,12 @@ def execute_checkin_history(
         )
         return
     print_checkin_history_table(responses)
-    print_pagination_footer(len(responses), meta.get("count"), has_more=bool(meta.get("next")))
+    print_pagination_footer(
+        len(responses),
+        meta.get("count"),
+        has_more=bool(meta.get("next")),
+        more_hint="omit --page/--page-size to fetch every page",
+    )
 
 
 def execute_checkin_reset(

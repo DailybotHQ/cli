@@ -47,7 +47,7 @@ def test_checkin_history_forwards_search(monkeypatch: Any) -> None:
 
 
 def test_form_list_sends_page_and_capped_page_size(monkeypatch: Any) -> None:
-    """--page-size above the cap is clamped to 200 on the wire (real client)."""
+    """--page-size above the cap is clamped to MAX_PAGE_SIZE on the wire."""
     monkeypatch.setattr("dailybot_cli.commands.public_api_helpers.get_agent_auth", lambda: "tok")
     resp: MagicMock = MagicMock(spec=httpx.Response)
     resp.status_code = 200
@@ -58,7 +58,7 @@ def test_form_list_sends_page_and_capped_page_size(monkeypatch: Any) -> None:
     assert result.exit_code == 0
     params = mock_get.call_args[1]["params"]
     assert params["page"] == 2
-    assert params["page_size"] == 200
+    assert params["page_size"] == 100
 
 
 def test_forms_create_works_under_api_key(monkeypatch: Any) -> None:
