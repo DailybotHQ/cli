@@ -9,6 +9,20 @@ Do not edit it by hand — your edits will be overwritten on the next release.
 
 <!-- version list -->
 
+## v2.0.0 (2026-07-10)
+
+### Features
+
+- Cut 2.0.0 and document the public-API-parity breaking changes
+  ([`b423702`](https://github.com/DailybotHQ/cli/commit/b4237022740a87e984a48c8380779840cf4dbf5a))
+
+### Breaking Changes
+
+- List commands now return a paginated {count,next,previous,results} envelope and error handling
+  dispatches on machine-readable codes. These consumer-visible contract changes shipped in 1.20.0
+  and are now versioned as 2.0.0.
+
+
 ## v1.20.0 (2026-07-10)
 
 ### Chores
