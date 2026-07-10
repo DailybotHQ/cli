@@ -9,6 +9,19 @@ Do not edit it by hand — your edits will be overwritten on the next release.
 
 <!-- version list -->
 
+## v3.0.0 (2026-07-10)
+
+### Features
+
+- Align CLI major with the Dailybot agent skill pack (3.0)
+  ([`b557979`](https://github.com/DailybotHQ/cli/commit/b557979adf9c7f3dce0dc0b6d1873ca555b57e08))
+
+### Breaking Changes
+
+- The CLI major version now tracks the Dailybot agent skill pack major line (3.x). No functional API
+  change relative to 2.x.
+
+
 ## v2.0.1 (2026-07-10)
 
 ### Documentation
