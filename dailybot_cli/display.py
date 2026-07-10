@@ -32,6 +32,29 @@ def print_info(message: str) -> None:
     console.print(f"[dim]{message}[/dim]")
 
 
+def print_kudos_table(kudos: list[dict[str, Any]]) -> None:
+    """Render a compact table of kudos (giver → receivers, message, date)."""
+    if not kudos:
+        console.print("[dim]No kudos found.[/dim]")
+        return
+    table: Table = Table(title="Kudos", show_lines=False)
+    table.add_column("From", style="cyan", no_wrap=True)
+    table.add_column("To", style="green")
+    table.add_column("Message")
+    table.add_column("Date", style="dim", no_wrap=True)
+    for item in kudos:
+        giver_raw: Any = item.get("user") or {}
+        giver: str = (
+            "Anonymous" if item.get("is_anonymous") else str(giver_raw.get("full_name", "—"))
+        )
+        receivers_raw: Any = item.get("receivers") or []
+        receivers: str = ", ".join(str(r.get("full_name", "?")) for r in receivers_raw) or "—"
+        content: str = str(item.get("content", "")).strip() or "—"
+        created: str = str(item.get("created_at", ""))[:10]
+        table.add_row(giver, receivers, content, created)
+    console.print(table)
+
+
 def print_detail_panel(title: str, data: dict[str, Any], fields: list[tuple[str, str]]) -> None:
     """Render a titled key/value panel from selected ``data`` fields.
 

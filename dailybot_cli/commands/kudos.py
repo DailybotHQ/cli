@@ -10,16 +10,21 @@ from dailybot_cli.commands.public_api_helpers import (
     EXIT_USAGE_ERROR,
     confirm_write,
     emit_json,
+    enforce_plan_access,
     exit_for_api_error,
     get_current_user_uuid,
     require_auth,
     resolve_team_by_name_or_uuid,
     resolve_user_by_name_or_uuid,
 )
+from dailybot_cli.commands.query_options import build_query_params, query_options
 from dailybot_cli.display import (
     console,
+    print_detail_panel,
     print_error,
     print_kudos_result,
+    print_kudos_table,
+    print_pagination_footer,
 )
 
 
@@ -204,3 +209,142 @@ def kudos_give(
         assume_yes=assume_yes,
         json_mode=json_mode,
     )
+
+
+_KUDOS_ORG_FIELDS: list[tuple[str, str]] = [
+    ("Total kudos", "total_kudos"),
+    ("Total givers", "total_givers"),
+    ("Total receivers", "total_receivers"),
+]
+
+
+@kudos.command("list")
+@click.option(
+    "--filter", "kudos_filter", default=None, help="Filter (e.g. KUDOS_RECEIVED, KUDOS_GIVEN)."
+)
+@query_options
+@click.option("--json", "json_mode", is_flag=True, help="Emit machine-readable JSON to stdout.")
+def kudos_list(
+    kudos_filter: str | None,
+    page: int | None,
+    page_size: int | None,
+    fetch_all: bool,
+    limit: int | None,
+    search: str | None,
+    since: str | None,
+    until: str | None,
+    on_date: str | None,
+    last_week: bool,
+    today: bool,
+    json_mode: bool,
+) -> None:
+    """List kudos in your organization.
+
+    \b
+    Examples:
+      dailybot kudos list
+      dailybot kudos list --filter KUDOS_RECEIVED --since 2026-07-01
+      dailybot kudos list --all --json
+    """
+    enforce_plan_access("kudos_list", json_mode=json_mode)
+    try:
+        spec = build_query_params(
+            page=page,
+            page_size=page_size,
+            fetch_all=fetch_all,
+            limit=limit,
+            search=search,
+            since=since,
+            until=until,
+            on_date=on_date,
+            last_week=last_week,
+            today=today,
+        )
+    except ValueError as exc:
+        print_error(str(exc))
+        raise SystemExit(EXIT_USAGE_ERROR)
+    client = require_auth()
+    resolved_fetch_all: bool = spec.fetch_all or (spec.page is None and spec.limit is None)
+    meta: dict[str, Any] = {}
+    try:
+        with console.status("Fetching kudos..."):
+            kudos_items: list[dict[str, Any]] = client.list_kudos(
+                kudos_filter=kudos_filter,
+                search=spec.params.get("search"),
+                start_date=spec.params.get("start_date"),
+                end_date=spec.params.get("end_date"),
+                page=spec.page,
+                page_size=spec.page_size,
+                fetch_all=resolved_fetch_all,
+                limit=spec.limit,
+                meta=meta,
+            )
+    except APIError as exc:
+        exit_for_api_error(exc, json_mode)
+    if json_mode:
+        emit_json(kudos_items)
+        return
+    print_kudos_table(kudos_items)
+    print_pagination_footer(len(kudos_items), meta.get("count"), has_more=bool(meta.get("next")))
+
+
+@kudos.command("org")
+@click.option("--json", "json_mode", is_flag=True, help="Emit machine-readable JSON to stdout.")
+def kudos_org(json_mode: bool) -> None:
+    """Show org-wide kudos statistics.
+
+    \b
+    Examples:
+      dailybot kudos org
+      dailybot kudos org --json
+    """
+    enforce_plan_access("kudos_org", json_mode=json_mode)
+    client = require_auth()
+    try:
+        with console.status("Fetching kudos stats..."):
+            data: dict[str, Any] = client.get_kudos_organization()
+    except APIError as exc:
+        exit_for_api_error(exc, json_mode)
+    if json_mode:
+        emit_json(data)
+        return
+    print_detail_panel("Kudos — Organization", data, _KUDOS_ORG_FIELDS)
+
+
+@kudos.command("wall-of-fame")
+@click.option("--limit", "-l", type=int, default=None, help="Limit leaderboard entries.")
+@click.option("--json", "json_mode", is_flag=True, help="Emit machine-readable JSON to stdout.")
+def kudos_wall_of_fame(limit: int | None, json_mode: bool) -> None:
+    """Show the kudos leaderboard (wall of fame).
+
+    \b
+    Examples:
+      dailybot kudos wall-of-fame
+      dailybot kudos wall-of-fame --limit 10 --json
+    """
+    enforce_plan_access("kudos_wall_of_fame", json_mode=json_mode)
+    client = require_auth()
+    try:
+        with console.status("Fetching wall of fame..."):
+            data: dict[str, Any] = client.get_kudos_wall_of_fame(limit=limit)
+    except APIError as exc:
+        exit_for_api_error(exc, json_mode)
+    if json_mode:
+        emit_json(data)
+        return
+    leaderboard: Any = data.get("leaderboard") or []
+    fields: list[tuple[str, str]] = [
+        ("Top receiver", "top_receiver"),
+        ("Top giver", "top_giver"),
+        ("Leaderboard entries", "leaderboard_summary"),
+    ]
+    summary: dict[str, Any] = {
+        "top_receiver": (data.get("top_receiver") or {}).get("full_name")
+        if isinstance(data.get("top_receiver"), dict)
+        else data.get("top_receiver"),
+        "top_giver": (data.get("top_giver") or {}).get("full_name")
+        if isinstance(data.get("top_giver"), dict)
+        else data.get("top_giver"),
+        "leaderboard_summary": len(leaderboard),
+    }
+    print_detail_panel("Kudos — Wall of Fame", summary, fields)

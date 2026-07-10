@@ -1177,6 +1177,57 @@ class DailyBotClient:
         )
         return self._handle_response(response)
 
+    def list_kudos(
+        self,
+        *,
+        kudos_filter: str | None = None,
+        search: str | None = None,
+        start_date: str | None = None,
+        end_date: str | None = None,
+        page: int | None = None,
+        page_size: int | None = None,
+        fetch_all: bool = True,
+        limit: int | None = None,
+        meta: dict[str, Any] | None = None,
+    ) -> list[dict[str, Any]]:
+        """GET /v1/kudos/ — list kudos (paginated), optionally filtered."""
+        params: dict[str, Any] = {}
+        if kudos_filter:
+            params["filter"] = kudos_filter
+        _merge_list_query(params, search=search, start_date=start_date, end_date=end_date)
+        result: PaginatedResult = self._paginated_get(
+            f"{self.api_url}/v1/kudos/",
+            params=params,
+            page=page,
+            page_size=page_size,
+            fetch_all=fetch_all,
+            limit=limit,
+        )
+        _fill_meta(meta, result)
+        return result.results
+
+    def get_kudos_organization(self) -> dict[str, Any]:
+        """GET /v1/kudos/organization/ — org-wide kudos statistics."""
+        response: httpx.Response = httpx.get(
+            f"{self.api_url}/v1/kudos/organization/",
+            headers=self._headers(),
+            timeout=self.timeout,
+        )
+        return self._handle_response(response)
+
+    def get_kudos_wall_of_fame(self, *, limit: int | None = None) -> dict[str, Any]:
+        """GET /v1/kudos/wall-of-fame/ — leaderboard rankings."""
+        params: dict[str, str] = {}
+        if limit is not None:
+            params["limit"] = str(limit)
+        response: httpx.Response = httpx.get(
+            f"{self.api_url}/v1/kudos/wall-of-fame/",
+            headers=self._headers(),
+            params=params,
+            timeout=self.timeout,
+        )
+        return self._handle_response(response)
+
     def list_teams(self) -> list[dict[str, Any]]:
         """GET /v1/teams/ — server scopes results by role (admin sees all, member sees own)."""
         result: PaginatedResult = self._paginated_get(f"{self.api_url}/v1/teams/", fetch_all=True)
