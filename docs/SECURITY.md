@@ -30,8 +30,10 @@ Files with secrets:
 - `config.json` (stored API key)
 - `agents.json` (per-profile API keys)
 
-Files without secrets (no chmod required):
+Files without secrets (still written `0o600` for consistency):
 - `org_cache.json` (transient list of org names + UUIDs from step 1 of multi-org login)
+- `plan_cache.json` (non-sensitive org plan tier, keyed by org UUID; used to short-circuit
+  non-allowlisted commands on a free plan — never stores tokens or keys)
 
 ## Secrets in Output
 
