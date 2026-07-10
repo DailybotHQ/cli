@@ -9,6 +9,14 @@ Do not edit it by hand — your edits will be overwritten on the next release.
 
 <!-- version list -->
 
+## v3.1.0 (2026-07-10)
+
+### Features
+
+- **cli**: Migrate to the always-paginated, uuid-keyed public API
+  ([`3561f71`](https://github.com/DailybotHQ/cli/commit/3561f71427b59659e93f8d708818d815c18f8cf5))
+
+
 ## v3.0.2 (2026-07-10)
 
 ### Chores
