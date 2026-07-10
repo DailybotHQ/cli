@@ -106,7 +106,7 @@ The CLI exposes two ways to inspect what's installed — a quick one-liner for s
 ```bash
 # Single-line, scriptable
 dailybot --version
-# → dailybot 1.0.0 (Python 3.12.4)
+# → dailybot 3.0.0 (Python 3.12.4)
 
 # Multi-line panel: version, Python runtime, install path, release notes link
 dailybot version
