@@ -1206,6 +1206,39 @@ class DailyBotClient:
         _fill_meta(meta, result)
         return result.results
 
+    def list_workflows(
+        self,
+        *,
+        search: str | None = None,
+        page: int | None = None,
+        page_size: int | None = None,
+        fetch_all: bool = True,
+        limit: int | None = None,
+        meta: dict[str, Any] | None = None,
+    ) -> list[dict[str, Any]]:
+        """GET /v1/workflows/ — list workflows (read-only; plan-gated feature)."""
+        params: dict[str, Any] = {}
+        _merge_list_query(params, search=search)
+        result: PaginatedResult = self._paginated_get(
+            f"{self.api_url}/v1/workflows/",
+            params=params,
+            page=page,
+            page_size=page_size,
+            fetch_all=fetch_all,
+            limit=limit,
+        )
+        _fill_meta(meta, result)
+        return result.results
+
+    def get_workflow(self, workflow_uuid: str) -> dict[str, Any]:
+        """GET /v1/workflows/<uuid>/ — a single workflow's configuration."""
+        response: httpx.Response = httpx.get(
+            f"{self.api_url}/v1/workflows/{workflow_uuid}/",
+            headers=self._headers(),
+            timeout=self.timeout,
+        )
+        return self._handle_response(response)
+
     def get_kudos_organization(self) -> dict[str, Any]:
         """GET /v1/kudos/organization/ — org-wide kudos statistics."""
         response: httpx.Response = httpx.get(

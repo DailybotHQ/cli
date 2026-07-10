@@ -25,6 +25,7 @@ from dailybot_cli.commands.update import update
 from dailybot_cli.commands.upgrade import upgrade
 from dailybot_cli.commands.user import user
 from dailybot_cli.commands.version import version
+from dailybot_cli.commands.workflow import workflow
 from dailybot_cli.config import set_api_url_override
 
 # Format used by `dailybot --version`. Single line so it's friendly to scripts
@@ -82,6 +83,7 @@ cli.add_command(team)
 cli.add_command(user)
 cli.add_command(me)
 cli.add_command(org)
+cli.add_command(workflow)
 cli.add_command(agent)
 cli.add_command(chat)
 cli.add_command(ask)

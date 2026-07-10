@@ -55,6 +55,29 @@ def print_kudos_table(kudos: list[dict[str, Any]]) -> None:
     console.print(table)
 
 
+def print_workflows_table(workflows: list[dict[str, Any]]) -> None:
+    """Render a compact table of workflows (name, trigger, active, runs)."""
+    if not workflows:
+        console.print("[dim]No workflows found.[/dim]")
+        return
+    table: Table = Table(title="Workflows")
+    table.add_column("Name", style="cyan")
+    table.add_column("UUID", style="dim", no_wrap=True)
+    table.add_column("Trigger")
+    table.add_column("Active", justify="center")
+    table.add_column("Runs", justify="right")
+    for wf in workflows:
+        active: str = "[green]yes[/green]" if wf.get("active") else "[dim]no[/dim]"
+        table.add_row(
+            str(wf.get("name", "—")),
+            str(wf.get("uuid", "—")),
+            str(wf.get("trigger_type", "—")),
+            active,
+            str(wf.get("total_runs", 0)),
+        )
+    console.print(table)
+
+
 def print_detail_panel(title: str, data: dict[str, Any], fields: list[tuple[str, str]]) -> None:
     """Render a titled key/value panel from selected ``data`` fields.
 
