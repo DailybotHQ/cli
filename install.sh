@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # DailyBot CLI installer
-# Usage: curl -sSL https://cli.dailybot.com/install.sh | bash
+# Usage: curl -fsSL https://cli.dailybot.com/install.sh | bash
 #
 # macOS  → Homebrew (brew install dailybothq/tap/dailybot)
 # Linux  → Pre-built binary, fallback to pip
@@ -55,8 +55,8 @@ finish() {
 # --- Version selection ---
 # Install a specific version, or a minimum version floor, instead of the
 # latest. Provide it either as an environment variable or a CLI flag:
-#   curl -sSL https://cli.dailybot.com/install.sh | DAILYBOT_VERSION=1.15.0 bash
-#   curl -sSL https://cli.dailybot.com/install.sh | bash -s -- --version 1.15.0
+#   curl -fsSL https://cli.dailybot.com/install.sh | DAILYBOT_VERSION=1.15.0 bash
+#   curl -fsSL https://cli.dailybot.com/install.sh | bash -s -- --version 1.15.0
 #
 # Accepted forms:
 #   (empty)     install the latest published version

@@ -4,6 +4,14 @@ FROM python:3.14.4-slim-trixie
 
 LABEL maintainer="developers@dailybot.com"
 
+# Run every RUN under bash with `pipefail`. Docker's default `sh -c` has no
+# pipefail, so in a `curl … | bash` pipeline the exit status is bash's, not curl's:
+# a failing curl writes nothing to stdout, bash reads an empty script and exits 0,
+# and the image builds with the tool MISSING — silently. This stage pipes curl into
+# bash/dd several times (nodesource, gh keyring, claude, cursor), so the directive
+# goes here, before the first RUN. (Docker best practice; hadolint DL4006.)
+SHELL ["/bin/bash", "-o", "pipefail", "-c"]
+
 # Install base system dependencies
 RUN apt-get update && apt-get install --no-install-recommends -y \
     # Essential tools
@@ -33,8 +41,12 @@ RUN curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg | d
     && apt-get install --no-install-recommends -y gh \
     && apt-get clean && rm -rf /var/lib/apt/lists/*
 
-# Install Dailybot CLI (system-wide; pip drops the binary in /usr/local/bin/, available to dev-user)
-RUN curl -sSL https://cli.dailybot.com/install.sh | DAILYBOT_VERSION='>=3.0.0' bash
+# Install Dailybot CLI (system-wide; this RUN executes as root — the `USER dev-user`
+# directive is further down — so pip drops the binary in /usr/local/bin/, available to
+# dev-user). `-f` makes an HTTP error a non-zero curl exit instead of piping an error
+# page into bash; the `SHELL … pipefail` above makes a failing curl abort the build.
+# install.sh itself runs `set -euo pipefail`, so failures inside it abort too.
+RUN curl -fsSL https://cli.dailybot.com/install.sh | DAILYBOT_VERSION='>=3.0.0' bash
 
 # Install all Python dev/runtime deps from the repo's lock file.
 # This single COPY/RUN pair is the only build cache layer pip touches — it
