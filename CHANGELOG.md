@@ -9,6 +9,14 @@ Do not edit it by hand — your edits will be overwritten on the next release.
 
 <!-- version list -->
 
+## v3.0.1 (2026-07-10)
+
+### Bug Fixes
+
+- **docker**: Make the curl-pipe install fail loudly instead of silently skipping
+  ([`23dbdd7`](https://github.com/DailybotHQ/cli/commit/23dbdd7b40acb0ef94f0bc28b98edb9c167b4096))
+
+
 ## v3.0.0 (2026-07-10)
 
 ### Features
