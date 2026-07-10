@@ -9,6 +9,14 @@ Do not edit it by hand — your edits will be overwritten on the next release.
 
 <!-- version list -->
 
+## v3.1.2 (2026-07-10)
+
+### Bug Fixes
+
+- **kudos**: Align with the API's role-audit fixes (org-admin code + kudos filter)
+  ([`f21d980`](https://github.com/DailybotHQ/cli/commit/f21d980b92391179af0d3250252a952375d21835))
+
+
 ## v3.1.1 (2026-07-10)
 
 ### Documentation
