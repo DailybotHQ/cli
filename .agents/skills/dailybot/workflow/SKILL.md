@@ -1,8 +1,8 @@
 ---
 name: dailybot-workflow
 description: List and inspect Dailybot workflows (read-only) — enumerate the workflows configured for the organization and read one workflow's configuration. Use when the developer asks "list my workflows", "show workflows", or "what's in the release workflow?". Writes are done in the Dailybot web app; this skill only reads. Plan-gated feature.
-version: "3.0.1"
-documentation_url: https://api.dailybot.com/skill.md
+version: "3.2.0"
+documentation_url: https://www.dailybot.com/skill.md
 user-invocable: true
 metadata: {"openclaw":{"emoji":"🔀","homepage":"https://dailybot.com","requires":{"anyBins":["dailybot","curl"]},"primaryEnv":"DAILYBOT_API_KEY","install":[{"id":"cli-install-script","kind":"download","url":"https://cli.dailybot.com/install.sh","label":"Install Dailybot CLI (official script — preferred on Linux/macOS)"},{"id":"pip","kind":"pip","package":"dailybot-cli","bins":["dailybot"],"label":"Install Dailybot CLI via pip (fallback if binary fails)"}]}}
 allowed-tools: Bash, Read, Grep, Glob
@@ -30,7 +30,7 @@ explain them.
 > **Plan-gated feature.** Workflows are available on higher-tier plans. On a
 > plan without them (and on the FREE plan generally) these reads return
 > `403 plan_upgrade_required` with an `upgrade_url` — surface the upgrade path
-> and stop. See [`../shared/list-query-and-errors.md`](../shared/list-query-and-errors.md) § 5.
+> and stop. See [`../shared/list-query-and-errors.md`](../shared/list-query-and-errors.md) § 6.
 
 ---
 
@@ -39,7 +39,7 @@ explain them.
 Workflow reads accept **either** a Bearer login session (`dailybot login`)
 **or** an org API key (`DAILYBOT_API_KEY`). Results are scoped to the acting
 identity's permissions (the server resolves the API key's owner). See
-[`../shared/list-query-and-errors.md`](../shared/list-query-and-errors.md) § 5
+[`../shared/list-query-and-errors.md`](../shared/list-query-and-errors.md) § 6
 for the full API-key ↔ Bearer parity and plan-gating rules.
 
 ---
@@ -121,7 +121,7 @@ developer rather than re-deriving them.
 Match on the structured `code` field, never the prose `detail`. The full
 error-code table (including `plan_upgrade_required`, `insufficient_role`, and
 the 429 back-off behavior) is in
-[`../shared/list-query-and-errors.md`](../shared/list-query-and-errors.md) § 4.
+[`../shared/list-query-and-errors.md`](../shared/list-query-and-errors.md) § 5.
 
 Most likely codes for this skill:
 
@@ -183,4 +183,4 @@ errors:
 - [`../shared/auth.md`](../shared/auth.md) — authentication setup
 - [`../shared/http-fallback.md`](../shared/http-fallback.md) — HTTP API fallback patterns
 - **Live API spec:** `https://api.dailybot.com/api/swagger/`
-- **Full agent API skill:** `https://api.dailybot.com/skill.md`
+- **Full agent API skill:** `https://www.dailybot.com/skill.md`

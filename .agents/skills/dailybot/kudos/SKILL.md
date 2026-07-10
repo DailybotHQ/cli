@@ -1,8 +1,8 @@
 ---
 name: dailybot-kudos
 description: Give kudos to a teammate or to an entire team via Dailybot to recognize their contributions. Use when the developer wants to thank or recognize one person, or recognize a whole team (e.g. "kudos al equipo Engineering"). Do not use for general progress reports — those go through dailybot-report.
-version: "3.0.1"
-documentation_url: https://api.dailybot.com/skill.md
+version: "3.2.0"
+documentation_url: https://www.dailybot.com/skill.md
 user-invocable: true
 metadata: {"openclaw":{"emoji":"🏆","homepage":"https://dailybot.com","requires":{"anyBins":["dailybot","curl"]},"primaryEnv":"DAILYBOT_API_KEY","install":[{"id":"cli-install-script","kind":"download","url":"https://cli.dailybot.com/install.sh","label":"Install Dailybot CLI (official script — preferred on Linux/macOS)"},{"id":"pip","kind":"pip","package":"dailybot-cli","bins":["dailybot"],"label":"Install Dailybot CLI via pip (fallback if binary fails)"}]}}
 allowed-tools: Bash, Read, Grep, Glob
@@ -66,21 +66,23 @@ and date range (`--since`, `--until`, `--date`, `--last-week`, `--today`) — pl
 
 Omit `--filter` to see both directions.
 
-### `kudos org` — org-wide kudos stats
+### `kudos org` — every kudos in the organization
 
 ```bash
 dailybot kudos org --json
+dailybot kudos org --page-size 20 --since 2026-07-01
+dailybot kudos org --search onboarding --json
 ```
 
-Returns organization-wide kudos statistics.
+The org-wide counterpart of `kudos list`: where `kudos list` returns only the
+kudos the caller gave or received, `kudos org` returns the whole organization's
+feed. Same envelope, same row shape, same [shared list query flags](../shared/list-query-and-errors.md).
 
-> ⚠️ **API-key-only.** This endpoint (`GET /v1/kudos/organization/`) is
-> **API-key-only server-side** — it **rejects a CLI Bearer login with `403`**.
-> Set `DAILYBOT_API_KEY` (or `dailybot config key=...`) before calling it; a
-> plain `dailybot login` session is **not** sufficient here. This is the one
-> kudos read that does not honor the usual API-key ↔ Bearer parity. If the
-> developer only has a login session, tell them this specific stat needs an org
-> API key.
+> **Admin-only.** `GET /v1/kudos/organization/` requires an org-admin caller and
+> answers `403` otherwise. It accepts **either** a Bearer login session or an
+> `X-API-KEY`, like the rest of the read surface. A `403` here means the
+> developer's role is too low — not that their session expired, and not that they
+> need an API key. Don't send them to `dailybot login`.
 
 ### `kudos wall-of-fame` — the leaderboard
 
@@ -464,4 +466,4 @@ Sending kudos must **never block your primary work**. If the CLI is missing, aut
 - [`../shared/http-fallback.md`](../shared/http-fallback.md) — HTTP API fallback patterns
 - [`../teams/SKILL.md`](../teams/SKILL.md) — team-name resolver (called by this skill)
 - **Live API spec:** `https://api.dailybot.com/api/swagger/`
-- **Full agent API skill:** `https://api.dailybot.com/skill.md`
+- **Full agent API skill:** `https://www.dailybot.com/skill.md`

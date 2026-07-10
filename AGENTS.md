@@ -475,7 +475,7 @@ dailybot agent update --name "Claude Code" --milestone \
   --metadata '{"model":"claude-opus-4-7","plan":"PLAN_agent_profiles","repo":"cli"}'
 ```
 
-Full philosophy, what to report, and what to skip: [.agents/skills/dailybot/report/SKILL.md](.agents/skills/dailybot/report/SKILL.md) (part of the vendored Dailybot agent skill pack at `.agents/skills/dailybot/`, **v3.0.1**, which also ships the `chat` (incl. `--send-as-user`/`--send-as-me`), `kudos` (give + browse: `list`/`org`/`wall-of-fame`), `teams` (+ account context `me`/`org`/`user get`), `channels`, the read-only `workflow` (`list`/`get`), and the full `forms` / `checkin` **authoring** sub-skills — plus the shared list pagination/search/date filters and machine-readable error-code reference. The 2.0 browse/read surface requires `dailybot-cli >= 2.0.0`). Key rules:
+Full philosophy, what to report, and what to skip: [.agents/skills/dailybot/report/SKILL.md](.agents/skills/dailybot/report/SKILL.md) (part of the vendored Dailybot agent skill pack at `.agents/skills/dailybot/`, **v3.2.0**, which also ships the `chat` (incl. `--send-as-user`/`--send-as-me`), `kudos` (give + browse: `list`/`org`/`wall-of-fame`), `teams` (+ account context `me`/`org`/`user get`), `channels`, the read-only `workflow` (`list`/`get`), and the full `forms` / `checkin` **authoring** sub-skills — plus the shared list pagination/search/date filters and machine-readable error-code reference. The 2.0 browse/read surface requires `dailybot-cli >= 2.0.0`). Key rules:
 
 - 1–3 sentences, **always in English**
 - Focus on WHAT + WHY, never "Agent completed…"

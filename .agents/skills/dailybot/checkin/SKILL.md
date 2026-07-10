@@ -1,8 +1,8 @@
 ---
 name: dailybot-checkin
 description: Drive the full check-in lifecycle via Dailybot — list and complete pending check-ins, see pending/completed status for a day, inspect a check-in's questions and schedule, browse response history, edit or reset a submitted response, and backfill or future-date responses. Also authors check-ins — create and configure a check-in (schedule, participants, reminders, privacy, smart/AI) and manage its questions (types, report titles, variations, conditional logic). Works headless with an API key. Use when the developer asks to fill in their standup, answer daily questions, check what check-ins they have, edit or reset a check-in, review past responses, or create/configure a check-in. Do not use for free-text progress reports — those go through dailybot-report.
-version: "3.0.1"
-documentation_url: https://api.dailybot.com/skill.md
+version: "3.2.0"
+documentation_url: https://www.dailybot.com/skill.md
 user-invocable: true
 metadata: {"openclaw":{"emoji":"✅","homepage":"https://dailybot.com","requires":{"anyBins":["dailybot","curl"]},"primaryEnv":"DAILYBOT_API_KEY","install":[{"id":"cli-install-script","kind":"download","url":"https://cli.dailybot.com/install.sh","label":"Install Dailybot CLI (official script — preferred on Linux/macOS)"},{"id":"pip","kind":"pip","package":"dailybot-cli","bins":["dailybot"],"label":"Install Dailybot CLI via pip (fallback if binary fails)"}]}}
 allowed-tools: Bash, Read, Grep, Glob
@@ -147,18 +147,36 @@ Wait for each answer, then confirm before submitting.
 dailybot checkin complete <followup_uuid> \
   -a 0="Shipped the auth refactor with full test coverage" \
   -a 1="Starting the payment integration" \
-  -a 2="None" \
+  -a 2=no \
   --yes
 ```
 
 > **Timeout**: Allow at least 30 seconds for CLI commands to complete. Do not use a shorter timeout.
+
+### Answer types — match the question, not your prose
+
+Every answer is validated against its question's `question_type`. Read the types
+first (`dailybot checkin show <followup_uuid> --json`) and answer accordingly;
+the server rejects a mismatch with `400 ["response is not valid"]` and does not
+say which question was wrong.
+
+| `question_type` | Answer with | Example |
+|-----------------|-------------|---------|
+| `text` | Free text | `-a 0="Shipped the auth refactor"` |
+| `boolean` | `yes`/`no`, `true`/`false`, or `1`/`0` | `-a 2=no` |
+| `numeric` | A number | `-a 1=8` |
+| `multiple_choice` | One of the question's `choices` labels | `-a 3="Blocked"` |
+
+A blocker question is very often `boolean`, so answering it `"None"` or `"N/A"`
+— the natural English answer — is rejected. The CLI converts your string to the
+right JSON type; it cannot guess that `"None"` means `false`.
 
 ### CLI flags
 
 | Flag | Short | Description |
 |------|-------|-------------|
 | `--answer` | `-a` | `index=response` pair (0-based question index). Repeatable. |
-| `--response-date` | | Target date `YYYY-MM-DD`. Defaults to today. |
+| `--response-date` | | Target date `YYYY-MM-DD`. Defaults to today. Only works while the check-in is still **pending**; once today's response is submitted you can no longer backfill a past day from the CLI. |
 | `--yes` | `-y` | Skip confirmation prompt. |
 | `--json` | | Emit machine-readable JSON output. |
 
@@ -203,7 +221,8 @@ before completing or editing it.
 dailybot checkin history <followup_uuid> --days 7 [--json]
 dailybot checkin history <followup_uuid> --from 2026-06-01 --to 2026-06-30 --json
 dailybot checkin history <followup_uuid> --user <user_uuid> --days 30   # one participant
-dailybot checkin history <followup_uuid> --search "deploy" --days 30    # keyword filter (CLI ≥ 2.0.0)
+dailybot checkin history <followup_uuid> --search "deploy" --days 30    # keyword filter
+dailybot checkin history <followup_uuid> --days 30 --page 2 --page-size 20
 ```
 
 Responses over a date range (date, completed, answer summary). Check-ins are
@@ -212,9 +231,13 @@ forms, which default to your own). Pass `--user <uuid>` to narrow to one
 participant — that filter is admin/manager only; a member always sees only their
 own responses regardless of the flag.
 
-> **`--search` / `--grep` (CLI ≥ 2.0.0).** `checkin history` accepts a
-> case-insensitive substring filter (max 256 chars, truncated client-side) to
-> find past responses by keyword. See the shared query-flag reference in
+> **`--user` takes a UUID, nothing else.** An email or a display name is
+> rejected before the request with `invalid_user_identifier`. Resolve it first
+> with `dailybot user list --json`.
+
+> **Paging.** `--page` / `--page-size` / `--limit` return a single slice; with
+> none of them the command walks every page. `--search` / `--grep` is a
+> case-insensitive substring filter (max 256 chars, truncated client-side). See
 > [`../shared/list-query-and-errors.md`](../shared/list-query-and-errors.md).
 
 ### Edit an existing response
@@ -844,4 +867,4 @@ Check-in completion must **never block your primary work**. If the CLI is missin
 - [`../shared/auth.md`](../shared/auth.md) — authentication setup
 - [`../shared/http-fallback.md`](../shared/http-fallback.md) — HTTP API fallback patterns
 - **Live API spec:** `https://api.dailybot.com/api/swagger/`
-- **Full agent API skill:** `https://api.dailybot.com/skill.md`
+- **Full agent API skill:** `https://www.dailybot.com/skill.md`
