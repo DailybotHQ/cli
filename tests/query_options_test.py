@@ -19,9 +19,9 @@ def test_page_and_page_size_mapping() -> None:
     assert spec.page_size == 25
 
 
-def test_page_size_clamped_to_200() -> None:
+def test_page_size_clamped_to_max() -> None:
     spec = build_query_params(page_size=500, reference=REF)
-    assert spec.page_size == 200
+    assert spec.page_size == 100
 
 
 def test_search_maps_and_truncates() -> None:

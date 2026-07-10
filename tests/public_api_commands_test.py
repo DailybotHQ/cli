@@ -17,6 +17,8 @@ def runner() -> CliRunner:
     return CliRunner()
 
 
+_USER_UUID: str = "294bf2cc-e3c7-401d-a1d6-bf20aa64bb33"  # --user accepts only a UUID
+
 STATUS_PAYLOAD: dict[str, Any] = {
     "count": 1,
     "pending_checkins": [
@@ -875,6 +877,10 @@ class TestFormLifecycle:
             date_from=None,
             date_to=None,
             search=None,
+            page=None,
+            page_size=None,
+            fetch_all=True,
+            limit=None,
             meta={},
         )
 
@@ -900,6 +906,10 @@ class TestFormLifecycle:
             date_from=None,
             date_to=None,
             search=None,
+            page=None,
+            page_size=None,
+            fetch_all=True,
+            limit=None,
             meta={},
         )
 
@@ -1201,12 +1211,12 @@ class TestCheckinExtendedCommands:
         client: MagicMock = self._client(mock_client_cls, mock_get_auth)
         client.list_checkin_responses.return_value = []
         result = runner.invoke(
-            cli, ["checkin", "history", "f1", "--days", "7", "--user", "u-42", "--json"]
+            cli, ["checkin", "history", "f1", "--days", "7", "--user", _USER_UUID, "--json"]
         )
         assert result.exit_code == 0
         payload: dict[str, Any] = json.loads(result.output)
-        assert payload["user"] == "u-42"
-        assert client.list_checkin_responses.call_args.kwargs["user"] == "u-42"
+        assert payload["user"] == _USER_UUID
+        assert client.list_checkin_responses.call_args.kwargs["user"] == _USER_UUID
 
     @patch("dailybot_cli.commands.public_api_helpers.get_agent_auth")
     @patch("dailybot_cli.commands.public_api_helpers.DailyBotClient")
@@ -1305,7 +1315,7 @@ class TestQueryFlagsWiring:
         params = mock_get.call_args[1]["params"]
         assert params["search"] == "retro"
         assert params["start_date"] == "2026-07-01"
-        assert params["paginated"] == "true"  # forms endpoint always opts into the envelope
+        assert "paginated" not in params  # the envelope is unconditional now
 
     @patch("dailybot_cli.commands.public_api_helpers.get_agent_auth", return_value="tok")
     def test_form_list_all_iterates_multiple_pages(self, _auth: MagicMock) -> None:

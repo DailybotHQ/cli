@@ -147,9 +147,9 @@ Shows each check-in with its pending/completed state for a date (default today).
 
 Introspects a check-in's configuration and question definitions. Calls `GET /v1/checkins/<uuid>/` + `GET /v1/templates/<template_uuid>/?render_special_vars=true&followup_id=<uuid>`.
 
-#### `dailybot checkin history <followup_uuid> [--days N | --from YYYY-MM-DD --to YYYY-MM-DD] [--user <uuid>] [--json]`
+#### `dailybot checkin history <followup_uuid> [--days N | --from YYYY-MM-DD --to YYYY-MM-DD] [--user <uuid>] [--page N] [--page-size N] [--limit N] [--json]`
 
-Lists response history for a check-in over a date range. Calls `GET /v1/checkins/<uuid>/responses/?date_start=...&date_end=...`. Check-ins are team-wide, so the endpoint returns **all participants'** responses by default (unlike forms, which default to the caller's own). `--user <uuid>` narrows to one participant for admin/manager callers; a member always sees only their own responses (server-side guard, no 403). `?all=true` is a no-op — the default already returns everyone. `--search` / `--grep` (from the [shared list query flags](#shared-list-query-flags)) filters by term.
+Lists response history for a check-in over a date range. Calls `GET /v1/checkins/<uuid>/responses/?date_start=...&date_end=...`. Check-ins are team-wide, so the endpoint returns **all participants'** responses by default (unlike forms, which default to the caller's own). `--user <uuid>` narrows to one participant for admin/manager callers; a member always sees only their own responses (server-side guard, no 403). `?all=true` is a no-op — the default already returns everyone. `--search` / `--grep` (from the [shared list query flags](#shared-list-query-flags)) filters by term. `--page` / `--page-size` / `--limit` return a single slice; with none of them the command walks every page, as it always has. `--user` accepts **only a UUID** — an email or a name is rejected client-side (the API answers `400 invalid_user_identifier`).
 
 #### `dailybot checkin edit <followup_uuid> [-a index=response]... [--date YYYY-MM-DD] [--yes] [--json]`
 
@@ -174,7 +174,7 @@ print a `Showing X of N` count footer.
 | Flag | Query param | Notes |
 |------|-------------|-------|
 | `--page N` | `page` | 1-based page number. |
-| `--page-size N` | `page_size` | Results per page (max 200). |
+| `--page-size N` | `page_size` | Results per page (max 100). |
 | `--all` | — | Follows `next` until every page is fetched. |
 | `--limit N` | — | Stops after N results (client-side). |
 | `--search TEXT` / `--grep TEXT` | `search` | Max 256 chars; truncated client-side. |
@@ -184,7 +184,7 @@ print a `Showing X of N` count footer.
 | `--last-week` | — | Shortcut for the previous seven days. |
 | `--today` | — | Shortcut for today. |
 
-The two `/v1/forms/` list endpoints are always called with `?paginated=true`.
+Every `/v1` list endpoint returns the envelope unconditionally; no opt-in parameter is needed.
 
 ---
 
@@ -192,7 +192,7 @@ The two `/v1/forms/` list endpoints are always called with `?paginated=true`.
 
 #### `dailybot form list [--json]`
 
-Lists forms visible to the user. Calls `GET /v1/forms/?include=questions&paginated=true` to include question definitions. Accepts the [shared list query flags](#shared-list-query-flags).
+Lists forms visible to the user. Calls `GET /v1/forms/?include=questions` to include question definitions. Accepts the [shared list query flags](#shared-list-query-flags).
 
 #### `dailybot form get <form_uuid> [--json]`
 
@@ -208,9 +208,9 @@ Submits a form response. When `--content` is omitted, calls `GET /v1/forms/<uuid
 | `--yes` | `-y` | Skip confirmation prompt. |
 | `--json` | | Machine-readable JSON output. |
 
-#### `dailybot form responses <form_uuid> [--state STATE] [--latest] [--json]`
+#### `dailybot form responses <form_uuid> [--state STATE] [--latest] [--page N] [--page-size N] [--limit N] [--json]`
 
-Lists responses (`GET /v1/forms/<uuid>/responses/`). Defaults to the caller's own. `--state` filters by `current_state` (workflow forms only). `--latest` returns only the most recent. `--all` / `--user <uuid>` surface everyone's / a specific user's responses and are admin/owner-only server-side (a member gets 403 / `form_response_view_all_forbidden`). `--from` / `--to` (`date_from`/`date_to`) narrow the window. `--search` / `--grep` (from the [shared list query flags](#shared-list-query-flags)) filters by term.
+Lists responses (`GET /v1/forms/<uuid>/responses/`). Defaults to the caller's own. `--state` filters by workflow **state key** (`draft`, not the `Draft` label) — server-side, workflow forms only. On a form without a workflow the API returns `400 invalid_workflow_state` and the CLI explains that the flag doesn't apply. `--latest` returns only the most recent. `--all` / `--user <uuid>` surface everyone's / a specific user's responses and are admin/owner-only server-side (a member gets 403 / `form_response_view_all_forbidden`). `--from` / `--to` (`date_from`/`date_to`) narrow the window. `--search` / `--grep` (from the [shared list query flags](#shared-list-query-flags)) filters by term. `--page` / `--page-size` / `--limit` return a single slice; with none of them the command walks every page. Note `--all` here means *every author*, not every page. `--user` accepts **only a UUID**.
 
 #### `dailybot form response get <form_uuid> <response_uuid> [--json]`
 
@@ -297,7 +297,7 @@ Lists kudos the caller received or gave via `GET /v1/kudos/`. `--filter` selects
 
 #### `dailybot kudos org [--json]`
 
-Org-wide kudos stats via `GET /v1/kudos/organization/`. **API-key-only**: the endpoint rejects a CLI login (Bearer) session with `403` — it requires `X-API-KEY` (`DAILYBOT_API_KEY` or `dailybot config key=...`).
+Browse every kudos in the organization via `GET /v1/kudos/organization/` — the org-wide counterpart of `kudos list`, which is scoped to the caller. Admin-only (a non-admin receives `403`). Accepts the [shared list query flags](#shared-list-query-flags).
 
 #### `dailybot kudos wall-of-fame [--limit N] [--json]`
 
@@ -626,7 +626,7 @@ key, so all of these commands work with `DAILYBOT_API_KEY` set even without
 | `GET` | `/v1/teams/<uuid>/members/` | — | `[{ uuid, full_name, email }]` | Members of a team the caller can see |
 | `POST` | `/v1/kudos/` | `{ content, receivers: [...uuid], users_receivers?: [...], teams_receivers?: [...], company_value? }` | `{ uuid }` | `receivers` = users+teams merged (validation); `users_receivers`/`teams_receivers` drive team expansion. Payload contract is being reconciled server-side — see the integration prompt. 406 = daily limit |
 | `GET` | `/v1/kudos/` | `?filter=KUDOS_RECEIVED\|KUDOS_GIVEN`, shared list params (all optional) | `{ count, next, previous, results }` | `kudos list` |
-| `GET` | `/v1/kudos/organization/` | — | `{ ... }` | `kudos org`; **X-API-KEY only** (rejects Bearer with 403) |
+| `GET` | `/v1/kudos/organization/` | list flags | `{count, next, previous, results}` | `kudos org`; admin-only (Bearer or X-API-KEY) |
 | `GET` | `/v1/kudos/wall-of-fame/` | `?limit` (optional) | `{ count, next, previous, results }` | `kudos wall-of-fame` |
 | `GET` | `/v1/workflows/` | shared list params (all optional) | `{ count, next, previous, results }` | `workflow list`; plan-gated (403 `plan_upgrade_required`) |
 | `GET` | `/v1/workflows/<uuid>/` | — | `{ uuid, name, ... }` | `workflow get`; plan-gated |

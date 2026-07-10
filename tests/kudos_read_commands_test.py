@@ -54,11 +54,26 @@ def test_kudos_list_forwards_filter_and_search(monkeypatch: Any) -> None:
 
 
 def test_kudos_org_json(monkeypatch: Any) -> None:
+    """`kudos org` is the org-wide kudos feed, not an aggregate stats object."""
     client = _client(monkeypatch)
-    client.get_kudos_organization.return_value = {"total_kudos": 42}
+    client.list_kudos_organization.return_value = [{"id": "k1", "content": "Nice work"}]
     result = CliRunner().invoke(cli, ["kudos", "org", "--json"])
     assert result.exit_code == 0
-    assert "42" in result.output
+    assert "Nice work" in result.output
+
+
+def test_kudos_org_forwards_filters(monkeypatch: Any) -> None:
+    client = _client(monkeypatch)
+    client.list_kudos_organization.return_value = []
+    result = CliRunner().invoke(
+        cli, ["kudos", "org", "--search", "onboarding", "--since", "2026-07-01", "--page-size", "5"]
+    )
+    assert result.exit_code == 0
+    kwargs = client.list_kudos_organization.call_args[1]
+    assert kwargs["search"] == "onboarding"
+    assert kwargs["start_date"] == "2026-07-01"
+    assert kwargs["page_size"] == 5
+    assert kwargs["fetch_all"] is False
 
 
 def test_kudos_wall_of_fame(monkeypatch: Any) -> None:
@@ -75,6 +90,6 @@ def test_kudos_wall_of_fame(monkeypatch: Any) -> None:
 
 def test_kudos_org_api_error(monkeypatch: Any) -> None:
     client = _client(monkeypatch)
-    client.get_kudos_organization.side_effect = APIError(403, "forbidden")
+    client.list_kudos_organization.side_effect = APIError(403, "forbidden")
     result = CliRunner().invoke(cli, ["kudos", "org", "--json"])
     assert result.exit_code == 4

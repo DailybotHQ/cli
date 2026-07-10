@@ -211,7 +211,8 @@ ERROR_CODE_MESSAGES: dict[str, str] = {
     # `extra` (upgrade_url, required/current role) in exit_for_api_error.
     "plan_upgrade_required": (
         "This action requires a paid Dailybot plan. On the free plan the CLI can "
-        "only submit agent reports, send agent emails, and read your own profile."
+        "only submit agent reports and emails, check agent messages and health, "
+        "read your own profile, and view today's pending check-ins."
     ),
     "plan_free_api_keys_forbidden": (
         "API keys aren't available on the free plan. Run `dailybot login` to use a "
@@ -235,6 +236,10 @@ ERROR_CODE_MESSAGES: dict[str, str] = {
     ),
     "invalid_date_range": (
         "Invalid date. Use YYYY-MM-DD, and make sure the start date is on or before the end date."
+    ),
+    "invalid_user_identifier": (
+        "--user only accepts a user UUID, not an email or a name. "
+        "Run 'dailybot user list' to find it."
     ),
     # Rate limiting (429)
     "free_plan_daily_limit_exceeded": (
@@ -261,6 +266,19 @@ UUID_PATTERN: re.Pattern[str] = re.compile(
     r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
     re.IGNORECASE,
 )
+
+
+def validate_user_filter(value: str | None) -> None:
+    """Reject a non-UUID ``--user`` filter before it reaches the API.
+
+    The response-listing endpoints accept only a UUID here. Checking locally
+    turns a round-trip and a 400 into an immediate, actionable message.
+    """
+    if value is None:
+        return
+    if not UUID_PATTERN.match(value):
+        print_error(ERROR_CODE_MESSAGES["invalid_user_identifier"])
+        raise SystemExit(1)
 
 
 def require_auth() -> DailyBotClient:
@@ -305,18 +323,30 @@ def _augment_code_message(base: str, code: str, extra: dict[str, Any]) -> str:
     return base
 
 
-def exit_for_api_error(exc: APIError, json_mode: bool) -> NoReturn:
+def exit_for_api_error(
+    exc: APIError,
+    json_mode: bool,
+    *,
+    code_overrides: dict[str, str] | None = None,
+) -> NoReturn:
     """Map API failures to user-facing messages and process exit codes.
 
     Dispatches strictly on the machine-readable ``code`` (never on ``detail``
     text); falls back to the status-code-based message when ``code`` is absent
     (older backends).
+
+    ``code_overrides`` lets a command replace the shared message for a code the
+    server reuses across surfaces. ``invalid_workflow_state`` means "malformed
+    --state definition" when authoring a form and "this form has no workflow"
+    when filtering its responses; only the calling command can tell them apart.
     """
     code: str | None = getattr(exc, "code", None)
     extra: dict[str, Any] = getattr(exc, "extra", {}) or {}
     mapped_message: str | None = ERROR_CODE_MESSAGES.get(code) if code else None
     if mapped_message and code:
         mapped_message = _augment_code_message(mapped_message, code, extra)
+    if code and code_overrides and code in code_overrides:
+        mapped_message = code_overrides[code]
 
     if exc.status_code == 401:
         message: str = "Session expired. Run: dailybot login"

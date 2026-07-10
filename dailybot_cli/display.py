@@ -1,12 +1,20 @@
-"""Rich console output helpers for Dailybot CLI."""
+"""Rich console output helpers for Dailybot CLI.
+
+Messages passed to the print_* helpers routinely carry server-controlled text
+(API error details, form/check-in content). Rich treats ``[...]`` as a style
+tag, so every such message is escaped before interpolation.
+"""
 
 from typing import Any
 
 from rich.console import Console
 from rich.markdown import Markdown
+from rich.markup import escape
 from rich.panel import Panel
 from rich.table import Table
 from rich.text import Text
+
+from dailybot_cli.api_client import resource_uuid
 
 console: Console = Console()
 error_console: Console = Console(stderr=True)
@@ -14,22 +22,22 @@ error_console: Console = Console(stderr=True)
 
 def print_success(message: str) -> None:
     """Print a success message."""
-    console.print(f"[bold green]OK[/bold green] {message}")
+    console.print(f"[bold green]OK[/bold green] {escape(message)}")
 
 
 def print_error(message: str) -> None:
     """Print an error message to stderr."""
-    error_console.print(f"[bold red]Error:[/bold red] {message}")
+    error_console.print(f"[bold red]Error:[/bold red] {escape(message)}")
 
 
 def print_warning(message: str) -> None:
     """Print a warning message."""
-    console.print(f"[bold yellow]Warning:[/bold yellow] {message}")
+    console.print(f"[bold yellow]Warning:[/bold yellow] {escape(message)}")
 
 
 def print_info(message: str) -> None:
     """Print an info message."""
-    console.print(f"[dim]{message}[/dim]")
+    console.print(f"[dim]{escape(message)}[/dim]")
 
 
 def print_kudos_table(kudos: list[dict[str, Any]]) -> None:
@@ -99,11 +107,13 @@ def print_pagination_footer(
     total: int | None = None,
     *,
     has_more: bool = False,
+    more_hint: str = "use --all to fetch every page",
 ) -> None:
     """Render a compact 'Showing X of N' footer for a list command.
 
-    ``total`` is the envelope ``count`` when known; ``has_more`` hints that more
-    pages exist (use ``--all`` to fetch them). Goes to stdout (not an error).
+    ``total`` is the envelope ``count`` when known; ``has_more`` appends
+    ``more_hint``. Commands where ``--all`` means something else (``form
+    responses``, ``checkin history``) pass their own hint. Goes to stdout.
     """
     if total is not None and total != shown:
         text: str = f"Showing {shown} of {total}"
@@ -111,7 +121,7 @@ def print_pagination_footer(
         noun: str = "result" if shown == 1 else "results"
         text = f"Showing {shown} {noun}"
     if has_more:
-        text += " — use --all to fetch every page"
+        text += f" — {more_hint}"
     console.print(f"[dim]{text}[/dim]")
 
 
@@ -533,7 +543,7 @@ def print_checkin_list_overview(count: int, checkins: list[dict[str, Any]]) -> N
 
 def print_checkin_complete_result(followup_name: str, data: dict[str, Any]) -> None:
     """Display the result of completing a check-in."""
-    response_id: str = str(data.get("uuid") or data.get("id") or "N/A")
+    response_id: str = resource_uuid(data) or "N/A"
     print_success(f'Check-in completed for "{followup_name}"')
     print_info(f"Response ID: {response_id}")
 
@@ -683,7 +693,7 @@ def print_checkin_detail(detail: dict[str, Any]) -> None:
     is_archived}`` with the canonical question shape shared with forms.
     """
     name: str = str(detail.get("name") or "")
-    uuid: str = str(detail.get("id") or detail.get("uuid") or "")
+    uuid: str = resource_uuid(detail)
     lines: list[str] = [f"[bold]{name}[/bold]", f"UUID: {uuid}"]
     if detail.get("is_archived"):
         lines.append("[yellow]archived[/yellow]")
@@ -761,7 +771,7 @@ def print_forms_table(forms: list[dict[str, Any]]) -> None:
     if show_status:
         table.add_column("Status")
     for form in forms:
-        form_id: str = str(form.get("id") or "")
+        form_id: str = resource_uuid(form)
         if not form_id:
             continue
         question_count: int = len(
@@ -781,14 +791,14 @@ def print_forms_table(forms: list[dict[str, Any]]) -> None:
 
 def print_form_submit_result(form_name: str, data: dict[str, Any]) -> None:
     """Display the result of submitting a form response."""
-    response_id: str = str(data.get("uuid") or data.get("id") or "N/A")
+    response_id: str = resource_uuid(data) or "N/A"
     print_success(f'Form response submitted for "{form_name}"')
     print_info(f"Response ID: {response_id}")
 
 
 def print_kudos_result(receiver_name: str, data: dict[str, Any]) -> None:
     """Display the result of giving kudos."""
-    kudos_id: str = str(data.get("uuid") or data.get("id") or "N/A")
+    kudos_id: str = resource_uuid(data) or "N/A"
     print_success(f"Kudos sent to {receiver_name}")
     print_info(f"Kudos ID: {kudos_id}")
 
@@ -828,7 +838,7 @@ def print_form_detail(form_data: dict[str, Any]) -> None:
     table.add_column(style="bold")
     table.add_column()
     table.add_row("Name", str(form_data.get("name", "")))
-    table.add_row("UUID", str(form_data.get("id", "")))
+    table.add_row("UUID", resource_uuid(form_data))
     if form_data.get("is_active") is False:
         table.add_row("Status", "[yellow]inactive[/yellow]")
     if form_data.get("is_archived"):
@@ -894,7 +904,7 @@ def print_form_response_state(
     data: dict[str, Any], form_data: dict[str, Any] | None = None
 ) -> None:
     """Render the workflow-state surface of a form response after a mutation."""
-    response_id: str = str(data.get("id") or data.get("uuid") or "")
+    response_id: str = resource_uuid(data)
     current_state: str = str(data.get("current_state") or "")
     state_history: list[dict[str, Any]] = list(data.get("state_history") or [])
     previous_state: str = ""
@@ -928,10 +938,16 @@ def print_form_response_state(
         table.add_row("Note", last_note)
 
     if allowed:
-        next_states: str = ", ".join(
-            str(entry.get("label") or label_for(str(entry.get("to_state") or "")))
-            for entry in allowed
-        )
+        # Show the state key, not the label: the key is the token `form transition`
+        # accepts. The label follows in parens when it differs.
+        def state_token(entry: dict[str, Any]) -> str:
+            key: str = str(entry.get("to_state") or "")
+            label: str = str(entry.get("label") or label_for(key))
+            if label and label.lower() != key.lower():
+                return f"{key} [dim]({label})[/dim]"
+            return key
+
+        next_states: str = ", ".join(state_token(entry) for entry in allowed)
         table.add_row("Next states", f"{next_states}  [dim](use `dailybot form transition`)[/dim]")
 
     if can_change is not None:
@@ -961,7 +977,7 @@ def print_form_responses_table(
         state_display: str = labels.get(state_key, state_key) if state_key else "—"
         edited_flag: bool = bool(response.get("edited"))
         table.add_row(
-            str(response.get("id") or response.get("uuid") or ""),
+            resource_uuid(response),
             state_display,
             "yes" if edited_flag else "no",
             str(response.get("created_at") or ""),
@@ -1170,7 +1186,7 @@ def print_report_channels(channels: list[dict[str, Any]]) -> None:
 def print_form_created(form: dict[str, Any], *, updated: bool = False) -> None:
     """Display a created (or, with ``updated=True``, edited) form + question summary."""
     name: str = str(form.get("name") or "")
-    form_id: str = str(form.get("id") or form.get("uuid") or "")
+    form_id: str = resource_uuid(form)
     title: str = "Form Updated" if updated else "Form Created"
     lines: list[str] = [f"[bold]{name}[/bold]", f"ID: {form_id}"]
     if form.get("public_url"):

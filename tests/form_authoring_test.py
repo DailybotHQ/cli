@@ -572,7 +572,7 @@ class TestFormResponsesExtended:
                     "form-uuid",
                     "--all",
                     "--user",
-                    "user-uuid",
+                    "294bf2cc-e3c7-401d-a1d6-bf20aa64bb33",
                     "--from",
                     "2026-01-01",
                     "--to",
@@ -582,7 +582,7 @@ class TestFormResponsesExtended:
         assert result.exit_code == 0
         kwargs = client.list_form_responses.call_args[1]
         assert kwargs["all_responses"] is True
-        assert kwargs["user"] == "user-uuid"
+        assert kwargs["user"] == "294bf2cc-e3c7-401d-a1d6-bf20aa64bb33"
         assert kwargs["date_from"] == "2026-01-01"
         assert kwargs["date_to"] == "2026-06-30"
 
