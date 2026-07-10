@@ -1,7 +1,7 @@
 ---
 name: dailybot
 description: Official Dailybot agent skill pack — report progress, check messages, send emails, announce agent status, complete check-ins, give kudos (to users or teams), resolve teams, run the full forms lifecycle (list, submit, update, transition between workflow states), **author check-ins and forms from scratch** (create/configure questions, workflow states, permissions, reminders, scheduling, AI settings, sharing), send/edit chat messages on the team's Slack/Teams/Discord/Google Chat (including report-style threads and sending as a user's identity), ask the Dailybot AI a question headlessly, **and browse/read the workspace** — who am I / my org / a user's profile (`me` / `org` / `user get`), browse the kudos feed + org stats + wall of fame, and list/read workflows, all with shared pagination / search / date-range filters. Routes to the right sub-skill based on intent. Use when the developer mentions Dailybot or wants to interact with their team.
-version: "3.0.0"
+version: "3.0.1"
 documentation_url: https://api.dailybot.com/skill.md
 user-invocable: true
 metadata: {"openclaw":{"emoji":"📡","homepage":"https://dailybot.com","requires":{"anyBins":["dailybot","curl"]},"primaryEnv":"DAILYBOT_API_KEY","install":[{"id":"cli-install-script","kind":"download","url":"https://cli.dailybot.com/install.sh","label":"Install Dailybot CLI (official script — preferred on Linux/macOS)"},{"id":"pip","kind":"pip","package":"dailybot-cli","bins":["dailybot"],"label":"Install Dailybot CLI via pip (fallback if binary fails)"}]}}
@@ -51,7 +51,7 @@ machine — permissions, consent guarantees, and a self-audit you can run — is
 
 ## What it does
 
-Eleven coordinated capabilities, with smart routing between them:
+Twelve coordinated capabilities, with smart routing between them:
 
 | Capability | Sub-skill | When it fires |
 |------------|-----------|---------------|
@@ -211,13 +211,24 @@ then resume. Do not retry CLI commands in a loop while the upgrade is pending.
 |---------|---------|
 | pip      | `pip install 'dailybot-cli>=1.10.0'` |
 | Homebrew | `brew install dailybothq/tap/dailybot` |
-| Universal installer (Linux / macOS / WSL2 / Git Bash) | `curl -sSL https://cli.dailybot.com/install.sh \| bash` |
+| Universal installer (Linux / macOS / WSL2 / Git Bash) | `curl -fsSL https://cli.dailybot.com/install.sh \| bash` |
 | Windows PowerShell (when WSL2 / Git Bash unavailable) | `irm https://cli.dailybot.com/install.ps1 \| iex` |
 
 The universal installer auto-detects the OS and routes to Homebrew on macOS,
 the prebuilt binary on Linux x86_64, or pipx / uv tool / pip --user elsewhere.
 Full safety story (SHA-256 sidecar, cross-origin diff, optional cosign): see
 [`shared/auth.md`](shared/auth.md).
+
+> **Always fetch with `curl -fsSL`.** The `-f` makes curl fail on an HTTP error
+> instead of writing the error page to stdout with exit status `0` — which, in a
+> pipe, `bash` would execute.
+>
+> **Agents: do not run the piped one-liner.** The commands above are what a *human*
+> types. `curl … | bash` streams, so a truncated download executes a partial script,
+> and in a shell without `pipefail` a failed download exits `0` and installs nothing,
+> silently. Always use the **verified install** (download → cross-origin diff →
+> SHA-256 → execute) in
+> [`shared/auth.md`](shared/auth.md#primary-path-defense-in-depth-verified-install-linux-macos-wsl2-git-bash-docker-ci).
 
 #### Pinning a specific version
 
@@ -230,7 +241,7 @@ installer scripts; `pip` and Homebrew work on any version):
 |---------|---------------|
 | pip      | `pip install dailybot-cli==<version>` |
 | Homebrew | installs latest only — pin via `pip install dailybot-cli==<version>` |
-| Universal installer | `curl -sSL https://cli.dailybot.com/install.sh \| DAILYBOT_VERSION=<version> bash` (or `\| bash -s -- --version <version>`) |
+| Universal installer | `curl -fsSL https://cli.dailybot.com/install.sh \| DAILYBOT_VERSION=<version> bash` (or `\| bash -s -- --version <version>`) |
 | Windows PowerShell | `$env:DAILYBOT_VERSION='<version>'; irm https://cli.dailybot.com/install.ps1 \| iex` |
 
 Prefer `pip install dailybot-cli==<version>` when the developer already has
@@ -288,9 +299,9 @@ the full step-by-step workflow.
 | "list my forms", "submit the retro form", "continue my release-form draft", "transition the release to released", "show me the last form response" | **Forms** → read [`forms/SKILL.md`](forms/SKILL.md) |
 | "list / search / browse my forms (or kudos, or workflows) with pagination", "only the first N", "since last week", "grep for retro" | The matching sub-skill — all share [`shared/list-query-and-errors.md`](shared/list-query-and-errors.md) for the query flags |
 | "who am I?", "what's my role?", "which org am I in?", "show a user's profile" | **Teams** → read [`teams/SKILL.md`](teams/SKILL.md) § Step 4.5 (`me` / `org` / `user get`) |
-| "which channels can Dailybot post to?", "list report channels", "I need a channel UUID for the form / check-in" | **Channels** → read [`channels/SKILL.md`](channels/SKILL.md) |
 | "browse kudos", "kudos I received / gave", "org kudos stats", "who's on the wall of fame?" | **Kudos** → read [`kudos/SKILL.md`](kudos/SKILL.md) § Browsing kudos |
 | "list my workflows", "show workflows", "what's in workflow X?" | **Workflows** → read [`workflow/SKILL.md`](workflow/SKILL.md) |
+| "which channels can Dailybot post to?", "list report channels", "I need a channel UUID for the form / check-in" | **Channels** → read [`channels/SKILL.md`](channels/SKILL.md) |
 | "send a Slack message", "DM Sergio in chat", "post the deploy report to #releases (with a thread)", "edit that chat message I just sent", "ping the Engineering team in chat" | **Chat** → read [`chat/SKILL.md`](chat/SKILL.md) |
 | "send this to #releases as me", "post as <user> in Slack", "send the message with Jane's identity" | **Chat** → read [`chat/SKILL.md`](chat/SKILL.md) § Send as a user's identity (`--send-as-user` / `--send-as-me`) |
 
