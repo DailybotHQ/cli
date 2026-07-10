@@ -27,7 +27,11 @@ import click
 
 from dailybot_cli.api_client import APIError, DailyBotClient
 from dailybot_cli.commands.agent import _merge_repo_metadata, _resolve_agent_context
-from dailybot_cli.commands.public_api_helpers import emit_json
+from dailybot_cli.commands.public_api_helpers import (
+    UUID_PATTERN,
+    emit_json,
+    get_current_user_uuid,
+)
 from dailybot_cli.display import (
     console,
     print_chat_message_result,
@@ -78,6 +82,7 @@ def build_chat_payload(
     bot_name: str | None = None,
     bot_icon_url: str | None = None,
     bot_icon_emoji: str | None = None,
+    send_as_user: str | None = None,
     ephemeral: bool = False,
     skip_time_off: bool = False,
     metadata: dict[str, Any] | None = None,
@@ -110,6 +115,14 @@ def build_chat_payload(
         raise ChatPayloadError(f"--bot-name must be at most {MAX_BOT_USERNAME_CHARS} characters.")
     if bot_icon_url and not bot_icon_url.startswith("https://"):
         raise ChatPayloadError("--bot-icon-url must start with 'https://'.")
+    if send_as_user is not None:
+        if bot_name or bot_icon_url or bot_icon_emoji:
+            raise ChatPayloadError(
+                "--send-as-user / --send-as-me can't be combined with --bot-name / "
+                "--bot-icon-url / --bot-icon-emoji."
+            )
+        if not UUID_PATTERN.match(send_as_user):
+            raise ChatPayloadError("Invalid UUID for --send-as-user.")
 
     payload: dict[str, Any] = {}
 
@@ -150,6 +163,8 @@ def build_chat_payload(
     if platform_settings:
         payload["platform_settings"] = platform_settings
 
+    if send_as_user is not None:
+        payload["send_as_user"] = send_as_user
     if skip_time_off:
         payload["skip_users_on_time_off"] = True
     if metadata:
@@ -406,6 +421,22 @@ def _assemble_payload(
     multiple=True,
     help="Reply posted inside the parent message's thread (repeatable; max 10).",
 )
+@click.option(
+    "--send-as-user",
+    "send_as_user",
+    default=None,
+    help=(
+        "Send with the identity (name and profile picture) of the given user UUID. "
+        "Admin-only. Slack only. Mutually exclusive with --bot-name/--bot-icon-url."
+    ),
+)
+@click.option(
+    "--send-as-me",
+    "send_as_me",
+    is_flag=True,
+    default=False,
+    help="Shortcut: send as yourself (your name + profile picture). Admin-only. Slack only.",
+)
 @click.pass_context
 def chat_send(
     ctx: click.Context,
@@ -421,6 +452,8 @@ def chat_send(
     bot_name: str | None,
     bot_icon_url: str | None,
     bot_icon_emoji: str | None,
+    send_as_user: str | None,
+    send_as_me: bool,
     ephemeral: bool,
     skip_time_off: bool,
     metadata: str | None,
@@ -446,8 +479,20 @@ def chat_send(
         --thread-message "Changelog: ..." \\
         --thread-message "Rollout: 100% at 14:30 UTC"
     """
+    if send_as_user and send_as_me:
+        print_error("Use only one of --send-as-user / --send-as-me.")
+        raise SystemExit(1)
     profile_flag: str | None = ctx.obj.get("profile")
     client, repo_default_metadata = _resolved_client(profile_flag)
+    resolved_send_as: str | None = send_as_user
+    if send_as_me:
+        resolved_send_as = get_current_user_uuid(client)
+        if not resolved_send_as:
+            print_error(
+                "Couldn't resolve your user UUID for --send-as-me. Use "
+                "--send-as-user <uuid> explicitly (this needs a login session)."
+            )
+            raise SystemExit(1)
     payload: dict[str, Any] = _assemble_payload(
         payload_json=payload_json,
         metadata=metadata,
@@ -467,6 +512,7 @@ def chat_send(
         bot_name=bot_name,
         bot_icon_url=bot_icon_url,
         bot_icon_emoji=bot_icon_emoji,
+        send_as_user=resolved_send_as,
         ephemeral=ephemeral,
         skip_time_off=skip_time_off,
     )

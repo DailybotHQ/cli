@@ -241,6 +241,15 @@ ERROR_CODE_MESSAGES: dict[str, str] = {
         "You've reached today's free-plan limit for this action. Wait for it to reset "
         "or upgrade your plan."
     ),
+    # send-message: send_as_user identity (chat send)
+    "org_admin_required": (
+        "Only organization admins can send a message as another user (--send-as-user)."
+    ),
+    "send_as_user_conflict": (
+        "--send-as-user can't be combined with --bot-name / --bot-icon-url / --bot-icon-emoji."
+    ),
+    "send_as_user_invalid_uuid": "Invalid UUID for --send-as-user.",
+    "send_as_user_not_found": "User not found in your organization (must be active).",
 }
 
 
