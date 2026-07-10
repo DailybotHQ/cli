@@ -786,6 +786,7 @@ class TestAPIError:
         mock_response.status_code = 500
         mock_response.json.side_effect = ValueError("Not JSON")
         mock_response.text = "Internal Server Error"
+        mock_response.headers = {"content-type": "text/plain"}
 
         with patch("httpx.post", return_value=mock_response), pytest.raises(APIError) as exc_info:
             client.request_code("user@example.com")

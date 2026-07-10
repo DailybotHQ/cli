@@ -19,7 +19,7 @@ from dailybot_cli.commands.public_api_helpers import (
     normalize_checkin_list_json,
     parse_answer_flags,
 )
-from dailybot_cli.commands.query_options import QuerySpec
+from dailybot_cli.commands.query_options import QuerySpec, resolve_fetch_all
 from dailybot_cli.display import (
     console,
     print_checkin_complete_result,
@@ -464,8 +464,7 @@ def execute_form_list(
 ) -> list[dict[str, Any]] | None:
     """Fetch and display forms visible to the user (with question counts)."""
     query: QuerySpec = spec or QuerySpec()
-    # No paging flags → fetch everything (preserves the historical default).
-    fetch_all: bool = query.fetch_all or (query.page is None and query.limit is None)
+    fetch_all: bool = resolve_fetch_all(query)
     meta: dict[str, Any] = {}
     try:
         with console.status("Fetching forms..."):

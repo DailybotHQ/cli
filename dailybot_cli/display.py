@@ -1,9 +1,15 @@
-"""Rich console output helpers for Dailybot CLI."""
+"""Rich console output helpers for Dailybot CLI.
+
+Messages passed to the print_* helpers routinely carry server-controlled text
+(API error details, form/check-in content). Rich treats ``[...]`` as a style
+tag, so every such message is escaped before interpolation.
+"""
 
 from typing import Any
 
 from rich.console import Console
 from rich.markdown import Markdown
+from rich.markup import escape
 from rich.panel import Panel
 from rich.table import Table
 from rich.text import Text
@@ -14,22 +20,22 @@ error_console: Console = Console(stderr=True)
 
 def print_success(message: str) -> None:
     """Print a success message."""
-    console.print(f"[bold green]OK[/bold green] {message}")
+    console.print(f"[bold green]OK[/bold green] {escape(message)}")
 
 
 def print_error(message: str) -> None:
     """Print an error message to stderr."""
-    error_console.print(f"[bold red]Error:[/bold red] {message}")
+    error_console.print(f"[bold red]Error:[/bold red] {escape(message)}")
 
 
 def print_warning(message: str) -> None:
     """Print a warning message."""
-    console.print(f"[bold yellow]Warning:[/bold yellow] {message}")
+    console.print(f"[bold yellow]Warning:[/bold yellow] {escape(message)}")
 
 
 def print_info(message: str) -> None:
     """Print an info message."""
-    console.print(f"[dim]{message}[/dim]")
+    console.print(f"[dim]{escape(message)}[/dim]")
 
 
 def print_kudos_table(kudos: list[dict[str, Any]]) -> None:

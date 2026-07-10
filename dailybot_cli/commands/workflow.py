@@ -11,7 +11,7 @@ from dailybot_cli.commands.public_api_helpers import (
     exit_for_api_error,
     require_auth,
 )
-from dailybot_cli.commands.query_options import build_query_params, query_options
+from dailybot_cli.commands.query_options import build_query_params, query_options, resolve_fetch_all
 from dailybot_cli.display import (
     console,
     print_detail_panel,
@@ -82,7 +82,7 @@ def workflow_list(
         print_error(str(exc))
         raise SystemExit(1)
     client = require_auth()
-    resolved_fetch_all: bool = spec.fetch_all or (spec.page is None and spec.limit is None)
+    resolved_fetch_all: bool = resolve_fetch_all(spec)
     meta: dict[str, Any] = {}
     try:
         with console.status("Fetching workflows..."):

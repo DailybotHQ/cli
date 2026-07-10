@@ -30,6 +30,23 @@ class QuerySpec:
     limit: int | None = None
 
 
+def resolve_fetch_all(spec: QuerySpec) -> bool:
+    """Decide whether a list command should follow ``next`` across every page.
+
+    ``--all`` always wins. Otherwise, any explicit paging flag (``--page``,
+    ``--page-size``, ``--limit``) means the caller asked for a bounded slice, so
+    only that slice is fetched. With no paging flag at all we fetch everything,
+    preserving the historical default of these commands.
+
+    ``--page-size`` must be counted here: it sizes the *response*, not just the
+    internal chunk. Omitting it made ``--page-size 3`` silently walk all pages
+    three rows at a time and return the full list.
+    """
+    if spec.fetch_all:
+        return True
+    return spec.page is None and spec.page_size is None and spec.limit is None
+
+
 def last_week_range(reference: date) -> tuple[str, str]:
     """Return (Monday, Sunday) ISO strings for the week before ``reference``."""
     this_monday: date = reference - timedelta(days=reference.weekday())

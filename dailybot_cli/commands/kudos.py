@@ -17,7 +17,7 @@ from dailybot_cli.commands.public_api_helpers import (
     resolve_team_by_name_or_uuid,
     resolve_user_by_name_or_uuid,
 )
-from dailybot_cli.commands.query_options import build_query_params, query_options
+from dailybot_cli.commands.query_options import build_query_params, query_options, resolve_fetch_all
 from dailybot_cli.display import (
     console,
     print_detail_panel,
@@ -264,7 +264,7 @@ def kudos_list(
         print_error(str(exc))
         raise SystemExit(EXIT_USAGE_ERROR)
     client = require_auth()
-    resolved_fetch_all: bool = spec.fetch_all or (spec.page is None and spec.limit is None)
+    resolved_fetch_all: bool = resolve_fetch_all(spec)
     meta: dict[str, Any] = {}
     try:
         with console.status("Fetching kudos..."):

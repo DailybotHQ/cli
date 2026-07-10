@@ -18,6 +18,22 @@ DEFAULT_RETRY_AFTER_SECS: float = 1.0  # backoff floor when a 429 omits Retry-Af
 # A free-plan daily throttle is NOT transient — retrying can never succeed today.
 FREE_PLAN_DAILY_LIMIT_CODE: str = "free_plan_daily_limit_exceeded"
 
+MAX_FALLBACK_DETAIL_CHARS: int = 160  # cap for a non-JSON error body echoed to the user
+
+
+def _fallback_detail(response: httpx.Response) -> str:
+    """Build an error detail when the body is not the expected JSON envelope.
+
+    A 5xx can return a rendered HTML page. Echoing that verbatim floods the
+    terminal and leaks server internals (tracebacks, settings, file paths), so
+    only short non-HTML bodies are surfaced.
+    """
+    content_type: str = response.headers.get("content-type", "")
+    text: str = (response.text or "").strip()
+    if not text or "html" in content_type.lower() or text.startswith("<"):
+        return f"HTTP {response.status_code}"
+    return text[:MAX_FALLBACK_DETAIL_CHARS]
+
 
 @dataclass
 class PaginatedResult:
@@ -151,7 +167,7 @@ class DailyBotClient:
                 if isinstance(upgrade_url, str):
                     extra["upgrade_url"] = upgrade_url
             except Exception:
-                detail = response.text or f"HTTP {response.status_code}"
+                detail = _fallback_detail(response)
             if response.status_code in (401, 403) and self._agent_auth_mode == "bearer":
                 detail = "Session expired. Run 'dailybot login' to re-authenticate."
             retry_after: float | None = None
