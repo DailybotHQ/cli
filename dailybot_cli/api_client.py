@@ -1,5 +1,7 @@
 """HTTP client for Dailybot CLI API endpoints."""
 
+import time
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -10,6 +12,11 @@ from dailybot_cli.config import get_api_key, get_api_url, get_token
 _MAX_LIST_PAGES: int = 50  # safety cap for paginated list endpoints
 DEFAULT_PAGE_SIZE: int = 50  # server default page size for paginated list endpoints
 MAX_PAGE_SIZE: int = 200  # server clamps above this; the client clamps too
+
+MAX_RATE_LIMIT_RETRIES: int = 3  # attempts to retry a generic 429 before raising
+DEFAULT_RETRY_AFTER_SECS: float = 1.0  # backoff floor when a 429 omits Retry-After
+# A free-plan daily throttle is NOT transient — retrying can never succeed today.
+FREE_PLAN_DAILY_LIMIT_CODE: str = "free_plan_daily_limit_exceeded"
 
 
 @dataclass
@@ -35,11 +42,15 @@ class APIError(Exception):
         detail: str,
         code: str | None = None,
         retry_after: float | None = None,
+        extra: dict[str, Any] | None = None,
     ) -> None:
         self.status_code: int = status_code
         self.detail: str = detail
         self.code: str | None = code
         self.retry_after: float | None = retry_after  # seconds, from a 429 Retry-After header
+        # Extra machine-readable context from the error body (e.g. upgrade_url,
+        # required_role / current_role). Never a mutable default arg.
+        self.extra: dict[str, Any] = extra or {}
         super().__init__(f"API error {status_code}: {detail}")
 
 
@@ -99,12 +110,21 @@ class DailyBotClient:
         """Parse API response and raise on errors."""
         if response.status_code >= 400:
             code: str | None = None
+            extra: dict[str, Any] = {}
             try:
                 body: dict[str, Any] = response.json()
                 detail: str = body.get("detail", body.get("error", str(body)))
                 raw_code: Any = body.get("code")
                 if isinstance(raw_code, str):
                     code = raw_code
+                raw_extra: Any = body.get("extra")
+                if isinstance(raw_extra, dict):
+                    extra = dict(raw_extra)
+                # Plan-gating responses carry upgrade_url at the top level; surface it
+                # in extra so downstream reads a single place.
+                upgrade_url: Any = body.get("upgrade_url")
+                if isinstance(upgrade_url, str):
+                    extra["upgrade_url"] = upgrade_url
             except Exception:
                 detail = response.text or f"HTTP {response.status_code}"
             if response.status_code in (401, 403) and self._agent_auth_mode == "bearer":
@@ -122,10 +142,45 @@ class DailyBotClient:
                 detail=detail,
                 code=code,
                 retry_after=retry_after,
+                extra=extra,
             )
         if response.status_code == 204:
             return {}
         return response.json()
+
+    def _send_with_retry(self, send: Callable[[], httpx.Response]) -> httpx.Response:
+        """Issue a request via ``send`` with bounded retry on a transient 429.
+
+        Honors the ``Retry-After`` header and backs off exponentially from it, up
+        to ``MAX_RATE_LIMIT_RETRIES`` retries. A ``free_plan_daily_limit_exceeded``
+        429 is NOT transient — it is returned immediately (no retry) so the caller
+        raises a clear error. Any non-429 response is returned as-is. ``time.sleep``
+        is referenced through the module so tests can patch it.
+        """
+        attempt: int = 0
+        while True:
+            response: httpx.Response = send()
+            if response.status_code != 429:
+                return response
+            code: str | None = None
+            try:
+                body: Any = response.json()
+                raw_code: Any = body.get("code") if isinstance(body, dict) else None
+                if isinstance(raw_code, str):
+                    code = raw_code
+            except Exception:
+                code = None
+            if code == FREE_PLAN_DAILY_LIMIT_CODE or attempt >= MAX_RATE_LIMIT_RETRIES:
+                return response
+            retry_after: float = DEFAULT_RETRY_AFTER_SECS
+            raw_retry: str | None = response.headers.get("Retry-After")
+            if raw_retry:
+                try:
+                    retry_after = float(raw_retry)
+                except ValueError:
+                    retry_after = DEFAULT_RETRY_AFTER_SECS
+            time.sleep(retry_after * (2**attempt))
+            attempt += 1
 
     def _paginated_get(
         self,
@@ -168,12 +223,15 @@ class DailyBotClient:
         pages_fetched: int = 0
 
         while current_url is not None and pages_fetched < _MAX_LIST_PAGES:
-            response: httpx.Response = httpx.get(
-                current_url,
-                headers=self._headers(),
-                params=query if first else None,
-                timeout=self.timeout,
-            )
+            page_url: str = current_url
+            page_params: dict[str, Any] | None = query if first else None
+
+            def _do_get(
+                url: str = page_url, prm: dict[str, Any] | None = page_params
+            ) -> httpx.Response:
+                return httpx.get(url, headers=self._headers(), params=prm, timeout=self.timeout)
+
+            response: httpx.Response = self._send_with_retry(_do_get)
             if response.status_code >= 400:
                 self._handle_response(response)
             body: Any = response.json()

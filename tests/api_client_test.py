@@ -1445,3 +1445,74 @@ class TestPaginatedGet:
             )
         assert len(result.results) == 2
         assert mock_get.call_count == 1
+
+
+class TestErrorCodesAndRateLimits:
+    """Task 2: APIError code/extra parsing and 429 retry behavior."""
+
+    def _resp(
+        self,
+        status: int,
+        body: Any = None,
+        headers: dict[str, str] | None = None,
+    ) -> MagicMock:
+        r: MagicMock = MagicMock(spec=httpx.Response)
+        r.status_code = status
+        r.json.return_value = {} if body is None else body
+        r.headers = headers or {}
+        return r
+
+    def test_api_error_parses_code_extra_and_upgrade_url(self, client: DailyBotClient) -> None:
+        resp = self._resp(
+            403,
+            {
+                "detail": "nope",
+                "code": "plan_upgrade_required",
+                "upgrade_url": "https://app.example.com/upgrade",
+                "extra": {"required_role": "admin"},
+            },
+        )
+        with pytest.raises(APIError) as excinfo:
+            client._handle_response(resp)
+        err = excinfo.value
+        assert err.code == "plan_upgrade_required"
+        assert err.extra["upgrade_url"] == "https://app.example.com/upgrade"
+        assert err.extra["required_role"] == "admin"
+
+    def test_api_error_without_code_is_none(self, client: DailyBotClient) -> None:
+        resp = self._resp(400, {"detail": "bad request"})
+        with pytest.raises(APIError) as excinfo:
+            client._handle_response(resp)
+        assert excinfo.value.code is None
+        assert excinfo.value.extra == {}
+
+    def test_no_retry_on_free_plan_daily_limit(self, client: DailyBotClient) -> None:
+        resp = self._resp(429, {"code": "free_plan_daily_limit_exceeded"})
+        send = MagicMock(return_value=resp)
+        with patch("dailybot_cli.api_client.time.sleep") as sleep:
+            out = client._send_with_retry(send)
+        assert send.call_count == 1
+        assert sleep.call_count == 0
+        assert out is resp
+
+    def test_generic_429_retries_then_returns(self, client: DailyBotClient) -> None:
+        from dailybot_cli.api_client import MAX_RATE_LIMIT_RETRIES
+
+        resp = self._resp(429, {"code": "rate_limited"}, {"Retry-After": "1"})
+        send = MagicMock(return_value=resp)
+        with patch("dailybot_cli.api_client.time.sleep") as sleep:
+            out = client._send_with_retry(send)
+        # 1 initial attempt + MAX_RATE_LIMIT_RETRIES retries
+        assert send.call_count == 1 + MAX_RATE_LIMIT_RETRIES
+        assert sleep.call_count == MAX_RATE_LIMIT_RETRIES
+        assert out.status_code == 429
+
+    def test_success_after_one_retry(self, client: DailyBotClient) -> None:
+        limited = self._resp(429, {"code": "rate_limited"}, {"Retry-After": "1"})
+        ok = self._resp(200, {"results": []})
+        send = MagicMock(side_effect=[limited, ok])
+        with patch("dailybot_cli.api_client.time.sleep") as sleep:
+            out = client._send_with_retry(send)
+        assert send.call_count == 2
+        assert sleep.call_count == 1
+        assert out.status_code == 200
