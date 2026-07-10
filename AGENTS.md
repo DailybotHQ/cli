@@ -205,7 +205,9 @@ Never use raw `print(...)` or `click.echo(...)` for user-facing output (two exce
 
 ### 10. HTTP Errors Through `APIError`
 
-`api_client.py` raises `APIError(status_code, detail)` for any non-2xx response. Command callbacks **must** wrap `client.*(...)` calls in `try/except APIError` and translate them to user-friendly messages. Special-case `e.status_code in (401, 403)` to suggest `dailybot login`, and `e.status_code == 429` to suggest waiting / rate-limit messaging.
+`api_client.py` raises `APIError(status_code, detail)` for any non-2xx response. Command callbacks **must** wrap `client.*(...)` calls in `try/except APIError` and translate them to user-friendly messages. Special-case `e.status_code in (401, 403)` to suggest `dailybot login`, and `e.status_code == 429` to suggest waiting / rate-limit messaging. Command error handling dispatches on the machine-readable `code` field the server returns (never the human `detail` prose) — see `ERROR_CODE_MESSAGES` in `commands/public_api_helpers.py`.
+
+List endpoints (`form list`, `kudos list`, `workflow list`, `user list`, and the `--search` paths) go through a shared paginated-GET helper: every list response is a `{count, next, previous, results}` envelope, and the helper honors the common query flags (`--page`, `--page-size`, `--all`, `--limit`, `--search`/`--grep`, and the date filters). See [docs/API_REFERENCE.md](docs/API_REFERENCE.md).
 
 ### 11. Credentials & Secrets — File Permissions
 

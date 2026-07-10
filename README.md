@@ -170,6 +170,21 @@ The chat mode uses your `dailybot login` session and supports control commands: 
 
 ---
 
+## Account and organization
+
+```bash
+# Show the authenticated user and the org context of your credential
+dailybot me
+dailybot me --include-email   # include your email in the output
+dailybot me --json
+
+# Show the organization the credential is scoped to
+dailybot org
+dailybot org --json
+```
+
+---
+
 ## Check-ins
 
 ```bash
@@ -420,6 +435,29 @@ Team kudos pass through the backend's team manager, which expands the team into 
 | `--yes` | `-y` | Skip the confirmation prompt. |
 | `--json` | | Emit machine-readable JSON to stdout. |
 
+### Browsing kudos
+
+```bash
+# List kudos you've received or given (paginated, searchable, date-filterable)
+dailybot kudos list
+dailybot kudos list --filter KUDOS_RECEIVED
+dailybot kudos list --filter KUDOS_GIVEN --since 2026-01-01 --until 2026-06-30
+dailybot kudos list --search "release" --all --json
+
+# Org-wide kudos stats
+dailybot kudos org --json
+
+# Leaderboard of top kudos recipients
+dailybot kudos wall-of-fame --limit 10
+```
+
+`dailybot kudos list` accepts the shared list flags (pagination, `--search`, and
+date filters) — see [Listing, search, and pagination](#listing-search-and-pagination).
+
+> `dailybot kudos org` is **API-key-only**: the org-stats endpoint rejects a CLI
+> login (Bearer) session with `403`. Set `DAILYBOT_API_KEY` (or
+> `dailybot config key=...`) before running it.
+
 ---
 
 ## Team
@@ -430,6 +468,10 @@ dailybot user list
 
 # Machine-readable
 dailybot user list --json
+
+# Get a single member by UUID
+dailybot user get <user_uuid>
+dailybot user get <user_uuid> --include-email --json
 
 # List teams visible to you (scoped server-side by your role)
 dailybot team list
@@ -445,9 +487,53 @@ The `user list` table shows **Name** and **User UUID**. You can copy a UUID dire
 
 ---
 
+## Workflows
+
+Browse the workflows configured in your organization. This surface is
+**read-only** — workflows are created and edited in the Dailybot web app. The
+feature is plan-gated; an org on a plan without workflows gets a clear upgrade
+message.
+
+```bash
+# List workflows visible to you (paginated + searchable)
+dailybot workflow list
+dailybot workflow list --search "release" --all --json
+
+# Get a single workflow by UUID
+dailybot workflow get <workflow_uuid>
+dailybot workflow get <workflow_uuid> --json
+```
+
+`dailybot workflow list` accepts the shared list flags — see
+[Listing, search, and pagination](#listing-search-and-pagination).
+
+---
+
+## Listing, search, and pagination
+
+The list commands (`form list`, `kudos list`, `workflow list`) share a common
+set of flags, and `form responses` / `checkin history` accept the `--search`
+subset. Every list endpoint returns a `{count, next, previous, results}`
+envelope, and list output prints a `Showing X of N` count footer.
+
+| Flag | Description |
+|------|-------------|
+| `--page N` | Fetch a specific 1-based page. |
+| `--page-size N` | Results per page (max 200). |
+| `--all` | Fetch every page and merge the results. |
+| `--limit N` | Stop after N results. |
+| `--search TEXT` / `--grep TEXT` | Filter by a search term (max 256 chars, truncated client-side). |
+| `--since YYYY-MM-DD` | Only results on or after this date. |
+| `--until YYYY-MM-DD` | Only results on or before this date. |
+| `--date YYYY-MM-DD` | Only results on this date. |
+| `--last-week` | Shortcut for the previous seven days. |
+| `--today` | Shortcut for today. |
+
+---
+
 ## User-scoped exit codes
 
-All user-scoped commands (`checkin`, `form`, `kudos`, `user`, `team`) use structured exit codes for scripting:
+All user-scoped commands (`checkin`, `form`, `kudos`, `user`, `team`, `workflow`, `me`, `org`) use structured exit codes for scripting:
 
 | Code | Meaning |
 |------|---------|
@@ -727,6 +813,8 @@ Replies to agent emails land as messages retrievable via `dailybot agent message
 | `dailybot login` | Authenticate with email OTP |
 | `dailybot logout` | Log out and revoke token |
 | `dailybot status` | Show pending check-ins and auth status |
+| `dailybot me` | Show the authenticated user and org context (`--include-email`, `--json`) |
+| `dailybot org` | Show the organization the credential is scoped to (`--json`) |
 | `dailybot update` | Submit a free-text or structured check-in update |
 | `dailybot config` | Get, set, or remove a stored setting (e.g. API key) |
 | `dailybot version` | Show version info and optionally check for updates |
@@ -758,14 +846,25 @@ Replies to agent emails land as messages retrievable via `dailybot agent message
 | Command | Description |
 |---------|-------------|
 | `dailybot kudos give` | Give kudos to a user (`--to`), a team (`--team`), or both |
+| `dailybot kudos list` | List kudos you've received or given (`--filter`, search, date flags) |
+| `dailybot kudos org` | Org-wide kudos stats (**API-key-only**) |
+| `dailybot kudos wall-of-fame` | Leaderboard of top kudos recipients (`--limit`) |
 
 ### Team
 
 | Command | Description |
 |---------|-------------|
 | `dailybot user list` | List all members in your organization |
+| `dailybot user get <uuid>` | Show a single member (`--include-email`, `--json`) |
 | `dailybot team list` | List teams visible to you (scoped server-side by role) |
 | `dailybot team get <uuid_or_name>` | Show a team; add `--with-members` for the member list |
+
+### Workflows
+
+| Command | Description |
+|---------|-------------|
+| `dailybot workflow list` | List workflows visible to you (read-only; search + pagination) |
+| `dailybot workflow get <uuid>` | Show a single workflow by UUID |
 
 ### Chat (send bot messages to Slack/Teams/Discord/Google Chat)
 
@@ -801,6 +900,10 @@ dailybot chat send -c C0123 -m "Build #421 ✅" \
   --bot-name "Release Bot" --bot-icon-emoji ":rocket:" \
   --link-button "Open report::https://app.company.com/report"
 
+# Send with another user's identity, or as yourself (Slack only, admin-only)
+dailybot chat send -c C0123 -m "Posting for the team" --send-as-user <user-uuid>
+dailybot chat send -c C0123 -m "This one is from me" --send-as-me
+
 # Ephemeral (Slack; only the recipient sees it — needs a user target)
 dailybot chat send -u ana@co.com -m "Heads up" --ephemeral
 
@@ -824,6 +927,11 @@ inside the parent's thread in a single call. Each reply gets its own
 reply in place. Threads render natively where the platform supports it (Slack
 channels + DMs; Teams/Discord/Google Chat thread in channels, deliver flat in
 DMs).
+
+**Send as a user (Slack only, admin-only):** `--send-as-user <UUID>` posts the
+bot message with that user's name and profile picture; `--send-as-me` is the
+shortcut for the authenticated user. Both require org-admin rights and are
+mutually exclusive with `--bot-name` / `--bot-icon-url` / `--bot-icon-emoji`.
 
 **Auth & scope:** with a login session the message is sent **as you**, limited
 to what your role can reach in your org (teammates, public channels, teams you
