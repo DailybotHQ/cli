@@ -23,6 +23,7 @@ from dailybot_cli.commands.authoring_helpers import (
 from dailybot_cli.commands.public_api_helpers import (
     confirm_write,
     emit_json,
+    enforce_plan_access,
     exit_for_api_error,
     require_auth,
 )
@@ -183,6 +184,7 @@ def form_list(include_archived: bool, json_mode: bool) -> None:
       dailybot form list --include-archived
       dailybot form list --json
     """
+    enforce_plan_access("form_list", json_mode=json_mode)
     client = require_auth()
     execute_form_list(client, json_mode=json_mode, include_archived=include_archived)
 

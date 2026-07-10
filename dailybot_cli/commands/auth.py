@@ -13,6 +13,7 @@ from dailybot_cli.config import (
     load_org_cache,
     save_credentials,
     save_org_cache,
+    save_org_plan,
 )
 from dailybot_cli.display import (
     console,
@@ -140,6 +141,13 @@ def _verify_and_save(
         organization_uuid=org_uuid,
         api_url=client.api_url,
     )
+    # Cache the (non-sensitive) plan tier when the login response exposes it, so
+    # non-allowlisted commands can short-circuit on a free plan. Absent = unknown.
+    plan_tier: Any = (org_raw.get("plan") if isinstance(org_raw, dict) else None) or result.get(
+        "plan"
+    )
+    if isinstance(plan_tier, str) and org_uuid:
+        save_org_plan(org_uuid, plan_tier)
     print_success(f"Logged in as {email} ({org_name})")
 
 

@@ -9,8 +9,31 @@ import click
 import questionary
 
 from dailybot_cli.api_client import APIError, DailyBotClient
-from dailybot_cli.config import get_agent_auth
+from dailybot_cli.config import get_agent_auth, get_org_plan, load_credentials
 from dailybot_cli.display import error_console, print_error, print_info
+
+# Plan tiers the server treats as "free" (matched case-insensitively). Kept
+# tolerant of naming so the client short-circuit activates once the API exposes
+# the tier (see enforce_plan_access).
+FREE_PLAN_TIERS: frozenset[str] = frozenset({"free", "free_plan", "freemium"})
+
+# Action identifiers that remain usable under a free plan (the server's Bearer
+# allowlist). A command whose action is in this set is NEVER short-circuited.
+FREE_PLAN_ALLOWLIST: frozenset[str] = frozenset(
+    {
+        "agent_report",
+        "agent_email",
+        "agent_messages",
+        "agent_health",
+        "agent_register",
+        "agent_claim",
+        "me",
+        "organization",
+        "cli_status",
+        "login",
+        "logout",
+    }
+)
 
 USER_SCOPED_MODEL_HELP: str = (
     "Acts as you. You can only see and act on what you could in the webapp."
@@ -332,6 +355,28 @@ def exit_for_api_error(exc: APIError, json_mode: bool) -> NoReturn:
     else:
         print_error(message)
     raise SystemExit(exit_code)
+
+
+def enforce_plan_access(action: str, *, json_mode: bool = False) -> None:
+    """Short-circuit a non-allowlisted command when the active org is known-free.
+
+    Optimization only — it saves a guaranteed-403 roundtrip. The server remains
+    the source of truth: when the plan tier is **unknown** (the API hasn't
+    exposed it, or no cache yet) this is a no-op and the call proceeds, so a
+    stale/absent cache can never *block* a command the server would allow.
+    Allowlisted (agent-scoped / me / org / cli-status) actions never short-circuit.
+    """
+    if action in FREE_PLAN_ALLOWLIST:
+        return
+    creds: dict[str, Any] | None = load_credentials()
+    org_uuid: str | None = creds.get("organization_uuid") if creds else None
+    tier: str | None = get_org_plan(org_uuid)
+    if tier is not None and tier.lower() in FREE_PLAN_TIERS:
+        # Reuse the Task 2 upgrade-message renderer + exit code (no second renderer).
+        exit_for_api_error(
+            APIError(403, "This action requires a paid plan.", code="plan_upgrade_required"),
+            json_mode,
+        )
 
 
 def confirm_write(summary_lines: list[str], assume_yes: bool) -> None:

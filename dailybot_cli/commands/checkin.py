@@ -28,6 +28,7 @@ from dailybot_cli.commands.authoring_helpers import (
 from dailybot_cli.commands.public_api_helpers import (
     confirm_write,
     emit_json,
+    enforce_plan_access,
     exit_for_api_error,
     require_auth,
 )
@@ -212,6 +213,7 @@ def checkin_list(json_mode: bool) -> None:
       dailybot checkin list
       dailybot checkin list --json
     """
+    enforce_plan_access("checkin_list", json_mode=json_mode)
     client = require_auth()
     execute_checkin_list(client, json_mode=json_mode)
 

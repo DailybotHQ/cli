@@ -164,3 +164,46 @@ def test_get_agent_auth_none(tmp_config: Path, monkeypatch: pytest.MonkeyPatch) 
     monkeypatch.delenv("DAILYBOT_API_KEY", raising=False)
     monkeypatch.delenv("DAILYBOT_CLI_TOKEN", raising=False)
     assert get_agent_auth() is None
+
+
+def test_save_and_get_org_plan(tmp_config: Path) -> None:
+    from dailybot_cli.config import get_org_plan, save_org_plan
+
+    save_org_plan("org-uuid-1", "free")
+    assert get_org_plan("org-uuid-1") == "free"
+
+
+def test_get_org_plan_unknown_is_none(tmp_config: Path) -> None:
+    from dailybot_cli.config import get_org_plan
+
+    # Missing file → unknown
+    assert get_org_plan("never-seen") is None
+
+
+def test_save_org_plan_none_removes_entry(tmp_config: Path) -> None:
+    from dailybot_cli.config import get_org_plan, save_org_plan
+
+    save_org_plan("org-x", "paid")
+    save_org_plan("org-x", None)
+    assert get_org_plan("org-x") is None
+
+
+def test_plan_cache_is_0600(tmp_config: Path) -> None:
+    from dailybot_cli.config import _plan_cache_path, save_org_plan
+
+    save_org_plan("org-perm", "free")
+    mode: int = _plan_cache_path().stat().st_mode & 0o777
+    assert mode == 0o600
+
+
+def test_get_org_plan_none_uuid(tmp_config: Path) -> None:
+    from dailybot_cli.config import get_org_plan
+
+    assert get_org_plan(None) is None
+
+
+def test_plan_cache_tolerates_malformed_file(tmp_config: Path) -> None:
+    from dailybot_cli.config import _plan_cache_path, get_org_plan
+
+    _plan_cache_path().write_text("{ not json")
+    assert get_org_plan("org-any") is None
