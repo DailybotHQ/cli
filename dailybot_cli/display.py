@@ -32,6 +32,22 @@ def print_info(message: str) -> None:
     console.print(f"[dim]{message}[/dim]")
 
 
+def print_detail_panel(title: str, data: dict[str, Any], fields: list[tuple[str, str]]) -> None:
+    """Render a titled key/value panel from selected ``data`` fields.
+
+    ``fields`` is a list of ``(label, key)`` pairs; missing/empty values are shown
+    as a dim dash. Used by ``me`` / ``org`` / ``user get``.
+    """
+    table: Table = Table(show_header=False, box=None, pad_edge=False)
+    table.add_column("Field", style="bold cyan", no_wrap=True)
+    table.add_column("Value")
+    for label, key in fields:
+        raw: Any = data.get(key)
+        value: str = str(raw) if raw not in (None, "") else "[dim]—[/dim]"
+        table.add_row(label, value)
+    console.print(Panel(table, title=title, border_style="cyan", expand=False))
+
+
 def print_pagination_footer(
     shown: int,
     total: int | None = None,

@@ -1110,6 +1110,41 @@ class DailyBotClient:
             return results
         return [u for u in results if u.get("is_active", True)]
 
+    def get_me(self, *, include_email: bool = False) -> dict[str, Any]:
+        """GET /v1/me/ — the authenticated user + organization context."""
+        params: dict[str, str] = {}
+        if include_email:
+            params["include_email"] = "true"
+        response: httpx.Response = httpx.get(
+            f"{self.api_url}/v1/me/",
+            headers=self._headers(),
+            params=params,
+            timeout=self.timeout,
+        )
+        return self._handle_response(response)
+
+    def get_organization(self) -> dict[str, Any]:
+        """GET /v1/organization/ — the org the current credential is scoped to."""
+        response: httpx.Response = httpx.get(
+            f"{self.api_url}/v1/organization/",
+            headers=self._headers(),
+            timeout=self.timeout,
+        )
+        return self._handle_response(response)
+
+    def get_user(self, user_uuid: str, *, include_email: bool = False) -> dict[str, Any]:
+        """GET /v1/users/<uuid>/ — a single user's profile."""
+        params: dict[str, str] = {}
+        if include_email:
+            params["include_email"] = "true"
+        response: httpx.Response = httpx.get(
+            f"{self.api_url}/v1/users/{user_uuid}/",
+            headers=self._headers(),
+            params=params,
+            timeout=self.timeout,
+        )
+        return self._handle_response(response)
+
     def give_kudos(
         self,
         content: str,
