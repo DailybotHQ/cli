@@ -110,6 +110,16 @@ Persists to `~/.config/dailybot/config.json` (`0o600`).
 
 ---
 
+### `dailybot me [--include-email] [--json]` — user-scoped, Bearer or API key auth
+
+Shows the authenticated user and the org context of the active credential. Calls `GET /v1/me/`. `--include-email` adds the email to the rendered output; `--json` emits the raw payload.
+
+### `dailybot org [--json]` — user-scoped, Bearer or API key auth
+
+Shows the organization the credential is scoped to. Calls `GET /v1/organization/`.
+
+---
+
 ### `dailybot checkin` (group) — user-scoped, Bearer or API key auth
 
 #### `dailybot checkin list [--json]`
@@ -139,7 +149,7 @@ Introspects a check-in's configuration and question definitions. Calls `GET /v1/
 
 #### `dailybot checkin history <followup_uuid> [--days N | --from YYYY-MM-DD --to YYYY-MM-DD] [--user <uuid>] [--json]`
 
-Lists response history for a check-in over a date range. Calls `GET /v1/checkins/<uuid>/responses/?date_start=...&date_end=...`. Check-ins are team-wide, so the endpoint returns **all participants'** responses by default (unlike forms, which default to the caller's own). `--user <uuid>` narrows to one participant for admin/manager callers; a member always sees only their own responses (server-side guard, no 403). `?all=true` is a no-op — the default already returns everyone.
+Lists response history for a check-in over a date range. Calls `GET /v1/checkins/<uuid>/responses/?date_start=...&date_end=...`. Check-ins are team-wide, so the endpoint returns **all participants'** responses by default (unlike forms, which default to the caller's own). `--user <uuid>` narrows to one participant for admin/manager callers; a member always sees only their own responses (server-side guard, no 403). `?all=true` is a no-op — the default already returns everyone. `--search` / `--grep` (from the [shared list query flags](#shared-list-query-flags)) filters by term.
 
 #### `dailybot checkin edit <followup_uuid> [-a index=response]... [--date YYYY-MM-DD] [--yes] [--json]`
 
@@ -153,11 +163,36 @@ Deletes (resets) your own response for a day via `DELETE /v1/checkins/<uuid>/res
 
 ---
 
+### Shared list query flags
+
+`form list`, `kudos list`, and `workflow list` share a common pagination/search
+surface; `form responses` and `checkin history` accept the `--search` subset.
+Every list endpoint returns a `{ count, next, previous, results }` envelope
+(handled by a shared paginated-GET helper in `api_client.py`), and list commands
+print a `Showing X of N` count footer.
+
+| Flag | Query param | Notes |
+|------|-------------|-------|
+| `--page N` | `page` | 1-based page number. |
+| `--page-size N` | `page_size` | Results per page (max 200). |
+| `--all` | — | Follows `next` until every page is fetched. |
+| `--limit N` | — | Stops after N results (client-side). |
+| `--search TEXT` / `--grep TEXT` | `search` | Max 256 chars; truncated client-side. |
+| `--since YYYY-MM-DD` | `since` | On or after this date. |
+| `--until YYYY-MM-DD` | `until` | On or before this date. |
+| `--date YYYY-MM-DD` | `date` | Exact date. |
+| `--last-week` | — | Shortcut for the previous seven days. |
+| `--today` | — | Shortcut for today. |
+
+The two `/v1/forms/` list endpoints are always called with `?paginated=true`.
+
+---
+
 ### `dailybot form` (group) — user-scoped, Bearer or API key auth
 
 #### `dailybot form list [--json]`
 
-Lists forms visible to the user. Calls `GET /v1/forms/?include=questions` to include question definitions.
+Lists forms visible to the user. Calls `GET /v1/forms/?include=questions&paginated=true` to include question definitions. Accepts the [shared list query flags](#shared-list-query-flags).
 
 #### `dailybot form get <form_uuid> [--json]`
 
@@ -175,7 +210,7 @@ Submits a form response. When `--content` is omitted, calls `GET /v1/forms/<uuid
 
 #### `dailybot form responses <form_uuid> [--state STATE] [--latest] [--json]`
 
-Lists responses (`GET /v1/forms/<uuid>/responses/`). Defaults to the caller's own. `--state` filters by `current_state` (workflow forms only). `--latest` returns only the most recent. `--all` / `--user <uuid>` surface everyone's / a specific user's responses and are admin/owner-only server-side (a member gets 403 / `form_response_view_all_forbidden`). `--from` / `--to` (`date_from`/`date_to`) narrow the window.
+Lists responses (`GET /v1/forms/<uuid>/responses/`). Defaults to the caller's own. `--state` filters by `current_state` (workflow forms only). `--latest` returns only the most recent. `--all` / `--user <uuid>` surface everyone's / a specific user's responses and are admin/owner-only server-side (a member gets 403 / `form_response_view_all_forbidden`). `--from` / `--to` (`date_from`/`date_to`) narrow the window. `--search` / `--grep` (from the [shared list query flags](#shared-list-query-flags)) filters by term.
 
 #### `dailybot form response get <form_uuid> <response_uuid> [--json]`
 
@@ -256,6 +291,18 @@ The POST `/v1/kudos/` payload uses a single `receivers` list of UUIDs (users and
 
 Self-kudos via `--to` is rejected client-side (exit code 4). Ambiguous name matches return exit code 2.
 
+#### `dailybot kudos list [--filter KUDOS_RECEIVED|KUDOS_GIVEN] [--json]`
+
+Lists kudos the caller received or gave via `GET /v1/kudos/`. `--filter` selects the direction (received vs. given). Accepts the [shared list query flags](#shared-list-query-flags) (pagination, `--search`/`--grep`, and the date filters).
+
+#### `dailybot kudos org [--json]`
+
+Org-wide kudos stats via `GET /v1/kudos/organization/`. **API-key-only**: the endpoint rejects a CLI login (Bearer) session with `403` — it requires `X-API-KEY` (`DAILYBOT_API_KEY` or `dailybot config key=...`).
+
+#### `dailybot kudos wall-of-fame [--limit N] [--json]`
+
+Leaderboard of top kudos recipients via `GET /v1/kudos/wall-of-fame/`. `--limit` caps the number of entries returned.
+
 ---
 
 ### `dailybot user` (group) — user-scoped, Bearer or API key auth
@@ -263,6 +310,10 @@ Self-kudos via `--to` is rejected client-side (exit code 4). Ambiguous name matc
 #### `dailybot user list [--json]`
 
 Lists organization members. Calls `GET /v1/users/` with automatic pagination (capped at `_MAX_LIST_PAGES = 50`). Table displays Name and UUID only — emails are not shown.
+
+#### `dailybot user get <user_uuid> [--include-email] [--json]`
+
+Fetches a single member via `GET /v1/users/<uuid>/`. `--include-email` adds the email to the rendered output (omitted by default, matching `user list`).
 
 ---
 
@@ -278,9 +329,25 @@ Fetches a team via `GET /v1/teams/<uuid>/`. A name argument is resolved to UUID 
 
 ---
 
+### `dailybot workflow` (group) — user-scoped, Bearer or API key auth
+
+Read-only browsing of the org's workflows. Workflow writes are done in the web
+app; this group only lists and retrieves. The feature is **plan-gated** — an org
+on a plan without workflows gets `403 plan_upgrade_required` (with `upgrade_url`).
+
+#### `dailybot workflow list [--json]`
+
+Lists workflows visible to the caller via `GET /v1/workflows/`. Accepts the [shared list query flags](#shared-list-query-flags) (pagination + `--search`/`--grep`).
+
+#### `dailybot workflow get <workflow_uuid> [--json]`
+
+Fetches a single workflow via `GET /v1/workflows/<uuid>/`.
+
+---
+
 ### User-scoped exit codes
 
-All user-scoped commands (`checkin`, `form`, `kudos`, `user`, `team`) share these exit codes:
+All user-scoped commands (`checkin`, `form`, `kudos`, `user`, `team`, `workflow`, `me`, `org`) share these exit codes:
 
 | Code | Constant | Meaning |
 |------|----------|---------|
@@ -308,6 +375,22 @@ Server-side `code` values mapped to messages (see `ERROR_CODE_MESSAGES` in `comm
 | `no_valid_team` | 400 → exit 2 |
 | `no_valid_users` | 400 → exit 2 |
 | `no_users_found` | 400 → exit 2 |
+| `plan_upgrade_required` | 403 → exit 4 (payload carries `upgrade_url`) |
+| `plan_free_api_keys_forbidden` | 403 → exit 4 |
+| `plan_missing_core_api_integrations` | 403 → exit 4 |
+| `api_key_owner_inactive` | 403 → exit 4 |
+| `insufficient_role` | 403 → exit 4 |
+| `member_in_scope_required` | 403 → exit 4 |
+| `org_admin_required` | 403 → exit 4 |
+| `target_user_inactive` | 400 → exit 2 |
+| `search_query_too_long` | 400 → exit 2 |
+| `invalid_date_range` | 400 → exit 2 |
+| `free_plan_daily_limit_exceeded` | 403 → exit 4 |
+| `send_as_user_conflict` | 400 → exit 2 |
+| `send_as_user_invalid_uuid` | 400 → exit 2 |
+| `send_as_user_not_found` | 404 → exit 5 |
+
+The CLI dispatches on the machine-readable `code` field (never the `detail` prose). `plan_upgrade_required` additionally surfaces the `upgrade_url` from the payload.
 
 ---
 
@@ -401,6 +484,7 @@ Content & options: `--text/-m`, `--image-url/-i`, `--link-button "Label::url"`
 `--thread` (reply into an existing platform thread id),
 `--channel-type` (`channel`/`private_channel`/`group_chat`/`direct_message`),
 `--bot-name`, `--bot-icon-url`, `--bot-icon-emoji`, `--ephemeral`,
+`--send-as-user <UUID>`, `--send-as-me`,
 `--skip-time-off`, `--metadata/-d JSON`, `--profile/-p`.
 
 - `--payload-json '<body>'` — raw request body escape hatch for full API
@@ -424,6 +508,14 @@ exclusive; `--ephemeral` needs a `--user` target. Custom name/avatar needs the
 Slack `chat:write.customize` scope — without it Slack uses the default identity
 (`ok: true`, no error). On **update**, the platform keeps the message's
 original name/avatar, so identity flags are ignored when editing.
+
+**Send as a user (Slack only, admin-only).** `--send-as-user <UUID>` sets the
+request's `send_as_user` field so the message is posted with that user's name
+and profile picture; `--send-as-me` is the shortcut for the authenticated user.
+Both require org-admin rights and are mutually exclusive with `--bot-name` /
+`--bot-icon-url` / `--bot-icon-emoji`. Server-side codes: `send_as_user_conflict`
+(combined with a bot-identity flag), `send_as_user_invalid_uuid`, and
+`send_as_user_not_found`.
 
 **Send by name.** Targeting flags only accept ids/emails, never free-form
 names. To message "Sergio Florez", resolve the name first with
@@ -525,11 +617,19 @@ key, so all of these commands work with `DAILYBOT_API_KEY` set even without
 | `PUT` | `/v1/checkins/<followup_uuid>/questions/reorder/` | `{ order: [q_uuid...] }` | `{ reordered: true }` | `checkin questions reorder` |
 | `GET` | `/v1/mood/track/` | `?date` | `{ ... }` | Read today's mood |
 | `POST` | `/v1/mood/track/` | `{ score, date? }` | `{ ... }` | `/mood` |
+| `GET` | `/v1/me/` | — | `{ user: { uuid, full_name, email }, organization: { uuid, name } }` | `dailybot me` |
+| `GET` | `/v1/organization/` | — | `{ uuid, name, ... }` | `dailybot org` |
 | `GET` | `/v1/users/` | — | `{ results: [{ uuid, full_name }], next: url\|null }` | Paginated |
+| `GET` | `/v1/users/<uuid>/` | — | `{ uuid, full_name, email? }` | `dailybot user get` |
 | `GET` | `/v1/teams/` | — | `{ results: [{ uuid, name, active, members_count, is_default }], next? }` | Server-scoped: admins see all, members see own |
 | `GET` | `/v1/teams/<uuid>/` | — | `{ uuid, name, active, ... }` | Same scoping |
 | `GET` | `/v1/teams/<uuid>/members/` | — | `[{ uuid, full_name, email }]` | Members of a team the caller can see |
 | `POST` | `/v1/kudos/` | `{ content, receivers: [...uuid], users_receivers?: [...], teams_receivers?: [...], company_value? }` | `{ uuid }` | `receivers` = users+teams merged (validation); `users_receivers`/`teams_receivers` drive team expansion. Payload contract is being reconciled server-side — see the integration prompt. 406 = daily limit |
+| `GET` | `/v1/kudos/` | `?filter=KUDOS_RECEIVED\|KUDOS_GIVEN`, shared list params (all optional) | `{ count, next, previous, results }` | `kudos list` |
+| `GET` | `/v1/kudos/organization/` | — | `{ ... }` | `kudos org`; **X-API-KEY only** (rejects Bearer with 403) |
+| `GET` | `/v1/kudos/wall-of-fame/` | `?limit` (optional) | `{ count, next, previous, results }` | `kudos wall-of-fame` |
+| `GET` | `/v1/workflows/` | shared list params (all optional) | `{ count, next, previous, results }` | `workflow list`; plan-gated (403 `plan_upgrade_required`) |
+| `GET` | `/v1/workflows/<uuid>/` | — | `{ uuid, name, ... }` | `workflow get`; plan-gated |
 
 ### Agent (X-API-KEY *or* Bearer)
 
@@ -543,7 +643,7 @@ key, so all of these commands work with `DAILYBOT_API_KEY` set even without
 | `POST` | `/v1/agent-email/send/` | `{ agent_name, to, subject, body_html, metadata? }` | `{ sent_count, total_recipients, reply_to? }` | 429 = hourly limit |
 | `POST` | `/v1/agent-messages/` | `{ agent_name, content, message_type?, metadata?, expires_at?, sender_type?, sender_name? }` | `{ id, agent_name, sender_name, sender_type, message_type, content }` | |
 | `GET` | `/v1/agent-messages/?agent_name=...&delivered=true|false` | — | `[{ id, message_type, sender_type, sender_name, content, delivered, created_at }]` | Returns a bare array, not a wrapped object |
-| `POST` | `/v1/send-message/` | `{ message?/messages?, image_url?, buttons?, thread_responses?, target_users?/target_channels?/target_teams?, platform_settings?, metadata?, skip_users_on_time_off?, bot_message_id? }` | `{ bot_message_id, thread_responses?: [ids] }` | **X-API-KEY or Bearer** (login, role-scoped); ≥1 target; `thread_responses` posts replies in the parent thread (≤10); `bot_message_id` in → edits that message (parent or reply) |
+| `POST` | `/v1/send-message/` | `{ message?/messages?, image_url?, buttons?, thread_responses?, target_users?/target_channels?/target_teams?, platform_settings?, metadata?, skip_users_on_time_off?, send_as_user?, bot_message_id? }` | `{ bot_message_id, thread_responses?: [ids] }` | **X-API-KEY or Bearer** (login, role-scoped); ≥1 target; `thread_responses` posts replies in the parent thread (≤10); `send_as_user` (Slack, admin-only) posts with that user's identity; `bot_message_id` in → edits that message (parent or reply) |
 | `PATCH` | `/v1/agent-messages/read/` | `{ message_ids: [...] }` | `{ updated }` | |
 
 ### Standalone Agent Registration (no auth)

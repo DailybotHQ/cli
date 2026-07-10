@@ -181,6 +181,57 @@ def clear_org_cache() -> None:
         cache_path.unlink()
 
 
+def _plan_cache_path() -> Path:
+    return get_config_dir() / "plan_cache.json"
+
+
+def save_org_plan(organization_uuid: str, plan: str | None) -> None:
+    """Persist the (non-sensitive) plan tier for an org, keyed by org UUID.
+
+    Stored in ``plan_cache.json`` (mode ``0o600``). ``plan=None`` removes the
+    entry (back to "unknown"). Never stores tokens or any secret material — only
+    the plan-tier string. A malformed existing file is treated as empty.
+    """
+    if not organization_uuid:
+        return
+    cache_path: Path = _plan_cache_path()
+    data: dict[str, Any] = {}
+    if cache_path.exists():
+        try:
+            loaded: Any = json.loads(cache_path.read_text())
+            if isinstance(loaded, dict):
+                data = loaded
+        except (json.JSONDecodeError, OSError):
+            data = {}
+    if plan is None:
+        data.pop(organization_uuid, None)
+    else:
+        data[organization_uuid] = plan
+    cache_path.write_text(json.dumps(data, indent=2))
+    os.chmod(cache_path, 0o600)
+
+
+def get_org_plan(organization_uuid: str | None) -> str | None:
+    """Return the cached plan tier for an org UUID, or None if unknown.
+
+    Absent file / unknown org / malformed cache all resolve to ``None``
+    (unknown) so callers never assume a plan the server hasn't confirmed.
+    """
+    if not organization_uuid:
+        return None
+    cache_path: Path = _plan_cache_path()
+    if not cache_path.exists():
+        return None
+    try:
+        data: Any = json.loads(cache_path.read_text())
+    except (json.JSONDecodeError, OSError):
+        return None
+    if not isinstance(data, dict):
+        return None
+    value: Any = data.get(organization_uuid)
+    return value if isinstance(value, str) else None
+
+
 def get_agent_auth() -> str | None:
     """Return the auth mode available for agent commands.
 

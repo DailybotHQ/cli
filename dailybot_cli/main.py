@@ -14,6 +14,7 @@ from dailybot_cli.commands.checkin import checkin
 from dailybot_cli.commands.config import config
 from dailybot_cli.commands.form import form
 from dailybot_cli.commands.hook import hook
+from dailybot_cli.commands.identity import me, org
 from dailybot_cli.commands.interactive import run_interactive
 from dailybot_cli.commands.interactive_chat import interactive
 from dailybot_cli.commands.kudos import kudos
@@ -24,6 +25,7 @@ from dailybot_cli.commands.update import update
 from dailybot_cli.commands.upgrade import upgrade
 from dailybot_cli.commands.user import user
 from dailybot_cli.commands.version import version
+from dailybot_cli.commands.workflow import workflow
 from dailybot_cli.config import set_api_url_override
 
 # Format used by `dailybot --version`. Single line so it's friendly to scripts
@@ -79,6 +81,9 @@ cli.add_command(channels)
 cli.add_command(kudos)
 cli.add_command(team)
 cli.add_command(user)
+cli.add_command(me)
+cli.add_command(org)
+cli.add_command(workflow)
 cli.add_command(agent)
 cli.add_command(chat)
 cli.add_command(ask)

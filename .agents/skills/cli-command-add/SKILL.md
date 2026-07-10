@@ -22,6 +22,26 @@ Before writing any code, confirm with the user:
 
 ## Procedure
 
+> **Shared patterns for list/paginated commands (added in the 2.0 public-API work):**
+> - **Listing:** don't hand-roll a `next` loop. Call the shared
+>   `DailyBotClient._paginated_get(url, *, params, page, page_size, fetch_all, limit,
+>   force_paginated)` — it returns a `PaginatedResult` (`results`, `count`, `next`,
+>   `previous`) and tolerates both the DRF envelope and a legacy bare array. Pass an
+>   optional `meta={}` dict through your list method to surface `count`/`next` to the
+>   command for a footer (`display.print_pagination_footer`).
+> - **Query flags:** apply `@query_options` (from `commands/query_options.py`) to a list
+>   command in one line, then `build_query_params(...)` → `QuerySpec` for the
+>   `params`/`page`/`page_size`/`fetch_all`/`limit` to forward. It truncates `--search` to
+>   256 and clamps `--page-size` to 200.
+> - **Errors:** dispatch on the server `code` field via `ERROR_CODE_MESSAGES` /
+>   `exit_for_api_error` (`commands/public_api_helpers.py`) — never branch on `detail`.
+>   Add a friendly message for any new `code`; use `err.extra` for dynamic bits (e.g.
+>   `upgrade_url`, required/current role).
+> - **Plan gating:** call `enforce_plan_access("<action>")` at the top of a non-allowlisted
+>   command to short-circuit on a known-free org (the server 403 stays authoritative).
+> - **Detail views:** reuse `display.print_detail_panel(title, data, fields)` for a
+>   key/value panel instead of a bespoke renderer.
+
 ### 1. Add the API client method (if needed)
 
 In `dailybot_cli/api_client.py`, append a method on `DailyBotClient`. Match the file's existing patterns:

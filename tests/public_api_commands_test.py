@@ -4,6 +4,7 @@ import json
 from typing import Any, ClassVar
 from unittest.mock import MagicMock, patch
 
+import httpx
 import pytest
 from click.testing import CliRunner
 
@@ -873,6 +874,8 @@ class TestFormLifecycle:
             user=None,
             date_from=None,
             date_to=None,
+            search=None,
+            meta={},
         )
 
     @patch("dailybot_cli.commands.public_api_helpers.get_agent_auth")
@@ -896,6 +899,8 @@ class TestFormLifecycle:
             user=None,
             date_from=None,
             date_to=None,
+            search=None,
+            meta={},
         )
 
     @patch("dailybot_cli.commands.public_api_helpers.get_agent_auth")
@@ -1272,3 +1277,68 @@ class TestCheckinExtendedCommands:
         payload: dict[str, Any] = json.loads(result.output)
         assert payload["status"] == 409
         assert payload["code"] == "previous_responses_are_not_allowed"
+
+
+class TestQueryFlagsWiring:
+    """Task 6: shared query flags wired into list commands (real client, mocked httpx)."""
+
+    def _envelope(self, results: list[dict[str, Any]], nxt: str | None, count: int) -> MagicMock:
+        r: MagicMock = MagicMock(spec=httpx.Response)
+        r.status_code = 200
+        r.json.return_value = {
+            "count": count,
+            "next": nxt,
+            "previous": None,
+            "results": results,
+        }
+        r.headers = {}
+        return r
+
+    @patch("dailybot_cli.commands.public_api_helpers.get_agent_auth", return_value="tok")
+    def test_form_list_composes_search_and_date(self, _auth: MagicMock) -> None:
+        page = self._envelope([{"id": "f1", "name": "Retro"}], None, 1)
+        with patch("dailybot_cli.api_client.httpx.get", return_value=page) as mock_get:
+            result = CliRunner().invoke(
+                cli, ["form", "list", "--search", "retro", "--since", "2026-07-01"]
+            )
+        assert result.exit_code == 0
+        params = mock_get.call_args[1]["params"]
+        assert params["search"] == "retro"
+        assert params["start_date"] == "2026-07-01"
+        assert params["paginated"] == "true"  # forms endpoint always opts into the envelope
+
+    @patch("dailybot_cli.commands.public_api_helpers.get_agent_auth", return_value="tok")
+    def test_form_list_all_iterates_multiple_pages(self, _auth: MagicMock) -> None:
+        p1 = self._envelope(
+            [{"id": "f1", "name": "A"}],
+            "http://test/v1/forms/?page=2&paginated=true",
+            2,
+        )
+        p2 = self._envelope([{"id": "f2", "name": "B"}], None, 2)
+        with patch("dailybot_cli.api_client.httpx.get", side_effect=[p1, p2]) as mock_get:
+            result = CliRunner().invoke(cli, ["form", "list", "--all", "--json"])
+        assert result.exit_code == 0
+        assert mock_get.call_count == 2
+        payload = json.loads(result.output)
+        assert {f["id"] for f in payload} == {"f1", "f2"}
+
+    @patch("dailybot_cli.commands.public_api_helpers.get_agent_auth", return_value="tok")
+    def test_form_list_renders_count_footer(self, _auth: MagicMock) -> None:
+        page = self._envelope([{"id": "f1", "name": "A"}], None, 1)
+        with patch("dailybot_cli.api_client.httpx.get", return_value=page):
+            result = CliRunner().invoke(cli, ["form", "list"])
+        assert "Showing" in result.output
+
+    @patch("dailybot_cli.commands.public_api_helpers.get_agent_auth", return_value="tok")
+    def test_bare_form_list_still_works(self, _auth: MagicMock) -> None:
+        page = self._envelope([{"id": "f1", "name": "A"}], None, 1)
+        with patch("dailybot_cli.api_client.httpx.get", return_value=page):
+            result = CliRunner().invoke(cli, ["form", "list"])
+        assert result.exit_code == 0
+        assert "A" in result.output
+
+    @patch("dailybot_cli.commands.public_api_helpers.get_agent_auth", return_value="tok")
+    def test_all_and_limit_conflict_rejected(self, _auth: MagicMock) -> None:
+        result = CliRunner().invoke(cli, ["form", "list", "--all", "--limit", "3"])
+        assert result.exit_code != 0
+        assert "--all" in result.output and "--limit" in result.output

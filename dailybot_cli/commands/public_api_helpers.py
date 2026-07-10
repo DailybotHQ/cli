@@ -9,8 +9,31 @@ import click
 import questionary
 
 from dailybot_cli.api_client import APIError, DailyBotClient
-from dailybot_cli.config import get_agent_auth
+from dailybot_cli.config import get_agent_auth, get_org_plan, load_credentials
 from dailybot_cli.display import error_console, print_error, print_info
+
+# Plan tiers the server treats as "free" (matched case-insensitively). Kept
+# tolerant of naming so the client short-circuit activates once the API exposes
+# the tier (see enforce_plan_access).
+FREE_PLAN_TIERS: frozenset[str] = frozenset({"free", "free_plan", "freemium"})
+
+# Action identifiers that remain usable under a free plan (the server's Bearer
+# allowlist). A command whose action is in this set is NEVER short-circuited.
+FREE_PLAN_ALLOWLIST: frozenset[str] = frozenset(
+    {
+        "agent_report",
+        "agent_email",
+        "agent_messages",
+        "agent_health",
+        "agent_register",
+        "agent_claim",
+        "me",
+        "organization",
+        "cli_status",
+        "login",
+        "logout",
+    }
+)
 
 USER_SCOPED_MODEL_HELP: str = (
     "Acts as you. You can only see and act on what you could in the webapp."
@@ -184,6 +207,49 @@ ERROR_CODE_MESSAGES: dict[str, str] = {
     "invalid_frequency_advanced": (
         "Invalid --frequency-advanced. Use disabled, monthly, or custom."
     ),
+    # Plan gating & capability (403) — dispatched on `code`, some augmented with
+    # `extra` (upgrade_url, required/current role) in exit_for_api_error.
+    "plan_upgrade_required": (
+        "This action requires a paid Dailybot plan. On the free plan the CLI can "
+        "only submit agent reports, send agent emails, and read your own profile."
+    ),
+    "plan_free_api_keys_forbidden": (
+        "API keys aren't available on the free plan. Run `dailybot login` to use a "
+        "personal session instead, or upgrade your plan."
+    ),
+    "plan_missing_core_api_integrations": (
+        "Your organization's plan doesn't include this API capability. Enable the "
+        "required integration or upgrade your plan."
+    ),
+    "api_key_owner_inactive": (
+        "The API key's owner account is inactive. Rotate the key or contact an org admin."
+    ),
+    "insufficient_role": "Your role doesn't allow this action.",
+    "member_in_scope_required": (
+        "This action needs a target user in your organization. Pick a valid member."
+    ),
+    # Validation (400)
+    "target_user_inactive": "That user is inactive. Choose an active user.",
+    "search_query_too_long": (
+        "Search term is too long (maximum 256 characters). Shorten it and try again."
+    ),
+    "invalid_date_range": (
+        "Invalid date. Use YYYY-MM-DD, and make sure the start date is on or before the end date."
+    ),
+    # Rate limiting (429)
+    "free_plan_daily_limit_exceeded": (
+        "You've reached today's free-plan limit for this action. Wait for it to reset "
+        "or upgrade your plan."
+    ),
+    # send-message: send_as_user identity (chat send)
+    "org_admin_required": (
+        "Only organization admins can send a message as another user (--send-as-user)."
+    ),
+    "send_as_user_conflict": (
+        "--send-as-user can't be combined with --bot-name / --bot-icon-url / --bot-icon-emoji."
+    ),
+    "send_as_user_invalid_uuid": "Invalid UUID for --send-as-user.",
+    "send_as_user_not_found": "User not found in your organization (must be active).",
 }
 
 
@@ -220,10 +286,37 @@ def emit_json_error(message: str, status: int) -> None:
     emit_json({"error": message, "status": status})
 
 
+def _augment_code_message(base: str, code: str, extra: dict[str, Any]) -> str:
+    """Enrich a code's base message with machine-readable `extra` context."""
+    if code == "plan_upgrade_required":
+        upgrade_url: Any = extra.get("upgrade_url")
+        if upgrade_url:
+            return f"{base} Upgrade at: {upgrade_url}"
+    elif code == "insufficient_role":
+        required: Any = extra.get("required_role")
+        current: Any = extra.get("current_role")
+        if required or current:
+            detail_bits: str = ""
+            if required:
+                detail_bits += f" Required role: {required}."
+            if current:
+                detail_bits += f" Your role: {current}."
+            return f"{base}{detail_bits}"
+    return base
+
+
 def exit_for_api_error(exc: APIError, json_mode: bool) -> NoReturn:
-    """Map API failures to user-facing messages and process exit codes."""
+    """Map API failures to user-facing messages and process exit codes.
+
+    Dispatches strictly on the machine-readable ``code`` (never on ``detail``
+    text); falls back to the status-code-based message when ``code`` is absent
+    (older backends).
+    """
     code: str | None = getattr(exc, "code", None)
+    extra: dict[str, Any] = getattr(exc, "extra", {}) or {}
     mapped_message: str | None = ERROR_CODE_MESSAGES.get(code) if code else None
+    if mapped_message and code:
+        mapped_message = _augment_code_message(mapped_message, code, extra)
 
     if exc.status_code == 401:
         message: str = "Session expired. Run: dailybot login"
@@ -242,9 +335,14 @@ def exit_for_api_error(exc: APIError, json_mode: bool) -> NoReturn:
         exit_code = EXIT_PERMISSION_DENIED
     elif exc.status_code == 429:
         retry_after: float | None = getattr(exc, "retry_after", None)
-        message = "Rate limit exceeded. Wait a moment and try again."
-        if retry_after:
+        # A free-plan daily limit has its own code-specific copy; a generic 429
+        # falls back to the retry-after message.
+        if mapped_message:
+            message = mapped_message
+        elif retry_after:
             message = f"Rate limit exceeded. Try again in {int(retry_after)}s."
+        else:
+            message = "Rate limit exceeded. Wait a moment and try again."
         exit_code = EXIT_RATE_LIMITED
     elif exc.status_code == 400:
         message = mapped_message or exc.detail
@@ -266,6 +364,28 @@ def exit_for_api_error(exc: APIError, json_mode: bool) -> NoReturn:
     else:
         print_error(message)
     raise SystemExit(exit_code)
+
+
+def enforce_plan_access(action: str, *, json_mode: bool = False) -> None:
+    """Short-circuit a non-allowlisted command when the active org is known-free.
+
+    Optimization only — it saves a guaranteed-403 roundtrip. The server remains
+    the source of truth: when the plan tier is **unknown** (the API hasn't
+    exposed it, or no cache yet) this is a no-op and the call proceeds, so a
+    stale/absent cache can never *block* a command the server would allow.
+    Allowlisted (agent-scoped / me / org / cli-status) actions never short-circuit.
+    """
+    if action in FREE_PLAN_ALLOWLIST:
+        return
+    creds: dict[str, Any] | None = load_credentials()
+    org_uuid: str | None = creds.get("organization_uuid") if creds else None
+    tier: str | None = get_org_plan(org_uuid)
+    if tier is not None and tier.lower() in FREE_PLAN_TIERS:
+        # Reuse the Task 2 upgrade-message renderer + exit code (no second renderer).
+        exit_for_api_error(
+            APIError(403, "This action requires a paid plan.", code="plan_upgrade_required"),
+            json_mode,
+        )
 
 
 def confirm_write(summary_lines: list[str], assume_yes: bool) -> None:

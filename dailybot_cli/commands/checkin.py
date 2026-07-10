@@ -28,6 +28,7 @@ from dailybot_cli.commands.authoring_helpers import (
 from dailybot_cli.commands.public_api_helpers import (
     confirm_write,
     emit_json,
+    enforce_plan_access,
     exit_for_api_error,
     require_auth,
 )
@@ -212,6 +213,7 @@ def checkin_list(json_mode: bool) -> None:
       dailybot checkin list
       dailybot checkin list --json
     """
+    enforce_plan_access("checkin_list", json_mode=json_mode)
     client = require_auth()
     execute_checkin_list(client, json_mode=json_mode)
 
@@ -302,6 +304,9 @@ def checkin_show(followup_uuid: str, json_mode: bool) -> None:
     default=None,
     help="Filter to one participant's responses (admin/manager only; a member sees only their own).",
 )
+@click.option(
+    "--search", "-s", "search", default=None, help="Filter response content (max 256 chars)."
+)
 @click.option("--json", "json_mode", is_flag=True, help="Emit machine-readable JSON to stdout.")
 def checkin_history(
     followup_uuid: str,
@@ -309,6 +314,7 @@ def checkin_history(
     date_from: str | None,
     date_to: str | None,
     user: str | None,
+    search: str | None,
     json_mode: bool,
 ) -> None:
     """Show a check-in's response history.
@@ -332,6 +338,7 @@ def checkin_history(
         date_from=date_from,
         date_to=date_to,
         user=user,
+        search=search,
         json_mode=json_mode,
     )
 

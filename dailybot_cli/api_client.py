@@ -1,5 +1,8 @@
 """HTTP client for Dailybot CLI API endpoints."""
 
+import time
+from collections.abc import Callable
+from dataclasses import dataclass, field
 from typing import Any
 
 import httpx
@@ -7,6 +10,52 @@ import httpx
 from dailybot_cli.config import get_api_key, get_api_url, get_token
 
 _MAX_LIST_PAGES: int = 50  # safety cap for paginated list endpoints
+DEFAULT_PAGE_SIZE: int = 50  # server default page size for paginated list endpoints
+MAX_PAGE_SIZE: int = 200  # server clamps above this; the client clamps too
+
+MAX_RATE_LIMIT_RETRIES: int = 3  # attempts to retry a generic 429 before raising
+DEFAULT_RETRY_AFTER_SECS: float = 1.0  # backoff floor when a 429 omits Retry-After
+# A free-plan daily throttle is NOT transient — retrying can never succeed today.
+FREE_PLAN_DAILY_LIMIT_CODE: str = "free_plan_daily_limit_exceeded"
+
+
+@dataclass
+class PaginatedResult:
+    """Normalized result of a paginated list request.
+
+    Tolerates both the DRF envelope (``{count, next, previous, results}``) and a
+    legacy bare-array response, exposing a single shape to callers.
+    """
+
+    results: list[dict[str, Any]] = field(default_factory=list)
+    count: int | None = None
+    next: str | None = None
+    previous: str | None = None
+
+
+def _merge_list_query(
+    params: dict[str, Any],
+    *,
+    search: str | None = None,
+    start_date: str | None = None,
+    end_date: str | None = None,
+) -> dict[str, Any]:
+    """Merge the shared list query params (search / date range) into ``params``."""
+    if search is not None:
+        params["search"] = search
+    if start_date is not None:
+        params["start_date"] = start_date
+    if end_date is not None:
+        params["end_date"] = end_date
+    return params
+
+
+def _fill_meta(meta: dict[str, Any] | None, result: "PaginatedResult") -> None:
+    """Populate a caller-provided meta dict with pagination totals, if given."""
+    if meta is not None:
+        meta["count"] = result.count
+        meta["next"] = result.next
+        meta["previous"] = result.previous
 
 
 class APIError(Exception):
@@ -18,11 +67,15 @@ class APIError(Exception):
         detail: str,
         code: str | None = None,
         retry_after: float | None = None,
+        extra: dict[str, Any] | None = None,
     ) -> None:
         self.status_code: int = status_code
         self.detail: str = detail
         self.code: str | None = code
         self.retry_after: float | None = retry_after  # seconds, from a 429 Retry-After header
+        # Extra machine-readable context from the error body (e.g. upgrade_url,
+        # required_role / current_role). Never a mutable default arg.
+        self.extra: dict[str, Any] = extra or {}
         super().__init__(f"API error {status_code}: {detail}")
 
 
@@ -82,12 +135,21 @@ class DailyBotClient:
         """Parse API response and raise on errors."""
         if response.status_code >= 400:
             code: str | None = None
+            extra: dict[str, Any] = {}
             try:
                 body: dict[str, Any] = response.json()
                 detail: str = body.get("detail", body.get("error", str(body)))
                 raw_code: Any = body.get("code")
                 if isinstance(raw_code, str):
                     code = raw_code
+                raw_extra: Any = body.get("extra")
+                if isinstance(raw_extra, dict):
+                    extra = dict(raw_extra)
+                # Plan-gating responses carry upgrade_url at the top level; surface it
+                # in extra so downstream reads a single place.
+                upgrade_url: Any = body.get("upgrade_url")
+                if isinstance(upgrade_url, str):
+                    extra["upgrade_url"] = upgrade_url
             except Exception:
                 detail = response.text or f"HTTP {response.status_code}"
             if response.status_code in (401, 403) and self._agent_auth_mode == "bearer":
@@ -105,10 +167,123 @@ class DailyBotClient:
                 detail=detail,
                 code=code,
                 retry_after=retry_after,
+                extra=extra,
             )
         if response.status_code == 204:
             return {}
         return response.json()
+
+    def _send_with_retry(self, send: Callable[[], httpx.Response]) -> httpx.Response:
+        """Issue a request via ``send`` with bounded retry on a transient 429.
+
+        Honors the ``Retry-After`` header and backs off exponentially from it, up
+        to ``MAX_RATE_LIMIT_RETRIES`` retries. A ``free_plan_daily_limit_exceeded``
+        429 is NOT transient — it is returned immediately (no retry) so the caller
+        raises a clear error. Any non-429 response is returned as-is. ``time.sleep``
+        is referenced through the module so tests can patch it.
+        """
+        attempt: int = 0
+        while True:
+            response: httpx.Response = send()
+            if response.status_code != 429:
+                return response
+            code: str | None = None
+            try:
+                body: Any = response.json()
+                raw_code: Any = body.get("code") if isinstance(body, dict) else None
+                if isinstance(raw_code, str):
+                    code = raw_code
+            except Exception:
+                code = None
+            if code == FREE_PLAN_DAILY_LIMIT_CODE or attempt >= MAX_RATE_LIMIT_RETRIES:
+                return response
+            retry_after: float = DEFAULT_RETRY_AFTER_SECS
+            raw_retry: str | None = response.headers.get("Retry-After")
+            if raw_retry:
+                try:
+                    retry_after = float(raw_retry)
+                except ValueError:
+                    retry_after = DEFAULT_RETRY_AFTER_SECS
+            time.sleep(retry_after * (2**attempt))
+            attempt += 1
+
+    def _paginated_get(
+        self,
+        url: str,
+        *,
+        params: dict[str, Any] | None = None,
+        page: int | None = None,
+        page_size: int | None = None,
+        fetch_all: bool = False,
+        limit: int | None = None,
+        force_paginated: bool = False,
+    ) -> PaginatedResult:
+        """GET a list endpoint, tolerating both the DRF envelope and a bare array.
+
+        - ``page`` / ``page_size`` are sent when provided; ``page_size`` is clamped
+          to ``[1, MAX_PAGE_SIZE]``. ``limit`` is a legacy alias that also caps the
+          total number of collected items.
+        - ``force_paginated`` adds ``paginated=true`` to the query — required for the
+          two forms endpoints (``/v1/forms/`` and ``/v1/forms/<uuid>/responses/``)
+          that return a bare array unless asked for the envelope.
+        - ``fetch_all`` follows ``next`` (bounded by ``_MAX_LIST_PAGES``); otherwise a
+          single page is returned. A bare-array response has no ``next`` and always
+          terminates after one page.
+        """
+        query: dict[str, Any] = dict(params) if params else {}
+        if force_paginated:
+            query["paginated"] = "true"
+        if page is not None:
+            query["page"] = page
+        effective_page_size: int | None = page_size if page_size is not None else limit
+        if effective_page_size is not None:
+            query["page_size"] = max(1, min(effective_page_size, MAX_PAGE_SIZE))
+
+        collected: list[dict[str, Any]] = []
+        count: int | None = None
+        next_url: str | None = None
+        previous: str | None = None
+        current_url: str | None = url
+        first: bool = True
+        pages_fetched: int = 0
+
+        while current_url is not None and pages_fetched < _MAX_LIST_PAGES:
+            page_url: str = current_url
+            page_params: dict[str, Any] | None = query if first else None
+
+            def _do_get(
+                url: str = page_url, prm: dict[str, Any] | None = page_params
+            ) -> httpx.Response:
+                return httpx.get(url, headers=self._headers(), params=prm, timeout=self.timeout)
+
+            response: httpx.Response = self._send_with_retry(_do_get)
+            if response.status_code >= 400:
+                self._handle_response(response)
+            body: Any = response.json()
+            if isinstance(body, dict) and "results" in body:
+                collected.extend(body.get("results", []))
+                count = body.get("count", count)
+                next_url = body.get("next")
+                previous = body.get("previous", previous)
+            elif isinstance(body, list):
+                collected.extend(body)
+                if count is None:
+                    count = len(body)
+                next_url = None
+            else:
+                next_url = None
+            pages_fetched += 1
+            first = False
+
+            if limit is not None and len(collected) >= limit:
+                collected = collected[:limit]
+                next_url = None
+                break
+            if not fetch_all:
+                break
+            current_url = next_url
+
+        return PaginatedResult(results=collected, count=count, next=next_url, previous=previous)
 
     # --- Auth endpoints ---
 
@@ -257,10 +432,17 @@ class DailyBotClient:
         include_summary: bool = False,
         include_pending_users: bool = False,
         include_archived: bool = False,
+        search: str | None = None,
+        start_date: str | None = None,
+        end_date: str | None = None,
+        page: int | None = None,
+        page_size: int | None = None,
+        fetch_all: bool = True,
+        limit: int | None = None,
+        meta: dict[str, Any] | None = None,
     ) -> list[dict[str, Any]]:
-        """GET /v1/checkins/ — fetch visible check-ins with optional completion state."""
-        results: list[dict[str, Any]] = []
-        params: dict[str, str] = {}
+        """GET /v1/checkins/ — fetch visible check-ins with optional search/paging."""
+        params: dict[str, Any] = {}
         if date:
             params["date"] = date
         if include_summary:
@@ -269,28 +451,17 @@ class DailyBotClient:
             params["include_pending_users"] = "true"
         if include_archived:
             params["include_archived"] = "true"
-        url: str | None = f"{self.api_url}/v1/checkins/"
-        pages_fetched: int = 0
-        while url is not None and pages_fetched < _MAX_LIST_PAGES:
-            response: httpx.Response = httpx.get(
-                url,
-                headers=self._headers(),
-                params=params if pages_fetched == 0 else None,
-                timeout=self.timeout,
-            )
-            if response.status_code >= 400:
-                self._handle_response(response)
-            body: Any = response.json()
-            if isinstance(body, dict) and "results" in body:
-                results.extend(body.get("results", []))
-                url = body.get("next")
-            elif isinstance(body, list):
-                results.extend(body)
-                url = None
-            else:
-                url = None
-            pages_fetched += 1
-        return results
+        _merge_list_query(params, search=search, start_date=start_date, end_date=end_date)
+        result: PaginatedResult = self._paginated_get(
+            f"{self.api_url}/v1/checkins/",
+            params=params,
+            page=page,
+            page_size=page_size,
+            fetch_all=fetch_all,
+            limit=limit,
+        )
+        _fill_meta(meta, result)
+        return result.results
 
     def get_checkin(self, followup_uuid: str) -> dict[str, Any]:
         """GET /v1/checkins/<followup_uuid>/."""
@@ -342,6 +513,14 @@ class DailyBotClient:
         date_end: str | None = None,
         all_responses: bool = False,
         user: str | None = None,
+        search: str | None = None,
+        start_date: str | None = None,
+        end_date: str | None = None,
+        page: int | None = None,
+        page_size: int | None = None,
+        fetch_all: bool = True,
+        limit: int | None = None,
+        meta: dict[str, Any] | None = None,
     ) -> list[dict[str, Any]]:
         """GET /v1/checkins/<followup_uuid>/responses/.
 
@@ -363,20 +542,17 @@ class DailyBotClient:
             params["all"] = "true"
         if user:
             params["user"] = user
-        response: httpx.Response = httpx.get(
+        _merge_list_query(params, search=search, start_date=start_date, end_date=end_date)
+        result: PaginatedResult = self._paginated_get(
             f"{self.api_url}/v1/checkins/{followup_uuid}/responses/",
-            headers=self._headers(),
             params=params,
-            timeout=self.timeout,
+            page=page,
+            page_size=page_size,
+            fetch_all=fetch_all,
+            limit=limit,
         )
-        if response.status_code >= 400:
-            self._handle_response(response)
-        body: Any = response.json()
-        if isinstance(body, dict) and "results" in body:
-            return list(body.get("results", []))
-        if isinstance(body, list):
-            return body
-        return []
+        _fill_meta(meta, result)
+        return result.results
 
     def update_checkin_response(
         self,
@@ -589,23 +765,41 @@ class DailyBotClient:
         return self._handle_response(response)
 
     def list_forms(
-        self, *, include_questions: bool = False, include_archived: bool = False
+        self,
+        *,
+        include_questions: bool = False,
+        include_archived: bool = False,
+        search: str | None = None,
+        start_date: str | None = None,
+        end_date: str | None = None,
+        page: int | None = None,
+        page_size: int | None = None,
+        fetch_all: bool = True,
+        limit: int | None = None,
+        meta: dict[str, Any] | None = None,
     ) -> list[dict[str, Any]]:
-        """GET /v1/forms/ — optionally expand questions and include archived forms."""
-        params: dict[str, str] = {}
+        """GET /v1/forms/ — optionally expand questions, search, and page.
+
+        Always requests the envelope (``?paginated=true``). When ``meta`` is given
+        it is populated with ``count`` / ``next`` for a pagination footer.
+        """
+        params: dict[str, Any] = {}
         if include_questions:
             params["include"] = "questions"
         if include_archived:
             params["include_archived"] = "true"
-        response: httpx.Response = httpx.get(
+        _merge_list_query(params, search=search, start_date=start_date, end_date=end_date)
+        result: PaginatedResult = self._paginated_get(
             f"{self.api_url}/v1/forms/",
-            headers=self._headers(),
             params=params,
-            timeout=self.timeout,
+            page=page,
+            page_size=page_size,
+            fetch_all=fetch_all,
+            limit=limit,
+            force_paginated=True,
         )
-        if response.status_code >= 400:
-            self._handle_response(response)
-        return response.json()
+        _fill_meta(meta, result)
+        return result.results
 
     def get_form(self, form_uuid: str) -> dict[str, Any]:
         """GET /v1/forms/<form_uuid>/ — form metadata and question definitions."""
@@ -639,6 +833,14 @@ class DailyBotClient:
         user: str | None = None,
         date_from: str | None = None,
         date_to: str | None = None,
+        search: str | None = None,
+        start_date: str | None = None,
+        end_date: str | None = None,
+        page: int | None = None,
+        page_size: int | None = None,
+        fetch_all: bool = True,
+        limit: int | None = None,
+        meta: dict[str, Any] | None = None,
     ) -> list[dict[str, Any]]:
         """GET /v1/forms/<form_uuid>/responses/ — list responses.
 
@@ -658,20 +860,18 @@ class DailyBotClient:
             params["date_from"] = date_from
         if date_to:
             params["date_to"] = date_to
-        response: httpx.Response = httpx.get(
+        _merge_list_query(params, search=search, start_date=start_date, end_date=end_date)
+        result: PaginatedResult = self._paginated_get(
             f"{self.api_url}/v1/forms/{form_uuid}/responses/",
-            headers=self._headers(),
             params=params,
-            timeout=self.timeout,
+            page=page,
+            page_size=page_size,
+            fetch_all=fetch_all,
+            limit=limit,
+            force_paginated=True,
         )
-        if response.status_code >= 400:
-            self._handle_response(response)
-        body: Any = response.json()
-        if isinstance(body, dict) and "results" in body:
-            return list(body.get("results", []))
-        if isinstance(body, list):
-            return body
-        return []
+        _fill_meta(meta, result)
+        return result.results
 
     def get_form_response(
         self,
@@ -902,25 +1102,48 @@ class DailyBotClient:
         admins/managers; silently omitted otherwise) so callers can resolve a
         person by email.
         """
-        results: list[dict[str, Any]] = []
         base_url: str = f"{self.api_url}/v1/users/"
-        url: str | None = f"{base_url}?include_email=true" if include_email else base_url
-        pages_fetched: int = 0
-        while url is not None and pages_fetched < _MAX_LIST_PAGES:
-            response: httpx.Response = httpx.get(
-                url,
-                headers=self._headers(),
-                timeout=self.timeout,
-            )
-            if response.status_code >= 400:
-                self._handle_response(response)
-            body: dict[str, Any] = response.json()
-            results.extend(body.get("results", []))
-            url = body.get("next")
-            pages_fetched += 1
+        url: str = f"{base_url}?include_email=true" if include_email else base_url
+        result: PaginatedResult = self._paginated_get(url, fetch_all=True)
+        results: list[dict[str, Any]] = result.results
         if include_inactive:
             return results
         return [u for u in results if u.get("is_active", True)]
+
+    def get_me(self, *, include_email: bool = False) -> dict[str, Any]:
+        """GET /v1/me/ — the authenticated user + organization context."""
+        params: dict[str, str] = {}
+        if include_email:
+            params["include_email"] = "true"
+        response: httpx.Response = httpx.get(
+            f"{self.api_url}/v1/me/",
+            headers=self._headers(),
+            params=params,
+            timeout=self.timeout,
+        )
+        return self._handle_response(response)
+
+    def get_organization(self) -> dict[str, Any]:
+        """GET /v1/organization/ — the org the current credential is scoped to."""
+        response: httpx.Response = httpx.get(
+            f"{self.api_url}/v1/organization/",
+            headers=self._headers(),
+            timeout=self.timeout,
+        )
+        return self._handle_response(response)
+
+    def get_user(self, user_uuid: str, *, include_email: bool = False) -> dict[str, Any]:
+        """GET /v1/users/<uuid>/ — a single user's profile."""
+        params: dict[str, str] = {}
+        if include_email:
+            params["include_email"] = "true"
+        response: httpx.Response = httpx.get(
+            f"{self.api_url}/v1/users/{user_uuid}/",
+            headers=self._headers(),
+            params=params,
+            timeout=self.timeout,
+        )
+        return self._handle_response(response)
 
     def give_kudos(
         self,
@@ -954,30 +1177,94 @@ class DailyBotClient:
         )
         return self._handle_response(response)
 
+    def list_kudos(
+        self,
+        *,
+        kudos_filter: str | None = None,
+        search: str | None = None,
+        start_date: str | None = None,
+        end_date: str | None = None,
+        page: int | None = None,
+        page_size: int | None = None,
+        fetch_all: bool = True,
+        limit: int | None = None,
+        meta: dict[str, Any] | None = None,
+    ) -> list[dict[str, Any]]:
+        """GET /v1/kudos/ — list kudos (paginated), optionally filtered."""
+        params: dict[str, Any] = {}
+        if kudos_filter:
+            params["filter"] = kudos_filter
+        _merge_list_query(params, search=search, start_date=start_date, end_date=end_date)
+        result: PaginatedResult = self._paginated_get(
+            f"{self.api_url}/v1/kudos/",
+            params=params,
+            page=page,
+            page_size=page_size,
+            fetch_all=fetch_all,
+            limit=limit,
+        )
+        _fill_meta(meta, result)
+        return result.results
+
+    def list_workflows(
+        self,
+        *,
+        search: str | None = None,
+        page: int | None = None,
+        page_size: int | None = None,
+        fetch_all: bool = True,
+        limit: int | None = None,
+        meta: dict[str, Any] | None = None,
+    ) -> list[dict[str, Any]]:
+        """GET /v1/workflows/ — list workflows (read-only; plan-gated feature)."""
+        params: dict[str, Any] = {}
+        _merge_list_query(params, search=search)
+        result: PaginatedResult = self._paginated_get(
+            f"{self.api_url}/v1/workflows/",
+            params=params,
+            page=page,
+            page_size=page_size,
+            fetch_all=fetch_all,
+            limit=limit,
+        )
+        _fill_meta(meta, result)
+        return result.results
+
+    def get_workflow(self, workflow_uuid: str) -> dict[str, Any]:
+        """GET /v1/workflows/<uuid>/ — a single workflow's configuration."""
+        response: httpx.Response = httpx.get(
+            f"{self.api_url}/v1/workflows/{workflow_uuid}/",
+            headers=self._headers(),
+            timeout=self.timeout,
+        )
+        return self._handle_response(response)
+
+    def get_kudos_organization(self) -> dict[str, Any]:
+        """GET /v1/kudos/organization/ — org-wide kudos statistics."""
+        response: httpx.Response = httpx.get(
+            f"{self.api_url}/v1/kudos/organization/",
+            headers=self._headers(),
+            timeout=self.timeout,
+        )
+        return self._handle_response(response)
+
+    def get_kudos_wall_of_fame(self, *, limit: int | None = None) -> dict[str, Any]:
+        """GET /v1/kudos/wall-of-fame/ — leaderboard rankings."""
+        params: dict[str, str] = {}
+        if limit is not None:
+            params["limit"] = str(limit)
+        response: httpx.Response = httpx.get(
+            f"{self.api_url}/v1/kudos/wall-of-fame/",
+            headers=self._headers(),
+            params=params,
+            timeout=self.timeout,
+        )
+        return self._handle_response(response)
+
     def list_teams(self) -> list[dict[str, Any]]:
         """GET /v1/teams/ — server scopes results by role (admin sees all, member sees own)."""
-        results: list[dict[str, Any]] = []
-        url: str | None = f"{self.api_url}/v1/teams/"
-        pages_fetched: int = 0
-        while url is not None and pages_fetched < _MAX_LIST_PAGES:
-            response: httpx.Response = httpx.get(
-                url,
-                headers=self._headers(),
-                timeout=self.timeout,
-            )
-            if response.status_code >= 400:
-                self._handle_response(response)
-            body: Any = response.json()
-            if isinstance(body, dict) and "results" in body:
-                results.extend(body.get("results", []))
-                url = body.get("next")
-            elif isinstance(body, list):
-                results.extend(body)
-                url = None
-            else:
-                url = None
-            pages_fetched += 1
-        return results
+        result: PaginatedResult = self._paginated_get(f"{self.api_url}/v1/teams/", fetch_all=True)
+        return result.results
 
     def get_team(self, team_uuid: str) -> dict[str, Any]:
         """GET /v1/teams/<team_uuid>/"""

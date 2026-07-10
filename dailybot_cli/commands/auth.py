@@ -9,10 +9,12 @@ from dailybot_cli.api_client import APIError, DailyBotClient
 from dailybot_cli.config import (
     clear_credentials,
     clear_org_cache,
+    get_api_key,
     get_token,
     load_org_cache,
     save_credentials,
     save_org_cache,
+    save_org_plan,
 )
 from dailybot_cli.display import (
     console,
@@ -140,6 +142,13 @@ def _verify_and_save(
         organization_uuid=org_uuid,
         api_url=client.api_url,
     )
+    # Cache the (non-sensitive) plan tier when the login response exposes it, so
+    # non-allowlisted commands can short-circuit on a free plan. Absent = unknown.
+    plan_tier: Any = (org_raw.get("plan") if isinstance(org_raw, dict) else None) or result.get(
+        "plan"
+    )
+    if isinstance(plan_tier, str) and org_uuid:
+        save_org_plan(org_uuid, plan_tier)
     print_success(f"Logged in as {email} ({org_name})")
 
 
@@ -279,9 +288,17 @@ def login(ctx: click.Context, email: str, code: str | None, org_uuid: str | None
 @click.command()
 def logout() -> None:
     """Log out and revoke the current token."""
+    # Logout is a Bearer-session operation: /v1/cli/auth/logout/ is Bearer-only.
+    # An API key has no session to revoke, so we never send X-API-KEY here.
     token: str | None = get_token()
     if not token:
-        print_info("Not logged in.")
+        if get_api_key():
+            print_info(
+                "Logout applies to a login session; API-key auth has no session to "
+                "revoke. Run `dailybot login` if you meant to start a session."
+            )
+        else:
+            print_info("Not logged in.")
         return
 
     client: DailyBotClient = DailyBotClient()

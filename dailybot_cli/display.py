@@ -32,6 +32,89 @@ def print_info(message: str) -> None:
     console.print(f"[dim]{message}[/dim]")
 
 
+def print_kudos_table(kudos: list[dict[str, Any]]) -> None:
+    """Render a compact table of kudos (giver → receivers, message, date)."""
+    if not kudos:
+        console.print("[dim]No kudos found.[/dim]")
+        return
+    table: Table = Table(title="Kudos", show_lines=False)
+    table.add_column("From", style="cyan", no_wrap=True)
+    table.add_column("To", style="green")
+    table.add_column("Message")
+    table.add_column("Date", style="dim", no_wrap=True)
+    for item in kudos:
+        giver_raw: Any = item.get("user") or {}
+        giver: str = (
+            "Anonymous" if item.get("is_anonymous") else str(giver_raw.get("full_name", "—"))
+        )
+        receivers_raw: Any = item.get("receivers") or []
+        receivers: str = ", ".join(str(r.get("full_name", "?")) for r in receivers_raw) or "—"
+        content: str = str(item.get("content", "")).strip() or "—"
+        created: str = str(item.get("created_at", ""))[:10]
+        table.add_row(giver, receivers, content, created)
+    console.print(table)
+
+
+def print_workflows_table(workflows: list[dict[str, Any]]) -> None:
+    """Render a compact table of workflows (name, trigger, active, runs)."""
+    if not workflows:
+        console.print("[dim]No workflows found.[/dim]")
+        return
+    table: Table = Table(title="Workflows")
+    table.add_column("Name", style="cyan")
+    table.add_column("UUID", style="dim", no_wrap=True)
+    table.add_column("Trigger")
+    table.add_column("Active", justify="center")
+    table.add_column("Runs", justify="right")
+    for wf in workflows:
+        active: str = "[green]yes[/green]" if wf.get("active") else "[dim]no[/dim]"
+        table.add_row(
+            str(wf.get("name", "—")),
+            str(wf.get("uuid", "—")),
+            str(wf.get("trigger_type", "—")),
+            active,
+            str(wf.get("total_runs", 0)),
+        )
+    console.print(table)
+
+
+def print_detail_panel(title: str, data: dict[str, Any], fields: list[tuple[str, str]]) -> None:
+    """Render a titled key/value panel from selected ``data`` fields.
+
+    ``fields`` is a list of ``(label, key)`` pairs; missing/empty values are shown
+    as a dim dash. Used by ``me`` / ``org`` / ``user get``.
+    """
+    table: Table = Table(show_header=False, box=None, pad_edge=False)
+    table.add_column("Field", style="bold cyan", no_wrap=True)
+    table.add_column("Value")
+    for label, key in fields:
+        raw: Any = data.get(key)
+        value: str = str(raw) if raw not in (None, "") else "[dim]—[/dim]"
+        table.add_row(label, value)
+    console.print(Panel(table, title=title, border_style="cyan", expand=False))
+
+
+def print_pagination_footer(
+    shown: int,
+    total: int | None = None,
+    *,
+    has_more: bool = False,
+) -> None:
+    """Render a compact 'Showing X of N' footer for a list command.
+
+    ``total`` is the envelope ``count`` when known; ``has_more`` hints that more
+    pages exist (use ``--all`` to fetch them). Goes to stdout (not an error).
+    """
+    if total is not None and total != shown:
+        text: str = f"Showing {shown} of {total}"
+    else:
+        noun: str = "result" if shown == 1 else "results"
+        text = f"Showing {shown} {noun}"
+    if has_more:
+        text += " — use --all to fetch every page"
+    console.print(f"[dim]{text}[/dim]")
+
+
 def print_ai_answer(content: str) -> None:
     """Print a Dailybot AI answer to stdout verbatim.
 

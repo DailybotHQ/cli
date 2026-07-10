@@ -301,3 +301,67 @@ class TestChatUpdateCommand:
         result = runner.invoke(cli, ["chat", "update", "$db/r2", "-c", "C0", "-m", "rolled back"])
         assert result.exit_code == 0
         assert client.send_chat_message.call_args[0][0]["bot_message_id"] == "$db/r2"
+
+
+VALID_UUID = "646b2982-93ef-4b9f-be44-5f0a39e9f8ef"
+
+
+class TestSendAsUser:
+    """Task 12: send_as_user identity on chat send."""
+
+    def test_payload_includes_send_as_user(self) -> None:
+        payload = build_chat_payload(text="hi", channels=["C0"], send_as_user=VALID_UUID)
+        assert payload["send_as_user"] == VALID_UUID
+
+    def test_omitting_send_as_user_is_unchanged(self) -> None:
+        payload = build_chat_payload(text="hi", channels=["C0"])
+        assert "send_as_user" not in payload
+
+    def test_conflict_with_bot_name_raises(self) -> None:
+        with pytest.raises(ChatPayloadError):
+            build_chat_payload(
+                text="hi", channels=["C0"], send_as_user=VALID_UUID, bot_name="Release Bot"
+            )
+
+    def test_invalid_uuid_raises(self) -> None:
+        with pytest.raises(ChatPayloadError):
+            build_chat_payload(text="hi", channels=["C0"], send_as_user="not-a-uuid")
+
+    def test_send_as_me_resolves_current_user(self) -> None:
+        with (
+            patch("dailybot_cli.commands.chat._resolved_client") as mock_resolved,
+            patch("dailybot_cli.commands.chat.get_current_user_uuid", return_value=VALID_UUID),
+            patch("dailybot_cli.commands.chat._send") as mock_send,
+        ):
+            mock_resolved.return_value = (MagicMock(), {})
+            result = CliRunner().invoke(
+                cli, ["chat", "send", "-c", "C0", "-m", "hi", "--send-as-me"]
+            )
+        assert result.exit_code == 0
+        payload = mock_send.call_args[0][1]
+        assert payload["send_as_user"] == VALID_UUID
+
+    def test_send_as_user_and_send_as_me_conflict(self) -> None:
+        with patch("dailybot_cli.commands.chat._resolved_client") as mock_resolved:
+            mock_resolved.return_value = (MagicMock(), {})
+            result = CliRunner().invoke(
+                cli,
+                [
+                    "chat",
+                    "send",
+                    "-c",
+                    "C0",
+                    "-m",
+                    "hi",
+                    "--send-as-me",
+                    "--send-as-user",
+                    VALID_UUID,
+                ],
+            )
+        assert result.exit_code != 0
+
+    def test_org_admin_required_message(self) -> None:
+        from dailybot_cli.commands.public_api_helpers import ERROR_CODE_MESSAGES
+
+        assert "admins" in ERROR_CODE_MESSAGES["org_admin_required"].lower()
+        assert "send_as_user_not_found" in ERROR_CODE_MESSAGES
