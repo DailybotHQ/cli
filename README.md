@@ -446,8 +446,8 @@ Team kudos pass through the backend's team manager, which expands the team into 
 ```bash
 # List kudos you've received or given (paginated, searchable, date-filterable)
 dailybot kudos list
-dailybot kudos list --filter KUDOS_RECEIVED
-dailybot kudos list --filter KUDOS_GIVEN --since 2026-01-01 --until 2026-06-30
+dailybot kudos list --filter received          # KUDOS_RECEIVED also accepted
+dailybot kudos list --filter given --since 2026-01-01 --until 2026-06-30
 dailybot kudos list --search "release" --all --json
 
 # Every kudos in the organization (admin-only)

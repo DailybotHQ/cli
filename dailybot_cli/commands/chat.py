@@ -233,7 +233,12 @@ def _execute_send(
         with console.status(status):
             return client.send_chat_message(payload)
     except APIError as e:
-        if e.code == "cli_send_message_target_not_allowed":
+        if e.code == "org_admin_required":
+            print_error(
+                "Sending as another user (--send-as-user / --send-as-me) requires organization "
+                "admin privileges. Run it with an admin account or an org admin's API key."
+            )
+        elif e.code == "cli_send_message_target_not_allowed":
             print_error(
                 f"{e.detail}\n  Your role can only reach teammates, public channels, and teams "
                 "you belong to. Use an allowed target, or an org API key for org-wide reach."

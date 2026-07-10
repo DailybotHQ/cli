@@ -211,9 +211,33 @@ def kudos_give(
     )
 
 
+_KUDOS_FILTER_ALIASES: dict[str, str] = {
+    "kudos_received": "kudos_received",
+    "received": "kudos_received",
+    "kudos_given": "kudos_given",
+    "given": "kudos_given",
+}
+
+
+def normalize_kudos_filter(value: str | None) -> str | None:
+    """Map a friendly ``--filter`` value to the token the API accepts.
+
+    The API accepts only lowercase ``kudos_received`` / ``kudos_given``. The CLI
+    has long advertised the uppercase ``KUDOS_RECEIVED`` / ``KUDOS_GIVEN`` forms,
+    which the server rejects with ``400 "Not valid kudos filter"``. Unknown
+    values pass through so the server stays the source of truth.
+    """
+    if value is None:
+        return None
+    return _KUDOS_FILTER_ALIASES.get(value.strip().lower(), value.strip())
+
+
 @kudos.command("list")
 @click.option(
-    "--filter", "kudos_filter", default=None, help="Filter (e.g. KUDOS_RECEIVED, KUDOS_GIVEN)."
+    "--filter",
+    "kudos_filter",
+    default=None,
+    help="Filter direction: received or given (KUDOS_RECEIVED / KUDOS_GIVEN also accepted).",
 )
 @query_options
 @click.option("--json", "json_mode", is_flag=True, help="Emit machine-readable JSON to stdout.")
@@ -262,7 +286,7 @@ def kudos_list(
     try:
         with console.status("Fetching kudos..."):
             kudos_items: list[dict[str, Any]] = client.list_kudos(
-                kudos_filter=kudos_filter,
+                kudos_filter=normalize_kudos_filter(kudos_filter),
                 search=spec.params.get("search"),
                 start_date=spec.params.get("start_date"),
                 end_date=spec.params.get("end_date"),

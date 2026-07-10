@@ -49,7 +49,8 @@ def test_kudos_list_forwards_filter_and_search(monkeypatch: Any) -> None:
     )
     assert result.exit_code == 0
     kwargs = client.list_kudos.call_args[1]
-    assert kwargs["kudos_filter"] == "KUDOS_RECEIVED"
+    # The friendly KUDOS_RECEIVED is normalized to the token the API accepts.
+    assert kwargs["kudos_filter"] == "kudos_received"
     assert kwargs["search"] == "sprint"
 
 
