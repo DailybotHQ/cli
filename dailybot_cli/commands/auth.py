@@ -9,6 +9,7 @@ from dailybot_cli.api_client import APIError, DailyBotClient
 from dailybot_cli.config import (
     clear_credentials,
     clear_org_cache,
+    get_api_key,
     get_token,
     load_org_cache,
     save_credentials,
@@ -287,9 +288,17 @@ def login(ctx: click.Context, email: str, code: str | None, org_uuid: str | None
 @click.command()
 def logout() -> None:
     """Log out and revoke the current token."""
+    # Logout is a Bearer-session operation: /v1/cli/auth/logout/ is Bearer-only.
+    # An API key has no session to revoke, so we never send X-API-KEY here.
     token: str | None = get_token()
     if not token:
-        print_info("Not logged in.")
+        if get_api_key():
+            print_info(
+                "Logout applies to a login session; API-key auth has no session to "
+                "revoke. Run `dailybot login` if you meant to start a session."
+            )
+        else:
+            print_info("Not logged in.")
         return
 
     client: DailyBotClient = DailyBotClient()
