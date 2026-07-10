@@ -1,7 +1,7 @@
 ---
 name: dailybot-checkin
 description: Drive the full check-in lifecycle via Dailybot — list and complete pending check-ins, see pending/completed status for a day, inspect a check-in's questions and schedule, browse response history, edit or reset a submitted response, and backfill or future-date responses. Also authors check-ins — create and configure a check-in (schedule, participants, reminders, privacy, smart/AI) and manage its questions (types, report titles, variations, conditional logic). Works headless with an API key. Use when the developer asks to fill in their standup, answer daily questions, check what check-ins they have, edit or reset a check-in, review past responses, or create/configure a check-in. Do not use for free-text progress reports — those go through dailybot-report.
-version: "3.2.0"
+version: "3.3.0"
 documentation_url: https://www.dailybot.com/skill.md
 user-invocable: true
 metadata: {"openclaw":{"emoji":"✅","homepage":"https://dailybot.com","requires":{"anyBins":["dailybot","curl"]},"primaryEnv":"DAILYBOT_API_KEY","install":[{"id":"cli-install-script","kind":"download","url":"https://cli.dailybot.com/install.sh","label":"Install Dailybot CLI (official script — preferred on Linux/macOS)"},{"id":"pip","kind":"pip","package":"dailybot-cli","bins":["dailybot"],"label":"Install Dailybot CLI via pip (fallback if binary fails)"}]}}
@@ -17,14 +17,14 @@ You help developers complete their pending check-ins (daily standups, weekly sur
 ## Auth model — API key or login
 
 Check-in commands accept **either** a Bearer login session (`dailybot login`)
-**or** an org API key (`DAILYBOT_API_KEY`) — as of `dailybot-cli >= 1.15.0`.
+**or** an org API key (`DAILYBOT_API_KEY`).
 A login session is the same one used by the webapp — it scopes actions to the
 acting identity's permissions and pending check-ins (the server resolves the
 API key's owner).
 
 If the developer has only an API key, check-in commands still work — the CLI
 falls back to `X-API-KEY`. Prefer `dailybot login` for the human's own personal
-pending check-ins. (On CLIs older than 1.15.0, these required a Bearer session —
+pending check-ins. (Both credentials work —
 `dailybot upgrade` or `dailybot login`.)
 
 ---
@@ -190,7 +190,7 @@ right JSON type; it cannot guess that `"None"` means `false`.
 
 ---
 
-## Step 3.5 — The full check-in lifecycle (`dailybot-cli >= 1.15.0`)
+## Step 3.5 — The full check-in lifecycle
 
 Beyond `list` + `complete`, the CLI covers the whole check-in lifecycle. **Every
 command below takes `--json` and works headless with an API key** — this is what
@@ -285,12 +285,11 @@ prompts — handy for humans; agents should use the headless commands above.
 
 ## Step 3.7 — Authoring check-ins (create / configure / questions)
 
-> **Requires `dailybot-cli >= 1.17.1`.** The authoring surface — `checkin create`,
+> **Requires `dailybot-cli >= 3.1.2`** (the skill-pack baseline). The authoring surface — `checkin create`,
 > `checkin config`, `checkin archive`, the `checkin questions add|edit|delete|reorder`
 > group, resolving people by email, the smart/AI flags, and the **create requires
-> ≥ 1 question** rule (`questions_required`) — ships in CLI **1.17.1** (current
-> published release: the latest on PyPI). The response lifecycle above works on older CLIs; only authoring
-> needs 1.17.1. If `dailybot --version` is below that, run `dailybot upgrade`.
+> ≥ 1 question** rule (`questions_required`) — is all available. If
+> `dailybot --version` is below 3.1.2, run `dailybot upgrade`.
 
 Everything above **answers** a check-in. This section **builds** one. As of the
 authoring release, an agent can create a check-in from scratch, tune every
