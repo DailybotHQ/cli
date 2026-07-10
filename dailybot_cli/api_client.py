@@ -33,6 +33,31 @@ class PaginatedResult:
     previous: str | None = None
 
 
+def _merge_list_query(
+    params: dict[str, Any],
+    *,
+    search: str | None = None,
+    start_date: str | None = None,
+    end_date: str | None = None,
+) -> dict[str, Any]:
+    """Merge the shared list query params (search / date range) into ``params``."""
+    if search is not None:
+        params["search"] = search
+    if start_date is not None:
+        params["start_date"] = start_date
+    if end_date is not None:
+        params["end_date"] = end_date
+    return params
+
+
+def _fill_meta(meta: dict[str, Any] | None, result: "PaginatedResult") -> None:
+    """Populate a caller-provided meta dict with pagination totals, if given."""
+    if meta is not None:
+        meta["count"] = result.count
+        meta["next"] = result.next
+        meta["previous"] = result.previous
+
+
 class APIError(Exception):
     """Raised when the API returns a non-success response."""
 
@@ -407,9 +432,17 @@ class DailyBotClient:
         include_summary: bool = False,
         include_pending_users: bool = False,
         include_archived: bool = False,
+        search: str | None = None,
+        start_date: str | None = None,
+        end_date: str | None = None,
+        page: int | None = None,
+        page_size: int | None = None,
+        fetch_all: bool = True,
+        limit: int | None = None,
+        meta: dict[str, Any] | None = None,
     ) -> list[dict[str, Any]]:
-        """GET /v1/checkins/ — fetch visible check-ins with optional completion state."""
-        params: dict[str, str] = {}
+        """GET /v1/checkins/ — fetch visible check-ins with optional search/paging."""
+        params: dict[str, Any] = {}
         if date:
             params["date"] = date
         if include_summary:
@@ -418,9 +451,16 @@ class DailyBotClient:
             params["include_pending_users"] = "true"
         if include_archived:
             params["include_archived"] = "true"
+        _merge_list_query(params, search=search, start_date=start_date, end_date=end_date)
         result: PaginatedResult = self._paginated_get(
-            f"{self.api_url}/v1/checkins/", params=params, fetch_all=True
+            f"{self.api_url}/v1/checkins/",
+            params=params,
+            page=page,
+            page_size=page_size,
+            fetch_all=fetch_all,
+            limit=limit,
         )
+        _fill_meta(meta, result)
         return result.results
 
     def get_checkin(self, followup_uuid: str) -> dict[str, Any]:
@@ -473,6 +513,14 @@ class DailyBotClient:
         date_end: str | None = None,
         all_responses: bool = False,
         user: str | None = None,
+        search: str | None = None,
+        start_date: str | None = None,
+        end_date: str | None = None,
+        page: int | None = None,
+        page_size: int | None = None,
+        fetch_all: bool = True,
+        limit: int | None = None,
+        meta: dict[str, Any] | None = None,
     ) -> list[dict[str, Any]]:
         """GET /v1/checkins/<followup_uuid>/responses/.
 
@@ -494,11 +542,16 @@ class DailyBotClient:
             params["all"] = "true"
         if user:
             params["user"] = user
+        _merge_list_query(params, search=search, start_date=start_date, end_date=end_date)
         result: PaginatedResult = self._paginated_get(
             f"{self.api_url}/v1/checkins/{followup_uuid}/responses/",
             params=params,
-            fetch_all=True,
+            page=page,
+            page_size=page_size,
+            fetch_all=fetch_all,
+            limit=limit,
         )
+        _fill_meta(meta, result)
         return result.results
 
     def update_checkin_response(
@@ -712,20 +765,40 @@ class DailyBotClient:
         return self._handle_response(response)
 
     def list_forms(
-        self, *, include_questions: bool = False, include_archived: bool = False
+        self,
+        *,
+        include_questions: bool = False,
+        include_archived: bool = False,
+        search: str | None = None,
+        start_date: str | None = None,
+        end_date: str | None = None,
+        page: int | None = None,
+        page_size: int | None = None,
+        fetch_all: bool = True,
+        limit: int | None = None,
+        meta: dict[str, Any] | None = None,
     ) -> list[dict[str, Any]]:
-        """GET /v1/forms/ — optionally expand questions and include archived forms."""
-        params: dict[str, str] = {}
+        """GET /v1/forms/ — optionally expand questions, search, and page.
+
+        Always requests the envelope (``?paginated=true``). When ``meta`` is given
+        it is populated with ``count`` / ``next`` for a pagination footer.
+        """
+        params: dict[str, Any] = {}
         if include_questions:
             params["include"] = "questions"
         if include_archived:
             params["include_archived"] = "true"
+        _merge_list_query(params, search=search, start_date=start_date, end_date=end_date)
         result: PaginatedResult = self._paginated_get(
             f"{self.api_url}/v1/forms/",
             params=params,
-            fetch_all=True,
+            page=page,
+            page_size=page_size,
+            fetch_all=fetch_all,
+            limit=limit,
             force_paginated=True,
         )
+        _fill_meta(meta, result)
         return result.results
 
     def get_form(self, form_uuid: str) -> dict[str, Any]:
@@ -760,6 +833,14 @@ class DailyBotClient:
         user: str | None = None,
         date_from: str | None = None,
         date_to: str | None = None,
+        search: str | None = None,
+        start_date: str | None = None,
+        end_date: str | None = None,
+        page: int | None = None,
+        page_size: int | None = None,
+        fetch_all: bool = True,
+        limit: int | None = None,
+        meta: dict[str, Any] | None = None,
     ) -> list[dict[str, Any]]:
         """GET /v1/forms/<form_uuid>/responses/ — list responses.
 
@@ -779,12 +860,17 @@ class DailyBotClient:
             params["date_from"] = date_from
         if date_to:
             params["date_to"] = date_to
+        _merge_list_query(params, search=search, start_date=start_date, end_date=end_date)
         result: PaginatedResult = self._paginated_get(
             f"{self.api_url}/v1/forms/{form_uuid}/responses/",
             params=params,
-            fetch_all=True,
+            page=page,
+            page_size=page_size,
+            fetch_all=fetch_all,
+            limit=limit,
             force_paginated=True,
         )
+        _fill_meta(meta, result)
         return result.results
 
     def get_form_response(

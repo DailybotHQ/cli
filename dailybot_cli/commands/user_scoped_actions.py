@@ -19,6 +19,7 @@ from dailybot_cli.commands.public_api_helpers import (
     normalize_checkin_list_json,
     parse_answer_flags,
 )
+from dailybot_cli.commands.query_options import QuerySpec
 from dailybot_cli.display import (
     console,
     print_checkin_complete_result,
@@ -30,6 +31,7 @@ from dailybot_cli.display import (
     print_form_submit_result,
     print_forms_table,
     print_info,
+    print_pagination_footer,
     print_pending_checkins,
     print_success,
     print_users_table,
@@ -458,12 +460,26 @@ def execute_form_list(
     *,
     json_mode: bool = False,
     include_archived: bool = False,
+    spec: QuerySpec | None = None,
 ) -> list[dict[str, Any]] | None:
     """Fetch and display forms visible to the user (with question counts)."""
+    query: QuerySpec = spec or QuerySpec()
+    # No paging flags → fetch everything (preserves the historical default).
+    fetch_all: bool = query.fetch_all or (query.page is None and query.limit is None)
+    meta: dict[str, Any] = {}
     try:
         with console.status("Fetching forms..."):
             forms: list[dict[str, Any]] = client.list_forms(
-                include_questions=True, include_archived=include_archived
+                include_questions=True,
+                include_archived=include_archived,
+                search=query.params.get("search"),
+                start_date=query.params.get("start_date"),
+                end_date=query.params.get("end_date"),
+                page=query.page,
+                page_size=query.page_size,
+                fetch_all=fetch_all,
+                limit=query.limit,
+                meta=meta,
             )
     except APIError as exc:
         exit_for_api_error(exc, json_mode)
@@ -473,6 +489,7 @@ def execute_form_list(
         return forms
 
     print_forms_table(filter_submittable_forms(forms))
+    print_pagination_footer(len(forms), meta.get("count"), has_more=bool(meta.get("next")))
     return forms
 
 
@@ -597,13 +614,14 @@ def execute_checkin_history(
     date_from: str | None = None,
     date_to: str | None = None,
     user: str | None = None,
+    search: str | None = None,
     json_mode: bool = False,
 ) -> None:
     """Show a check-in's response history over a date range.
 
     The endpoint returns every participant's responses by default; ``user``
     narrows to one participant (admin/manager only — a member is guarded to
-    their own responses server-side).
+    their own responses server-side). ``search`` filters response content.
     """
     date_start: str | None = date_from
     date_end: str | None = date_to
@@ -611,10 +629,17 @@ def execute_checkin_history(
         today: date_cls = date_cls.today()
         date_end = today.isoformat()
         date_start = (today - timedelta(days=max(days - 1, 0))).isoformat()
+    truncated_search: str | None = search[:256] if search is not None else None
+    meta: dict[str, Any] = {}
     try:
         with console.status("Fetching response history..."):
             responses: list[dict[str, Any]] = client.list_checkin_responses(
-                followup_uuid, date_start=date_start, date_end=date_end, user=user
+                followup_uuid,
+                date_start=date_start,
+                date_end=date_end,
+                user=user,
+                search=truncated_search,
+                meta=meta,
             )
     except APIError as exc:
         exit_for_api_error(exc, json_mode)
@@ -631,6 +656,7 @@ def execute_checkin_history(
         )
         return
     print_checkin_history_table(responses)
+    print_pagination_footer(len(responses), meta.get("count"), has_more=bool(meta.get("next")))
 
 
 def execute_checkin_reset(

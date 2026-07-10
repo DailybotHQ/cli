@@ -32,6 +32,27 @@ def print_info(message: str) -> None:
     console.print(f"[dim]{message}[/dim]")
 
 
+def print_pagination_footer(
+    shown: int,
+    total: int | None = None,
+    *,
+    has_more: bool = False,
+) -> None:
+    """Render a compact 'Showing X of N' footer for a list command.
+
+    ``total`` is the envelope ``count`` when known; ``has_more`` hints that more
+    pages exist (use ``--all`` to fetch them). Goes to stdout (not an error).
+    """
+    if total is not None and total != shown:
+        text: str = f"Showing {shown} of {total}"
+    else:
+        noun: str = "result" if shown == 1 else "results"
+        text = f"Showing {shown} {noun}"
+    if has_more:
+        text += " — use --all to fetch every page"
+    console.print(f"[dim]{text}[/dim]")
+
+
 def print_ai_answer(content: str) -> None:
     """Print a Dailybot AI answer to stdout verbatim.
 

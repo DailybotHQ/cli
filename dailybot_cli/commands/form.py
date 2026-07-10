@@ -27,6 +27,7 @@ from dailybot_cli.commands.public_api_helpers import (
     exit_for_api_error,
     require_auth,
 )
+from dailybot_cli.commands.query_options import build_query_params, query_options
 from dailybot_cli.commands.user_scoped_actions import (
     execute_form_list,
     execute_form_submit,
@@ -36,12 +37,14 @@ from dailybot_cli.commands.user_scoped_actions import (
 from dailybot_cli.display import (
     console,
     print_archived,
+    print_error,
     print_form_created,
     print_form_detail,
     print_form_response_deleted,
     print_form_response_detail,
     print_form_response_state,
     print_form_responses_table,
+    print_pagination_footer,
     print_question,
     print_questions_table,
     print_reordered,
@@ -170,8 +173,22 @@ def form() -> None:
     is_flag=True,
     help="Include archived forms (hidden by default).",
 )
+@query_options
 @click.option("--json", "json_mode", is_flag=True, help="Emit machine-readable JSON to stdout.")
-def form_list(include_archived: bool, json_mode: bool) -> None:
+def form_list(
+    include_archived: bool,
+    json_mode: bool,
+    page: int | None,
+    page_size: int | None,
+    fetch_all: bool,
+    limit: int | None,
+    search: str | None,
+    since: str | None,
+    until: str | None,
+    on_date: str | None,
+    last_week: bool,
+    today: bool,
+) -> None:
     """List forms visible to you.
 
     \b
@@ -181,12 +198,29 @@ def form_list(include_archived: bool, json_mode: bool) -> None:
     \b
     Examples:
       dailybot form list
-      dailybot form list --include-archived
+      dailybot form list --search retro --since 2026-07-01
+      dailybot form list --all
       dailybot form list --json
     """
     enforce_plan_access("form_list", json_mode=json_mode)
+    try:
+        spec = build_query_params(
+            page=page,
+            page_size=page_size,
+            fetch_all=fetch_all,
+            limit=limit,
+            search=search,
+            since=since,
+            until=until,
+            on_date=on_date,
+            last_week=last_week,
+            today=today,
+        )
+    except ValueError as exc:
+        print_error(str(exc))
+        raise SystemExit(1)
     client = require_auth()
-    execute_form_list(client, json_mode=json_mode, include_archived=include_archived)
+    execute_form_list(client, json_mode=json_mode, include_archived=include_archived, spec=spec)
 
 
 @form.command("get")
@@ -272,6 +306,9 @@ def form_submit(
 )
 @click.option("--to", "date_to", default=None, help="Responses on/before this date (YYYY-MM-DD).")
 @click.option(
+    "--search", "-s", "search", default=None, help="Filter response content (max 256 chars)."
+)
+@click.option(
     "--latest",
     is_flag=True,
     help="Return only the most recent response (continue where you left off).",
@@ -284,6 +321,7 @@ def form_responses(
     user: str | None,
     date_from: str | None,
     date_to: str | None,
+    search: str | None,
     latest: bool,
     json_mode: bool,
 ) -> None:
@@ -302,6 +340,8 @@ def form_responses(
       dailybot form responses <form_uuid> --user <user_uuid> --json
     """
     client = require_auth()
+    truncated_search: str | None = search[:256] if search is not None else None
+    meta: dict[str, Any] = {}
     try:
         with console.status("Fetching responses..."):
             responses: list[dict[str, Any]] = client.list_form_responses(
@@ -311,6 +351,8 @@ def form_responses(
                 user=user,
                 date_from=date_from,
                 date_to=date_to,
+                search=truncated_search,
+                meta=meta,
             )
     except APIError as exc:
         exit_for_api_error(exc, json_mode)
@@ -324,6 +366,7 @@ def form_responses(
 
     form_data: dict[str, Any] | None = _maybe_load_form(client, form_uuid)
     print_form_responses_table(form_uuid, responses, form_data)
+    print_pagination_footer(len(responses), meta.get("count"), has_more=bool(meta.get("next")))
 
 
 @form.group("response")
