@@ -9,6 +9,64 @@ Do not edit it by hand — your edits will be overwritten on the next release.
 
 <!-- version list -->
 
+## v1.20.0 (2026-07-10)
+
+### Chores
+
+- **security**: Security review - Task 13 of PLAN_cli_full_public_api_support
+  ([`33c96f8`](https://github.com/DailybotHQ/cli/commit/33c96f887725ac893b27a2af83ee20b744db16c6))
+
+- **skills**: Skills & agents discovery - Task 14 of PLAN_cli_full_public_api_support
+  ([`8a30f0f`](https://github.com/DailybotHQ/cli/commit/8a30f0f6cb49d7c16e4bdde954a1eb250b269444))
+
+### Documentation
+
+- **cli**: Document new commands, query flags, error codes - Task 10 of
+  PLAN_cli_full_public_api_support
+  ([`49a22e9`](https://github.com/DailybotHQ/cli/commit/49a22e930d81dd25fb3e0d9315b2b5a7b6a62eb1))
+
+### Features
+
+- **chat**: Add --send-as-user / --send-as-me identity - Task 12 of PLAN_cli_full_public_api_support
+  ([`89a32bc`](https://github.com/DailybotHQ/cli/commit/89a32bc741c39c52514b77981bb1fafca4ad8925))
+
+- **cli**: Add kudos list / org / wall-of-fame commands - Task 8 of PLAN_cli_full_public_api_support
+  ([`e4bbdfa`](https://github.com/DailybotHQ/cli/commit/e4bbdfa3175639df292335021efbeb9277e23c70))
+
+- **cli**: Add me / org / user get read-only commands - Task 7 of PLAN_cli_full_public_api_support
+  ([`3361cc7`](https://github.com/DailybotHQ/cli/commit/3361cc70ba539f8ae12037d349cfb870b11efe54))
+
+- **cli**: Add shared query-flags module - Task 5 of PLAN_cli_full_public_api_support
+  ([`9be7f43`](https://github.com/DailybotHQ/cli/commit/9be7f433d92a63cdbe261e6296ed81ad69e247d9))
+
+- **cli**: Add workflow list / get read commands - Task 9 of PLAN_cli_full_public_api_support
+  ([`ed79cef`](https://github.com/DailybotHQ/cli/commit/ed79cef9711c382a786fc0036fa6efa90f37b22b))
+
+- **cli**: Wire shared query flags into list commands - Task 6 of PLAN_cli_full_public_api_support
+  ([`16a6f3d`](https://github.com/DailybotHQ/cli/commit/16a6f3ddb27ea51608a86a8a672cb6d0888197b1))
+
+- **client**: Add shared paginated-GET helper - Task 1 of PLAN_cli_full_public_api_support
+  ([`d603795`](https://github.com/DailybotHQ/cli/commit/d60379598f2e939084c65b85a90259c9b7c84f2e))
+
+- **client**: Confirm API-key parity and keep logout Bearer-only - Task 4 of
+  PLAN_cli_full_public_api_support
+  ([`20abc57`](https://github.com/DailybotHQ/cli/commit/20abc57e61081d77630bbf1758a34b834dfc8891))
+
+- **client**: Dispatch on error codes and handle rate limits - Task 2 of
+  PLAN_cli_full_public_api_support
+  ([`4a3e02b`](https://github.com/DailybotHQ/cli/commit/4a3e02b1c576fac9b0a528ce7368f4f6b49c064e))
+
+- **config**: Free-plan awareness + allowlist short-circuit - Task 3 of
+  PLAN_cli_full_public_api_support
+  ([`123d157`](https://github.com/DailybotHQ/cli/commit/123d15717529f4ec1e51cf7798652b7cab0e3a4f))
+
+### Testing
+
+- **cli**: Comprehensive integration coverage of backend checklist - Task 11 of
+  PLAN_cli_full_public_api_support
+  ([`090597a`](https://github.com/DailybotHQ/cli/commit/090597a00febdd7eaf7521f9a25404024723788b))
+
+
 ## v1.19.2 (2026-07-08)
 
 ### Documentation
