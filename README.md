@@ -4,24 +4,29 @@ The command-line bridge between **humans** and **agents**. [Dailybot](https://ww
 
 > 🤖 **Using an AI coding agent?** The CLI is even better paired with the **[Dailybot agent skill](https://github.com/DailybotHQ/agent-skill)** — a playbook that teaches Claude Code, Cursor, Codex, Gemini, and Copilot *when* and *how* to use these commands (report progress, complete check-ins, run and **author** forms & check-ins, give kudos, send chat messages). Install it with `npx skills add DailybotHQ/agent-skill`. See [For agents → pair with the agent skill](#pair-with-the-dailybot-agent-skill).
 
-## Upgrading to 2.0 (breaking changes)
+## Upgrading to 3.0
 
-**2.0** completes the CLI's parity with the public Dailybot API. It is a **major**
-release because two consumer-visible contracts changed:
+**3.0 aligns the CLI's major version with the [Dailybot agent skill pack](https://github.com/DailybotHQ/agent-skill) (3.x)**,
+so the two ship as a matched pair — a CLI `3.x` and a skill pack `3.x` always
+understand the same API surface. **There is no functional breaking change between
+2.x and 3.0**; if you are already on 2.x, upgrading is a drop-in.
 
-- **List output is now a paginated envelope.** Every list command paginates
+### Coming from 1.x? The breaking changes landed in 2.0
+
+- **List output is a paginated envelope.** Every list command paginates
   (`--all`, `--page`, `--page-size`, `--limit`), searches (`--search`/`--grep`), and
   filters by date (`--since`/`--until`/`--date`/`--today`/`--last-week`), and prints a
   `Showing X of N` footer. `--json` still emits the list of items, so most scripts are
   unaffected; anything that parsed a *bare array* from an internal endpoint should read
   the `results` field of the envelope instead.
-- **Errors are machine-readable.** Failures now carry a stable `code` and render
-  friendly, actionable messages (plan/permission/validation), instead of raw JSON.
+- **Errors are machine-readable.** Failures carry a stable `code` and render friendly,
+  actionable messages (plan/permission/validation), instead of raw JSON.
 
-New in 2.0: `dailybot me` / `org` / `user get`, `kudos list` / `org` / `wall-of-fame`,
-the read-only `workflow list` / `get`, `chat send --send-as-user` / `--send-as-me`, and
-uniform API-key ↔ Bearer auth on every endpoint (except `logout`, which stays
-Bearer-only). See the [API reference](docs/API_REFERENCE.md) for the full surface.
+Also added in the 2.x line: `dailybot me` / `org` / `user get`, `kudos list` / `org` /
+`wall-of-fame`, the read-only `workflow list` / `get`, `chat send --send-as-user` /
+`--send-as-me`, and uniform API-key ↔ Bearer auth on every endpoint (except `logout`,
+which stays Bearer-only). See the [API reference](docs/API_REFERENCE.md) for the full
+surface.
 
 ## Installation
 
@@ -36,8 +41,8 @@ exact release, or `>=` to set a **minimum floor** (installs the newest release a
 or above it):
 
 ```bash
-pip install dailybot-cli==1.19.1     # exactly 1.19.1
-pip install "dailybot-cli>=1.19.1"   # 1.19.1 or newer — picks the latest available
+pip install dailybot-cli==3.0.0     # exactly 3.0.0
+pip install "dailybot-cli>=3.0.0"   # 3.0.0 or newer — picks the latest available
 ```
 
 ### Alternative installation methods
@@ -46,8 +51,8 @@ Every method installs the **latest** release by default. Where a version can be
 pinned, the pinned form is shown right below the default one. Two pinning styles
 are supported everywhere `DAILYBOT_VERSION` / `--version` is accepted:
 
-- **Exact** — `1.19.1` (or `==1.19.1`) installs precisely that release.
-- **Minimum floor** — `>=1.19.1` installs the newest release at or above `1.19.1`,
+- **Exact** — `3.0.0` (or `==3.0.0`) installs precisely that release.
+- **Minimum floor** — `>=3.0.0` installs the newest release at or above `3.0.0`,
   so you get any later version automatically while guaranteeing a lower bound.
 
 **macOS (Homebrew)**
@@ -60,7 +65,7 @@ Homebrew always installs the latest published formula. To pin a specific
 version, install with pip instead:
 
 ```bash
-pip install dailybot-cli==1.19.1
+pip install dailybot-cli==3.0.0
 ```
 
 **Linux, WSL2, or Git Bash on Windows (binary or pip fallback)**
@@ -75,13 +80,13 @@ accepts an exact version or a `>=` minimum floor:
 
 ```bash
 # exact version, environment variable
-curl -sSL https://cli.dailybot.com/install.sh | DAILYBOT_VERSION=1.19.1 bash
+curl -sSL https://cli.dailybot.com/install.sh | DAILYBOT_VERSION=3.0.0 bash
 
 # exact version, equivalent flag (note the `-s --` that forwards args through bash)
-curl -sSL https://cli.dailybot.com/install.sh | bash -s -- --version 1.19.1
+curl -sSL https://cli.dailybot.com/install.sh | bash -s -- --version 3.0.0
 
-# minimum floor — installs 1.19.1 or the newest release above it
-curl -sSL https://cli.dailybot.com/install.sh | DAILYBOT_VERSION='>=1.19.1' bash
+# minimum floor — installs 3.0.0 or the newest release above it
+curl -sSL https://cli.dailybot.com/install.sh | DAILYBOT_VERSION='>=3.0.0' bash
 ```
 
 An exact pin installs the matching Linux binary when one exists, otherwise falls
@@ -101,10 +106,10 @@ An exact version or a `>=` minimum floor both work:
 
 ```powershell
 # exact version
-$env:DAILYBOT_VERSION = '1.19.1'; irm https://cli.dailybot.com/install.ps1 | iex
+$env:DAILYBOT_VERSION = '3.0.0'; irm https://cli.dailybot.com/install.ps1 | iex
 
-# minimum floor — installs 1.19.1 or the newest release above it
-$env:DAILYBOT_VERSION = '>=1.19.1'; irm https://cli.dailybot.com/install.ps1 | iex
+# minimum floor — installs 3.0.0 or the newest release above it
+$env:DAILYBOT_VERSION = '>=3.0.0'; irm https://cli.dailybot.com/install.ps1 | iex
 ```
 
 Requires Python 3.10+ on PATH. Wraps `pipx` / `uv tool` / `pip --user`.
