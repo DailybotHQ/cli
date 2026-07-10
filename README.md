@@ -4,6 +4,25 @@ The command-line bridge between **humans** and **agents**. [Dailybot](https://ww
 
 > 🤖 **Using an AI coding agent?** The CLI is even better paired with the **[Dailybot agent skill](https://github.com/DailybotHQ/agent-skill)** — a playbook that teaches Claude Code, Cursor, Codex, Gemini, and Copilot *when* and *how* to use these commands (report progress, complete check-ins, run and **author** forms & check-ins, give kudos, send chat messages). Install it with `npx skills add DailybotHQ/agent-skill`. See [For agents → pair with the agent skill](#pair-with-the-dailybot-agent-skill).
 
+## Upgrading to 2.0 (breaking changes)
+
+**2.0** completes the CLI's parity with the public Dailybot API. It is a **major**
+release because two consumer-visible contracts changed:
+
+- **List output is now a paginated envelope.** Every list command paginates
+  (`--all`, `--page`, `--page-size`, `--limit`), searches (`--search`/`--grep`), and
+  filters by date (`--since`/`--until`/`--date`/`--today`/`--last-week`), and prints a
+  `Showing X of N` footer. `--json` still emits the list of items, so most scripts are
+  unaffected; anything that parsed a *bare array* from an internal endpoint should read
+  the `results` field of the envelope instead.
+- **Errors are machine-readable.** Failures now carry a stable `code` and render
+  friendly, actionable messages (plan/permission/validation), instead of raw JSON.
+
+New in 2.0: `dailybot me` / `org` / `user get`, `kudos list` / `org` / `wall-of-fame`,
+the read-only `workflow list` / `get`, `chat send --send-as-user` / `--send-as-me`, and
+uniform API-key ↔ Bearer auth on every endpoint (except `logout`, which stays
+Bearer-only). See the [API reference](docs/API_REFERENCE.md) for the full surface.
+
 ## Installation
 
 ```bash
