@@ -363,5 +363,7 @@ class TestSendAsUser:
     def test_org_admin_required_message(self) -> None:
         from dailybot_cli.commands.public_api_helpers import ERROR_CODE_MESSAGES
 
-        assert "admins" in ERROR_CODE_MESSAGES["org_admin_required"].lower()
+        # Now fires on every admin-only endpoint, so the shared message is generic
+        # (chat send overrides it with the --send-as-user hint at the call site).
+        assert "admin" in ERROR_CODE_MESSAGES["org_admin_required"].lower()
         assert "send_as_user_not_found" in ERROR_CODE_MESSAGES

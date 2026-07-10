@@ -291,7 +291,7 @@ The POST `/v1/kudos/` payload uses a single `receivers` list of UUIDs (users and
 
 Self-kudos via `--to` is rejected client-side (exit code 4). Ambiguous name matches return exit code 2.
 
-#### `dailybot kudos list [--filter KUDOS_RECEIVED|KUDOS_GIVEN] [--json]`
+#### `dailybot kudos list [--filter received|given] [--json]`
 
 Lists kudos the caller received or gave via `GET /v1/kudos/`. `--filter` selects the direction (received vs. given). Accepts the [shared list query flags](#shared-list-query-flags) (pagination, `--search`/`--grep`, and the date filters).
 
@@ -625,7 +625,7 @@ key, so all of these commands work with `DAILYBOT_API_KEY` set even without
 | `GET` | `/v1/teams/<uuid>/` | — | `{ uuid, name, active, ... }` | Same scoping |
 | `GET` | `/v1/teams/<uuid>/members/` | — | `[{ uuid, full_name, email }]` | Members of a team the caller can see |
 | `POST` | `/v1/kudos/` | `{ content, receivers: [...uuid], users_receivers?: [...], teams_receivers?: [...], company_value? }` | `{ uuid }` | `receivers` = users+teams merged (validation); `users_receivers`/`teams_receivers` drive team expansion. Payload contract is being reconciled server-side — see the integration prompt. 406 = daily limit |
-| `GET` | `/v1/kudos/` | `?filter=KUDOS_RECEIVED\|KUDOS_GIVEN`, shared list params (all optional) | `{ count, next, previous, results }` | `kudos list` |
+| `GET` | `/v1/kudos/` | `?filter=kudos_received\|kudos_given` (the CLI accepts `received`/`given` and the `KUDOS_*` forms and normalizes them), shared list params (all optional) | `{ count, next, previous, results }` | `kudos list` |
 | `GET` | `/v1/kudos/organization/` | list flags | `{count, next, previous, results}` | `kudos org`; admin-only (Bearer or X-API-KEY) |
 | `GET` | `/v1/kudos/wall-of-fame/` | `?limit` (optional) | `{ count, next, previous, results }` | `kudos wall-of-fame` |
 | `GET` | `/v1/workflows/` | shared list params (all optional) | `{ count, next, previous, results }` | `workflow list`; plan-gated (403 `plan_upgrade_required`) |

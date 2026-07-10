@@ -246,9 +246,15 @@ ERROR_CODE_MESSAGES: dict[str, str] = {
         "You've reached today's free-plan limit for this action. Wait for it to reset "
         "or upgrade your plan."
     ),
-    # send-message: send_as_user identity (chat send)
+    # Returned by every admin-only endpoint (kudos org, webhooks, team member
+    # management, followup create, chat send-as-user). Keep it generic — a
+    # command with a more specific hint overrides it (see chat send).
     "org_admin_required": (
-        "Only organization admins can send a message as another user (--send-as-user)."
+        "This action requires organization admin privileges. Run it with an admin "
+        "account, or set an org admin's API key with `dailybot config key=<API_KEY>`."
+    ),
+    "invalid_kudos_filter": (
+        "Invalid --filter. Use `received` or `given` (KUDOS_RECEIVED / KUDOS_GIVEN also accepted)."
     ),
     "send_as_user_conflict": (
         "--send-as-user can't be combined with --bot-name / --bot-icon-url / --bot-icon-emoji."
