@@ -632,7 +632,7 @@ The public URL `https://cli.dailybot.com/install.sh` is a **Cloudflare 301 redir
 
 **Implication:** any change to `install.sh` merged into `main` is live within ~5 minutes (the upper bound for GitHub's `raw.githubusercontent.com` cache). New installations triggered by `curl -fsSL https://cli.dailybot.com/install.sh | bash` execute the latest committed version automatically.
 
-**Be deliberate** when editing `install.sh` — there is no staging step between merge and rollout. Test the script locally (`bash install.sh` from a checkout, or `curl -sSL https://raw.githubusercontent.com/DailyBotHQ/cli/<branch>/install.sh | bash` on a feature branch) before merging.
+**Be deliberate** when editing `install.sh` — there is no staging step between merge and rollout. Test the script locally (`bash install.sh` from a checkout, or `curl -fsSL https://raw.githubusercontent.com/DailyBotHQ/cli/<branch>/install.sh | bash` on a feature branch) before merging.
 
 ### Pinning a specific version
 

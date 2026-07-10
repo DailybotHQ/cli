@@ -146,6 +146,6 @@ If you're unsure about:
 - Whether to bump the version (probably no — leave it for the release manager)
 - Whether to push to a new branch or commit to main (depends on the user's workflow)
 - Whether to publish to PyPI (only with explicit approval — it's irreversible)
-- Whether to update `install.sh` — `cli.dailybot.com/install.sh` redirects to `main` on GitHub, so any merge ships to all new installs within ~5 minutes. Be deliberate; test on a branch first via `curl -sSL https://raw.githubusercontent.com/DailyBotHQ/cli/<branch>/install.sh | bash`.
+- Whether to update `install.sh` — `cli.dailybot.com/install.sh` redirects to `main` on GitHub, so any merge ships to all new installs within ~5 minutes. Be deliberate; test on a branch first via `curl -fsSL https://raw.githubusercontent.com/DailyBotHQ/cli/<branch>/install.sh | bash`.
 
 **Ask, don't assume.** Releases are particularly unforgiving (see [RELEASE_AND_DISTRIBUTION.md](RELEASE_AND_DISTRIBUTION.md)).
