@@ -4,30 +4,6 @@ The command-line bridge between **humans** and **agents**. [Dailybot](https://ww
 
 > 🤖 **Using an AI coding agent?** The CLI is even better paired with the **[Dailybot agent skill](https://github.com/DailybotHQ/agent-skill)** — a playbook that teaches Claude Code, Cursor, Codex, Gemini, and Copilot *when* and *how* to use these commands (report progress, complete check-ins, run and **author** forms & check-ins, give kudos, send chat messages). Install it with `npx skills add DailybotHQ/agent-skill`. See [For agents → pair with the agent skill](#pair-with-the-dailybot-agent-skill).
 
-## Upgrading to 3.0
-
-**3.0 aligns the CLI's major version with the [Dailybot agent skill pack](https://github.com/DailybotHQ/agent-skill) (3.x)**,
-so the two ship as a matched pair — a CLI `3.x` and a skill pack `3.x` always
-understand the same API surface. **There is no functional breaking change between
-2.x and 3.0**; if you are already on 2.x, upgrading is a drop-in.
-
-### Coming from 1.x? The breaking changes landed in 2.0
-
-- **List output is a paginated envelope.** Every list command paginates
-  (`--all`, `--page`, `--page-size`, `--limit`), searches (`--search`/`--grep`), and
-  filters by date (`--since`/`--until`/`--date`/`--today`/`--last-week`), and prints a
-  `Showing X of N` footer. `--json` still emits the list of items, so most scripts are
-  unaffected; anything that parsed a *bare array* from an internal endpoint should read
-  the `results` field of the envelope instead.
-- **Errors are machine-readable.** Failures carry a stable `code` and render friendly,
-  actionable messages (plan/permission/validation), instead of raw JSON.
-
-Also added in the 2.x line: `dailybot me` / `org` / `user get`, `kudos list` / `org` /
-`wall-of-fame`, the read-only `workflow list` / `get`, `chat send --send-as-user` /
-`--send-as-me`, and uniform API-key ↔ Bearer auth on every endpoint (except `logout`,
-which stays Bearer-only). See the [API reference](docs/API_REFERENCE.md) for the full
-surface.
-
 ## Installation
 
 ```bash
@@ -71,7 +47,7 @@ pip install dailybot-cli==3.0.0
 **Linux, WSL2, or Git Bash on Windows (binary or pip fallback)**
 
 ```bash
-curl -sSL https://cli.dailybot.com/install.sh | bash
+curl -fsSL https://cli.dailybot.com/install.sh | bash
 ```
 
 Pin a version with the `DAILYBOT_VERSION` environment variable **or** the
@@ -80,19 +56,25 @@ accepts an exact version or a `>=` minimum floor:
 
 ```bash
 # exact version, environment variable
-curl -sSL https://cli.dailybot.com/install.sh | DAILYBOT_VERSION=3.0.0 bash
+curl -fsSL https://cli.dailybot.com/install.sh | DAILYBOT_VERSION=3.0.0 bash
 
 # exact version, equivalent flag (note the `-s --` that forwards args through bash)
-curl -sSL https://cli.dailybot.com/install.sh | bash -s -- --version 3.0.0
+curl -fsSL https://cli.dailybot.com/install.sh | bash -s -- --version 3.0.0
 
 # minimum floor — installs 3.0.0 or the newest release above it
-curl -sSL https://cli.dailybot.com/install.sh | DAILYBOT_VERSION='>=3.0.0' bash
+curl -fsSL https://cli.dailybot.com/install.sh | DAILYBOT_VERSION='>=3.0.0' bash
 ```
 
 An exact pin installs the matching Linux binary when one exists, otherwise falls
 back to `pip install dailybot-cli==<version>`. A `>=` floor installs the latest
 binary when it satisfies the floor, otherwise falls back to
 `pip install "dailybot-cli>=<version>"`.
+
+> **Why `curl -f`?** Without `-f`, an HTTP error (404/500) makes curl print the error
+> page **with exit status 0**, and `bash` would happily execute it. `-f` turns that into
+> a non-zero exit instead. Running this in a script, CI job, or Dockerfile? Add
+> `set -o pipefail` too — otherwise a failing `curl` still leaves the pipeline's exit
+> status at `bash`'s `0` and the install silently does nothing.
 
 **Native Windows PowerShell** (only if you don't have WSL2 or Git Bash)
 

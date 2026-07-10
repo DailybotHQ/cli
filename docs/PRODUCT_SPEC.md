@@ -96,7 +96,7 @@ For **standalone agent registration**, no authentication is required — agents 
 | **PyPI** (`pip install dailybot-cli`) | Python users, CI | Push `v*` git tag |
 | **Homebrew tap** (`brew install dailybothq/tap/dailybot`) | macOS users | Push `v*` git tag (after PyPI propagation) |
 | **Linux x86_64 binary** (GitHub Releases) | Linux users without Python | Push `v*` git tag (built with PyInstaller in a glibc 2.31 container for broad compat) |
-| **Curl installer** (`curl -sSL https://cli.dailybot.com/install.sh | bash`) | First-time installs | Always serves latest; routes to `brew` (macOS), binary (Linux x86_64), or `pipx`/`uv`/`pip` fallback |
+| **Curl installer** (`curl -fsSL https://cli.dailybot.com/install.sh | bash`) | First-time installs | Always serves latest; routes to `brew` (macOS), binary (Linux x86_64), or `pipx`/`uv`/`pip` fallback |
 
 ## Non-Goals
 

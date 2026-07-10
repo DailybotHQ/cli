@@ -4,7 +4,7 @@ The CLI ships through three channels:
 
 1. **PyPI** — Python users, CI pipelines (`pip install dailybot-cli`)
 2. **Homebrew tap** — macOS users (`brew install dailybothq/tap/dailybot`)
-3. **Linux x86_64 binary** — distros without a recent Python (`curl -sSL https://cli.dailybot.com/install.sh | bash`)
+3. **Linux x86_64 binary** — distros without a recent Python (`curl -fsSL https://cli.dailybot.com/install.sh | bash`)
 4. **Windows PowerShell installer** — `install.ps1` for native Windows users (`irm https://cli.dailybot.com/install.ps1 | iex`). The script wraps `pipx` / `uv tool` / `pip --user` over a host-side Python 3.10+; there is no Windows `.exe` build today (WSL2 / Git Bash users can use `install.sh` instead).
 
 There are **three supported release flows**, in order of preference:
@@ -630,7 +630,7 @@ dailybot --version
 
 The public URL `https://cli.dailybot.com/install.sh` is a **Cloudflare 301 redirect** to `https://raw.githubusercontent.com/DailyBotHQ/cli/main/install.sh`. There is no separate CDN copy to deploy.
 
-**Implication:** any change to `install.sh` merged into `main` is live within ~5 minutes (the upper bound for GitHub's `raw.githubusercontent.com` cache). New installations triggered by `curl -sSL https://cli.dailybot.com/install.sh | bash` execute the latest committed version automatically.
+**Implication:** any change to `install.sh` merged into `main` is live within ~5 minutes (the upper bound for GitHub's `raw.githubusercontent.com` cache). New installations triggered by `curl -fsSL https://cli.dailybot.com/install.sh | bash` execute the latest committed version automatically.
 
 **Be deliberate** when editing `install.sh` — there is no staging step between merge and rollout. Test the script locally (`bash install.sh` from a checkout, or `curl -sSL https://raw.githubusercontent.com/DailyBotHQ/cli/<branch>/install.sh | bash` on a feature branch) before merging.
 
@@ -652,8 +652,8 @@ Both installers default to the **latest** release but accept an explicit version
 Consumers like [`DailyBotHQ/agent-skill`](https://github.com/DailyBotHQ/agent-skill) verify `install.sh` against a SHA-256 sidecar before executing it:
 
 ```bash
-curl -sSL https://cli.dailybot.com/install.sh        -o /tmp/install.sh
-curl -sSL https://cli.dailybot.com/install.sh.sha256 -o /tmp/install.sh.sha256
+curl -fsSL https://cli.dailybot.com/install.sh        -o /tmp/install.sh
+curl -fsSL https://cli.dailybot.com/install.sh.sha256 -o /tmp/install.sh.sha256
 ( cd /tmp && shasum -a 256 -c install.sh.sha256 ) || {
   echo "Refusing to run unverified install.sh" >&2
   exit 1
