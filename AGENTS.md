@@ -525,7 +525,7 @@ When invoked: look up in `.agents/docs/skills_agents_catalog.md`, READ the proce
 
 ## Working with Deep Work Plans (DWP)
 
-For any non-trivial change (more than ~3 files, more than one logical step, anything spanning auth + API client + commands + docs, anything you'd otherwise want a TodoList for), **drive the work through a Deep Work Plan** instead of free-form coding. The repo ships the [DWP skill pack](.agents/skills/deepworkplan/) (vendored at v2.15.0) and the matching `dwp-*` slash commands.
+For any non-trivial change (more than ~3 files, more than one logical step, anything spanning auth + API client + commands + docs, anything you'd otherwise want a TodoList for), **drive the work through a Deep Work Plan** instead of free-form coding. The repo ships the [DWP skill pack](.agents/skills/deepworkplan/) (vendored at v2.16.0) and the matching `dwp-*` slash commands.
 
 ### The loop
 
