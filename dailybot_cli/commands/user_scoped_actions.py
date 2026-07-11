@@ -500,6 +500,7 @@ def execute_form_list(
     *,
     json_mode: bool = False,
     include_archived: bool = False,
+    owner: str | None = None,
     spec: QuerySpec | None = None,
 ) -> list[dict[str, Any]] | None:
     """Fetch and display forms visible to the user (with question counts)."""
@@ -511,6 +512,7 @@ def execute_form_list(
             forms: list[dict[str, Any]] = client.list_forms(
                 include_questions=True,
                 include_archived=include_archived,
+                owner=owner,
                 search=query.params.get("search"),
                 start_date=query.params.get("start_date"),
                 end_date=query.params.get("end_date"),

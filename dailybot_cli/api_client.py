@@ -795,6 +795,7 @@ class DailyBotClient:
         *,
         include_questions: bool = False,
         include_archived: bool = False,
+        owner: str | None = None,
         search: str | None = None,
         start_date: str | None = None,
         end_date: str | None = None,
@@ -806,6 +807,9 @@ class DailyBotClient:
     ) -> list[dict[str, Any]]:
         """GET /v1/forms/ — optionally expand questions, search, and page.
 
+        The default response is org-scoped (every form the caller can see on the
+        webapp list view). Pass ``owner="me"`` to narrow to the caller's own forms.
+
         When ``meta`` is given it is populated with ``count`` / ``next`` for a
         pagination footer.
         """
@@ -814,6 +818,8 @@ class DailyBotClient:
             params["include"] = "questions"
         if include_archived:
             params["include_archived"] = "true"
+        if owner:
+            params["owner"] = owner
         _merge_list_query(params, search=search, start_date=start_date, end_date=end_date)
         result: PaginatedResult = self._paginated_get(
             f"{self.api_url}/v1/forms/",
@@ -1488,6 +1494,26 @@ class DailyBotClient:
         response: httpx.Response = httpx.post(
             f"{self.api_url}/v1/send-message/",
             json=payload,
+            headers=self._agent_headers(),
+            timeout=self.timeout,
+        )
+        return self._handle_response(response)
+
+    def open_conversation(self, users_uuids: list[str]) -> dict[str, Any]:
+        """POST /v1/open-conversation/ — open (or fetch) a Slack group DM (MPIM).
+
+        Opens a private Slack group conversation that includes the given org
+        users plus the Dailybot bot (Slack adds the bot because the call uses the
+        org's bot token). The call is idempotent: the same set of users returns
+        the same channel if it already exists.
+
+        Slack-only and org-admin-only, both server-enforced. Authenticated via
+        the shared agent header logic (``X-API-KEY`` preferred, else the login
+        Bearer token). Returns ``{"channel": "<slack-conversation-id>"}``.
+        """
+        response: httpx.Response = httpx.post(
+            f"{self.api_url}/v1/open-conversation/",
+            json={"users_uuids": users_uuids},
             headers=self._agent_headers(),
             timeout=self.timeout,
         )

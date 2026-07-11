@@ -1352,3 +1352,19 @@ class TestQueryFlagsWiring:
         result = CliRunner().invoke(cli, ["form", "list", "--all", "--limit", "3"])
         assert result.exit_code != 0
         assert "--all" in result.output and "--limit" in result.output
+
+    @patch("dailybot_cli.commands.public_api_helpers.get_agent_auth", return_value="tok")
+    def test_form_list_mine_passes_owner_me(self, _auth: MagicMock) -> None:
+        page = self._envelope([{"id": "f1", "name": "Mine"}], None, 1)
+        with patch("dailybot_cli.api_client.httpx.get", return_value=page) as mock_get:
+            result = CliRunner().invoke(cli, ["form", "list", "--mine"])
+        assert result.exit_code == 0
+        assert mock_get.call_args[1]["params"]["owner"] == "me"
+
+    @patch("dailybot_cli.commands.public_api_helpers.get_agent_auth", return_value="tok")
+    def test_form_list_default_omits_owner(self, _auth: MagicMock) -> None:
+        page = self._envelope([{"id": "f1", "name": "A"}], None, 1)
+        with patch("dailybot_cli.api_client.httpx.get", return_value=page) as mock_get:
+            result = CliRunner().invoke(cli, ["form", "list"])
+        assert result.exit_code == 0
+        assert "owner" not in mock_get.call_args[1]["params"]

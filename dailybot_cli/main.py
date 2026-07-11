@@ -12,6 +12,7 @@ from dailybot_cli.commands.channels import channels
 from dailybot_cli.commands.chat import chat
 from dailybot_cli.commands.checkin import checkin
 from dailybot_cli.commands.config import config
+from dailybot_cli.commands.conversation import conversation
 from dailybot_cli.commands.form import form
 from dailybot_cli.commands.hook import hook
 from dailybot_cli.commands.identity import me, org
@@ -86,6 +87,7 @@ cli.add_command(org)
 cli.add_command(workflow)
 cli.add_command(agent)
 cli.add_command(chat)
+cli.add_command(conversation)
 cli.add_command(ask)
 cli.add_command(interactive)
 cli.add_command(config)

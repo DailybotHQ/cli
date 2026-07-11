@@ -188,10 +188,16 @@ def form() -> None:
     is_flag=True,
     help="Include archived forms (hidden by default).",
 )
+@click.option(
+    "--mine",
+    is_flag=True,
+    help="Only forms you own (default lists every form you can see in the org).",
+)
 @query_options
 @click.option("--json", "json_mode", is_flag=True, help="Emit machine-readable JSON to stdout.")
 def form_list(
     include_archived: bool,
+    mine: bool,
     json_mode: bool,
     page: int | None,
     page_size: int | None,
@@ -207,12 +213,15 @@ def form_list(
     """List forms visible to you.
 
     \b
-    Acts as you. You can only see and act on what you could in the webapp.
+    Acts as you. You can only see and act on what you could in the webapp:
+    by default this is every form in your org you have list-view access to.
+    Pass --mine to narrow to only the forms you own.
     Archived forms are hidden unless you pass --include-archived.
 
     \b
     Examples:
       dailybot form list
+      dailybot form list --mine
       dailybot form list --search retro --since 2026-07-01
       dailybot form list --all
       dailybot form list --json
@@ -235,7 +244,13 @@ def form_list(
         print_error(str(exc))
         raise SystemExit(1)
     client = require_auth()
-    execute_form_list(client, json_mode=json_mode, include_archived=include_archived, spec=spec)
+    execute_form_list(
+        client,
+        json_mode=json_mode,
+        include_archived=include_archived,
+        owner="me" if mine else None,
+        spec=spec,
+    )
 
 
 @form.command("get")

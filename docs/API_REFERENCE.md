@@ -190,9 +190,9 @@ Every `/v1` list endpoint returns the envelope unconditionally; no opt-in parame
 
 ### `dailybot form` (group) — user-scoped, Bearer or API key auth
 
-#### `dailybot form list [--json]`
+#### `dailybot form list [--mine] [--json]`
 
-Lists forms visible to the user. Calls `GET /v1/forms/?include=questions` to include question definitions. Accepts the [shared list query flags](#shared-list-query-flags).
+Lists forms visible to the user. Calls `GET /v1/forms/?include=questions` to include question definitions. The default is **org-scoped** — every form the caller can see on the webapp list view (org admins see all; members see forms flagged for the list view plus their own). `--mine` passes `owner=me` to narrow the result to only the caller's own forms. Accepts the [shared list query flags](#shared-list-query-flags).
 
 #### `dailybot form get <form_uuid> [--json]`
 
@@ -530,6 +530,32 @@ scoped/throttled this way.
 
 ---
 
+### `dailybot conversation open [-u ...] [-e ...] [-m MESSAGE] [--json]`
+
+Opens (or fetches) a private **Slack group DM** (MPIM) that includes the
+Dailybot bot plus the named participants, via `POST /v1/open-conversation/`
+(`{ "users_uuids": [...] }` → `{ "channel": "<id>" }`). **Slack only** and
+**org-admin only**, both server-enforced; authenticates with `X-API-KEY` or the
+login **Bearer** token (API key preferred, same header logic as `chat send`).
+The call is **idempotent** — the same set of users returns the same channel.
+
+- `--user` / `-u` (alias `--users`) — participant by **UUID, email, or name**;
+  repeatable and comma-separated. Non-UUID identifiers are resolved client-side
+  via `GET /v1/users/`.
+- `--email` / `-e` (alias `--emails`) — participant by email; repeatable and
+  comma-separated. Convenience alias for the email path.
+- `--message` / `-m` — optional; when present, chains a `POST /v1/send-message/`
+  with `target_channels: [{ id: <channel>, channel_type: "group_chat" }]` to
+  post to the freshly opened group.
+- `--json` — emit `{ channel, participants: [{uuid, name}], message_sent }`.
+
+Errors are mapped to clear messages: `406 open_conversation_not_supported` →
+"Slack only"; `403` → "requires org admin"; `400 one_or_more_users_not_found` /
+`no_valid_users`; `409 conversation_can_not_be_opened` → a participant may be
+deactivated on Slack.
+
+---
+
 ### `dailybot hook <subcommand>` (local-only — no HTTP)
 
 Lifecycle commands for agent harness hooks. They read/write only the local
@@ -644,6 +670,7 @@ key, so all of these commands work with `DAILYBOT_API_KEY` set even without
 | `POST` | `/v1/agent-messages/` | `{ agent_name, content, message_type?, metadata?, expires_at?, sender_type?, sender_name? }` | `{ id, agent_name, sender_name, sender_type, message_type, content }` | |
 | `GET` | `/v1/agent-messages/?agent_name=...&delivered=true|false` | — | `[{ id, message_type, sender_type, sender_name, content, delivered, created_at }]` | Returns a bare array, not a wrapped object |
 | `POST` | `/v1/send-message/` | `{ message?/messages?, image_url?, buttons?, thread_responses?, target_users?/target_channels?/target_teams?, platform_settings?, metadata?, skip_users_on_time_off?, send_as_user?, bot_message_id? }` | `{ bot_message_id, thread_responses?: [ids] }` | **X-API-KEY or Bearer** (login, role-scoped); ≥1 target; `thread_responses` posts replies in the parent thread (≤10); `send_as_user` (Slack, admin-only) posts with that user's identity; `bot_message_id` in → edits that message (parent or reply) |
+| `POST` | `/v1/open-conversation/` | `{ users_uuids: [uuid, ...] }` | `{ channel }` | **X-API-KEY or Bearer**; **Slack only** (`406 open_conversation_not_supported` otherwise), **org-admin only** (`403`); idempotent (same users → same channel); `dailybot conversation open` |
 | `PATCH` | `/v1/agent-messages/read/` | `{ message_ids: [...] }` | `{ updated }` | |
 
 ### Standalone Agent Registration (no auth)
