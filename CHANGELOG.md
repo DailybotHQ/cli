@@ -9,6 +9,14 @@ Do not edit it by hand — your edits will be overwritten on the next release.
 
 <!-- version list -->
 
+## v3.2.1 (2026-07-11)
+
+### Documentation
+
+- **skill**: Sync vendored skill pack to v3.4.0 and pin dev container to CLI >= 3.2.0
+  ([`d8d3bc4`](https://github.com/DailybotHQ/cli/commit/d8d3bc4c29afe4c997391fa6f374461efbbf5164))
+
+
 ## v3.2.0 (2026-07-11)
 
 ### Features
