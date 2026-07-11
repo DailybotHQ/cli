@@ -9,6 +9,14 @@ Do not edit it by hand — your edits will be overwritten on the next release.
 
 <!-- version list -->
 
+## v3.2.0 (2026-07-11)
+
+### Features
+
+- **cli**: Org-scoped form list (--mine) and Slack group DM support (conversation open)
+  ([`e8b4d06`](https://github.com/DailybotHQ/cli/commit/e8b4d0604f78e8b2cfb1de04d8825336ad88d179))
+
+
 ## v3.1.3 (2026-07-10)
 
 ### Documentation
