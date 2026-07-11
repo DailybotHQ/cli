@@ -1,7 +1,7 @@
 ---
 name: dailybot-chat
 description: Send and edit Dailybot bot messages on the team's connected chat platform (Slack, Microsoft Teams, Discord, Google Chat) — to user DMs, channels, or whole teams. Supports report-style threads (one headline + replies, in one call) and editing the parent or any reply afterward. Use when the developer says "send a message to my Slack channel", "ping the team in chat", "post the deploy report to #releases", or wants to update a previously sent bot message. Works headless for agents.
-version: "3.3.0"
+version: "3.4.0"
 documentation_url: https://www.dailybot.com/skill.md
 user-invocable: true
 metadata: {"openclaw":{"emoji":"💬","homepage":"https://dailybot.com","requires":{"anyBins":["dailybot","curl"]},"primaryEnv":"DAILYBOT_API_KEY","install":[{"id":"cli-install-script","kind":"download","url":"https://cli.dailybot.com/install.sh","label":"Install Dailybot CLI (official script — preferred on Linux/macOS)"},{"id":"pip","kind":"pip","package":"dailybot-cli","bins":["dailybot"],"label":"Install Dailybot CLI via pip (fallback if binary fails)"}]}}
@@ -46,6 +46,13 @@ Trigger phrases the agent should recognize:
 - "change the second thread reply to say rolled back"
 
 **Do not** send chat messages autonomously without the developer's explicit request — chat messages are visible to other people and carry the developer's own identity (with a login session) or the bot identity (with an API key). Always confirm before sending unless the developer pre-approved a flow (`--yes`-style intent).
+
+> **Need to create a Slack group of people first?** This sub-skill posts to an
+> *already-known* target (channel id, DM, or team). To **open (or reuse) a Slack
+> group DM with specific teammates + the bot** and get its channel id, use
+> [`../conversation/SKILL.md`](../conversation/SKILL.md) (`dailybot conversation
+> open`) — then come back here with `--channel <id> --channel-type group_chat` for
+> any richer follow-up (threads, buttons, custom identity).
 
 ---
 

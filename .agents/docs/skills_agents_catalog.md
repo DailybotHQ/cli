@@ -32,6 +32,7 @@ The full pack lives under [`.agents/skills/dailybot/`](../skills/dailybot/) (rou
 | `dailybot-forms` | [`skills/dailybot/forms/SKILL.md`](../skills/dailybot/forms/SKILL.md) | Listing/submitting/updating/transitioning responses + authoring (create/config/archive + questions, CLI ≥ 1.17.0) |
 | `dailybot-channels` | [`skills/dailybot/channels/SKILL.md`](../skills/dailybot/channels/SKILL.md) | Discovering report-channel UUIDs for `--report-channel` (CLI ≥ 1.17.0) |
 | `dailybot-chat` | [`skills/dailybot/chat/SKILL.md`](../skills/dailybot/chat/SKILL.md) | Sending / editing Dailybot bot messages on Slack / Teams / Discord / Google Chat (DMs, channels, teams; report-style threads; in-place edits; `--send-as-user`/`--send-as-me` identity, CLI ≥ 2.0.0). Requires `dailybot-cli >= 1.13.0` |
+| `dailybot-conversation` | [`skills/dailybot/conversation/SKILL.md`](../skills/dailybot/conversation/SKILL.md) | Opening (or idempotently reusing) a Slack group DM with the bot + named teammates, then optionally posting a report (`conversation open -u … -m …`; Slack only, org-admin only). Requires `dailybot-cli >= 3.2.0` |
 | `dailybot-ask` | [`skills/dailybot/ask/SKILL.md`](../skills/dailybot/ask/SKILL.md) | Asking the Dailybot AI a one-shot, headless question. Requires `dailybot-cli >= 1.15.0` |
 | `dailybot-workflow` | [`skills/dailybot/workflow/SKILL.md`](../skills/dailybot/workflow/SKILL.md) | Reading the org's workflows — `workflow list` / `workflow get` (read-only; plan-gated). Requires `dailybot-cli >= 2.0.0` |
 
@@ -82,6 +83,7 @@ Persona definitions. Use these as the system prompt / role when spawning a sub-a
 | Create a new repo-specific skill or persona | `/skill-create` or `/agent-create` | (any) |
 | Report what you just shipped | `dailybot-report` | (any) |
 | Send a Slack/Teams/Discord/Google Chat message (DM, channel, team; report-style threads) | `dailybot-chat` | (any) |
+| Open (or reuse) a Slack group DM with the bot + teammates and post a report | `dailybot-conversation` | (any) |
 | Recognize a teammate or a whole team | `dailybot-kudos` | (any) |
 | Complete a pending check-in / standup | `dailybot-checkin` | (any) |
 | Create / configure a check-in or form (author) | `dailybot-checkin` / `dailybot-forms` | (any) |
