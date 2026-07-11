@@ -406,6 +406,27 @@ def print_chat_message_result(data: dict[str, Any], *, updated: bool = False) ->
     console.print(Panel(table, title=f"[bold]{title}[/bold]", border_style="green"))
 
 
+def print_conversation_result(
+    channel: str,
+    participants: list[tuple[str, str]],
+    *,
+    message_sent: bool = False,
+) -> None:
+    """Display the opened Slack group conversation and its participants.
+
+    ``participants`` is a list of ``(uuid, display_name)`` pairs. ``message_sent``
+    flags whether a message was posted to the group right after opening it.
+    """
+    table: Table = Table(show_header=False, box=None, padding=(0, 2))
+    table.add_column(style="bold cyan", no_wrap=True)
+    table.add_column()
+    table.add_row("Channel", channel)
+    table.add_row("Participants", ", ".join(name for _uuid, name in participants) or "[dim]—[/dim]")
+    if message_sent:
+        table.add_row("Message", "Sent to the group")
+    console.print(Panel(table, title="[bold]Group Conversation[/bold]", border_style="green"))
+
+
 def print_agent_report_result(result: dict[str, Any]) -> None:
     """Display the result of submitting an agent activity report.
 

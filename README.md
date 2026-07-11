@@ -838,7 +838,7 @@ Replies to agent emails land as messages retrievable via `dailybot agent message
 
 | Command | Description |
 |---------|-------------|
-| `dailybot form list` | List forms visible to you (includes question count) |
+| `dailybot form list` | List every form in your org you can see (includes question count); `--mine` narrows to forms you own |
 | `dailybot form get <uuid>` | Show the form's full payload (questions + workflow states) |
 | `dailybot form submit <uuid>` | Submit a form (guided prompts or `--content` JSON) |
 | `dailybot form responses <uuid>` | List your own responses on a form (`--state`, `--latest`) |
@@ -884,6 +884,7 @@ Works headless for agents (`--json` prints the `bot_message_id`).
 |---------|-------------|
 | `dailybot chat send` | Send a bot message to users (`-u`), channels (`-c`), and/or teams (`-t`) |
 | `dailybot chat update <bot_message_id>` | Edit a previously sent message (parent **or** a thread reply) |
+| `dailybot conversation open` | Open (or reuse) a Slack group DM with the bot; optionally post a message (`-m`) |
 
 ```bash
 # To a channel
@@ -944,6 +945,35 @@ to what your role can reach in your org (teammates, public channels, teams you
 belong to); an org API key (`dailybot config key=...`) is org-wide. A target
 outside your role's reach returns a clear error, as does the per-token CLI rate
 limit.
+
+### Conversation commands (Slack group DMs)
+
+| Command | Description |
+|---------|-------------|
+| `dailybot conversation open` | Open (or fetch) a Slack group DM that includes the Dailybot bot, and optionally post a message to it |
+
+```bash
+# Open a group DM with two teammates (by UUID) — prints the channel id
+dailybot conversation open -u <uuid1> -u <uuid2>
+
+# Name or email work too (resolved via the org directory)
+dailybot conversation open -u "Mauricio Gomez"
+dailybot conversation open --emails ana@co.com,luis@co.com
+
+# Open the group and immediately post a report in one call
+dailybot conversation open -u "Mauricio Gomez" \
+  -m "Report on the latest analysis — see thread for details."
+
+# Headless: capture the channel id for scripting
+CH=$(dailybot conversation open -u <uuid1> -u <uuid2> --json | jq -r .channel)
+```
+
+**Slack only, org-admin only.** Opening is **idempotent** — the same set of
+participants always returns the same channel, so "open it, or reuse the existing
+one" is a single call. The Dailybot bot is added automatically. Non-Slack orgs
+get a clear "Slack only" message; non-admins get a permissions error. The
+optional `-m/--message` chains a `group_chat` send to the returned channel (the
+same delivery path as `chat send`).
 
 ### Agent commands
 
