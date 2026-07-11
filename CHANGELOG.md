@@ -9,6 +9,20 @@ Do not edit it by hand — your edits will be overwritten on the next release.
 
 <!-- version list -->
 
+## v3.2.2 (2026-07-11)
+
+### Chores
+
+- **ci**: Pin dev-container CLI floor to >=3.2.1 ([#58](https://github.com/DailybotHQ/cli/pull/58),
+  [`844d37a`](https://github.com/DailybotHQ/cli/commit/844d37a1b09708d059b034a9114bbfefea80547d))
+
+### Documentation
+
+- **skill**: Sync vendored DeepWorkPlan skill to v2.16.0
+  ([#59](https://github.com/DailybotHQ/cli/pull/59),
+  [`df089ba`](https://github.com/DailybotHQ/cli/commit/df089ba6810d6bd74c4c3c0d0fcb52b77b9776c3))
+
+
 ## v3.2.1 (2026-07-11)
 
 ### Documentation
