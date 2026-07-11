@@ -102,7 +102,7 @@ Three operational properties make DWP a strong collaboration substrate:
 - **Plans are reviewable like code.** They are markdown files in the repo; a reviewer can read the plan before any execution starts.
 - **Validation gates are explicit.** Each task lists what "done" means before execution, so two agents can't disagree about completion criteria mid-stream.
 
-Full command catalog: [`.agents/docs/COMMANDS_REFERENCE.md`](../.agents/docs/COMMANDS_REFERENCE.md). The DWP skill pack lives at [`.agents/skills/deepworkplan/`](../.agents/skills/deepworkplan/) and is vendored at v2.15.0 — to upgrade, re-run `/deepworkplan-onboard`, which reconciles non-destructively.
+Full command catalog: [`.agents/docs/COMMANDS_REFERENCE.md`](../.agents/docs/COMMANDS_REFERENCE.md). The DWP skill pack lives at [`.agents/skills/deepworkplan/`](../.agents/skills/deepworkplan/) and is vendored at v2.16.0 — to upgrade, re-run `/deepworkplan-onboard`, which reconciles non-destructively.
 
 ## Handing Off Mid-Task
 
