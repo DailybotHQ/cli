@@ -59,7 +59,9 @@ def _check_auth() -> None:
 
 @click.command()
 @click.option("--auth", is_flag=True, default=False, help="Check authentication status.")
-@click.option("--json", "json_mode", is_flag=True, default=False, help="Emit machine-readable JSON to stdout.")
+@click.option(
+    "--json", "json_mode", is_flag=True, default=False, help="Emit machine-readable JSON to stdout."
+)
 def status(auth: bool, json_mode: bool) -> None:
     """Show pending check-ins for today.
 

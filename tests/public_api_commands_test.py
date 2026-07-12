@@ -1069,9 +1069,7 @@ class TestFormLifecycle:
             "state_history": [],
         }
 
-        result = runner.invoke(
-            cli, ["form", "transition", "f1", "r1", "Done", "--yes", "--json"]
-        )
+        result = runner.invoke(cli, ["form", "transition", "f1", "r1", "Done", "--yes", "--json"])
         assert result.exit_code == 0
         mock_client.transition_form_response.assert_called_once_with(
             form_uuid="f1",

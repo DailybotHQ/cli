@@ -730,7 +730,6 @@ class TestDailyBotClientAgent:
         assert "is_milestone" not in call_kwargs["json"]
         assert "co_authors" not in call_kwargs["json"]
 
-
     def test_get_agent_messages_paginated_envelope(self, client: DailyBotClient) -> None:
         """Regression: API returns {count, results} envelope — CORE-2260."""
         mock_response: MagicMock = MagicMock(spec=httpx.Response)
@@ -1411,7 +1410,10 @@ class TestSearchQueryValidation:
         mock_response: MagicMock = MagicMock(spec=httpx.Response)
         mock_response.status_code = 200
         mock_response.json.return_value = {
-            "count": 0, "next": None, "previous": None, "results": [],
+            "count": 0,
+            "next": None,
+            "previous": None,
+            "results": [],
         }
         with patch("httpx.get", return_value=mock_response):
             result: list[dict[str, Any]] = client.list_forms(search=query_at_limit)
