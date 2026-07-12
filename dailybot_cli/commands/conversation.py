@@ -26,6 +26,7 @@ from dailybot_cli.display import (
 )
 
 GROUP_CHAT_TYPE: str = "group_chat"
+MAX_CONVERSATION_PARTICIPANTS: int = 7  # Slack MPIM limit: 8 total, minus the bot
 
 
 def _split_identifiers(values: tuple[str, ...]) -> list[str]:
@@ -67,6 +68,11 @@ def _exit_for_conversation_error(exc: APIError, json_mode: bool) -> NoReturn:
         message = "One or more users were not found or aren't active in your organization."
     elif code == "no_valid_users":
         message = "The participant list contains invalid user UUIDs."
+    elif code == "conversation_too_many_participants":
+        message = (
+            f"Too many participants. Slack group DMs support at most "
+            f"{MAX_CONVERSATION_PARTICIPANTS} users plus the Dailybot bot (8 total)."
+        )
     elif code == "conversation_can_not_be_opened":
         message = "Slack rejected the request. A participant may be deactivated on the Slack side."
     elif exc.status_code == 403:
@@ -147,6 +153,14 @@ def conversation_open(
         print_error("Provide at least one participant with --user (UUID, email, or name).")
         raise SystemExit(1)
 
+    if len(identifiers) > MAX_CONVERSATION_PARTICIPANTS:
+        print_error(
+            f"Too many participants ({len(identifiers)}). "
+            f"Slack group DMs support at most {MAX_CONVERSATION_PARTICIPANTS} "
+            "users plus the Dailybot bot (8 total)."
+        )
+        raise SystemExit(1)
+
     client: DailyBotClient = require_auth()
     try:
         participants: list[tuple[str, str]] = _resolve_participants(client, identifiers)
@@ -155,6 +169,13 @@ def conversation_open(
         raise SystemExit(1)
 
     uuids: list[str] = [uuid for uuid, _name in participants]
+    if len(uuids) > MAX_CONVERSATION_PARTICIPANTS:
+        print_error(
+            f"Too many participants ({len(uuids)}). "
+            f"Slack group DMs support at most {MAX_CONVERSATION_PARTICIPANTS} "
+            "users plus the Dailybot bot (8 total)."
+        )
+        raise SystemExit(1)
     try:
         with console.status("Opening group conversation..."):
             result: dict[str, Any] = client.open_conversation(uuids)
