@@ -9,6 +9,39 @@ Do not edit it by hand — your edits will be overwritten on the next release.
 
 <!-- version list -->
 
+## v3.3.0 (2026-07-12)
+
+### Bug Fixes
+
+- **ci**: Resolve mypy unreachable error and fix display escaping test
+  ([#60](https://github.com/DailybotHQ/cli/pull/60),
+  [`bbf1106`](https://github.com/DailybotHQ/cli/commit/bbf11060163be15007617ba0983cfc054f9e72b8))
+
+- **cli**: Add client-side search query length validation (CORE-2263)
+  ([#60](https://github.com/DailybotHQ/cli/pull/60),
+  [`bbf1106`](https://github.com/DailybotHQ/cli/commit/bbf11060163be15007617ba0983cfc054f9e72b8))
+
+- **cli**: Resolve QA findings + conversation participant limit (CORE-2259)
+  ([#60](https://github.com/DailybotHQ/cli/pull/60),
+  [`bbf1106`](https://github.com/DailybotHQ/cli/commit/bbf11060163be15007617ba0983cfc054f9e72b8))
+
+- **cli**: Resolve QA findings from CLI 3.2.x full-suite (CORE-2259)
+  ([#60](https://github.com/DailybotHQ/cli/pull/60),
+  [`bbf1106`](https://github.com/DailybotHQ/cli/commit/bbf11060163be15007617ba0983cfc054f9e72b8))
+
+### Code Style
+
+- **cli**: Apply ruff format to status, api_client_test, public_api_commands_test
+  ([#60](https://github.com/DailybotHQ/cli/pull/60),
+  [`bbf1106`](https://github.com/DailybotHQ/cli/commit/bbf11060163be15007617ba0983cfc054f9e72b8))
+
+### Features
+
+- **conversation**: Enforce Slack MPIM participant limit (max 7 + bot)
+  ([#60](https://github.com/DailybotHQ/cli/pull/60),
+  [`bbf1106`](https://github.com/DailybotHQ/cli/commit/bbf11060163be15007617ba0983cfc054f9e72b8))
+
+
 ## v3.2.2 (2026-07-11)
 
 ### Chores
