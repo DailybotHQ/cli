@@ -24,12 +24,14 @@ def test_page_size_clamped_to_max() -> None:
     assert spec.page_size == 100
 
 
-def test_search_maps_and_truncates() -> None:
+def test_search_maps_and_rejects_too_long() -> None:
     spec = build_query_params(search="retro", reference=REF)
     assert spec.params["search"] == "retro"
-    long = "a" * 300
-    spec2 = build_query_params(search=long, reference=REF)
-    assert len(spec2.params["search"]) == MAX_SEARCH_LEN
+    at_limit = "a" * MAX_SEARCH_LEN
+    spec2 = build_query_params(search=at_limit, reference=REF)
+    assert spec2.params["search"] == at_limit
+    with pytest.raises(ValueError, match="too long"):
+        build_query_params(search="a" * (MAX_SEARCH_LEN + 1), reference=REF)
 
 
 def test_since_until_mapping() -> None:

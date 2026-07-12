@@ -1396,6 +1396,35 @@ class TestCheckinsAuthoring:
         assert exc_info.value.status_code == 403
 
 
+class TestSearchQueryValidation:
+    """Client-side search query length validation (CORE-2263)."""
+
+    def test_search_query_too_long_raises_api_error(self, client: DailyBotClient) -> None:
+        long_query: str = "a" * 257
+        with pytest.raises(APIError) as exc_info:
+            client.list_forms(search=long_query)
+        assert exc_info.value.status_code == 400
+        assert exc_info.value.code == "search_query_too_long"
+
+    def test_search_query_at_limit_passes(self, client: DailyBotClient) -> None:
+        query_at_limit: str = "a" * 256
+        mock_response: MagicMock = MagicMock(spec=httpx.Response)
+        mock_response.status_code = 200
+        mock_response.json.return_value = {
+            "count": 0, "next": None, "previous": None, "results": [],
+        }
+        with patch("httpx.get", return_value=mock_response):
+            result: list[dict[str, Any]] = client.list_forms(search=query_at_limit)
+        assert result == []
+
+    def test_search_query_whitespace_normalized(self, client: DailyBotClient) -> None:
+        """Whitespace-padded query exceeding 256 after normalization is rejected."""
+        padded_query: str = "a " * 200
+        with pytest.raises(APIError) as exc_info:
+            client.list_forms(search=padded_query)
+        assert exc_info.value.code == "search_query_too_long"
+
+
 class TestPaginatedGet:
     """Unit tests for the shared _paginated_get helper (Task 1)."""
 

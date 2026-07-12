@@ -1456,3 +1456,10 @@ class TestQueryFlagsWiring:
             result = CliRunner().invoke(cli, ["form", "list"])
         assert result.exit_code == 0
         assert "owner" not in mock_get.call_args[1]["params"]
+
+    @patch("dailybot_cli.commands.public_api_helpers.get_agent_auth", return_value="tok")
+    def test_form_list_search_too_long(self, _auth: MagicMock) -> None:
+        """CORE-2263: search >256 chars gives a friendly error, not empty results."""
+        result = CliRunner().invoke(cli, ["form", "list", "--search", "a" * 301])
+        assert result.exit_code == 1
+        assert "too long" in result.output.lower()

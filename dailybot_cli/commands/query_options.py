@@ -83,7 +83,12 @@ def build_query_params(
     params: dict[str, Any] = {}
 
     if search is not None:
-        params["search"] = search[:MAX_SEARCH_LEN]
+        normalized: str = " ".join(search.split())
+        if len(normalized) > MAX_SEARCH_LEN:
+            raise ValueError(
+                f"Search query is too long ({len(normalized)} chars, max {MAX_SEARCH_LEN})."
+            )
+        params["search"] = search
 
     start: str | None = None
     end: str | None = None
