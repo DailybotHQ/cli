@@ -544,6 +544,8 @@ def execute_form_submit(
     json_mode: bool = False,
     automation: bool = False,
     anonymous: bool = False,
+    guest_user: dict[str, str] | None = None,
+    submission_source: str | None = None,
 ) -> None:
     """Submit a form response."""
     resolved_name: str = form_name or form_uuid
@@ -563,6 +565,13 @@ def execute_form_submit(
         summary_lines.append("Mode: automation (no submitter shown in channel)")
     if anonymous:
         summary_lines.append("Mode: anonymous (random name shown in channel)")
+    if guest_user:
+        guest_desc: str = guest_user.get("full_name", "")
+        if guest_user.get("email"):
+            guest_desc += f" <{guest_user['email']}>" if guest_desc else guest_user["email"]
+        summary_lines.append(f"Guest: {guest_desc}")
+    if submission_source:
+        summary_lines.append(f"Source: {submission_source}")
     summary_lines.append("Answers:")
     for question_uuid, answer in content_map.items():
         summary_lines.append(f"  {question_uuid}: {answer}")
@@ -576,6 +585,8 @@ def execute_form_submit(
                 content=content_map,
                 automation=automation,
                 anonymous=anonymous,
+                guest_user=guest_user,
+                submission_source=submission_source,
             )
     except APIError as exc:
         exit_for_api_error(exc, json_mode)

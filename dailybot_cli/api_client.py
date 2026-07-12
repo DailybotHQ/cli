@@ -861,6 +861,8 @@ class DailyBotClient:
         *,
         automation: bool = False,
         anonymous: bool = False,
+        guest_user: dict[str, str] | None = None,
+        submission_source: str | None = None,
     ) -> dict[str, Any]:
         """POST /v1/forms/<form_uuid>/responses/"""
         payload: dict[str, Any] = {"content": content}
@@ -868,6 +870,10 @@ class DailyBotClient:
             payload["automation"] = True
         if anonymous:
             payload["anonymous"] = True
+        if guest_user:
+            payload["guest_user"] = guest_user
+        if submission_source:
+            payload["submission_source"] = submission_source
         response: httpx.Response = httpx.post(
             f"{self.api_url}/v1/forms/{form_uuid}/responses/",
             json=payload,

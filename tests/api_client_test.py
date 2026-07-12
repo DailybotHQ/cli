@@ -463,6 +463,31 @@ class TestDailyBotClientPublicApi:
         }
         assert result["uuid"] == "response-uuid"
 
+    def test_submit_form_response_guest_user(self, client: DailyBotClient) -> None:
+        mock_response: MagicMock = MagicMock(spec=httpx.Response)
+        mock_response.status_code = 201
+        mock_response.json.return_value = {"uuid": "response-uuid", "is_guest_user": True}
+
+        content: dict[str, str] = {"question-uuid": "Yes"}
+        guest: dict[str, str] = {"full_name": "Jane Doe", "email": "jane@example.com"}
+        with patch("httpx.post", return_value=mock_response) as mock_post:
+            result: dict[str, Any] = client.submit_form_response(
+                "form-uuid",
+                content,
+                automation=True,
+                guest_user=guest,
+                submission_source="workflow:deploy",
+            )
+
+        call_kwargs: dict[str, Any] = mock_post.call_args[1]
+        assert call_kwargs["json"] == {
+            "content": content,
+            "automation": True,
+            "guest_user": guest,
+            "submission_source": "workflow:deploy",
+        }
+        assert result["is_guest_user"] is True
+
     def test_list_users_paginated(self, client: DailyBotClient) -> None:
         first_response: MagicMock = MagicMock(spec=httpx.Response)
         first_response.status_code = 200

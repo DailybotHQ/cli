@@ -1,5 +1,6 @@
 """Form commands for the user-scoped public API."""
 
+import re
 from collections.abc import Callable
 from typing import Any
 
@@ -59,6 +60,9 @@ from dailybot_cli.display import (
 # The server reuses `invalid_workflow_state` for a malformed `--state
 # "Label:#color"` during authoring. On this listing it means the form has no
 # workflow at all, so the shared message would send the user down the wrong path.
+MAX_SUBMISSION_SOURCE_LENGTH: int = 512
+_EMAIL_RE: re.Pattern[str] = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
+
 _RESPONSES_ERROR_OVERRIDES: dict[str, str] = {
     "invalid_workflow_state": (
         "This form has no workflow, so --state doesn't apply. Drop the flag, or run "
@@ -309,6 +313,21 @@ def form_get(form_uuid: str, json_mode: bool) -> None:
         "generated name instead of your real name."
     ),
 )
+@click.option(
+    "--guest-name",
+    default=None,
+    help="Guest submitter name (used with --automation for third-party submissions).",
+)
+@click.option(
+    "--guest-email",
+    default=None,
+    help="Guest submitter email (used with --automation for third-party submissions).",
+)
+@click.option(
+    "--source",
+    default=None,
+    help="Provenance label for this submission (max 512 chars, e.g. 'workflow:release-pipeline').",
+)
 def form_submit(
     form_uuid: str,
     content: str | None,
@@ -316,6 +335,9 @@ def form_submit(
     json_mode: bool,
     automation: bool,
     anonymous: bool,
+    guest_name: str | None,
+    guest_email: str | None,
+    source: str | None,
 ) -> None:
     """Submit a form response.
 
@@ -332,7 +354,27 @@ def form_submit(
       dailybot form submit <form_uuid> --content '{"<uuid>":"Answer"}' --yes
       dailybot form submit <form_uuid> --content '{"<uuid>":"A"}' --automation
       dailybot form submit <form_uuid> --content '{"<uuid>":"A"}' --anonymous
+      dailybot form submit <form_uuid> --content '{"<uuid>":"A"}' --automation \\
+        --guest-name "Release Bot" --guest-email "bot@example.com" \\
+        --source "workflow:production-deploy"
     """
+    if guest_email and not _EMAIL_RE.match(guest_email):
+        print_error(f"Invalid email format: {guest_email}")
+        raise SystemExit(1)
+    if source and len(source) > MAX_SUBMISSION_SOURCE_LENGTH:
+        print_error(
+            f"--source is too long ({len(source)} chars, max {MAX_SUBMISSION_SOURCE_LENGTH})."
+        )
+        raise SystemExit(1)
+
+    guest_user: dict[str, str] | None = None
+    if guest_name or guest_email:
+        guest_user = {}
+        if guest_name:
+            guest_user["full_name"] = guest_name
+        if guest_email:
+            guest_user["email"] = guest_email
+
     client = require_auth()
     content_map = resolve_form_content(client, form_uuid, content)
     execute_form_submit(
@@ -343,6 +385,8 @@ def form_submit(
         json_mode=json_mode,
         automation=automation,
         anonymous=anonymous,
+        guest_user=guest_user,
+        submission_source=source,
     )
 
 

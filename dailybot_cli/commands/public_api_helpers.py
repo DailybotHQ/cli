@@ -234,6 +234,10 @@ ERROR_CODE_MESSAGES: dict[str, str] = {
     "search_query_too_long": (
         "Search term is too long (maximum 256 characters). Shorten it and try again."
     ),
+    "guest_user_required": (
+        "This form requires guest submitter info. "
+        "Add --guest-name and --guest-email to your command."
+    ),
     "invalid_date_range": (
         "Invalid date. Use YYYY-MM-DD, and make sure the start date is on or before the end date."
     ),

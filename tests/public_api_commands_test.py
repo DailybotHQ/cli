@@ -276,6 +276,8 @@ class TestFormCommand:
             content={"question-uuid-1": "Yes"},
             automation=False,
             anonymous=False,
+            guest_user=None,
+            submission_source=None,
         )
 
     @patch("dailybot_cli.commands.public_api_helpers.get_agent_auth")
@@ -301,6 +303,8 @@ class TestFormCommand:
             content={"q": "A"},
             automation=True,
             anonymous=False,
+            guest_user=None,
+            submission_source=None,
         )
 
     @patch("dailybot_cli.commands.public_api_helpers.get_agent_auth")
@@ -326,7 +330,66 @@ class TestFormCommand:
             content={"q": "A"},
             automation=False,
             anonymous=True,
+            guest_user=None,
+            submission_source=None,
         )
+
+    @patch("dailybot_cli.commands.public_api_helpers.get_agent_auth")
+    @patch("dailybot_cli.commands.public_api_helpers.DailyBotClient")
+    def test_form_submit_guest_and_source(
+        self,
+        mock_client_cls: MagicMock,
+        mock_get_auth: MagicMock,
+        runner: CliRunner,
+    ) -> None:
+        mock_get_auth.return_value = "tok"
+        mock_client: MagicMock = mock_client_cls.return_value
+        mock_client.list_forms.return_value = [{"id": "f-1", "name": "Feedback"}]
+        mock_client.submit_form_response.return_value = {"uuid": "r-1"}
+
+        result = runner.invoke(
+            cli,
+            [
+                "form",
+                "submit",
+                "f-1",
+                "--content",
+                '{"q":"A"}',
+                "--yes",
+                "--automation",
+                "--guest-name",
+                "Release Bot",
+                "--guest-email",
+                "bot@example.com",
+                "--source",
+                "workflow:deploy",
+            ],
+        )
+        assert result.exit_code == 0
+        mock_client.submit_form_response.assert_called_once_with(
+            form_uuid="f-1",
+            content={"q": "A"},
+            automation=True,
+            anonymous=False,
+            guest_user={"full_name": "Release Bot", "email": "bot@example.com"},
+            submission_source="workflow:deploy",
+        )
+
+    def test_form_submit_invalid_email(self, runner: CliRunner) -> None:
+        result = runner.invoke(
+            cli,
+            ["form", "submit", "f-1", "--content", '{"q":"A"}', "--guest-email", "not-an-email"],
+        )
+        assert result.exit_code == 1
+        assert "Invalid email" in result.output
+
+    def test_form_submit_source_too_long(self, runner: CliRunner) -> None:
+        result = runner.invoke(
+            cli,
+            ["form", "submit", "f-1", "--content", '{"q":"A"}', "--source", "x" * 513],
+        )
+        assert result.exit_code == 1
+        assert "too long" in result.output
 
     @patch("dailybot_cli.commands.public_api_helpers.get_agent_auth")
     @patch("dailybot_cli.commands.public_api_helpers.DailyBotClient")
@@ -363,6 +426,8 @@ class TestFormCommand:
             },
             automation=False,
             anonymous=False,
+            guest_user=None,
+            submission_source=None,
         )
 
     @patch("dailybot_cli.commands.user_scoped_actions._prompt_form_answer")
@@ -407,6 +472,8 @@ class TestFormCommand:
             },
             automation=False,
             anonymous=False,
+            guest_user=None,
+            submission_source=None,
         )
 
     @patch("dailybot_cli.commands.public_api_helpers.get_agent_auth")
