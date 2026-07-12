@@ -468,7 +468,7 @@ def checkin_create(
     """Create a check-in with a schedule, participants, questions, and config.
 
     \b
-    Creating check-ins is role-gated server-side (admins/managers). A check-in must
+    Creating check-ins is role-gated server-side. A check-in must
     have at least one question at create time — seed them with --questions-file or
     --interactive (add/edit/remove more later with `dailybot checkin questions`). The
     scheduling/behavior flags (frequency, reminders, timezone mode, submission rules,

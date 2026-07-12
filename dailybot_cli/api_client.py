@@ -1571,7 +1571,12 @@ class DailyBotClient:
         )
         if response.status_code >= 400:
             self._handle_response(response)
-        return response.json()
+        data: Any = response.json()
+        if isinstance(data, dict) and "results" in data:
+            return data["results"]
+        if isinstance(data, list):
+            return data
+        return []
 
     def mark_agent_messages_read(
         self,

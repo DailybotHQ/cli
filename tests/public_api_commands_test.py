@@ -999,6 +999,15 @@ class TestFormLifecycle:
     ) -> None:
         mock_get_auth.return_value = "tok"
         mock_client: MagicMock = mock_client_cls.return_value
+        mock_client.get_form.return_value = {
+            "workflow": {
+                "enabled": True,
+                "states": [
+                    {"key": "pre_release", "label": "Pre-Release"},
+                    {"key": "qa", "label": "QA"},
+                ],
+            },
+        }
         mock_client.transition_form_response.return_value = {
             "id": "r1",
             "current_state": "qa",
@@ -1033,6 +1042,83 @@ class TestFormLifecycle:
 
     @patch("dailybot_cli.commands.public_api_helpers.get_agent_auth")
     @patch("dailybot_cli.commands.public_api_helpers.DailyBotClient")
+    def test_form_transition_label_resolves_to_key(
+        self,
+        mock_client_cls: MagicMock,
+        mock_get_auth: MagicMock,
+        runner: CliRunner,
+    ) -> None:
+        """Regression: user passes label 'Done' instead of key 'done' — CORE-2261."""
+        mock_get_auth.return_value = "tok"
+        mock_client: MagicMock = mock_client_cls.return_value
+        mock_client.get_form.return_value = {
+            "workflow": {
+                "enabled": True,
+                "states": [
+                    {"key": "draft", "label": "Draft"},
+                    {"key": "in_review", "label": "In Review"},
+                    {"key": "done", "label": "Done"},
+                ],
+            },
+        }
+        mock_client.transition_form_response.return_value = {
+            "id": "r1",
+            "current_state": "done",
+            "allowed_transitions": [],
+            "can_change_state": True,
+            "state_history": [],
+        }
+
+        result = runner.invoke(
+            cli, ["form", "transition", "f1", "r1", "Done", "--yes", "--json"]
+        )
+        assert result.exit_code == 0
+        mock_client.transition_form_response.assert_called_once_with(
+            form_uuid="f1",
+            response_uuid="r1",
+            to_state="done",
+            note=None,
+        )
+
+    @patch("dailybot_cli.commands.public_api_helpers.get_agent_auth")
+    @patch("dailybot_cli.commands.public_api_helpers.DailyBotClient")
+    def test_form_transition_label_case_insensitive(
+        self,
+        mock_client_cls: MagicMock,
+        mock_get_auth: MagicMock,
+        runner: CliRunner,
+    ) -> None:
+        mock_get_auth.return_value = "tok"
+        mock_client: MagicMock = mock_client_cls.return_value
+        mock_client.get_form.return_value = {
+            "workflow": {
+                "enabled": True,
+                "states": [
+                    {"key": "in_review", "label": "In Review"},
+                ],
+            },
+        }
+        mock_client.transition_form_response.return_value = {
+            "id": "r1",
+            "current_state": "in_review",
+            "allowed_transitions": [],
+            "can_change_state": True,
+            "state_history": [],
+        }
+
+        result = runner.invoke(
+            cli, ["form", "transition", "f1", "r1", "in review", "--yes", "--json"]
+        )
+        assert result.exit_code == 0
+        mock_client.transition_form_response.assert_called_once_with(
+            form_uuid="f1",
+            response_uuid="r1",
+            to_state="in_review",
+            note=None,
+        )
+
+    @patch("dailybot_cli.commands.public_api_helpers.get_agent_auth")
+    @patch("dailybot_cli.commands.public_api_helpers.DailyBotClient")
     def test_form_transition_forbidden(
         self,
         mock_client_cls: MagicMock,
@@ -1041,6 +1127,7 @@ class TestFormLifecycle:
     ) -> None:
         mock_get_auth.return_value = "tok"
         mock_client: MagicMock = mock_client_cls.return_value
+        mock_client.get_form.return_value = {"workflow": None}
         mock_client.transition_form_response.side_effect = APIError(
             403,
             "You don't have permission",
@@ -1062,6 +1149,7 @@ class TestFormLifecycle:
     ) -> None:
         mock_get_auth.return_value = "tok"
         mock_client: MagicMock = mock_client_cls.return_value
+        mock_client.get_form.return_value = {"workflow": None}
         mock_client.transition_form_response.side_effect = APIError(
             403, "Locked", code="final_state_locked"
         )

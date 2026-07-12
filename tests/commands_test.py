@@ -962,6 +962,48 @@ class TestStatusCommand:
         assert result.exit_code == 0
 
     @patch("dailybot_cli.commands.status.get_agent_auth")
+    @patch("dailybot_cli.commands.status.DailyBotClient")
+    def test_status_json_flag(
+        self, mock_client_cls: MagicMock, mock_get_auth: MagicMock, runner: CliRunner
+    ) -> None:
+        """CORE-2262: --json emits machine-readable output."""
+        mock_get_auth.return_value = "bearer"
+        mock_client: MagicMock = mock_client_cls.return_value
+        mock_client.get_status.return_value = {
+            "count": 1,
+            "pending_checkins": [
+                {
+                    "followup_name": "Daily Standup",
+                    "template_questions": [
+                        {"question": "What did you do?", "is_blocker": False},
+                    ],
+                }
+            ],
+        }
+
+        result = runner.invoke(cli, ["status", "--json"])
+        assert result.exit_code == 0
+        payload: dict[str, Any] = json.loads(result.output)
+        assert payload["count"] == 1
+        assert len(payload["pending_checkins"]) == 1
+        assert payload["pending_checkins"][0]["followup_name"] == "Daily Standup"
+
+    @patch("dailybot_cli.commands.status.get_agent_auth")
+    @patch("dailybot_cli.commands.status.DailyBotClient")
+    def test_status_json_empty(
+        self, mock_client_cls: MagicMock, mock_get_auth: MagicMock, runner: CliRunner
+    ) -> None:
+        mock_get_auth.return_value = "bearer"
+        mock_client: MagicMock = mock_client_cls.return_value
+        mock_client.get_status.return_value = {"count": 0, "pending_checkins": []}
+
+        result = runner.invoke(cli, ["status", "--json"])
+        assert result.exit_code == 0
+        payload: dict[str, Any] = json.loads(result.output)
+        assert payload["count"] == 0
+        assert payload["pending_checkins"] == []
+
+    @patch("dailybot_cli.commands.status.get_agent_auth")
     def test_status_not_authenticated(self, mock_get_auth: MagicMock, runner: CliRunner) -> None:
         mock_get_auth.return_value = None
         result = runner.invoke(cli, ["status"])
@@ -1817,6 +1859,30 @@ class TestAgentCommand:
         mock_client.get_agent_messages.assert_called_once_with(
             agent_name="Claude Code", delivered=False
         )
+
+    @patch("dailybot_cli.commands.agent.get_agent_auth")
+    @patch("dailybot_cli.commands.agent.DailyBotClient")
+    def test_message_list_paginated_envelope(
+        self, mock_client_cls: MagicMock, mock_get_auth: MagicMock, runner: CliRunner
+    ) -> None:
+        """Regression: API returns a paginated envelope {count, results} — CORE-2260."""
+        mock_get_auth.return_value = "api_key"
+        mock_client: MagicMock = mock_client_cls.return_value
+        mock_client.get_agent_messages.return_value = [
+            {
+                "id": "msg-1",
+                "content": "Hello",
+                "message_type": "text",
+                "sender_type": "human",
+                "sender_name": "Jane",
+                "delivered": False,
+                "created_at": "2026-07-11T00:00:00Z",
+            },
+        ]
+        result = runner.invoke(cli, ["agent", "message", "list", "--name", "Bot"])
+        assert result.exit_code == 0
+        assert "Hello" in result.output
+        assert "Jane" in result.output
 
     @patch("dailybot_cli.commands.agent.get_default_profile", return_value=None)
     @patch("dailybot_cli.commands.agent.get_agent_auth")

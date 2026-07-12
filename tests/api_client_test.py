@@ -731,6 +731,55 @@ class TestDailyBotClientAgent:
         assert "co_authors" not in call_kwargs["json"]
 
 
+    def test_get_agent_messages_paginated_envelope(self, client: DailyBotClient) -> None:
+        """Regression: API returns {count, results} envelope — CORE-2260."""
+        mock_response: MagicMock = MagicMock(spec=httpx.Response)
+        mock_response.status_code = 200
+        mock_response.json.return_value = {
+            "count": 1,
+            "next": None,
+            "previous": None,
+            "results": [
+                {"id": "msg-1", "content": "hello", "delivered": False},
+            ],
+        }
+
+        with patch("httpx.get", return_value=mock_response):
+            result: list[dict[str, Any]] = client.get_agent_messages(agent_name="Bot")
+
+        assert len(result) == 1
+        assert result[0]["id"] == "msg-1"
+
+    def test_get_agent_messages_plain_list(self, client: DailyBotClient) -> None:
+        """If the API ever returns a plain list, handle it gracefully."""
+        mock_response: MagicMock = MagicMock(spec=httpx.Response)
+        mock_response.status_code = 200
+        mock_response.json.return_value = [
+            {"id": "msg-1", "content": "hello"},
+        ]
+
+        with patch("httpx.get", return_value=mock_response):
+            result: list[dict[str, Any]] = client.get_agent_messages(agent_name="Bot")
+
+        assert len(result) == 1
+        assert result[0]["id"] == "msg-1"
+
+    def test_get_agent_messages_empty_envelope(self, client: DailyBotClient) -> None:
+        mock_response: MagicMock = MagicMock(spec=httpx.Response)
+        mock_response.status_code = 200
+        mock_response.json.return_value = {
+            "count": 0,
+            "next": None,
+            "previous": None,
+            "results": [],
+        }
+
+        with patch("httpx.get", return_value=mock_response):
+            result: list[dict[str, Any]] = client.get_agent_messages(agent_name="Bot")
+
+        assert result == []
+
+
 class TestDailyBotClientChat:
     def test_send_chat_message_passes_payload_through(self, client: DailyBotClient) -> None:
         mock_response: MagicMock = MagicMock(spec=httpx.Response)
