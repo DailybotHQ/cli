@@ -44,10 +44,12 @@ The Dailybot CLI persists state in `~/.config/dailybot/` by default. The path ca
 |----------|---------|--------|
 | `DAILYBOT_CONFIG_DIR` | `get_config_dir()` | Redirects all config/credential file I/O to this directory instead of `~/.config/dailybot/`. Useful for dev sandboxes (`clitest`) and CI environments. |
 | `DAILYBOT_API_URL` | `get_api_url()` | Overrides the API base URL (after `--api-url` flag) |
+| `DAILYBOT_APP_URL` | `get_app_url()` | Overrides the webapp/dashboard base URL (after `--app-url` flag). Default: `https://app.dailybot.com`. For local development: `http://localhost:8090`. |
 | `DAILYBOT_API_KEY` | `get_api_key()` | Provides an org API key without storing it on disk |
 | `DAILYBOT_CLI_TOKEN` | `get_token()` | Provides a login Bearer token without `dailybot login` |
 
 `--api-url` (root flag) takes precedence over `DAILYBOT_API_URL`.
+`--app-url` (root flag) takes precedence over `DAILYBOT_APP_URL`.
 
 ## Auth Resolution Order
 
@@ -107,6 +109,20 @@ The output shows each resolved field plus which layer it came from.
 > **Do not change this order without bumping the minor version and writing a migration note.** It is observable behavior for users with multiple credentials configured.
 
 ## Common Configuration Tasks
+
+### Local development URLs
+
+When testing against the local server:
+
+| Service | URL |
+|---------|-----|
+| API | `http://djangovscode:8000` |
+| Webapp / Dashboard | `http://localhost:8090` |
+
+```bash
+export DAILYBOT_API_URL=http://djangovscode:8000
+export DAILYBOT_APP_URL=http://localhost:8090
+```
 
 ### Switching between staging and production
 

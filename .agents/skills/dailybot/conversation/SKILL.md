@@ -240,4 +240,5 @@ automatically, and do not enter a diagnostic loop.
 - [`../teams/SKILL.md`](../teams/SKILL.md) — resolve a person's UUID by name
 - [`../shared/auth.md`](../shared/auth.md) — authentication setup
 - [`../shared/http-fallback.md`](../shared/http-fallback.md) — HTTP API fallback patterns
+- [`../shared/dashboard-urls.md`](../shared/dashboard-urls.md) — full dashboard URL catalog
 - **Full agent API skill:** `https://www.dailybot.com/skill.md`

@@ -11,6 +11,7 @@ from dailybot_cli.config import (
     get_agent_auth,
     get_api_key,
     get_api_url,
+    get_app_url,
     get_token,
     load_config,
     load_credentials,
@@ -64,6 +65,16 @@ def test_get_api_url_default(tmp_config: Path, monkeypatch: pytest.MonkeyPatch) 
 def test_get_api_url_from_env(tmp_config: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("DAILYBOT_API_URL", "http://localhost:8600/")
     assert get_api_url() == "http://localhost:8600"
+
+
+def test_get_app_url_default(tmp_config: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("DAILYBOT_APP_URL", raising=False)
+    assert get_app_url() == "https://app.dailybot.com"
+
+
+def test_get_app_url_from_env(tmp_config: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("DAILYBOT_APP_URL", "http://localhost:8090/")
+    assert get_app_url() == "http://localhost:8090"
 
 
 def test_get_token_from_env(tmp_config: Path, monkeypatch: pytest.MonkeyPatch) -> None:
