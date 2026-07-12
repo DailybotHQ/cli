@@ -500,19 +500,27 @@ def execute_form_list(
     *,
     json_mode: bool = False,
     include_archived: bool = False,
+    include_questions: bool = False,
     owner: str | None = None,
+    filter_scope: str | None = None,
+    order: str | None = None,
+    is_ascend: bool = False,
     spec: QuerySpec | None = None,
 ) -> list[dict[str, Any]] | None:
     """Fetch and display forms visible to the user (with question counts)."""
     query: QuerySpec = spec or QuerySpec()
     fetch_all: bool = resolve_fetch_all(query)
     meta: dict[str, Any] = {}
+    always_include_questions: bool = include_questions or not json_mode
     try:
         with console.status("Fetching forms..."):
             forms: list[dict[str, Any]] = client.list_forms(
-                include_questions=True,
+                include_questions=always_include_questions,
                 include_archived=include_archived,
                 owner=owner,
+                filter_scope=filter_scope,
+                order=order,
+                is_ascend=is_ascend,
                 search=query.params.get("search"),
                 start_date=query.params.get("start_date"),
                 end_date=query.params.get("end_date"),

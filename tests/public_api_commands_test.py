@@ -248,6 +248,71 @@ class TestFormCommand:
 
     @patch("dailybot_cli.commands.public_api_helpers.get_agent_auth")
     @patch("dailybot_cli.commands.public_api_helpers.DailyBotClient")
+    def test_form_list_with_filter_and_order(
+        self,
+        mock_client_cls: MagicMock,
+        mock_get_auth: MagicMock,
+        runner: CliRunner,
+    ) -> None:
+        mock_get_auth.return_value = "tok"
+        mock_client: MagicMock = mock_client_cls.return_value
+        mock_client.list_forms.return_value = [
+            {"id": "f-1", "name": "Form", "is_active": True, "privacy": "everyone"}
+        ]
+
+        result = runner.invoke(
+            cli, ["form", "list", "--filter", "workflow", "--order", "alphabetical", "--asc"]
+        )
+        assert result.exit_code == 0
+        mock_client.list_forms.assert_called_once()
+        call_kwargs: dict[str, Any] = mock_client.list_forms.call_args[1]
+        assert call_kwargs["filter_scope"] == "workflow"
+        assert call_kwargs["order"] == "alphabetical"
+        assert call_kwargs["is_ascend"] is True
+
+    @patch("dailybot_cli.commands.public_api_helpers.get_agent_auth")
+    @patch("dailybot_cli.commands.public_api_helpers.DailyBotClient")
+    def test_form_responses_with_source_and_flow_status(
+        self,
+        mock_client_cls: MagicMock,
+        mock_get_auth: MagicMock,
+        runner: CliRunner,
+    ) -> None:
+        mock_get_auth.return_value = "tok"
+        mock_client: MagicMock = mock_client_cls.return_value
+        mock_client.list_form_responses.return_value = []
+
+        result = runner.invoke(
+            cli,
+            [
+                "form",
+                "responses",
+                "f-1",
+                "--all",
+                "--source",
+                "member,automation",
+                "--flow-status",
+                "pending",
+            ],
+        )
+        assert result.exit_code == 0
+        call_kwargs: dict[str, Any] = mock_client.list_form_responses.call_args[1]
+        assert call_kwargs["all_responses"] is True
+        assert call_kwargs["submission_sources"] == "member,automation"
+        assert call_kwargs["flow_status"] == "pending"
+
+    def test_form_responses_invalid_source(self, runner: CliRunner) -> None:
+        result = runner.invoke(cli, ["form", "responses", "f-1", "--source", "badvalue"])
+        assert result.exit_code != 0
+
+    def test_form_responses_too_many_submitters(self, runner: CliRunner) -> None:
+        ids: str = ",".join(f"uuid-{i}" for i in range(51))
+        result = runner.invoke(cli, ["form", "responses", "f-1", "--submitter", ids])
+        assert result.exit_code == 1
+        assert "Too many" in result.output
+
+    @patch("dailybot_cli.commands.public_api_helpers.get_agent_auth")
+    @patch("dailybot_cli.commands.public_api_helpers.DailyBotClient")
     def test_form_submit_success(
         self,
         mock_client_cls: MagicMock,
@@ -997,6 +1062,11 @@ class TestFormLifecycle:
             state=None,
             all_responses=False,
             user=None,
+            submission_sources=None,
+            submitter_user_ids=None,
+            flow_status=None,
+            order=None,
+            is_ascend=False,
             date_from=None,
             date_to=None,
             search=None,
@@ -1026,6 +1096,11 @@ class TestFormLifecycle:
             state="qa",
             all_responses=False,
             user=None,
+            submission_sources=None,
+            submitter_user_ids=None,
+            flow_status=None,
+            order=None,
+            is_ascend=False,
             date_from=None,
             date_to=None,
             search=None,
