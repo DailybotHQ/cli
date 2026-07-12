@@ -510,6 +510,47 @@ def form_update(
     print_form_response_state(result, form_data)
 
 
+def _resolve_workflow_state(client: DailyBotClient, form_uuid: str, user_input: str) -> str:
+    """Resolve a user-provided state label or key to the canonical state key.
+
+    Fetches the form's workflow states and tries, in order:
+    1. Exact key match (e.g. ``"done"`` matches key ``"done"``).
+    2. Case-insensitive label match (e.g. ``"Done"`` matches label ``"Done"``
+       → key ``"done"``).
+    3. Case-insensitive key match (e.g. ``"Done"`` matches key ``"done"``).
+    Falls back to the original input if no match, letting the API decide.
+    """
+    try:
+        form_data: dict[str, Any] = client.get_form(form_uuid)
+    except APIError:
+        return user_input
+
+    workflow: dict[str, Any] | None = form_data.get("workflow")
+    if not workflow or not workflow.get("enabled"):
+        return user_input
+
+    states: list[dict[str, Any]] = workflow.get("states", [])
+    if not states:
+        return user_input
+
+    for state in states:
+        if state.get("key") == user_input:
+            return user_input
+
+    user_lower: str = user_input.lower()
+    for state in states:
+        label: str = state.get("label", "")
+        if label.lower() == user_lower:
+            return state["key"]
+
+    for state in states:
+        key: str = state.get("key", "")
+        if key.lower() == user_lower:
+            return key
+
+    return user_input
+
+
 @form.command("transition")
 @click.argument("form_uuid")
 @click.argument("response_uuid")
@@ -528,6 +569,10 @@ def form_transition(
     """Advance a response to a new workflow state.
 
     \b
+    Accepts either the state key (e.g. 'done') or its human label (e.g. 'Done')
+    — the CLI resolves labels to keys automatically (case-insensitive).
+
+    \b
     The form's state_change_permission audience is the sole gate — there is no
     response-author short-circuit. If you're not in the audience the API will
     return 403 / form_response_change_state_forbidden.
@@ -535,15 +580,20 @@ def form_transition(
     \b
     Examples:
       dailybot form transition <form_uuid> <response_uuid> qa --note "QA assigned"
+      dailybot form transition <form_uuid> <response_uuid> Done
       dailybot form transition <form_uuid> <response_uuid> released --json
     """
     client = require_auth()
 
+    resolved_state: str = _resolve_workflow_state(client, form_uuid, to_state)
+
     summary_lines: list[str] = [
         f"Form UUID: {form_uuid}",
         f"Response UUID: {response_uuid}",
-        f"To state: {to_state}",
+        f"To state: {resolved_state}",
     ]
+    if resolved_state != to_state:
+        summary_lines.append(f"  (resolved from label '{to_state}')")
     if note:
         summary_lines.append(f"Note: {note}")
     confirm_write(summary_lines, assume_yes)
@@ -553,7 +603,7 @@ def form_transition(
             result: dict[str, Any] = client.transition_form_response(
                 form_uuid=form_uuid,
                 response_uuid=response_uuid,
-                to_state=to_state,
+                to_state=resolved_state,
                 note=note,
             )
     except APIError as exc:
@@ -563,7 +613,7 @@ def form_transition(
         emit_json(result)
         return
 
-    print_success(f"Response {response_uuid} transitioned to '{to_state}'.")
+    print_success(f"Response {response_uuid} transitioned to '{resolved_state}'.")
     form_data: dict[str, Any] | None = _maybe_load_form(client, form_uuid)
     print_form_response_state(result, form_data)
 

@@ -730,6 +730,54 @@ class TestDailyBotClientAgent:
         assert "is_milestone" not in call_kwargs["json"]
         assert "co_authors" not in call_kwargs["json"]
 
+    def test_get_agent_messages_paginated_envelope(self, client: DailyBotClient) -> None:
+        """Regression: API returns {count, results} envelope — CORE-2260."""
+        mock_response: MagicMock = MagicMock(spec=httpx.Response)
+        mock_response.status_code = 200
+        mock_response.json.return_value = {
+            "count": 1,
+            "next": None,
+            "previous": None,
+            "results": [
+                {"id": "msg-1", "content": "hello", "delivered": False},
+            ],
+        }
+
+        with patch("httpx.get", return_value=mock_response):
+            result: list[dict[str, Any]] = client.get_agent_messages(agent_name="Bot")
+
+        assert len(result) == 1
+        assert result[0]["id"] == "msg-1"
+
+    def test_get_agent_messages_plain_list(self, client: DailyBotClient) -> None:
+        """If the API ever returns a plain list, handle it gracefully."""
+        mock_response: MagicMock = MagicMock(spec=httpx.Response)
+        mock_response.status_code = 200
+        mock_response.json.return_value = [
+            {"id": "msg-1", "content": "hello"},
+        ]
+
+        with patch("httpx.get", return_value=mock_response):
+            result: list[dict[str, Any]] = client.get_agent_messages(agent_name="Bot")
+
+        assert len(result) == 1
+        assert result[0]["id"] == "msg-1"
+
+    def test_get_agent_messages_empty_envelope(self, client: DailyBotClient) -> None:
+        mock_response: MagicMock = MagicMock(spec=httpx.Response)
+        mock_response.status_code = 200
+        mock_response.json.return_value = {
+            "count": 0,
+            "next": None,
+            "previous": None,
+            "results": [],
+        }
+
+        with patch("httpx.get", return_value=mock_response):
+            result: list[dict[str, Any]] = client.get_agent_messages(agent_name="Bot")
+
+        assert result == []
+
 
 class TestDailyBotClientChat:
     def test_send_chat_message_passes_payload_through(self, client: DailyBotClient) -> None:
@@ -1345,6 +1393,38 @@ class TestCheckinsAuthoring:
 
         assert exc_info.value.code == "checkin_permission_denied"
         assert exc_info.value.status_code == 403
+
+
+class TestSearchQueryValidation:
+    """Client-side search query length validation (CORE-2263)."""
+
+    def test_search_query_too_long_raises_api_error(self, client: DailyBotClient) -> None:
+        long_query: str = "a" * 257
+        with pytest.raises(APIError) as exc_info:
+            client.list_forms(search=long_query)
+        assert exc_info.value.status_code == 400
+        assert exc_info.value.code == "search_query_too_long"
+
+    def test_search_query_at_limit_passes(self, client: DailyBotClient) -> None:
+        query_at_limit: str = "a" * 256
+        mock_response: MagicMock = MagicMock(spec=httpx.Response)
+        mock_response.status_code = 200
+        mock_response.json.return_value = {
+            "count": 0,
+            "next": None,
+            "previous": None,
+            "results": [],
+        }
+        with patch("httpx.get", return_value=mock_response):
+            result: list[dict[str, Any]] = client.list_forms(search=query_at_limit)
+        assert result == []
+
+    def test_search_query_whitespace_normalized(self, client: DailyBotClient) -> None:
+        """Whitespace-padded query exceeding 256 after normalization is rejected."""
+        padded_query: str = "a " * 200
+        with pytest.raises(APIError) as exc_info:
+            client.list_forms(search=padded_query)
+        assert exc_info.value.code == "search_query_too_long"
 
 
 class TestPaginatedGet:

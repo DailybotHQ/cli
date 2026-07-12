@@ -19,6 +19,7 @@ DEFAULT_RETRY_AFTER_SECS: float = 1.0  # backoff floor when a 429 omits Retry-Af
 FREE_PLAN_DAILY_LIMIT_CODE: str = "free_plan_daily_limit_exceeded"
 
 MAX_FALLBACK_DETAIL_CHARS: int = 160  # cap for a non-JSON error body echoed to the user
+MAX_SEARCH_QUERY_LENGTH: int = 256  # server rejects search queries longer than this
 
 
 def _fallback_detail(response: httpx.Response) -> str:
@@ -67,8 +68,20 @@ def _merge_list_query(
     start_date: str | None = None,
     end_date: str | None = None,
 ) -> dict[str, Any]:
-    """Merge the shared list query params (search / date range) into ``params``."""
+    """Merge the shared list query params (search / date range) into ``params``.
+
+    Raises :class:`APIError` with ``search_query_too_long`` if *search* exceeds
+    :data:`MAX_SEARCH_QUERY_LENGTH` — matching the server-side validation so the
+    user gets instant feedback instead of a round-trip 400.
+    """
     if search is not None:
+        normalized: str = " ".join(search.split())
+        if len(normalized) > MAX_SEARCH_QUERY_LENGTH:
+            raise APIError(
+                400,
+                "Search query is too long.",
+                code="search_query_too_long",
+            )
         params["search"] = search
     if start_date is not None:
         params["start_date"] = start_date
@@ -1571,7 +1584,12 @@ class DailyBotClient:
         )
         if response.status_code >= 400:
             self._handle_response(response)
-        return response.json()
+        data: Any = response.json()
+        if isinstance(data, dict) and "results" in data:
+            return data["results"]
+        if isinstance(data, list):
+            return data
+        return []
 
     def mark_agent_messages_read(
         self,

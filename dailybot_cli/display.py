@@ -327,7 +327,7 @@ def print_webhook_result(data: dict[str, Any]) -> None:
     console.print(Panel(table, title="[bold]Webhook Registered[/bold]", border_style="green"))
 
 
-def print_agent_messages(messages: list[dict[str, Any]]) -> None:
+def print_agent_messages(messages: list[Any]) -> None:
     """Display a list of agent messages."""
     if not messages:
         print_info("No messages found.")
@@ -339,6 +339,9 @@ def print_agent_messages(messages: list[dict[str, Any]]) -> None:
     table.add_column("Delivered")
     table.add_column("Created", style="dim")
     for msg in messages:
+        if not isinstance(msg, dict):
+            table.add_row("text", "", str(msg), "", "")
+            continue
         delivered: bool = msg.get("delivered", False)
         delivered_text: str = "[green]yes[/green]" if delivered else "[yellow]no[/yellow]"
         sender_type: str = msg.get("sender_type", "")

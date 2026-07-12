@@ -1,5 +1,6 @@
 """Status command for Dailybot CLI."""
 
+import json as json_mod
 from typing import Any
 
 import click
@@ -58,12 +59,19 @@ def _check_auth() -> None:
 
 @click.command()
 @click.option("--auth", is_flag=True, default=False, help="Check authentication status.")
-def status(auth: bool) -> None:
+@click.option(
+    "--json", "json_mode", is_flag=True, default=False, help="Emit machine-readable JSON to stdout."
+)
+def status(auth: bool, json_mode: bool) -> None:
     """Show pending check-ins for today.
 
     \b
     Use --auth to verify your credentials are valid:
       dailybot status --auth
+
+    \b
+    Use --json for machine-readable output:
+      dailybot status --json
     """
     if auth:
         _check_auth()
@@ -77,6 +85,9 @@ def status(auth: bool) -> None:
     try:
         with console.status("Fetching pending check-ins..."):
             data: dict[str, Any] = client.get_status()
+        if json_mode:
+            click.echo(json_mod.dumps(data))
+            return
         checkins: list[dict[str, Any]] = data.get("pending_checkins", [])
         print_pending_checkins(checkins)
     except APIError as e:
