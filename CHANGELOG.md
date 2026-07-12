@@ -9,6 +9,15 @@ Do not edit it by hand — your edits will be overwritten on the next release.
 
 <!-- version list -->
 
+## v3.4.0 (2026-07-12)
+
+### Features
+
+- **cli**: Add --app-url flag, dashboard URL catalog, and skill pack sync
+  ([#62](https://github.com/DailybotHQ/cli/pull/62),
+  [`30c4979`](https://github.com/DailybotHQ/cli/commit/30c4979b2d10c4c0f411e536bc09a155ac2b6b80))
+
+
 ## v3.3.0 (2026-07-12)
 
 ### Bug Fixes
