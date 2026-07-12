@@ -9,6 +9,33 @@ Do not edit it by hand — your edits will be overwritten on the next release.
 
 <!-- version list -->
 
+## v3.5.0 (2026-07-12)
+
+### Chores
+
+- **skill**: Sync vendored forms skill with agent-skill v3.5.0
+  ([#63](https://github.com/DailybotHQ/cli/pull/63),
+  [`f4e7ddc`](https://github.com/DailybotHQ/cli/commit/f4e7ddcfa882981fa83ec8b1d373a7fbe7529757))
+
+### Features
+
+- **form**: Add --automation and --anonymous flags to form submit
+  ([#63](https://github.com/DailybotHQ/cli/pull/63),
+  [`f4e7ddc`](https://github.com/DailybotHQ/cli/commit/f4e7ddcfa882981fa83ec8b1d373a7fbe7529757))
+
+- **form**: Add --guest-name, --guest-email, --source flags to form submit
+  ([#63](https://github.com/DailybotHQ/cli/pull/63),
+  [`f4e7ddc`](https://github.com/DailybotHQ/cli/commit/f4e7ddcfa882981fa83ec8b1d373a7fbe7529757))
+
+- **form**: Add filtering, sorting, and source flags to form list and responses
+  ([#63](https://github.com/DailybotHQ/cli/pull/63),
+  [`f4e7ddc`](https://github.com/DailybotHQ/cli/commit/f4e7ddcfa882981fa83ec8b1d373a7fbe7529757))
+
+- **form**: Full forms filtering, sorting, automation & guest identity
+  ([#63](https://github.com/DailybotHQ/cli/pull/63),
+  [`f4e7ddc`](https://github.com/DailybotHQ/cli/commit/f4e7ddcfa882981fa83ec8b1d373a7fbe7529757))
+
+
 ## v3.4.0 (2026-07-12)
 
 ### Features
