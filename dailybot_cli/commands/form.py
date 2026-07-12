@@ -1,5 +1,6 @@
 """Form commands for the user-scoped public API."""
 
+import re
 from collections.abc import Callable
 from typing import Any
 
@@ -59,6 +60,16 @@ from dailybot_cli.display import (
 # The server reuses `invalid_workflow_state` for a malformed `--state
 # "Label:#color"` during authoring. On this listing it means the form has no
 # workflow at all, so the shared message would send the user down the wrong path.
+MAX_SUBMISSION_SOURCE_LENGTH: int = 512
+_EMAIL_RE: re.Pattern[str] = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
+
+FORM_LIST_FILTERS: tuple[str, ...] = ("all", "me", "public", "approval", "workflow", "archived")
+FORM_LIST_ORDERS: tuple[str, ...] = ("alphabetical", "recent", "total")
+RESPONSE_ORDERS: tuple[str, ...] = ("recent", "oldest")
+RESPONSE_SOURCES: tuple[str, ...] = ("member", "anonymous", "automation", "public")
+RESPONSE_FLOW_STATUSES: tuple[str, ...] = ("pending", "approved", "denied")
+MAX_SUBMITTER_IDS: int = 50
+
 _RESPONSES_ERROR_OVERRIDES: dict[str, str] = {
     "invalid_workflow_state": (
         "This form has no workflow, so --state doesn't apply. Drop the flag, or run "
@@ -193,11 +204,42 @@ def form() -> None:
     is_flag=True,
     help="Only forms you own (default lists every form you can see in the org).",
 )
+@click.option(
+    "--filter",
+    "filter_scope",
+    type=click.Choice(FORM_LIST_FILTERS, case_sensitive=False),
+    default=None,
+    help="Scope filter: all, me, public, approval, workflow, archived.",
+)
+@click.option(
+    "--order",
+    type=click.Choice(FORM_LIST_ORDERS, case_sensitive=False),
+    default=None,
+    help="Sort order: alphabetical, recent, or total responses.",
+)
+@click.option(
+    "--ascending",
+    "--asc",
+    "is_ascend",
+    is_flag=True,
+    default=False,
+    help="Sort ascending (default: descending).",
+)
+@click.option(
+    "--include-questions",
+    is_flag=True,
+    default=False,
+    help="Include question definitions in each form.",
+)
 @query_options
 @click.option("--json", "json_mode", is_flag=True, help="Emit machine-readable JSON to stdout.")
 def form_list(
     include_archived: bool,
     mine: bool,
+    filter_scope: str | None,
+    order: str | None,
+    is_ascend: bool,
+    include_questions: bool,
     json_mode: bool,
     page: int | None,
     page_size: int | None,
@@ -215,16 +257,19 @@ def form_list(
     \b
     Acts as you. You can only see and act on what you could in the webapp:
     by default this is every form in your org you have list-view access to.
-    Pass --mine to narrow to only the forms you own.
-    Archived forms are hidden unless you pass --include-archived.
+    Pass --mine to narrow to only the forms you own, or --filter to scope.
+    Archived forms are hidden unless you pass --include-archived or --filter archived.
 
     \b
     Examples:
       dailybot form list
       dailybot form list --mine
+      dailybot form list --filter workflow --order alphabetical --asc
+      dailybot form list --filter approval
+      dailybot form list --filter public --order total
       dailybot form list --search retro --since 2026-07-01
+      dailybot form list --include-questions --json
       dailybot form list --all
-      dailybot form list --json
     """
     enforce_plan_access("form_list", json_mode=json_mode)
     try:
@@ -248,7 +293,11 @@ def form_list(
         client,
         json_mode=json_mode,
         include_archived=include_archived,
+        include_questions=include_questions,
         owner="me" if mine else None,
+        filter_scope=filter_scope,
+        order=order,
+        is_ascend=is_ascend,
         spec=spec,
     )
 
@@ -290,11 +339,50 @@ def form_get(form_uuid: str, json_mode: bool) -> None:
 )
 @click.option("--yes", "-y", "assume_yes", is_flag=True, help="Skip the confirmation prompt.")
 @click.option("--json", "json_mode", is_flag=True, help="Emit machine-readable JSON to stdout.")
+@click.option(
+    "--automation",
+    is_flag=True,
+    default=False,
+    help=(
+        "Submit as an automation. The response will appear in channel "
+        "notifications without any submitter name — useful when "
+        "forwarding third-party form submissions via integrations."
+    ),
+)
+@click.option(
+    "--anonymous",
+    is_flag=True,
+    default=False,
+    help=(
+        "Submit anonymously. The response will appear with a random "
+        "generated name instead of your real name."
+    ),
+)
+@click.option(
+    "--guest-name",
+    default=None,
+    help="Guest submitter name (used with --automation for third-party submissions).",
+)
+@click.option(
+    "--guest-email",
+    default=None,
+    help="Guest submitter email (used with --automation for third-party submissions).",
+)
+@click.option(
+    "--source",
+    default=None,
+    help="Provenance label for this submission (max 512 chars, e.g. 'workflow:release-pipeline').",
+)
 def form_submit(
     form_uuid: str,
     content: str | None,
     assume_yes: bool,
     json_mode: bool,
+    automation: bool,
+    anonymous: bool,
+    guest_name: str | None,
+    guest_email: str | None,
+    source: str | None,
 ) -> None:
     """Submit a form response.
 
@@ -309,7 +397,29 @@ def form_submit(
       dailybot form submit <form_uuid>
       dailybot form submit <form_uuid> --content '{"<question_uuid>":"Yes"}'
       dailybot form submit <form_uuid> --content '{"<uuid>":"Answer"}' --yes
+      dailybot form submit <form_uuid> --content '{"<uuid>":"A"}' --automation
+      dailybot form submit <form_uuid> --content '{"<uuid>":"A"}' --anonymous
+      dailybot form submit <form_uuid> --content '{"<uuid>":"A"}' --automation \\
+        --guest-name "Release Bot" --guest-email "bot@example.com" \\
+        --source "workflow:production-deploy"
     """
+    if guest_email and not _EMAIL_RE.match(guest_email):
+        print_error(f"Invalid email format: {guest_email}")
+        raise SystemExit(1)
+    if source and len(source) > MAX_SUBMISSION_SOURCE_LENGTH:
+        print_error(
+            f"--source is too long ({len(source)} chars, max {MAX_SUBMISSION_SOURCE_LENGTH})."
+        )
+        raise SystemExit(1)
+
+    guest_user: dict[str, str] | None = None
+    if guest_name or guest_email:
+        guest_user = {}
+        if guest_name:
+            guest_user["full_name"] = guest_name
+        if guest_email:
+            guest_user["email"] = guest_email
+
     client = require_auth()
     content_map = resolve_form_content(client, form_uuid, content)
     execute_form_submit(
@@ -318,6 +428,10 @@ def form_submit(
         content_map,
         assume_yes=assume_yes,
         json_mode=json_mode,
+        automation=automation,
+        anonymous=anonymous,
+        guest_user=guest_user,
+        submission_source=source,
     )
 
 
@@ -332,15 +446,48 @@ def form_submit(
     "--all",
     "all_responses",
     is_flag=True,
-    help="List everyone's responses (admin/owner only; a member gets 403).",
+    help="List everyone's responses (requires VIEW_REPORTS permission).",
 )
 @click.option("--user", default=None, help="Filter to one user's responses (admin/owner only).")
+@click.option(
+    "--source",
+    "submission_sources",
+    default=None,
+    help="Filter by origin (CSV: member, anonymous, automation, public).",
+)
+@click.option(
+    "--submitter",
+    "submitter_ids",
+    default=None,
+    help="Filter by submitter UUIDs (CSV, max 50).",
+)
+@click.option(
+    "--flow-status",
+    "flow_status",
+    type=click.Choice(RESPONSE_FLOW_STATUSES, case_sensitive=False),
+    default=None,
+    help="Approval flow status: pending, approved, denied.",
+)
+@click.option(
+    "--order",
+    type=click.Choice(RESPONSE_ORDERS, case_sensitive=False),
+    default=None,
+    help="Sort order: recent or oldest.",
+)
+@click.option(
+    "--ascending",
+    "--asc",
+    "is_ascend",
+    is_flag=True,
+    default=False,
+    help="Sort ascending (alias for --order oldest).",
+)
 @click.option(
     "--from", "date_from", default=None, help="Responses on/after this date (YYYY-MM-DD)."
 )
 @click.option("--to", "date_to", default=None, help="Responses on/before this date (YYYY-MM-DD).")
 @click.option(
-    "--search", "-s", "search", default=None, help="Filter response content (max 256 chars)."
+    "--search", "-s", "search", default=None, help="Search content and submitter (max 256 chars)."
 )
 @click.option(
     "--latest",
@@ -354,6 +501,11 @@ def form_responses(
     state: str | None,
     all_responses: bool,
     user: str | None,
+    submission_sources: str | None,
+    submitter_ids: str | None,
+    flow_status: str | None,
+    order: str | None,
+    is_ascend: bool,
     date_from: str | None,
     date_to: str | None,
     search: str | None,
@@ -367,17 +519,45 @@ def form_responses(
 
     \b
     Acts as you. By default the server returns only responses you authored.
-    --all / --user surface others' responses and are admin/owner-only
-    (server-enforced — a member receives 403). --from / --to narrow the window.
+    --all / --user surface others' responses and require VIEW_REPORTS
+    permission (server-enforced — a member receives 403).
+
+    \b
+    --source filters by origin: member, anonymous, automation, public.
+    Multiple values are comma-separated (OR semantics).
+    --submitter filters by specific user UUIDs (CSV, max 50, OR semantics).
+    --flow-status filters approval status: pending, approved, denied.
 
     \b
     Examples:
       dailybot form responses <form_uuid>
       dailybot form responses <form_uuid> --state qa --json
       dailybot form responses <form_uuid> --all --from 2026-01-01 --to 2026-06-30
+      dailybot form responses <form_uuid> --all --source automation
+      dailybot form responses <form_uuid> --all --source "member,automation"
+      dailybot form responses <form_uuid> --all --flow-status pending
+      dailybot form responses <form_uuid> --all --search "deploy" --order oldest
       dailybot form responses <form_uuid> --user <user_uuid> --json
     """
     validate_user_filter(user)
+    if submission_sources:
+        parts: list[str] = [s.strip() for s in submission_sources.split(",")]
+        invalid: list[str] = [s for s in parts if s not in RESPONSE_SOURCES]
+        if invalid:
+            print_error(
+                f"Invalid source(s): {', '.join(invalid)}. Allowed: {', '.join(RESPONSE_SOURCES)}."
+            )
+            raise SystemExit(1)
+    if submitter_ids:
+        ids: list[str] = [s.strip() for s in submitter_ids.split(",")]
+        if len(ids) > MAX_SUBMITTER_IDS:
+            print_error(f"Too many submitter UUIDs ({len(ids)}, max {MAX_SUBMITTER_IDS}).")
+            raise SystemExit(1)
+
+    effective_order: str | None = order
+    if is_ascend and not order:
+        effective_order = "oldest"
+
     client = require_auth()
     truncated_search: str | None = search[:256] if search is not None else None
     meta: dict[str, Any] = {}
@@ -388,6 +568,11 @@ def form_responses(
                 state=state,
                 all_responses=all_responses,
                 user=user,
+                submission_sources=submission_sources,
+                submitter_user_ids=submitter_ids,
+                flow_status=flow_status,
+                order=effective_order,
+                is_ascend=is_ascend,
                 date_from=date_from,
                 date_to=date_to,
                 search=truncated_search,

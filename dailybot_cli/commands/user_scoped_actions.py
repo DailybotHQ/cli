@@ -500,19 +500,27 @@ def execute_form_list(
     *,
     json_mode: bool = False,
     include_archived: bool = False,
+    include_questions: bool = False,
     owner: str | None = None,
+    filter_scope: str | None = None,
+    order: str | None = None,
+    is_ascend: bool = False,
     spec: QuerySpec | None = None,
 ) -> list[dict[str, Any]] | None:
     """Fetch and display forms visible to the user (with question counts)."""
     query: QuerySpec = spec or QuerySpec()
     fetch_all: bool = resolve_fetch_all(query)
     meta: dict[str, Any] = {}
+    always_include_questions: bool = include_questions or not json_mode
     try:
         with console.status("Fetching forms..."):
             forms: list[dict[str, Any]] = client.list_forms(
-                include_questions=True,
+                include_questions=always_include_questions,
                 include_archived=include_archived,
                 owner=owner,
+                filter_scope=filter_scope,
+                order=order,
+                is_ascend=is_ascend,
                 search=query.params.get("search"),
                 start_date=query.params.get("start_date"),
                 end_date=query.params.get("end_date"),
@@ -542,6 +550,10 @@ def execute_form_submit(
     form_name: str | None = None,
     assume_yes: bool = False,
     json_mode: bool = False,
+    automation: bool = False,
+    anonymous: bool = False,
+    guest_user: dict[str, str] | None = None,
+    submission_source: str | None = None,
 ) -> None:
     """Submit a form response."""
     resolved_name: str = form_name or form_uuid
@@ -556,8 +568,19 @@ def execute_form_submit(
     summary_lines: list[str] = [
         f"Form: {resolved_name}",
         f"Form UUID: {form_uuid}",
-        "Answers:",
     ]
+    if automation:
+        summary_lines.append("Mode: automation (no submitter shown in channel)")
+    if anonymous:
+        summary_lines.append("Mode: anonymous (random name shown in channel)")
+    if guest_user:
+        guest_desc: str = guest_user.get("full_name", "")
+        if guest_user.get("email"):
+            guest_desc += f" <{guest_user['email']}>" if guest_desc else guest_user["email"]
+        summary_lines.append(f"Guest: {guest_desc}")
+    if submission_source:
+        summary_lines.append(f"Source: {submission_source}")
+    summary_lines.append("Answers:")
     for question_uuid, answer in content_map.items():
         summary_lines.append(f"  {question_uuid}: {answer}")
 
@@ -568,6 +591,10 @@ def execute_form_submit(
             result: dict[str, Any] = client.submit_form_response(
                 form_uuid=form_uuid,
                 content=content_map,
+                automation=automation,
+                anonymous=anonymous,
+                guest_user=guest_user,
+                submission_source=submission_source,
             )
     except APIError as exc:
         exit_for_api_error(exc, json_mode)

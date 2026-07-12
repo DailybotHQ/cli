@@ -414,6 +414,127 @@ class TestDailyBotClientPublicApi:
         assert call_kwargs["json"] == {"content": content}
         assert result["uuid"] == "response-uuid"
 
+    def test_submit_form_response_automation(self, client: DailyBotClient) -> None:
+        mock_response: MagicMock = MagicMock(spec=httpx.Response)
+        mock_response.status_code = 201
+        mock_response.json.return_value = {"uuid": "response-uuid"}
+
+        content: dict[str, str] = {"question-uuid": "Yes"}
+        with patch("httpx.post", return_value=mock_response) as mock_post:
+            result: dict[str, Any] = client.submit_form_response(
+                "form-uuid", content, automation=True
+            )
+
+        call_kwargs: dict[str, Any] = mock_post.call_args[1]
+        assert call_kwargs["json"] == {"content": content, "automation": True}
+        assert result["uuid"] == "response-uuid"
+
+    def test_submit_form_response_anonymous(self, client: DailyBotClient) -> None:
+        mock_response: MagicMock = MagicMock(spec=httpx.Response)
+        mock_response.status_code = 201
+        mock_response.json.return_value = {"uuid": "response-uuid"}
+
+        content: dict[str, str] = {"question-uuid": "Yes"}
+        with patch("httpx.post", return_value=mock_response) as mock_post:
+            result: dict[str, Any] = client.submit_form_response(
+                "form-uuid", content, anonymous=True
+            )
+
+        call_kwargs: dict[str, Any] = mock_post.call_args[1]
+        assert call_kwargs["json"] == {"content": content, "anonymous": True}
+        assert result["uuid"] == "response-uuid"
+
+    def test_submit_form_response_both_flags(self, client: DailyBotClient) -> None:
+        mock_response: MagicMock = MagicMock(spec=httpx.Response)
+        mock_response.status_code = 201
+        mock_response.json.return_value = {"uuid": "response-uuid"}
+
+        content: dict[str, str] = {"question-uuid": "Yes"}
+        with patch("httpx.post", return_value=mock_response) as mock_post:
+            result: dict[str, Any] = client.submit_form_response(
+                "form-uuid", content, automation=True, anonymous=True
+            )
+
+        call_kwargs: dict[str, Any] = mock_post.call_args[1]
+        assert call_kwargs["json"] == {
+            "content": content,
+            "automation": True,
+            "anonymous": True,
+        }
+        assert result["uuid"] == "response-uuid"
+
+    def test_submit_form_response_guest_user(self, client: DailyBotClient) -> None:
+        mock_response: MagicMock = MagicMock(spec=httpx.Response)
+        mock_response.status_code = 201
+        mock_response.json.return_value = {"uuid": "response-uuid", "is_guest_user": True}
+
+        content: dict[str, str] = {"question-uuid": "Yes"}
+        guest: dict[str, str] = {"full_name": "Jane Doe", "email": "jane@example.com"}
+        with patch("httpx.post", return_value=mock_response) as mock_post:
+            result: dict[str, Any] = client.submit_form_response(
+                "form-uuid",
+                content,
+                automation=True,
+                guest_user=guest,
+                submission_source="workflow:deploy",
+            )
+
+        call_kwargs: dict[str, Any] = mock_post.call_args[1]
+        assert call_kwargs["json"] == {
+            "content": content,
+            "automation": True,
+            "guest_user": guest,
+            "submission_source": "workflow:deploy",
+        }
+        assert result["is_guest_user"] is True
+
+    def test_list_forms_with_filter_and_order(self, client: DailyBotClient) -> None:
+        mock_response: MagicMock = MagicMock(spec=httpx.Response)
+        mock_response.status_code = 200
+        mock_response.json.return_value = {
+            "count": 1,
+            "next": None,
+            "previous": None,
+            "results": [{"uuid": "f-1", "name": "Form"}],
+        }
+
+        with patch("httpx.get", return_value=mock_response) as mock_get:
+            client.list_forms(
+                filter_scope="workflow",
+                order="alphabetical",
+                is_ascend=True,
+            )
+
+        call_kwargs: dict[str, Any] = mock_get.call_args[1]
+        assert call_kwargs["params"]["filter"] == "workflow"
+        assert call_kwargs["params"]["order"] == "alphabetical"
+        assert call_kwargs["params"]["is_ascend"] == "true"
+
+    def test_list_form_responses_with_filters(self, client: DailyBotClient) -> None:
+        mock_response: MagicMock = MagicMock(spec=httpx.Response)
+        mock_response.status_code = 200
+        mock_response.json.return_value = {
+            "count": 1,
+            "next": None,
+            "previous": None,
+            "results": [{"uuid": "r-1"}],
+        }
+
+        with patch("httpx.get", return_value=mock_response) as mock_get:
+            client.list_form_responses(
+                "f-1",
+                all_responses=True,
+                submission_sources="member,automation",
+                flow_status="pending",
+                order="oldest",
+            )
+
+        call_kwargs: dict[str, Any] = mock_get.call_args[1]
+        assert call_kwargs["params"]["all"] == "true"
+        assert call_kwargs["params"]["submission_sources"] == "member,automation"
+        assert call_kwargs["params"]["flow_status"] == "pending"
+        assert call_kwargs["params"]["order"] == "oldest"
+
     def test_list_users_paginated(self, client: DailyBotClient) -> None:
         first_response: MagicMock = MagicMock(spec=httpx.Response)
         first_response.status_code = 200

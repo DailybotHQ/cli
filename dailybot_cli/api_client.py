@@ -809,6 +809,9 @@ class DailyBotClient:
         include_questions: bool = False,
         include_archived: bool = False,
         owner: str | None = None,
+        filter_scope: str | None = None,
+        order: str | None = None,
+        is_ascend: bool = False,
         search: str | None = None,
         start_date: str | None = None,
         end_date: str | None = None,
@@ -821,7 +824,8 @@ class DailyBotClient:
         """GET /v1/forms/ — optionally expand questions, search, and page.
 
         The default response is org-scoped (every form the caller can see on the
-        webapp list view). Pass ``owner="me"`` to narrow to the caller's own forms.
+        webapp list view). Pass ``owner="me"`` to narrow to the caller's own forms,
+        or ``filter_scope`` to apply a server-side scope filter.
 
         When ``meta`` is given it is populated with ``count`` / ``next`` for a
         pagination footer.
@@ -833,6 +837,12 @@ class DailyBotClient:
             params["include_archived"] = "true"
         if owner:
             params["owner"] = owner
+        if filter_scope:
+            params["filter"] = filter_scope
+        if order:
+            params["order"] = order
+        if is_ascend:
+            params["is_ascend"] = "true"
         _merge_list_query(params, search=search, start_date=start_date, end_date=end_date)
         result: PaginatedResult = self._paginated_get(
             f"{self.api_url}/v1/forms/",
@@ -858,11 +868,25 @@ class DailyBotClient:
         self,
         form_uuid: str,
         content: dict[str, Any],
+        *,
+        automation: bool = False,
+        anonymous: bool = False,
+        guest_user: dict[str, str] | None = None,
+        submission_source: str | None = None,
     ) -> dict[str, Any]:
         """POST /v1/forms/<form_uuid>/responses/"""
+        payload: dict[str, Any] = {"content": content}
+        if automation:
+            payload["automation"] = True
+        if anonymous:
+            payload["anonymous"] = True
+        if guest_user:
+            payload["guest_user"] = guest_user
+        if submission_source:
+            payload["submission_source"] = submission_source
         response: httpx.Response = httpx.post(
             f"{self.api_url}/v1/forms/{form_uuid}/responses/",
-            json={"content": content},
+            json=payload,
             headers=self._headers(),
             timeout=self.timeout,
         )
@@ -875,6 +899,11 @@ class DailyBotClient:
         state: str | None = None,
         all_responses: bool = False,
         user: str | None = None,
+        submission_sources: str | None = None,
+        submitter_user_ids: str | None = None,
+        flow_status: str | None = None,
+        order: str | None = None,
+        is_ascend: bool = False,
         date_from: str | None = None,
         date_to: str | None = None,
         search: str | None = None,
@@ -900,6 +929,16 @@ class DailyBotClient:
             params["all"] = "true"
         if user:
             params["user"] = user
+        if submission_sources:
+            params["submission_sources"] = submission_sources
+        if submitter_user_ids:
+            params["submitter_user_ids"] = submitter_user_ids
+        if flow_status:
+            params["flow_status"] = flow_status
+        if order:
+            params["order"] = order
+        if is_ascend:
+            params["is_ascend"] = "true"
         if date_from:
             params["date_from"] = date_from
         if date_to:

@@ -234,6 +234,18 @@ ERROR_CODE_MESSAGES: dict[str, str] = {
     "search_query_too_long": (
         "Search term is too long (maximum 256 characters). Shorten it and try again."
     ),
+    "guest_user_required": (
+        "This form requires guest submitter info. "
+        "Add --guest-name and --guest-email to your command."
+    ),
+    "invalid_filter": "Unknown --filter value. Use: all, me, public, approval, workflow, archived.",
+    "invalid_order": "Unknown --order value. Use: alphabetical, recent, total (forms) or recent, oldest (responses).",
+    "invalid_submission_sources": (
+        "Unknown --source value. Use: member, anonymous, automation, public (comma-separated)."
+    ),
+    "invalid_submitter_user_id": "Invalid --submitter UUID format.",
+    "too_many_submitter_user_ids": "Too many --submitter UUIDs (max 50).",
+    "invalid_flow_status": "Unknown --flow-status value. Use: pending, approved, denied.",
     "invalid_date_range": (
         "Invalid date. Use YYYY-MM-DD, and make sure the start date is on or before the end date."
     ),
