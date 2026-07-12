@@ -27,7 +27,7 @@ from dailybot_cli.commands.upgrade import upgrade
 from dailybot_cli.commands.user import user
 from dailybot_cli.commands.version import version
 from dailybot_cli.commands.workflow import workflow
-from dailybot_cli.config import set_api_url_override
+from dailybot_cli.config import set_api_url_override, set_app_url_override
 
 # Format used by `dailybot --version`. Single line so it's friendly to scripts
 # parsing the output. The richer multi-line panel lives in `dailybot version`.
@@ -42,8 +42,14 @@ _VERSION_MESSAGE: str = f"dailybot {__version__} (Python {platform.python_versio
     envvar="DAILYBOT_API_URL",
     help="Override the API base URL (e.g. staging).",
 )
+@click.option(
+    "--app-url",
+    default=None,
+    envvar="DAILYBOT_APP_URL",
+    help="Override the webapp/dashboard base URL (default: https://app.dailybot.com).",
+)
 @click.pass_context
-def cli(ctx: click.Context, api_url: str | None) -> None:
+def cli(ctx: click.Context, api_url: str | None, app_url: str | None) -> None:
     """Dailybot CLI - The command-line bridge between humans and agents.
 
     \b
@@ -68,6 +74,8 @@ def cli(ctx: click.Context, api_url: str | None) -> None:
     """
     if api_url:
         set_api_url_override(api_url)
+    if app_url:
+        set_app_url_override(app_url)
     if ctx.invoked_subcommand is None:
         run_interactive()
 

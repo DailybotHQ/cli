@@ -464,6 +464,27 @@ class TestUpgradeCommand:
         assert result.exit_code == 0
         mock_set_override.assert_called_once_with("https://staging.dailybot.com")
 
+    @patch("dailybot_cli.main.set_app_url_override")
+    @patch("dailybot_cli.commands.update.get_agent_auth")
+    @patch("dailybot_cli.commands.update.DailyBotClient")
+    def test_app_url_override(
+        self,
+        mock_client_cls: MagicMock,
+        mock_get_token: MagicMock,
+        mock_set_override: MagicMock,
+        runner: CliRunner,
+    ) -> None:
+        mock_get_token.return_value = "tok"
+        mock_client: MagicMock = mock_client_cls.return_value
+        mock_client.submit_update.return_value = {
+            "followups_count": 1,
+            "attached_followups": [{"followup_name": "Standup", "action": "created"}],
+        }
+
+        result = runner.invoke(cli, ["--app-url", "http://localhost:8090", "update", "test"])
+        assert result.exit_code == 0
+        mock_set_override.assert_called_once_with("http://localhost:8090")
+
 
 class TestLoginCommand:
     @patch("dailybot_cli.commands.auth.DailyBotClient")

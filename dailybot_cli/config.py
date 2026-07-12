@@ -6,13 +6,21 @@ from pathlib import Path
 from typing import Any
 
 DEFAULT_API_URL: str = "https://api.dailybot.com"
+DEFAULT_APP_URL: str = "https://app.dailybot.com"
 _api_url_override: str | None = None
+_app_url_override: str | None = None
 
 
 def set_api_url_override(url: str) -> None:
     """Set a CLI-level API URL override (from --api-url flag)."""
     global _api_url_override
     _api_url_override = url.rstrip("/")
+
+
+def set_app_url_override(url: str) -> None:
+    """Set a CLI-level webapp URL override (from --app-url flag)."""
+    global _app_url_override
+    _app_url_override = url.rstrip("/")
 
 
 CONFIG_DIR: Path = Path.home() / ".config" / "dailybot"
@@ -106,6 +114,16 @@ def get_api_url() -> str:
     if creds and creds.get("api_url"):
         return str(creds["api_url"]).rstrip("/")
     return DEFAULT_API_URL
+
+
+def get_app_url() -> str:
+    """Return the webapp URL (--app-url flag > env var > default)."""
+    if _app_url_override:
+        return _app_url_override
+    env_url: str | None = os.environ.get("DAILYBOT_APP_URL")
+    if env_url:
+        return env_url.rstrip("/")
+    return DEFAULT_APP_URL
 
 
 def get_token() -> str | None:
