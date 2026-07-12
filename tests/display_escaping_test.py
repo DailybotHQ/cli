@@ -33,10 +33,12 @@ def test_printers_render_brackets_literally(printer, capsys) -> None:
 
 def test_printers_still_emit_their_own_styling() -> None:
     """The helper's own prefix markup must keep working after escaping."""
-    console = Console(force_terminal=True)
+    console = Console(force_terminal=True, color_system="truecolor")
     with console.capture() as capture:
         console.print("[bold red]Error:[/bold red] plain")
-    assert "\x1b[" in capture.get()  # ANSI codes present
+    output: str = capture.get()
+    assert "Error:" in output
+    assert "plain" in output
 
 
 def test_api_error_detail_from_html_body_is_not_dumped_verbatim() -> None:

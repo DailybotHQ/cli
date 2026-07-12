@@ -327,7 +327,7 @@ def print_webhook_result(data: dict[str, Any]) -> None:
     console.print(Panel(table, title="[bold]Webhook Registered[/bold]", border_style="green"))
 
 
-def print_agent_messages(messages: list[dict[str, Any]]) -> None:
+def print_agent_messages(messages: list[Any]) -> None:
     """Display a list of agent messages."""
     if not messages:
         print_info("No messages found.")
