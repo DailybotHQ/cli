@@ -274,6 +274,58 @@ class TestFormCommand:
         mock_client.submit_form_response.assert_called_once_with(
             form_uuid="form-uuid-1",
             content={"question-uuid-1": "Yes"},
+            automation=False,
+            anonymous=False,
+        )
+
+    @patch("dailybot_cli.commands.public_api_helpers.get_agent_auth")
+    @patch("dailybot_cli.commands.public_api_helpers.DailyBotClient")
+    def test_form_submit_automation(
+        self,
+        mock_client_cls: MagicMock,
+        mock_get_auth: MagicMock,
+        runner: CliRunner,
+    ) -> None:
+        mock_get_auth.return_value = "tok"
+        mock_client: MagicMock = mock_client_cls.return_value
+        mock_client.list_forms.return_value = [{"id": "f-1", "name": "Feedback"}]
+        mock_client.submit_form_response.return_value = {"uuid": "r-1"}
+
+        result = runner.invoke(
+            cli,
+            ["form", "submit", "f-1", "--content", '{"q":"A"}', "--yes", "--automation"],
+        )
+        assert result.exit_code == 0
+        mock_client.submit_form_response.assert_called_once_with(
+            form_uuid="f-1",
+            content={"q": "A"},
+            automation=True,
+            anonymous=False,
+        )
+
+    @patch("dailybot_cli.commands.public_api_helpers.get_agent_auth")
+    @patch("dailybot_cli.commands.public_api_helpers.DailyBotClient")
+    def test_form_submit_anonymous(
+        self,
+        mock_client_cls: MagicMock,
+        mock_get_auth: MagicMock,
+        runner: CliRunner,
+    ) -> None:
+        mock_get_auth.return_value = "tok"
+        mock_client: MagicMock = mock_client_cls.return_value
+        mock_client.list_forms.return_value = [{"id": "f-1", "name": "Feedback"}]
+        mock_client.submit_form_response.return_value = {"uuid": "r-1"}
+
+        result = runner.invoke(
+            cli,
+            ["form", "submit", "f-1", "--content", '{"q":"A"}', "--yes", "--anonymous"],
+        )
+        assert result.exit_code == 0
+        mock_client.submit_form_response.assert_called_once_with(
+            form_uuid="f-1",
+            content={"q": "A"},
+            automation=False,
+            anonymous=True,
         )
 
     @patch("dailybot_cli.commands.public_api_helpers.get_agent_auth")
@@ -309,6 +361,8 @@ class TestFormCommand:
                 "question-uuid-1": "Great week",
                 "question-uuid-2": "None",
             },
+            automation=False,
+            anonymous=False,
         )
 
     @patch("dailybot_cli.commands.user_scoped_actions._prompt_form_answer")
@@ -351,6 +405,8 @@ class TestFormCommand:
                 "q-bool": True,
                 "q-choice": "A",
             },
+            automation=False,
+            anonymous=False,
         )
 
     @patch("dailybot_cli.commands.public_api_helpers.get_agent_auth")

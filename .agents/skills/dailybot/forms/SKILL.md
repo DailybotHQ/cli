@@ -971,6 +971,10 @@ Always show the complete answer set before sending:
 | `--state` | `-s` | Optional initial state (workflow forms only). Defaults to the form's initial state. |
 | `--yes` | `-y` | Skip confirmation. |
 | `--json` |     | Machine-readable JSON output. |
+| `--automation` | | Submit as an automation — channel notifications show no submitter name. Use for web-form bridges, CI pipelines, or third-party integrations. (`CLI >= 3.4.0`) |
+| `--anonymous` | | Submit anonymously — channel notifications show a random generated name (e.g. "Purple Elephant") instead of the real user. (`CLI >= 3.4.0`) |
+
+> **`--automation` vs `--anonymous`:** Both are independent booleans. `--automation` hides the submitter entirely; `--anonymous` replaces them with a random name. When combined, `automation` takes precedence for the channel display. Neither flag affects who owns the response in the dashboard — it only controls the notification appearance.
 
 After submit, **re-read `current_state` and `allowed_transitions` on the returned payload** to decide the next step.
 

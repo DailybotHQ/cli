@@ -858,11 +858,19 @@ class DailyBotClient:
         self,
         form_uuid: str,
         content: dict[str, Any],
+        *,
+        automation: bool = False,
+        anonymous: bool = False,
     ) -> dict[str, Any]:
         """POST /v1/forms/<form_uuid>/responses/"""
+        payload: dict[str, Any] = {"content": content}
+        if automation:
+            payload["automation"] = True
+        if anonymous:
+            payload["anonymous"] = True
         response: httpx.Response = httpx.post(
             f"{self.api_url}/v1/forms/{form_uuid}/responses/",
-            json={"content": content},
+            json=payload,
             headers=self._headers(),
             timeout=self.timeout,
         )

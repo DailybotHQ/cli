@@ -290,11 +290,32 @@ def form_get(form_uuid: str, json_mode: bool) -> None:
 )
 @click.option("--yes", "-y", "assume_yes", is_flag=True, help="Skip the confirmation prompt.")
 @click.option("--json", "json_mode", is_flag=True, help="Emit machine-readable JSON to stdout.")
+@click.option(
+    "--automation",
+    is_flag=True,
+    default=False,
+    help=(
+        "Submit as an automation. The response will appear in channel "
+        "notifications without any submitter name — useful when "
+        "forwarding third-party form submissions via integrations."
+    ),
+)
+@click.option(
+    "--anonymous",
+    is_flag=True,
+    default=False,
+    help=(
+        "Submit anonymously. The response will appear with a random "
+        "generated name instead of your real name."
+    ),
+)
 def form_submit(
     form_uuid: str,
     content: str | None,
     assume_yes: bool,
     json_mode: bool,
+    automation: bool,
+    anonymous: bool,
 ) -> None:
     """Submit a form response.
 
@@ -309,6 +330,8 @@ def form_submit(
       dailybot form submit <form_uuid>
       dailybot form submit <form_uuid> --content '{"<question_uuid>":"Yes"}'
       dailybot form submit <form_uuid> --content '{"<uuid>":"Answer"}' --yes
+      dailybot form submit <form_uuid> --content '{"<uuid>":"A"}' --automation
+      dailybot form submit <form_uuid> --content '{"<uuid>":"A"}' --anonymous
     """
     client = require_auth()
     content_map = resolve_form_content(client, form_uuid, content)
@@ -318,6 +341,8 @@ def form_submit(
         content_map,
         assume_yes=assume_yes,
         json_mode=json_mode,
+        automation=automation,
+        anonymous=anonymous,
     )
 
 

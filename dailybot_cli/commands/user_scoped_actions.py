@@ -542,6 +542,8 @@ def execute_form_submit(
     form_name: str | None = None,
     assume_yes: bool = False,
     json_mode: bool = False,
+    automation: bool = False,
+    anonymous: bool = False,
 ) -> None:
     """Submit a form response."""
     resolved_name: str = form_name or form_uuid
@@ -556,8 +558,12 @@ def execute_form_submit(
     summary_lines: list[str] = [
         f"Form: {resolved_name}",
         f"Form UUID: {form_uuid}",
-        "Answers:",
     ]
+    if automation:
+        summary_lines.append("Mode: automation (no submitter shown in channel)")
+    if anonymous:
+        summary_lines.append("Mode: anonymous (random name shown in channel)")
+    summary_lines.append("Answers:")
     for question_uuid, answer in content_map.items():
         summary_lines.append(f"  {question_uuid}: {answer}")
 
@@ -568,6 +574,8 @@ def execute_form_submit(
             result: dict[str, Any] = client.submit_form_response(
                 form_uuid=form_uuid,
                 content=content_map,
+                automation=automation,
+                anonymous=anonymous,
             )
     except APIError as exc:
         exit_for_api_error(exc, json_mode)

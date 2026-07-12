@@ -414,6 +414,55 @@ class TestDailyBotClientPublicApi:
         assert call_kwargs["json"] == {"content": content}
         assert result["uuid"] == "response-uuid"
 
+    def test_submit_form_response_automation(self, client: DailyBotClient) -> None:
+        mock_response: MagicMock = MagicMock(spec=httpx.Response)
+        mock_response.status_code = 201
+        mock_response.json.return_value = {"uuid": "response-uuid"}
+
+        content: dict[str, str] = {"question-uuid": "Yes"}
+        with patch("httpx.post", return_value=mock_response) as mock_post:
+            result: dict[str, Any] = client.submit_form_response(
+                "form-uuid", content, automation=True
+            )
+
+        call_kwargs: dict[str, Any] = mock_post.call_args[1]
+        assert call_kwargs["json"] == {"content": content, "automation": True}
+        assert result["uuid"] == "response-uuid"
+
+    def test_submit_form_response_anonymous(self, client: DailyBotClient) -> None:
+        mock_response: MagicMock = MagicMock(spec=httpx.Response)
+        mock_response.status_code = 201
+        mock_response.json.return_value = {"uuid": "response-uuid"}
+
+        content: dict[str, str] = {"question-uuid": "Yes"}
+        with patch("httpx.post", return_value=mock_response) as mock_post:
+            result: dict[str, Any] = client.submit_form_response(
+                "form-uuid", content, anonymous=True
+            )
+
+        call_kwargs: dict[str, Any] = mock_post.call_args[1]
+        assert call_kwargs["json"] == {"content": content, "anonymous": True}
+        assert result["uuid"] == "response-uuid"
+
+    def test_submit_form_response_both_flags(self, client: DailyBotClient) -> None:
+        mock_response: MagicMock = MagicMock(spec=httpx.Response)
+        mock_response.status_code = 201
+        mock_response.json.return_value = {"uuid": "response-uuid"}
+
+        content: dict[str, str] = {"question-uuid": "Yes"}
+        with patch("httpx.post", return_value=mock_response) as mock_post:
+            result: dict[str, Any] = client.submit_form_response(
+                "form-uuid", content, automation=True, anonymous=True
+            )
+
+        call_kwargs: dict[str, Any] = mock_post.call_args[1]
+        assert call_kwargs["json"] == {
+            "content": content,
+            "automation": True,
+            "anonymous": True,
+        }
+        assert result["uuid"] == "response-uuid"
+
     def test_list_users_paginated(self, client: DailyBotClient) -> None:
         first_response: MagicMock = MagicMock(spec=httpx.Response)
         first_response.status_code = 200
