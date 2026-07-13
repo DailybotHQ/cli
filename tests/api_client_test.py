@@ -793,13 +793,13 @@ class TestDailyBotClientAgent:
         mock_response.status_code = 201
         mock_response.json.return_value = {"id": 1, "uuid": "abc"}
 
-        with patch("httpx.post", return_value=mock_response) as mock_post:
+        with patch("dailybot_cli.api_client.httpx.request", return_value=mock_response) as mock_req:
             result: dict[str, Any] = client.submit_agent_report(
                 agent_name="Claude Code",
                 content="Deployed v2",
             )
 
-        call_kwargs: dict[str, Any] = mock_post.call_args[1]
+        call_kwargs: dict[str, Any] = mock_req.call_args[1]
         assert call_kwargs["json"]["agent_name"] == "Claude Code"
         assert call_kwargs["headers"]["X-API-KEY"] == "test-api-key"
         assert result["id"] == 1
@@ -809,14 +809,14 @@ class TestDailyBotClientAgent:
         mock_response.status_code = 201
         mock_response.json.return_value = {"id": 2, "is_milestone": True}
 
-        with patch("httpx.post", return_value=mock_response) as mock_post:
+        with patch("dailybot_cli.api_client.httpx.request", return_value=mock_response) as mock_req:
             result: dict[str, Any] = client.submit_agent_report(
                 agent_name="Claude Code",
                 content="Big feature",
                 is_milestone=True,
             )
 
-        call_kwargs: dict[str, Any] = mock_post.call_args[1]
+        call_kwargs: dict[str, Any] = mock_req.call_args[1]
         assert call_kwargs["json"]["is_milestone"] is True
         assert result["is_milestone"] is True
 
@@ -825,14 +825,14 @@ class TestDailyBotClientAgent:
         mock_response.status_code = 201
         mock_response.json.return_value = {"id": 3, "co_authors": [{"name": "Alice"}]}
 
-        with patch("httpx.post", return_value=mock_response) as mock_post:
+        with patch("dailybot_cli.api_client.httpx.request", return_value=mock_response) as mock_req:
             result: dict[str, Any] = client.submit_agent_report(
                 agent_name="Claude Code",
                 content="Paired work",
                 co_authors=["alice@co.com", "bob@co.com"],
             )
 
-        call_kwargs: dict[str, Any] = mock_post.call_args[1]
+        call_kwargs: dict[str, Any] = mock_req.call_args[1]
         assert call_kwargs["json"]["co_authors"] == ["alice@co.com", "bob@co.com"]
         assert result["co_authors"] == [{"name": "Alice"}]
 
@@ -841,13 +841,13 @@ class TestDailyBotClientAgent:
         mock_response.status_code = 201
         mock_response.json.return_value = {"id": 4}
 
-        with patch("httpx.post", return_value=mock_response) as mock_post:
+        with patch("dailybot_cli.api_client.httpx.request", return_value=mock_response) as mock_req:
             client.submit_agent_report(
                 agent_name="Claude Code",
                 content="Normal report",
             )
 
-        call_kwargs: dict[str, Any] = mock_post.call_args[1]
+        call_kwargs: dict[str, Any] = mock_req.call_args[1]
         assert "is_milestone" not in call_kwargs["json"]
         assert "co_authors" not in call_kwargs["json"]
 
@@ -864,7 +864,7 @@ class TestDailyBotClientAgent:
             ],
         }
 
-        with patch("httpx.get", return_value=mock_response):
+        with patch("dailybot_cli.api_client.httpx.request", return_value=mock_response):
             result: list[dict[str, Any]] = client.get_agent_messages(agent_name="Bot")
 
         assert len(result) == 1
@@ -878,7 +878,7 @@ class TestDailyBotClientAgent:
             {"id": "msg-1", "content": "hello"},
         ]
 
-        with patch("httpx.get", return_value=mock_response):
+        with patch("dailybot_cli.api_client.httpx.request", return_value=mock_response):
             result: list[dict[str, Any]] = client.get_agent_messages(agent_name="Bot")
 
         assert len(result) == 1
@@ -894,7 +894,7 @@ class TestDailyBotClientAgent:
             "results": [],
         }
 
-        with patch("httpx.get", return_value=mock_response):
+        with patch("dailybot_cli.api_client.httpx.request", return_value=mock_response):
             result: list[dict[str, Any]] = client.get_agent_messages(agent_name="Bot")
 
         assert result == []
@@ -911,14 +911,13 @@ class TestDailyBotClientChat:
             "target_channels": ["C0123"],
             "platform_settings": {"bot_username": "Release Bot"},
         }
-        with patch("httpx.post", return_value=mock_response) as mock_post:
+        with patch("dailybot_cli.api_client.httpx.request", return_value=mock_response) as mock_req:
             result: dict[str, Any] = client.send_chat_message(payload)
 
-        call_args = mock_post.call_args
-        assert call_args[0][0] == "http://test-api.example.com/v1/send-message/"
-        # Body is passed through verbatim — future fields need no client change.
-        assert call_args[1]["json"] == payload
-        assert call_args[1]["headers"]["X-API-KEY"] == "test-api-key"
+        call_kwargs: dict[str, Any] = mock_req.call_args[1]
+        assert mock_req.call_args[0][1] == "http://test-api.example.com/v1/send-message/"
+        assert call_kwargs["json"] == payload
+        assert call_kwargs["headers"]["X-API-KEY"] == "test-api-key"
         assert result["bot_message_id"] == "123"
 
     def test_send_chat_message_returns_update_id(self, client: DailyBotClient) -> None:
@@ -926,12 +925,12 @@ class TestDailyBotClientChat:
         mock_response.status_code = 200
         mock_response.json.return_value = {"bot_message_id": "task-uuid"}
 
-        with patch("httpx.post", return_value=mock_response) as mock_post:
+        with patch("dailybot_cli.api_client.httpx.request", return_value=mock_response) as mock_req:
             result: dict[str, Any] = client.send_chat_message(
                 {"bot_message_id": "task-uuid", "message": "DONE", "target_channels": ["C0"]}
             )
 
-        assert mock_post.call_args[1]["json"]["bot_message_id"] == "task-uuid"
+        assert mock_req.call_args[1]["json"]["bot_message_id"] == "task-uuid"
         assert result["bot_message_id"] == "task-uuid"
 
 
@@ -1011,6 +1010,97 @@ class TestAgentDualAuth:
             client._handle_response(mock_response)
 
         assert exc_info.value.detail == "Invalid API key"
+
+
+class TestAgentBearerFallback:
+    """When an API key is rejected (401), _agent_request retries with Bearer."""
+
+    def test_retries_with_bearer_on_401(self) -> None:
+        client = DailyBotClient(
+            api_url="http://test.com", token="valid-token", api_key="stale-key"
+        )
+        rejected: MagicMock = MagicMock(spec=httpx.Response)
+        rejected.status_code = 401
+        rejected.json.return_value = {"detail": "API Key Not Valid"}
+
+        success: MagicMock = MagicMock(spec=httpx.Response)
+        success.status_code = 200
+        success.json.return_value = {"id": 1, "uuid": "abc"}
+
+        with patch("dailybot_cli.api_client.httpx.request", side_effect=[rejected, success]) as mock_req:
+            result: dict[str, Any] = client.submit_agent_report(
+                agent_name="Test Agent", content="Hello"
+            )
+
+        assert result == {"id": 1, "uuid": "abc"}
+        assert mock_req.call_count == 2
+        first_headers: dict[str, str] = mock_req.call_args_list[0][1]["headers"]
+        assert first_headers.get("X-API-KEY") == "stale-key"
+        retry_headers: dict[str, str] = mock_req.call_args_list[1][1]["headers"]
+        assert retry_headers.get("Authorization") == "Bearer valid-token"
+        assert "X-API-KEY" not in retry_headers
+
+    def test_no_retry_when_no_bearer_available(self) -> None:
+        client = DailyBotClient(
+            api_url="http://test.com", token=None, api_key="stale-key"
+        )
+        rejected: MagicMock = MagicMock(spec=httpx.Response)
+        rejected.status_code = 401
+        rejected.json.return_value = {"detail": "API Key Not Valid"}
+
+        with patch("dailybot_cli.api_client.httpx.request", return_value=rejected):
+            with pytest.raises(APIError) as exc_info:
+                client.submit_agent_report(agent_name="Test", content="Hi")
+
+        assert exc_info.value.status_code == 401
+
+    def test_no_retry_on_non_401_errors(self) -> None:
+        client = DailyBotClient(
+            api_url="http://test.com", token="valid-token", api_key="key"
+        )
+        forbidden: MagicMock = MagicMock(spec=httpx.Response)
+        forbidden.status_code = 403
+        forbidden.json.return_value = {"detail": "Forbidden"}
+
+        with patch("dailybot_cli.api_client.httpx.request", return_value=forbidden) as mock_req:
+            with pytest.raises(APIError) as exc_info:
+                client.submit_agent_report(agent_name="Test", content="Hi")
+
+        assert exc_info.value.status_code == 403
+        assert mock_req.call_count == 1
+
+    def test_no_retry_when_already_using_bearer(self) -> None:
+        client = DailyBotClient(
+            api_url="http://test.com", token="expired-token", api_key=None
+        )
+        rejected: MagicMock = MagicMock(spec=httpx.Response)
+        rejected.status_code = 401
+        rejected.json.return_value = {"detail": "Unauthorized"}
+
+        with patch("dailybot_cli.api_client.httpx.request", return_value=rejected) as mock_req:
+            with pytest.raises(APIError) as exc_info:
+                client.submit_agent_report(agent_name="Test", content="Hi")
+
+        assert mock_req.call_count == 1
+        assert "Session expired" in exc_info.value.detail
+
+    def test_fallback_works_for_agent_health(self) -> None:
+        client = DailyBotClient(
+            api_url="http://test.com", token="valid-token", api_key="bad-key"
+        )
+        rejected: MagicMock = MagicMock(spec=httpx.Response)
+        rejected.status_code = 401
+
+        success: MagicMock = MagicMock(spec=httpx.Response)
+        success.status_code = 200
+        success.json.return_value = {"ok": True}
+
+        with patch("dailybot_cli.api_client.httpx.request", side_effect=[rejected, success]):
+            result: dict[str, Any] = client.submit_agent_health(
+                agent_name="Test", ok=True
+            )
+
+        assert result == {"ok": True}
 
 
 class TestHeadersDualAuth:
