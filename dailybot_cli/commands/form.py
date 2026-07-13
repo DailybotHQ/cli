@@ -255,8 +255,8 @@ def form_list(
     """List forms visible to you.
 
     \b
-    Acts as you. You can only see and act on what you could in the webapp:
-    by default this is every form in your org you have list-view access to.
+    Lists all forms in your organization. Capabilities (editing, response
+    visibility, state changes) are governed by each form's permissions.
     Pass --mine to narrow to only the forms you own, or --filter to scope.
     Archived forms are hidden unless you pass --include-archived or --filter archived.
 

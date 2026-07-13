@@ -879,9 +879,10 @@ class DailyBotClient:
     ) -> list[dict[str, Any]]:
         """GET /v1/forms/ — optionally expand questions, search, and page.
 
-        The default response is org-scoped (every form the caller can see on the
-        webapp list view). Pass ``owner="me"`` to narrow to the caller's own forms,
-        or ``filter_scope`` to apply a server-side scope filter.
+        The default response is org-wide (every form in the caller's org).
+        Capabilities are governed by each form's permissions. Pass
+        ``owner="me"`` to narrow to the caller's own forms, or
+        ``filter_scope`` to apply a server-side scope filter.
 
         When ``meta`` is given it is populated with ``count`` / ``next`` for a
         pagination footer.

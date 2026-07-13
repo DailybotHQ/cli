@@ -109,7 +109,7 @@ The resolver step (4) is the customer-extension hook. See **Step 7 — Custom-sk
 dailybot form list --json
 ```
 
-Returns all forms visible to the logged-in user. **As of `dailybot-cli >= 3.2.0` this is org-scoped**: it lists every form the caller can see on the webapp list view — an org **admin sees all** the org's forms; a member sees forms flagged for the list view plus their own. (Before 3.2.0 the endpoint returned only the caller's *own* forms even for admins — a server-side bug; if a developer reports "I only see a handful of my forms," check `dailybot --version` and have them `dailybot upgrade`.) The shape is stable and machine-readable:
+Returns all forms in the caller's organization. Every org member sees every org form; capabilities (editing, response visibility, state changes) are governed by each form's permissions. Pass `--mine` to narrow to only your own forms. (If a developer reports "I only see a handful of my forms," check `dailybot --version` and have them `dailybot upgrade` — older CLIs had a server-side visibility bug.) The shape is stable and machine-readable:
 
 ```json
 [
