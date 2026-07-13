@@ -69,6 +69,7 @@ def test_get_api_url_from_env(tmp_config: Path, monkeypatch: pytest.MonkeyPatch)
 
 def test_get_app_url_default(tmp_config: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.delenv("DAILYBOT_APP_URL", raising=False)
+    monkeypatch.setattr("dailybot_cli.config._app_url_override", None)
     assert get_app_url() == "https://app.dailybot.com"
 
 
