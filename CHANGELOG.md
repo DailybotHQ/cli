@@ -9,6 +9,30 @@ Do not edit it by hand — your edits will be overwritten on the next release.
 
 <!-- version list -->
 
+## v3.5.1 (2026-07-13)
+
+### Bug Fixes
+
+- **client**: Auto-retry agent requests with Bearer when API key is rejected
+  ([#64](https://github.com/DailybotHQ/cli/pull/64),
+  [`ff23b9e`](https://github.com/DailybotHQ/cli/commit/ff23b9e97f4783dfa5b6e4c128f523d42c66b86b))
+
+### Code Style
+
+- Apply ruff format ([#64](https://github.com/DailybotHQ/cli/pull/64),
+  [`ff23b9e`](https://github.com/DailybotHQ/cli/commit/ff23b9e97f4783dfa5b6e4c128f523d42c66b86b))
+
+- **tests**: Combine nested with statements (ruff SIM117)
+  ([#64](https://github.com/DailybotHQ/cli/pull/64),
+  [`ff23b9e`](https://github.com/DailybotHQ/cli/commit/ff23b9e97f4783dfa5b6e4c128f523d42c66b86b))
+
+### Refactoring
+
+- **client**: Unify auth priority — Bearer first everywhere
+  ([#64](https://github.com/DailybotHQ/cli/pull/64),
+  [`ff23b9e`](https://github.com/DailybotHQ/cli/commit/ff23b9e97f4783dfa5b6e4c128f523d42c66b86b))
+
+
 ## v3.5.0 (2026-07-12)
 
 ### Chores
