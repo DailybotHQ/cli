@@ -9,6 +9,25 @@ Do not edit it by hand — your edits will be overwritten on the next release.
 
 <!-- version list -->
 
+## v3.6.0 (2026-07-13)
+
+### Documentation
+
+- **forms**: Update list visibility to reflect org-wide access
+  ([#67](https://github.com/DailybotHQ/cli/pull/67),
+  [`d241945`](https://github.com/DailybotHQ/cli/commit/d2419452ce81ded76b3aa8c451bc7e0323c3bab5))
+
+### Features
+
+- **form**: Add --owner filter, form owners picker, and migrate --mine to owner_user_ids
+  ([#67](https://github.com/DailybotHQ/cli/pull/67),
+  [`d241945`](https://github.com/DailybotHQ/cli/commit/d2419452ce81ded76b3aa8c451bc7e0323c3bab5))
+
+- **form**: Owner filter, form owners picker, and org-wide list visibility
+  ([#67](https://github.com/DailybotHQ/cli/pull/67),
+  [`d241945`](https://github.com/DailybotHQ/cli/commit/d2419452ce81ded76b3aa8c451bc7e0323c3bab5))
+
+
 ## v3.5.2 (2026-07-13)
 
 ### Bug Fixes
