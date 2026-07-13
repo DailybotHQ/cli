@@ -1059,9 +1059,11 @@ class TestAgentAuthFallback:
         rejected.status_code = 401
         rejected.json.return_value = {"detail": "API Key Not Valid"}
 
-        with patch("dailybot_cli.api_client.httpx.request", return_value=rejected) as mock_req:
-            with pytest.raises(APIError) as exc_info:
-                client.submit_agent_report(agent_name="Test", content="Hi")
+        with (
+            patch("dailybot_cli.api_client.httpx.request", return_value=rejected) as mock_req,
+            pytest.raises(APIError) as exc_info,
+        ):
+            client.submit_agent_report(agent_name="Test", content="Hi")
 
         assert exc_info.value.status_code == 401
         assert mock_req.call_count == 1
@@ -1074,9 +1076,11 @@ class TestAgentAuthFallback:
         forbidden.status_code = 403
         forbidden.json.return_value = {"detail": "Forbidden"}
 
-        with patch("dailybot_cli.api_client.httpx.request", return_value=forbidden) as mock_req:
-            with pytest.raises(APIError) as exc_info:
-                client.submit_agent_report(agent_name="Test", content="Hi")
+        with (
+            patch("dailybot_cli.api_client.httpx.request", return_value=forbidden) as mock_req,
+            pytest.raises(APIError) as exc_info,
+        ):
+            client.submit_agent_report(agent_name="Test", content="Hi")
 
         assert exc_info.value.status_code == 403
         assert mock_req.call_count == 1
@@ -1090,9 +1094,11 @@ class TestAgentAuthFallback:
         rejected.status_code = 401
         rejected.json.return_value = {"detail": "Unauthorized"}
 
-        with patch("dailybot_cli.api_client.httpx.request", return_value=rejected) as mock_req:
-            with pytest.raises(APIError) as exc_info:
-                client.submit_agent_report(agent_name="Test", content="Hi")
+        with (
+            patch("dailybot_cli.api_client.httpx.request", return_value=rejected) as mock_req,
+            pytest.raises(APIError) as exc_info,
+        ):
+            client.submit_agent_report(agent_name="Test", content="Hi")
 
         assert mock_req.call_count == 1
         assert "Session expired" in exc_info.value.detail
