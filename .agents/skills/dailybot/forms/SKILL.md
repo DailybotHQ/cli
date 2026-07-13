@@ -1,7 +1,7 @@
 ---
 name: dailybot-forms
 description: List, inspect, submit, update, and transition form responses via Dailybot — including forms with workflow states and audience-scoped permissions. Also authors forms — create and configure a form (workflow states, permissions, anonymous/public/approval, ChatOps command) and manage its questions (types, report titles, variations, conditional logic). Use when the developer wants to see available forms, fill out a survey, continue an in-progress response, move a response between states, read prior responses, or create/configure a form. Do not use for daily check-ins — those go through dailybot-checkin.
-version: "3.7.1"
+version: "3.9.0"
 documentation_url: https://www.dailybot.com/skill.md
 user-invocable: true
 metadata: {"openclaw":{"emoji":"📋","homepage":"https://dailybot.com","requires":{"anyBins":["dailybot","curl"]},"primaryEnv":"DAILYBOT_API_KEY","install":[{"id":"cli-install-script","kind":"download","url":"https://cli.dailybot.com/install.sh","label":"Install Dailybot CLI (official script — preferred on Linux/macOS)"},{"id":"pip","kind":"pip","package":"dailybot-cli","bins":["dailybot"],"label":"Install Dailybot CLI via pip (fallback if binary fails)"}]}}
@@ -161,7 +161,7 @@ dailybot form list --all --json
 dailybot form list --page 2 --page-size 20 --json
 ```
 
-### Filter by owner — `--mine` and `--owner` (CLI >= 3.5.2)
+### Filter by owner — `--mine` and `--owner` (CLI >= 3.6.0)
 
 Pass **`--mine`** to narrow the result to only the forms **you own**, or
 **`--owner`** (repeatable) to filter by specific owners. `--owner` accepts
@@ -183,7 +183,7 @@ dailybot form list --owner <uuid-1> --owner <uuid-2> --json
 > `--mine` or `--owner` instead — `--filter me` still works but maps to
 > the legacy `filter=me` parameter.
 
-### Form owners picker — `form owners` (CLI >= 3.5.2)
+### Form owners picker — `form owners` (CLI >= 3.6.0)
 
 A lightweight endpoint to discover which org members own at least one form,
 without pulling the full member directory.
@@ -202,7 +202,7 @@ Each result has `uuid`, `full_name`, `image`, `role`, and optionally `email`
 | Flag | Values | Description |
 |------|--------|-------------|
 | `--filter` | `all`, `public`, `approval`, `workflow`, `archived` | Scope filter (server-side). `me` still works but is deprecated. |
-| `--owner` | UUID, email, or name (repeatable) | Filter by form owner(s). Max 50. (`CLI >= 3.5.2`) |
+| `--owner` | UUID, email, or name (repeatable) | Filter by form owner(s). Max 50. (`CLI >= 3.6.0`) |
 | `--order` | `alphabetical`, `recent`, `total` | Sort field (`total` = total response count). |
 | `--ascending` / `--asc` | flag | Sort ascending (default: descending). |
 | `--include-questions` | flag | Include question definitions in each form. |
