@@ -9,6 +9,29 @@ Do not edit it by hand — your edits will be overwritten on the next release.
 
 <!-- version list -->
 
+## v3.5.2 (2026-07-13)
+
+### Bug Fixes
+
+- **tests**: Reset _app_url_override in test_get_app_url_default
+  ([#66](https://github.com/DailybotHQ/cli/pull/66),
+  [`b8e90c3`](https://github.com/DailybotHQ/cli/commit/b8e90c3dbd76c57a6a07ec794bbb7a916aaf630c))
+
+### Chores
+
+- **docker**: Bump devcontainer CLI pin to >= 3.5.1
+  ([#66](https://github.com/DailybotHQ/cli/pull/66),
+  [`b8e90c3`](https://github.com/DailybotHQ/cli/commit/b8e90c3dbd76c57a6a07ec794bbb7a916aaf630c))
+
+- **skills**: Sync vendored dailybot skill pack to v3.7.1
+  ([#66](https://github.com/DailybotHQ/cli/pull/66),
+  [`b8e90c3`](https://github.com/DailybotHQ/cli/commit/b8e90c3dbd76c57a6a07ec794bbb7a916aaf630c))
+
+- **skills**: Sync vendored skill pack v3.7.1 + bump devcontainer CLI pin
+  ([#66](https://github.com/DailybotHQ/cli/pull/66),
+  [`b8e90c3`](https://github.com/DailybotHQ/cli/commit/b8e90c3dbd76c57a6a07ec794bbb7a916aaf630c))
+
+
 ## v3.5.1 (2026-07-13)
 
 ### Bug Fixes
