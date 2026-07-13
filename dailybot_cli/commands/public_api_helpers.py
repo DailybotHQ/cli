@@ -238,7 +238,9 @@ ERROR_CODE_MESSAGES: dict[str, str] = {
         "This form requires guest submitter info. "
         "Add --guest-name and --guest-email to your command."
     ),
-    "invalid_filter": "Unknown --filter value. Use: all, me, public, approval, workflow, archived.",
+    "invalid_filter": "Unknown --filter value. Use: all, public, approval, workflow, archived.",
+    "invalid_owner_user_id": "Invalid --owner UUID format.",
+    "too_many_owner_user_ids": "Too many --owner UUIDs (max 50). Narrow your filter.",
     "invalid_order": "Unknown --order value. Use: alphabetical, recent, total (forms) or recent, oldest (responses).",
     "invalid_submission_sources": (
         "Unknown --source value. Use: member, anonymous, automation, public (comma-separated)."

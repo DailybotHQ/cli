@@ -161,22 +161,48 @@ dailybot form list --all --json
 dailybot form list --page 2 --page-size 20 --json
 ```
 
-### Scope the list to your own forms — `--mine` (CLI >= 3.2.0)
+### Filter by owner — `--mine` and `--owner` (CLI >= 3.5.2)
 
-Since the default is now org-scoped, pass **`--mine`** to narrow the result to
-only the forms **you own** (it sends `owner=me` to the API). Useful when an admin
-wants their personal forms out of the full org list.
+Pass **`--mine`** to narrow the result to only the forms **you own**, or
+**`--owner`** (repeatable) to filter by specific owners. `--owner` accepts
+a UUID, email, or name — non-UUID values are resolved via the org directory.
+The two flags can be combined (AND semantics with every other filter).
 
 ```bash
 # Only the forms I own:
 dailybot form list --mine --json
+
+# Forms owned by a specific person (by name):
+dailybot form list --owner "Jane Doe" --json
+
+# Forms owned by two people (by UUID):
+dailybot form list --owner <uuid-1> --owner <uuid-2> --json
 ```
+
+> **Deprecation:** the `--filter me` scope is deprecated server-side. Use
+> `--mine` or `--owner` instead — `--filter me` still works but maps to
+> the legacy `filter=me` parameter.
+
+### Form owners picker — `form owners` (CLI >= 3.5.2)
+
+A lightweight endpoint to discover which org members own at least one form,
+without pulling the full member directory.
+
+```bash
+dailybot form owners                     # table of owners
+dailybot form owners --search jane       # search by name/email
+dailybot form owners --json              # machine-readable
+```
+
+Each result has `uuid`, `full_name`, `image`, `role`, and optionally `email`
+(email is only visible to admins/managers — the CLI must not assume it exists).
 
 ### Server-side filtering, sorting, and archived forms (CLI >= 3.5.0)
 
 | Flag | Values | Description |
 |------|--------|-------------|
-| `--filter` | `all`, `me`, `public`, `approval`, `workflow`, `archived` | Scope filter (server-side). |
+| `--filter` | `all`, `public`, `approval`, `workflow`, `archived` | Scope filter (server-side). `me` still works but is deprecated. |
+| `--owner` | UUID, email, or name (repeatable) | Filter by form owner(s). Max 50. (`CLI >= 3.5.2`) |
 | `--order` | `alphabetical`, `recent`, `total` | Sort field (`total` = total response count). |
 | `--ascending` / `--asc` | flag | Sort ascending (default: descending). |
 | `--include-questions` | flag | Include question definitions in each form. |
