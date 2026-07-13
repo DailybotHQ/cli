@@ -6,7 +6,11 @@ from typing import Any
 
 import click
 
-from dailybot_cli.api_client import APIError, DailyBotClient
+from dailybot_cli.api_client import (
+    MAX_OWNER_USER_IDS,
+    APIError,
+    DailyBotClient,
+)
 from dailybot_cli.commands.authoring_helpers import (
     build_question,
     build_question_edit_fields,
@@ -26,7 +30,9 @@ from dailybot_cli.commands.public_api_helpers import (
     emit_json,
     enforce_plan_access,
     exit_for_api_error,
+    get_current_user_uuid,
     require_auth,
+    resolve_user_by_name_or_uuid,
     validate_user_filter,
 )
 from dailybot_cli.commands.query_options import (
@@ -64,6 +70,8 @@ MAX_SUBMISSION_SOURCE_LENGTH: int = 512
 _EMAIL_RE: re.Pattern[str] = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
 
 FORM_LIST_FILTERS: tuple[str, ...] = ("all", "me", "public", "approval", "workflow", "archived")
+# "me" is deprecated server-side — kept here for back-compat but --mine now
+# uses owner_user_ids with the caller's UUID instead.
 FORM_LIST_ORDERS: tuple[str, ...] = ("alphabetical", "recent", "total")
 RESPONSE_ORDERS: tuple[str, ...] = ("recent", "oldest")
 RESPONSE_SOURCES: tuple[str, ...] = ("member", "anonymous", "automation", "public")
@@ -202,14 +210,26 @@ def form() -> None:
 @click.option(
     "--mine",
     is_flag=True,
-    help="Only forms you own (default lists every form you can see in the org).",
+    help="Only forms you own (default lists every form in the org).",
+)
+@click.option(
+    "--owner",
+    "owners",
+    multiple=True,
+    help=(
+        "Filter by form owner (UUID, email, or name). Repeatable. "
+        "Names/emails are resolved via the org directory."
+    ),
 )
 @click.option(
     "--filter",
     "filter_scope",
     type=click.Choice(FORM_LIST_FILTERS, case_sensitive=False),
     default=None,
-    help="Scope filter: all, me, public, approval, workflow, archived.",
+    help=(
+        "Scope filter: all, public, approval, workflow, archived. "
+        '("me" still works but is deprecated — use --mine or --owner instead.)'
+    ),
 )
 @click.option(
     "--order",
@@ -236,6 +256,7 @@ def form() -> None:
 def form_list(
     include_archived: bool,
     mine: bool,
+    owners: tuple[str, ...],
     filter_scope: str | None,
     order: str | None,
     is_ascend: bool,
@@ -255,15 +276,17 @@ def form_list(
     """List forms visible to you.
 
     \b
-    Acts as you. You can only see and act on what you could in the webapp:
-    by default this is every form in your org you have list-view access to.
-    Pass --mine to narrow to only the forms you own, or --filter to scope.
+    Lists all forms in your organization. Capabilities (editing, response
+    visibility, state changes) are governed by each form's permissions.
+    Pass --mine or --owner to filter by form owner, or --filter to scope.
     Archived forms are hidden unless you pass --include-archived or --filter archived.
 
     \b
     Examples:
       dailybot form list
       dailybot form list --mine
+      dailybot form list --owner "Jane Doe"
+      dailybot form list --owner <uuid> --owner <uuid>
       dailybot form list --filter workflow --order alphabetical --asc
       dailybot form list --filter approval
       dailybot form list --filter public --order total
@@ -289,17 +312,138 @@ def form_list(
         print_error(str(exc))
         raise SystemExit(1)
     client = require_auth()
+
+    owner_user_ids: list[str] | None = None
+    if mine or owners:
+        owner_user_ids = []
+        if mine:
+            my_uuid: str | None = get_current_user_uuid(client)
+            if my_uuid:
+                owner_user_ids.append(my_uuid)
+            else:
+                print_error(
+                    "Could not resolve your user UUID for --mine. "
+                    "Try passing your UUID with --owner instead."
+                )
+                raise SystemExit(1)
+        if owners:
+            owner_user_ids.extend(_resolve_owner_uuids(client, owners))
+        if len(owner_user_ids) > MAX_OWNER_USER_IDS:
+            print_error(
+                f"Too many owner UUIDs ({len(owner_user_ids)}). Maximum is {MAX_OWNER_USER_IDS}."
+            )
+            raise SystemExit(1)
+
     execute_form_list(
         client,
         json_mode=json_mode,
         include_archived=include_archived,
         include_questions=include_questions,
-        owner="me" if mine else None,
+        owner_user_ids=owner_user_ids,
         filter_scope=filter_scope,
         order=order,
         is_ascend=is_ascend,
         spec=spec,
     )
+
+
+def _resolve_owner_uuids(
+    client: DailyBotClient,
+    identifiers: tuple[str, ...],
+) -> list[str]:
+    """Resolve owner identifiers (UUID, email, or name) to UUIDs.
+
+    Loads the org directory only when non-UUID identifiers are present.
+    """
+    from dailybot_cli.commands.public_api_helpers import UUID_PATTERN
+
+    uuids: list[str] = []
+    to_resolve: list[str] = []
+    for ident in identifiers:
+        if UUID_PATTERN.match(ident):
+            uuids.append(ident)
+        else:
+            to_resolve.append(ident)
+    if to_resolve:
+        with console.status("Resolving owner names..."):
+            users: list[dict[str, Any]] = client.list_users(include_email=True)
+        for ident in to_resolve:
+            try:
+                uid, _name = resolve_user_by_name_or_uuid(users, ident)
+                uuids.append(uid)
+            except ValueError as exc:
+                print_error(str(exc))
+                raise SystemExit(1)
+    return uuids
+
+
+@form.command("owners")
+@click.option("--search", "-s", default=None, help="Search owners by name or email.")
+@click.option("--json", "json_mode", is_flag=True, help="Emit machine-readable JSON to stdout.")
+@click.option("--limit", "-l", type=int, default=None, help="Max results (default 20, max 50).")
+def form_owners(
+    search: str | None,
+    json_mode: bool,
+    limit: int | None,
+) -> None:
+    """List org members who own at least one form.
+
+    \b
+    A lightweight picker for the --owner filter on `form list`. Returns only
+    members who own at least one non-archived form. Email is visible only to
+    admins/managers.
+
+    \b
+    Examples:
+      dailybot form owners
+      dailybot form owners --search jane
+      dailybot form owners --json
+    """
+    client = require_auth()
+    try:
+        with console.status("Fetching form owners..."):
+            data: dict[str, Any] = client.list_form_owners(
+                search=search,
+                limit=limit,
+            )
+    except APIError as exc:
+        exit_for_api_error(exc, json_mode)
+
+    results: list[dict[str, Any]] = data.get("results", [])
+    if json_mode:
+        emit_json(results)
+        return
+
+    if not results:
+        from dailybot_cli.display import print_info
+
+        print_info("No form owners found.")
+        return
+
+    from rich.table import Table
+
+    table = Table(title="Form owners", border_style="cyan")
+    table.add_column("Name", style="bold")
+    table.add_column("UUID", style="dim")
+    table.add_column("Role")
+    has_email: bool = any(r.get("email") for r in results)
+    if has_email:
+        table.add_column("Email")
+    for row in results:
+        cols: list[str] = [
+            str(row.get("full_name", "")),
+            str(row.get("uuid", "")),
+            str(row.get("role", "")),
+        ]
+        if has_email:
+            cols.append(str(row.get("email", "")))
+        table.add_row(*cols)
+    console.print(table)
+    total: int | None = data.get("count")
+    if total is not None and total > len(results):
+        from dailybot_cli.display import print_info
+
+        print_info(f"Showing {len(results)} of {total} owners. Use --search to narrow.")
 
 
 @form.command("get")

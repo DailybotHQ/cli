@@ -20,6 +20,7 @@ FREE_PLAN_DAILY_LIMIT_CODE: str = "free_plan_daily_limit_exceeded"
 
 MAX_FALLBACK_DETAIL_CHARS: int = 160  # cap for a non-JSON error body echoed to the user
 MAX_SEARCH_QUERY_LENGTH: int = 256  # server rejects search queries longer than this
+MAX_OWNER_USER_IDS: int = 50  # server rejects owner_user_ids lists longer than this
 
 
 def _fallback_detail(response: httpx.Response) -> str:
@@ -865,6 +866,7 @@ class DailyBotClient:
         include_questions: bool = False,
         include_archived: bool = False,
         owner: str | None = None,
+        owner_user_ids: list[str] | None = None,
         filter_scope: str | None = None,
         order: str | None = None,
         is_ascend: bool = False,
@@ -879,9 +881,10 @@ class DailyBotClient:
     ) -> list[dict[str, Any]]:
         """GET /v1/forms/ — optionally expand questions, search, and page.
 
-        The default response is org-scoped (every form the caller can see on the
-        webapp list view). Pass ``owner="me"`` to narrow to the caller's own forms,
-        or ``filter_scope`` to apply a server-side scope filter.
+        The default response is org-wide (every form in the caller's org).
+        Capabilities are governed by each form's permissions. Pass
+        ``owner_user_ids`` to filter by specific owners, or
+        ``filter_scope`` to apply a server-side scope filter.
 
         When ``meta`` is given it is populated with ``count`` / ``next`` for a
         pagination footer.
@@ -893,6 +896,8 @@ class DailyBotClient:
             params["include_archived"] = "true"
         if owner:
             params["owner"] = owner
+        if owner_user_ids:
+            params["owner_user_ids"] = ",".join(owner_user_ids)
         if filter_scope:
             params["filter"] = filter_scope
         if order:
@@ -910,6 +915,34 @@ class DailyBotClient:
         )
         _fill_meta(meta, result)
         return result.results
+
+    def list_form_owners(
+        self,
+        *,
+        search: str | None = None,
+        offset: int | None = None,
+        limit: int | None = None,
+    ) -> dict[str, Any]:
+        """GET /v1/forms/form-owners/ — paginated picker of org members who own forms.
+
+        Returns the raw paginated envelope ``{count, next, previous, results}``.
+        Each result has ``uuid``, ``full_name``, ``image``, ``role``, and
+        optionally ``email`` (only visible to admins/managers).
+        """
+        params: dict[str, Any] = {}
+        if search:
+            params["search"] = search
+        if offset is not None:
+            params["offset"] = offset
+        if limit is not None:
+            params["limit"] = limit
+        response: httpx.Response = httpx.get(
+            f"{self.api_url}/v1/forms/form-owners/",
+            params=params,
+            headers=self._headers(),
+            timeout=self.timeout,
+        )
+        return self._handle_response(response)
 
     def get_form(self, form_uuid: str) -> dict[str, Any]:
         """GET /v1/forms/<form_uuid>/ — form metadata and question definitions."""

@@ -1638,12 +1638,19 @@ class TestQueryFlagsWiring:
         assert "--all" in result.output and "--limit" in result.output
 
     @patch("dailybot_cli.commands.public_api_helpers.get_agent_auth", return_value="tok")
-    def test_form_list_mine_passes_owner_me(self, _auth: MagicMock) -> None:
+    def test_form_list_mine_passes_owner_user_ids(self, _auth: MagicMock) -> None:
         page = self._envelope([{"id": "f1", "name": "Mine"}], None, 1)
-        with patch("dailybot_cli.api_client.httpx.get", return_value=page) as mock_get:
+        auth_resp = MagicMock(status_code=200)
+        auth_resp.json.return_value = {"user": {"uuid": "my-uuid-1234"}}
+        auth_resp.headers = {"content-type": "application/json"}
+        with (
+            patch("dailybot_cli.api_client.httpx.get") as mock_get,
+        ):
+            mock_get.side_effect = [auth_resp, page]
             result = CliRunner().invoke(cli, ["form", "list", "--mine"])
         assert result.exit_code == 0
-        assert mock_get.call_args[1]["params"]["owner"] == "me"
+        list_call = mock_get.call_args_list[1]
+        assert list_call[1]["params"]["owner_user_ids"] == "my-uuid-1234"
 
     @patch("dailybot_cli.commands.public_api_helpers.get_agent_auth", return_value="tok")
     def test_form_list_default_omits_owner(self, _auth: MagicMock) -> None:
@@ -1652,6 +1659,72 @@ class TestQueryFlagsWiring:
             result = CliRunner().invoke(cli, ["form", "list"])
         assert result.exit_code == 0
         assert "owner" not in mock_get.call_args[1]["params"]
+        assert "owner_user_ids" not in mock_get.call_args[1]["params"]
+
+    @patch("dailybot_cli.commands.public_api_helpers.get_agent_auth", return_value="tok")
+    def test_form_list_owner_by_uuid(self, _auth: MagicMock) -> None:
+        """--owner with a UUID sends owner_user_ids directly."""
+        page = self._envelope([{"id": "f1", "name": "A"}], None, 1)
+        target_uuid = "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"
+        with patch("dailybot_cli.api_client.httpx.get", return_value=page) as mock_get:
+            result = CliRunner().invoke(cli, ["form", "list", "--owner", target_uuid])
+        assert result.exit_code == 0
+        assert mock_get.call_args[1]["params"]["owner_user_ids"] == target_uuid
+
+    @patch("dailybot_cli.commands.public_api_helpers.get_agent_auth", return_value="tok")
+    def test_form_list_owner_resolves_name(self, _auth: MagicMock) -> None:
+        """--owner with a name resolves via the user directory."""
+        page = self._envelope([{"id": "f1", "name": "A"}], None, 1)
+        users_page = self._envelope(
+            [{"uuid": "user-uuid-123", "full_name": "Jane Doe", "is_active": True}],
+            None,
+            1,
+        )
+        with patch("dailybot_cli.api_client.httpx.get") as mock_get:
+            mock_get.side_effect = [users_page, page]
+            result = CliRunner().invoke(cli, ["form", "list", "--owner", "Jane Doe"])
+        assert result.exit_code == 0
+        list_call = mock_get.call_args_list[1]
+        assert list_call[1]["params"]["owner_user_ids"] == "user-uuid-123"
+
+    @patch("dailybot_cli.commands.public_api_helpers.get_agent_auth", return_value="tok")
+    def test_form_owners_command(self, _auth: MagicMock) -> None:
+        """form owners returns a table of form owners."""
+        resp = MagicMock(status_code=200)
+        resp.json.return_value = {
+            "count": 1,
+            "next": None,
+            "previous": None,
+            "results": [
+                {"uuid": "owner-1", "full_name": "Alice", "role": "admin", "email": "a@e.com"},
+            ],
+        }
+        resp.headers = {"content-type": "application/json"}
+        with patch("dailybot_cli.api_client.httpx.get", return_value=resp):
+            result = CliRunner().invoke(cli, ["form", "owners"])
+        assert result.exit_code == 0
+        assert "Alice" in result.output
+
+    @patch("dailybot_cli.commands.public_api_helpers.get_agent_auth", return_value="tok")
+    def test_form_owners_json(self, _auth: MagicMock) -> None:
+        """form owners --json emits JSON."""
+        resp = MagicMock(status_code=200)
+        resp.json.return_value = {
+            "count": 1,
+            "next": None,
+            "previous": None,
+            "results": [
+                {"uuid": "owner-1", "full_name": "Alice", "role": "admin"},
+            ],
+        }
+        resp.headers = {"content-type": "application/json"}
+        with patch("dailybot_cli.api_client.httpx.get", return_value=resp):
+            result = CliRunner().invoke(cli, ["form", "owners", "--json"])
+        assert result.exit_code == 0
+        import json
+
+        data = json.loads(result.output)
+        assert data[0]["uuid"] == "owner-1"
 
     @patch("dailybot_cli.commands.public_api_helpers.get_agent_auth", return_value="tok")
     def test_form_list_search_too_long(self, _auth: MagicMock) -> None:

@@ -510,6 +510,44 @@ class TestDailyBotClientPublicApi:
         assert call_kwargs["params"]["order"] == "alphabetical"
         assert call_kwargs["params"]["is_ascend"] == "true"
 
+    def test_list_forms_with_owner_user_ids(self, client: DailyBotClient) -> None:
+        mock_response: MagicMock = MagicMock(spec=httpx.Response)
+        mock_response.status_code = 200
+        mock_response.json.return_value = {
+            "count": 1,
+            "next": None,
+            "previous": None,
+            "results": [{"uuid": "f-1", "name": "Form"}],
+        }
+
+        with patch("httpx.get", return_value=mock_response) as mock_get:
+            client.list_forms(
+                owner_user_ids=["uuid-1", "uuid-2"],
+            )
+
+        call_kwargs: dict[str, Any] = mock_get.call_args[1]
+        assert call_kwargs["params"]["owner_user_ids"] == "uuid-1,uuid-2"
+
+    def test_list_form_owners(self, client: DailyBotClient) -> None:
+        mock_response: MagicMock = MagicMock(spec=httpx.Response)
+        mock_response.status_code = 200
+        mock_response.json.return_value = {
+            "count": 1,
+            "next": None,
+            "previous": None,
+            "results": [
+                {"uuid": "u-1", "full_name": "Alice", "role": "admin"},
+            ],
+        }
+
+        with patch("httpx.get", return_value=mock_response) as mock_get:
+            data: dict[str, Any] = client.list_form_owners(search="ali", limit=10)
+
+        call_kwargs: dict[str, Any] = mock_get.call_args[1]
+        assert call_kwargs["params"]["search"] == "ali"
+        assert call_kwargs["params"]["limit"] == 10
+        assert data["results"][0]["full_name"] == "Alice"
+
     def test_list_form_responses_with_filters(self, client: DailyBotClient) -> None:
         mock_response: MagicMock = MagicMock(spec=httpx.Response)
         mock_response.status_code = 200
