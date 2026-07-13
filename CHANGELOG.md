@@ -9,6 +9,15 @@ Do not edit it by hand — your edits will be overwritten on the next release.
 
 <!-- version list -->
 
+## v3.6.1 (2026-07-13)
+
+### Chores
+
+- **skills**: Sync vendored dailybot skill pack to v3.9.0 + bump CLI pin
+  ([#68](https://github.com/DailybotHQ/cli/pull/68),
+  [`390e2fa`](https://github.com/DailybotHQ/cli/commit/390e2fad07d78bd29c60db612accda3e7b70a603))
+
+
 ## v3.6.0 (2026-07-13)
 
 ### Documentation
