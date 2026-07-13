@@ -1477,7 +1477,9 @@ class DailyBotClient:
         if co_authors:
             payload["co_authors"] = co_authors
         response: httpx.Response = self._agent_request(
-            "POST", f"{self.api_url}/v1/agent-reports/", json=payload,
+            "POST",
+            f"{self.api_url}/v1/agent-reports/",
+            json=payload,
         )
         return self._handle_response(response)
 
@@ -1495,14 +1497,18 @@ class DailyBotClient:
         if message:
             payload["message"] = message
         response: httpx.Response = self._agent_request(
-            "POST", f"{self.api_url}/v1/agent-health/", json=payload,
+            "POST",
+            f"{self.api_url}/v1/agent-health/",
+            json=payload,
         )
         return self._handle_response(response)
 
     def get_agent_health(self, agent_name: str) -> dict[str, Any]:
         """GET /v1/agent-health/?agent_name=..."""
         response: httpx.Response = self._agent_request(
-            "GET", f"{self.api_url}/v1/agent-health/", params={"agent_name": agent_name},
+            "GET",
+            f"{self.api_url}/v1/agent-health/",
+            params={"agent_name": agent_name},
         )
         return self._handle_response(response)
 
@@ -1522,14 +1528,18 @@ class DailyBotClient:
         if webhook_secret:
             payload["webhook_secret"] = webhook_secret
         response: httpx.Response = self._agent_request(
-            "POST", f"{self.api_url}/v1/agent-webhook/", json=payload,
+            "POST",
+            f"{self.api_url}/v1/agent-webhook/",
+            json=payload,
         )
         return self._handle_response(response)
 
     def unregister_agent_webhook(self, agent_name: str) -> dict[str, Any]:
         """DELETE /v1/agent-webhook/"""
         response: httpx.Response = self._agent_request(
-            "DELETE", f"{self.api_url}/v1/agent-webhook/", json={"agent_name": agent_name},
+            "DELETE",
+            f"{self.api_url}/v1/agent-webhook/",
+            json={"agent_name": agent_name},
         )
         return self._handle_response(response)
 
@@ -1553,7 +1563,9 @@ class DailyBotClient:
         if metadata:
             payload["metadata"] = metadata
         response: httpx.Response = self._agent_request(
-            "POST", f"{self.api_url}/v1/agent-email/send/", json=payload,
+            "POST",
+            f"{self.api_url}/v1/agent-email/send/",
+            json=payload,
         )
         return self._handle_response(response)
 
@@ -1581,7 +1593,9 @@ class DailyBotClient:
         of which can be fed back in a later call to edit the same message.
         """
         response: httpx.Response = self._agent_request(
-            "POST", f"{self.api_url}/v1/send-message/", json=payload,
+            "POST",
+            f"{self.api_url}/v1/send-message/",
+            json=payload,
         )
         return self._handle_response(response)
 
@@ -1598,7 +1612,9 @@ class DailyBotClient:
         Bearer token). Returns ``{"channel": "<slack-conversation-id>"}``.
         """
         response: httpx.Response = self._agent_request(
-            "POST", f"{self.api_url}/v1/open-conversation/", json={"users_uuids": users_uuids},
+            "POST",
+            f"{self.api_url}/v1/open-conversation/",
+            json={"users_uuids": users_uuids},
         )
         return self._handle_response(response)
 
@@ -1630,7 +1646,9 @@ class DailyBotClient:
         if sender_name:
             payload["sender_name"] = sender_name
         response: httpx.Response = self._agent_request(
-            "POST", f"{self.api_url}/v1/agent-messages/", json=payload,
+            "POST",
+            f"{self.api_url}/v1/agent-messages/",
+            json=payload,
         )
         return self._handle_response(response)
 
@@ -1644,7 +1662,9 @@ class DailyBotClient:
         if delivered is not None:
             params["delivered"] = "true" if delivered else "false"
         response: httpx.Response = self._agent_request(
-            "GET", f"{self.api_url}/v1/agent-messages/", params=params,
+            "GET",
+            f"{self.api_url}/v1/agent-messages/",
+            params=params,
         )
         if response.status_code >= 400:
             self._handle_response(response)
@@ -1661,7 +1681,9 @@ class DailyBotClient:
     ) -> dict[str, Any]:
         """PATCH /v1/agent-messages/read/"""
         response: httpx.Response = self._agent_request(
-            "PATCH", f"{self.api_url}/v1/agent-messages/read/", json={"message_ids": message_ids},
+            "PATCH",
+            f"{self.api_url}/v1/agent-messages/read/",
+            json={"message_ids": message_ids},
         )
         return self._handle_response(response)
 

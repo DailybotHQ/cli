@@ -1036,7 +1036,9 @@ class TestAgentAuthFallback:
         success.status_code = 200
         success.json.return_value = {"id": 1, "uuid": "abc"}
 
-        with patch("dailybot_cli.api_client.httpx.request", side_effect=[rejected, success]) as mock_req:
+        with patch(
+            "dailybot_cli.api_client.httpx.request", side_effect=[rejected, success]
+        ) as mock_req:
             result: dict[str, Any] = client.submit_agent_report(
                 agent_name="Test Agent", content="Hello"
             )
@@ -1052,9 +1054,7 @@ class TestAgentAuthFallback:
     def test_api_key_rejected_retries_with_bearer(self) -> None:
         """API-key-only client (no Bearer) fails → no retry. But if Bearer
         is added later (e.g. only api_key set at init), retry would work."""
-        client = DailyBotClient(
-            api_url="http://test.com", token=None, api_key="stale-key"
-        )
+        client = DailyBotClient(api_url="http://test.com", token=None, api_key="stale-key")
         rejected: MagicMock = MagicMock(spec=httpx.Response)
         rejected.status_code = 401
         rejected.json.return_value = {"detail": "API Key Not Valid"}
@@ -1069,9 +1069,7 @@ class TestAgentAuthFallback:
         assert mock_req.call_count == 1
 
     def test_no_retry_on_non_401_errors(self) -> None:
-        client = DailyBotClient(
-            api_url="http://test.com", token="valid-token", api_key="key"
-        )
+        client = DailyBotClient(api_url="http://test.com", token="valid-token", api_key="key")
         forbidden: MagicMock = MagicMock(spec=httpx.Response)
         forbidden.status_code = 403
         forbidden.json.return_value = {"detail": "Forbidden"}
@@ -1087,9 +1085,7 @@ class TestAgentAuthFallback:
 
     def test_no_retry_when_only_one_credential(self) -> None:
         """Bearer-only client: no alternative credential → no retry."""
-        client = DailyBotClient(
-            api_url="http://test.com", token="expired-token", api_key=None
-        )
+        client = DailyBotClient(api_url="http://test.com", token="expired-token", api_key=None)
         rejected: MagicMock = MagicMock(spec=httpx.Response)
         rejected.status_code = 401
         rejected.json.return_value = {"detail": "Unauthorized"}
@@ -1115,17 +1111,13 @@ class TestAgentAuthFallback:
         success.json.return_value = {"ok": True}
 
         with patch("dailybot_cli.api_client.httpx.request", side_effect=[rejected, success]):
-            result: dict[str, Any] = client.submit_agent_health(
-                agent_name="Test", ok=True
-            )
+            result: dict[str, Any] = client.submit_agent_health(agent_name="Test", ok=True)
 
         assert result == {"ok": True}
 
     def test_both_credentials_available_bearer_goes_first(self) -> None:
         """When both credentials exist, Bearer is tried first (unified priority)."""
-        client = DailyBotClient(
-            api_url="http://test.com", token="good-token", api_key="good-key"
-        )
+        client = DailyBotClient(api_url="http://test.com", token="good-token", api_key="good-key")
         success: MagicMock = MagicMock(spec=httpx.Response)
         success.status_code = 200
         success.json.return_value = {"id": 1}
