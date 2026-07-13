@@ -156,20 +156,76 @@ class DailyBotClient:
         return headers
 
     def _agent_headers(self) -> dict[str, str]:
-        """Build headers for agent authentication (API key preferred, then Bearer)."""
+        """Build headers for agent authentication.
+
+        Uses the same priority as ``_headers()`` — Bearer first, API key
+        second — so that all endpoints behave consistently. The server
+        accepts both on every ``/v1/agent*`` endpoint.
+        """
         headers: dict[str, str] = {
             "Content-Type": "application/json",
             "Accept": "application/json",
         }
-        if self.api_key:
-            headers["X-API-KEY"] = self.api_key
-            self._agent_auth_mode = "api_key"
-        elif self.token:
+        if self.token:
             headers["Authorization"] = f"Bearer {self.token}"
             self._agent_auth_mode = "bearer"
+        elif self.api_key:
+            headers["X-API-KEY"] = self.api_key
+            self._agent_auth_mode = "api_key"
         else:
             self._agent_auth_mode = None
         return headers
+
+    def _alt_auth_headers(self) -> dict[str, str] | None:
+        """Build headers using the alternative credential for a 401 retry.
+
+        If the primary was Bearer, tries API key; if the primary was API key,
+        tries Bearer. Returns ``None`` when no alternative is available.
+        """
+        headers: dict[str, str] = {
+            "Content-Type": "application/json",
+            "Accept": "application/json",
+        }
+        if self._agent_auth_mode == "bearer" and self.api_key:
+            headers["X-API-KEY"] = self.api_key
+            self._agent_auth_mode = "api_key"
+            return headers
+        if self._agent_auth_mode == "api_key" and self.token:
+            headers["Authorization"] = f"Bearer {self.token}"
+            self._agent_auth_mode = "bearer"
+            return headers
+        return None
+
+    def _agent_request(
+        self,
+        method: str,
+        url: str,
+        *,
+        json: dict[str, Any] | None = None,
+        params: dict[str, Any] | None = None,
+    ) -> httpx.Response:
+        """Execute an agent-authenticated request with automatic alt-credential retry.
+
+        Tries with ``_agent_headers()`` (Bearer preferred, API key fallback).
+        If the server returns 401 and an alternative credential is available,
+        retries once with it. This covers both directions: expired Bearer
+        retried with API key, and stale API key retried with Bearer.
+        """
+        kwargs: dict[str, Any] = {"headers": self._agent_headers(), "timeout": self.timeout}
+        if json is not None:
+            kwargs["json"] = json
+        if params is not None:
+            kwargs["params"] = params
+
+        response: httpx.Response = httpx.request(method, url, **kwargs)
+
+        if response.status_code == 401:
+            alt: dict[str, str] | None = self._alt_auth_headers()
+            if alt is not None:
+                kwargs["headers"] = alt
+                response = httpx.request(method, url, **kwargs)
+
+        return response
 
     def _handle_response(self, response: httpx.Response) -> dict[str, Any]:
         """Parse API response and raise on errors."""
@@ -1420,11 +1476,10 @@ class DailyBotClient:
             payload["is_milestone"] = True
         if co_authors:
             payload["co_authors"] = co_authors
-        response: httpx.Response = httpx.post(
+        response: httpx.Response = self._agent_request(
+            "POST",
             f"{self.api_url}/v1/agent-reports/",
             json=payload,
-            headers=self._agent_headers(),
-            timeout=self.timeout,
         )
         return self._handle_response(response)
 
@@ -1441,21 +1496,19 @@ class DailyBotClient:
         }
         if message:
             payload["message"] = message
-        response: httpx.Response = httpx.post(
+        response: httpx.Response = self._agent_request(
+            "POST",
             f"{self.api_url}/v1/agent-health/",
             json=payload,
-            headers=self._agent_headers(),
-            timeout=self.timeout,
         )
         return self._handle_response(response)
 
     def get_agent_health(self, agent_name: str) -> dict[str, Any]:
         """GET /v1/agent-health/?agent_name=..."""
-        response: httpx.Response = httpx.get(
+        response: httpx.Response = self._agent_request(
+            "GET",
             f"{self.api_url}/v1/agent-health/",
             params={"agent_name": agent_name},
-            headers=self._agent_headers(),
-            timeout=self.timeout,
         )
         return self._handle_response(response)
 
@@ -1474,22 +1527,19 @@ class DailyBotClient:
         }
         if webhook_secret:
             payload["webhook_secret"] = webhook_secret
-        response: httpx.Response = httpx.post(
+        response: httpx.Response = self._agent_request(
+            "POST",
             f"{self.api_url}/v1/agent-webhook/",
             json=payload,
-            headers=self._agent_headers(),
-            timeout=self.timeout,
         )
         return self._handle_response(response)
 
     def unregister_agent_webhook(self, agent_name: str) -> dict[str, Any]:
         """DELETE /v1/agent-webhook/"""
-        response: httpx.Response = httpx.request(
+        response: httpx.Response = self._agent_request(
             "DELETE",
             f"{self.api_url}/v1/agent-webhook/",
             json={"agent_name": agent_name},
-            headers=self._agent_headers(),
-            timeout=self.timeout,
         )
         return self._handle_response(response)
 
@@ -1512,11 +1562,10 @@ class DailyBotClient:
         }
         if metadata:
             payload["metadata"] = metadata
-        response: httpx.Response = httpx.post(
+        response: httpx.Response = self._agent_request(
+            "POST",
             f"{self.api_url}/v1/agent-email/send/",
             json=payload,
-            headers=self._agent_headers(),
-            timeout=self.timeout,
         )
         return self._handle_response(response)
 
@@ -1543,11 +1592,10 @@ class DailyBotClient:
         parent and — when ``thread_responses`` was sent — one id per reply, all
         of which can be fed back in a later call to edit the same message.
         """
-        response: httpx.Response = httpx.post(
+        response: httpx.Response = self._agent_request(
+            "POST",
             f"{self.api_url}/v1/send-message/",
             json=payload,
-            headers=self._agent_headers(),
-            timeout=self.timeout,
         )
         return self._handle_response(response)
 
@@ -1563,11 +1611,10 @@ class DailyBotClient:
         the shared agent header logic (``X-API-KEY`` preferred, else the login
         Bearer token). Returns ``{"channel": "<slack-conversation-id>"}``.
         """
-        response: httpx.Response = httpx.post(
+        response: httpx.Response = self._agent_request(
+            "POST",
             f"{self.api_url}/v1/open-conversation/",
             json={"users_uuids": users_uuids},
-            headers=self._agent_headers(),
-            timeout=self.timeout,
         )
         return self._handle_response(response)
 
@@ -1598,11 +1645,10 @@ class DailyBotClient:
             payload["sender_type"] = sender_type
         if sender_name:
             payload["sender_name"] = sender_name
-        response: httpx.Response = httpx.post(
+        response: httpx.Response = self._agent_request(
+            "POST",
             f"{self.api_url}/v1/agent-messages/",
             json=payload,
-            headers=self._agent_headers(),
-            timeout=self.timeout,
         )
         return self._handle_response(response)
 
@@ -1615,11 +1661,10 @@ class DailyBotClient:
         params: dict[str, str] = {"agent_name": agent_name}
         if delivered is not None:
             params["delivered"] = "true" if delivered else "false"
-        response: httpx.Response = httpx.get(
+        response: httpx.Response = self._agent_request(
+            "GET",
             f"{self.api_url}/v1/agent-messages/",
             params=params,
-            headers=self._agent_headers(),
-            timeout=self.timeout,
         )
         if response.status_code >= 400:
             self._handle_response(response)
@@ -1635,11 +1680,10 @@ class DailyBotClient:
         message_ids: list[str],
     ) -> dict[str, Any]:
         """PATCH /v1/agent-messages/read/"""
-        response: httpx.Response = httpx.patch(
+        response: httpx.Response = self._agent_request(
+            "PATCH",
             f"{self.api_url}/v1/agent-messages/read/",
             json={"message_ids": message_ids},
-            headers=self._agent_headers(),
-            timeout=self.timeout,
         )
         return self._handle_response(response)
 
