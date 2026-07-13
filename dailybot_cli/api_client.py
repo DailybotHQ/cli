@@ -156,23 +156,12 @@ class DailyBotClient:
         return headers
 
     def _agent_headers(self) -> dict[str, str]:
-        """Build headers for agent authentication (API key preferred, then Bearer)."""
-        headers: dict[str, str] = {
-            "Content-Type": "application/json",
-            "Accept": "application/json",
-        }
-        if self.api_key:
-            headers["X-API-KEY"] = self.api_key
-            self._agent_auth_mode = "api_key"
-        elif self.token:
-            headers["Authorization"] = f"Bearer {self.token}"
-            self._agent_auth_mode = "bearer"
-        else:
-            self._agent_auth_mode = None
-        return headers
+        """Build headers for agent authentication.
 
-    def _bearer_only_headers(self) -> dict[str, str]:
-        """Build headers using only the Bearer token (for API-key-rejected retry)."""
+        Uses the same priority as ``_headers()`` — Bearer first, API key
+        second — so that all endpoints behave consistently. The server
+        accepts both on every ``/v1/agent*`` endpoint.
+        """
         headers: dict[str, str] = {
             "Content-Type": "application/json",
             "Accept": "application/json",
@@ -180,12 +169,32 @@ class DailyBotClient:
         if self.token:
             headers["Authorization"] = f"Bearer {self.token}"
             self._agent_auth_mode = "bearer"
+        elif self.api_key:
+            headers["X-API-KEY"] = self.api_key
+            self._agent_auth_mode = "api_key"
+        else:
+            self._agent_auth_mode = None
         return headers
 
-    def _can_retry_with_bearer(self) -> bool:
-        """True when the last agent request used an API key and a Bearer token
-        is available as a fallback."""
-        return self._agent_auth_mode == "api_key" and bool(self.token)
+    def _alt_auth_headers(self) -> dict[str, str] | None:
+        """Build headers using the alternative credential for a 401 retry.
+
+        If the primary was Bearer, tries API key; if the primary was API key,
+        tries Bearer. Returns ``None`` when no alternative is available.
+        """
+        headers: dict[str, str] = {
+            "Content-Type": "application/json",
+            "Accept": "application/json",
+        }
+        if self._agent_auth_mode == "bearer" and self.api_key:
+            headers["X-API-KEY"] = self.api_key
+            self._agent_auth_mode = "api_key"
+            return headers
+        if self._agent_auth_mode == "api_key" and self.token:
+            headers["Authorization"] = f"Bearer {self.token}"
+            self._agent_auth_mode = "bearer"
+            return headers
+        return None
 
     def _agent_request(
         self,
@@ -195,12 +204,12 @@ class DailyBotClient:
         json: dict[str, Any] | None = None,
         params: dict[str, Any] | None = None,
     ) -> httpx.Response:
-        """Execute an agent-authenticated request with automatic Bearer fallback.
+        """Execute an agent-authenticated request with automatic alt-credential retry.
 
-        Tries with ``_agent_headers()`` (API key preferred). If the server
-        returns 401 and a Bearer login token is available, retries once with the
-        Bearer token so that a stale/revoked API key does not block users who
-        have a valid login session.
+        Tries with ``_agent_headers()`` (Bearer preferred, API key fallback).
+        If the server returns 401 and an alternative credential is available,
+        retries once with it. This covers both directions: expired Bearer
+        retried with API key, and stale API key retried with Bearer.
         """
         kwargs: dict[str, Any] = {"headers": self._agent_headers(), "timeout": self.timeout}
         if json is not None:
@@ -210,9 +219,11 @@ class DailyBotClient:
 
         response: httpx.Response = httpx.request(method, url, **kwargs)
 
-        if response.status_code == 401 and self._can_retry_with_bearer():
-            kwargs["headers"] = self._bearer_only_headers()
-            response = httpx.request(method, url, **kwargs)
+        if response.status_code == 401:
+            alt: dict[str, str] | None = self._alt_auth_headers()
+            if alt is not None:
+                kwargs["headers"] = alt
+                response = httpx.request(method, url, **kwargs)
 
         return response
 
