@@ -64,6 +64,112 @@ def print_kudos_table(kudos: list[dict[str, Any]]) -> None:
     console.print(table)
 
 
+def _kudos_person_name(entry: Any) -> str | None:
+    """Extract a display name from a wall-of-fame person entry.
+
+    The API nests the person under ``user`` (``{"user": {"full_name": ...},
+    "kudos_received": ...}``); a top-level ``full_name`` is accepted as a
+    fallback so partial payloads degrade to a dash instead of crashing.
+    """
+    if not isinstance(entry, dict):
+        return None
+    user: Any = entry.get("user")
+    if isinstance(user, dict) and user.get("full_name"):
+        return str(user["full_name"])
+    name: Any = entry.get("full_name")
+    return str(name) if name else None
+
+
+def print_kudos_wall_of_fame(data: dict[str, Any]) -> None:
+    """Render the kudos wall of fame: top receiver/giver, caller position,
+    company-values distribution, and the ranked leaderboard.
+
+    ``GET /v1/kudos/wall-of-fame/`` returns ``top_receiver`` / ``top_giver``
+    with the person nested under ``user``, the leaderboard wrapped in a
+    ``{count, next, previous, results}`` envelope, and the caller's own
+    standing in ``leaderboard_summary`` (``{position, total}``).
+    """
+    top_receiver: Any = data.get("top_receiver")
+    top_giver: Any = data.get("top_giver")
+    receiver_name: str | None = _kudos_person_name(top_receiver)
+    giver_name: str | None = _kudos_person_name(top_giver)
+    if receiver_name and isinstance(top_receiver, dict):
+        received: Any = top_receiver.get("kudos_received")
+        if received is not None:
+            receiver_name = f"{receiver_name} ({received} received)"
+    if giver_name and isinstance(top_giver, dict):
+        given: Any = top_giver.get("kudos_given")
+        if given is not None:
+            giver_name = f"{giver_name} ({given} given)"
+
+    summary_raw: Any = data.get("leaderboard_summary")
+    position: str | None = None
+    if isinstance(summary_raw, dict) and summary_raw.get("position") is not None:
+        total_ranked: Any = summary_raw.get("total")
+        position = (
+            f"{summary_raw['position']} of {total_ranked}"
+            if total_ranked
+            else str(summary_raw["position"])
+        )
+
+    print_detail_panel(
+        "Kudos — Wall of Fame",
+        {"top_receiver": receiver_name, "top_giver": giver_name, "position": position},
+        [
+            ("Top receiver", "top_receiver"),
+            ("Top giver", "top_giver"),
+            ("Your position", "position"),
+        ],
+    )
+
+    dna: Any = data.get("dna_distribution")
+    if isinstance(dna, list) and dna:
+        dna_table: Table = Table(title="Company values (kudos DNA)")
+        dna_table.add_column("Value", style="cyan")
+        dna_table.add_column("Kudos", justify="right")
+        dna_table.add_column("%", justify="right", style="dim")
+        for item in dna:
+            value_raw: Any = item.get("company_value") if isinstance(item, dict) else None
+            value: dict[str, Any] = value_raw if isinstance(value_raw, dict) else {}
+            label: str = f"{value.get('emoji', '')} {value.get('value', '—')}".strip()
+            dna_table.add_row(label, str(item.get("count", "—")), str(item.get("percentage", "—")))
+        console.print(dna_table)
+
+    board_raw: Any = data.get("leaderboard")
+    if isinstance(board_raw, dict):
+        entries: list[Any] = list(board_raw.get("results") or [])
+        total: int | None = (
+            board_raw.get("count") if isinstance(board_raw.get("count"), int) else None
+        )
+    else:
+        entries = list(board_raw or [])
+        total = len(entries)
+    if not entries:
+        console.print("[dim]No leaderboard entries.[/dim]")
+        return
+    table: Table = Table(title="Leaderboard")
+    table.add_column("#", justify="right", style="dim")
+    table.add_column("Name", style="cyan")
+    table.add_column("Kudos", justify="right")
+    table.add_column("+Kudos", justify="right")
+    for entry in entries:
+        if not isinstance(entry, dict):
+            continue
+        table.add_row(
+            str(entry.get("position", "—")),
+            _kudos_person_name(entry) or "—",
+            str(entry.get("score", "—")),
+            str(entry.get("total_plus_kudos", "—")),
+        )
+    console.print(table)
+    print_pagination_footer(
+        len(entries),
+        total,
+        has_more=total is not None and total > len(entries),
+        more_hint="raise --limit to fetch more",
+    )
+
+
 def print_workflows_table(workflows: list[dict[str, Any]]) -> None:
     """Render a compact table of workflows (name, trigger, active, runs)."""
     if not workflows:

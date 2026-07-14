@@ -301,7 +301,26 @@ Browse every kudos in the organization via `GET /v1/kudos/organization/` — the
 
 #### `dailybot kudos wall-of-fame [--limit N] [--json]`
 
-Leaderboard of top kudos recipients via `GET /v1/kudos/wall-of-fame/`. `--limit` caps the number of entries returned.
+Leaderboard of top kudos recipients via `GET /v1/kudos/wall-of-fame/`. `--limit` caps the number of leaderboard entries returned.
+
+The response is a stats object (not a list envelope) with this shape — note that every person is **nested under a `user` key**, and the leaderboard is itself a paginated envelope:
+
+```json
+{
+  "top_receiver": { "user": { "uuid": "…", "full_name": "…", "image": "…" },
+                    "kudos_received": 11, "kudos_given": 5,
+                    "total_plus_kudos_received": 18, "total_plus_kudos_given": 2 },
+  "top_giver":    { "user": { … }, "kudos_given": 14, … },
+  "dna_distribution": [ { "company_value": { "id": "…", "value": "…", "emoji": "…" },
+                          "count": 10, "percentage": 38.5 } ],
+  "leaderboard": { "count": 11, "next": false, "previous": false,
+                   "results": [ { "position": 1, "user": { … },
+                                  "score": 11, "total_plus_kudos": 18 } ] },
+  "leaderboard_summary": { "position": 1, "total": 11 }
+}
+```
+
+`leaderboard_summary` is the **caller's own standing** (`position` out of `total` ranked members). The human rendering (`display.py::print_kudos_wall_of_fame`) shows the top receiver/giver with their counts, the caller's position, the company-values (kudos DNA) distribution, and the ranked leaderboard table; `--json` emits the payload verbatim.
 
 ---
 
@@ -653,7 +672,7 @@ key, so all of these commands work with `DAILYBOT_API_KEY` set even without
 | `POST` | `/v1/kudos/` | `{ content, receivers: [...uuid], users_receivers?: [...], teams_receivers?: [...], company_value? }` | `{ uuid }` | `receivers` = users+teams merged (validation); `users_receivers`/`teams_receivers` drive team expansion. Payload contract is being reconciled server-side — see the integration prompt. 406 = daily limit |
 | `GET` | `/v1/kudos/` | `?filter=kudos_received\|kudos_given` (the CLI accepts `received`/`given` and the `KUDOS_*` forms and normalizes them), shared list params (all optional) | `{ count, next, previous, results }` | `kudos list` |
 | `GET` | `/v1/kudos/organization/` | list flags | `{count, next, previous, results}` | `kudos org`; admin-only (Bearer or X-API-KEY) |
-| `GET` | `/v1/kudos/wall-of-fame/` | `?limit` (optional) | `{ count, next, previous, results }` | `kudos wall-of-fame` |
+| `GET` | `/v1/kudos/wall-of-fame/` | `?limit` (optional) | `{ top_receiver, top_giver, dna_distribution, leaderboard: { count, next, previous, results }, leaderboard_summary }` | `kudos wall-of-fame` |
 | `GET` | `/v1/workflows/` | shared list params (all optional) | `{ count, next, previous, results }` | `workflow list`; plan-gated (403 `plan_upgrade_required`) |
 | `GET` | `/v1/workflows/<uuid>/` | — | `{ uuid, name, ... }` | `workflow get`; plan-gated |
 
