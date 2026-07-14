@@ -18,43 +18,49 @@ from dailybot_cli.display import (
 
 
 def _check_auth() -> None:
-    """Check authentication status: try OTP login first, then API key."""
+    """Check authentication status.
+
+    Runs a single ``auth_status`` call; because the client transparently
+    retries with the alternative credential on 401/403, we then inspect
+    ``client._agent_auth_mode`` to report which credential actually
+    succeeded. This is what makes ``.dailybot/env.json`` "just work" even
+    when a stale prod Bearer session is still on disk — the retry inside
+    the client silently falls back to the env.json API key.
+    """
     client: DailyBotClient = DailyBotClient()
-
-    # Try OTP/login token first
     token: str | None = get_token()
-    if token:
-        try:
-            with console.status("Checking login session..."):
-                data: dict[str, Any] = client.auth_status()
-            print_success("Authenticated via login (OTP)")
-            print_auth_status(data)
-            return
-        except APIError:
-            print_info("Login session is invalid or expired.")
-
-    # Try API key
     api_key: str | None = get_api_key()
-    if api_key:
-        try:
-            with console.status("Checking API key..."):
-                client.get_agent_health(agent_name="CLI")
-            print_success("Authenticated via API key")
-            masked: str = api_key[:4] + "****"
-            print_info(f"API key: {masked}")
-            return
-        except APIError as e:
-            if e.status_code in (401, 403):
-                print_error("API key is invalid or unauthorized.")
-            else:
-                # Non-auth error means the key itself is valid
-                print_success("Authenticated via API key")
-                masked = api_key[:4] + "****"
-                print_info(f"API key: {masked}")
-                return
 
-    print_error("Not authenticated. Run: dailybot login or dailybot config key=YOUR_KEY")
-    raise SystemExit(1)
+    if not token and not api_key:
+        print_error("Not authenticated. Run: dailybot login or dailybot config key=YOUR_KEY")
+        raise SystemExit(1)
+
+    try:
+        with console.status("Checking authentication..."):
+            data: dict[str, Any] = client.auth_status()
+    except APIError as e:
+        if e.status_code in (401, 403):
+            if token and api_key:
+                print_error(
+                    "Both credentials were rejected — login token and API key both invalid."
+                )
+            elif token:
+                print_error("Login session is invalid or expired. Run: dailybot login")
+            else:
+                print_error("API key is invalid or unauthorized.")
+        else:
+            print_error(e.detail)
+        raise SystemExit(1)
+
+    mode: str | None = client._agent_auth_mode
+    if mode == "bearer":
+        print_success("Authenticated via login (OTP)")
+    elif mode == "api_key" and api_key:
+        print_success("Authenticated via API key")
+        print_info(f"API key: {api_key[:4]}****")
+    else:
+        print_success("Authenticated")
+    print_auth_status(data)
 
 
 @click.command()

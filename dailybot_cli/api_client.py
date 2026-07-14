@@ -10,6 +10,15 @@ import httpx
 from dailybot_cli.config import get_api_key, get_api_url, get_token
 
 _MAX_LIST_PAGES: int = 50  # safety cap for paginated list endpoints
+LONG_TIMEOUT_SECS: float = 120.0  # AI-processing endpoints (ask, submit_update)
+
+# HTTP status codes that trigger the alt-credential auth retry. 401 is the
+# standards-compliant "credentials rejected" answer; 403 is what many
+# Django/DRF backends actually send for the same condition (including for
+# "credentials not provided" when the primary credential was silently
+# stripped or malformed). Retrying on both makes env.json + a stale
+# session work seamlessly regardless of which convention the server uses.
+_AUTH_RETRY_STATUS_CODES: frozenset[int] = frozenset({401, 403})
 DEFAULT_PAGE_SIZE: int = 25  # server default page size for paginated list endpoints
 MAX_PAGE_SIZE: int = 100  # server clamps above this; the client clamps too
 
@@ -208,9 +217,15 @@ class DailyBotClient:
         """Execute an agent-authenticated request with automatic alt-credential retry.
 
         Tries with ``_agent_headers()`` (Bearer preferred, API key fallback).
-        If the server returns 401 and an alternative credential is available,
-        retries once with it. This covers both directions: expired Bearer
-        retried with API key, and stale API key retried with Bearer.
+        If the server returns 401 or 403 and an alternative credential is
+        available, retries once with it. This covers both directions: expired
+        Bearer retried with API key, and stale API key retried with Bearer.
+
+        Why 401 **and** 403: many Django/DRF APIs return 403 for "credentials
+        rejected" or "credentials not provided" rather than the more
+        standards-compliant 401. Retrying on both makes the behaviour
+        consistent across backends and lets ``.dailybot/env.json`` work
+        seamlessly even when a stale prod Bearer session is still on disk.
         """
         kwargs: dict[str, Any] = {"headers": self._agent_headers(), "timeout": self.timeout}
         if json is not None:
@@ -220,13 +235,81 @@ class DailyBotClient:
 
         response: httpx.Response = httpx.request(method, url, **kwargs)
 
-        if response.status_code == 401:
+        if response.status_code in _AUTH_RETRY_STATUS_CODES:
             alt: dict[str, str] | None = self._alt_auth_headers()
             if alt is not None:
                 kwargs["headers"] = alt
                 response = httpx.request(method, url, **kwargs)
 
         return response
+
+    def _request(
+        self,
+        method: str,
+        url: str,
+        *,
+        json: dict[str, Any] | None = None,
+        params: dict[str, Any] | None = None,
+        timeout: float | None = None,
+    ) -> httpx.Response:
+        """Execute a user-scoped authenticated request with alt-credential retry.
+
+        Sibling of :meth:`_agent_request` for the endpoints that authenticate
+        via :meth:`_headers` (user-scoped: auth_status, checkin, form, kudos,
+        chat, ask, user, team, ...). Same retry semantics — on 401/403 with
+        an alternative credential present, retries once transparently.
+
+        Do **not** use for login-lifecycle endpoints (``request_code``,
+        ``verify_code``, ``logout``, ``register_agent``) — those must never
+        fall back because the credential IS the thing under negotiation
+        (or, for logout, we're actively invalidating it).
+
+        ``timeout`` defaults to ``self.timeout`` (the standard read timeout);
+        pass an explicit value for AI/AI-processing endpoints that need
+        the longer :data:`LONG_TIMEOUT_SECS`.
+
+        The dispatch to ``httpx.get`` / ``httpx.post`` / ``httpx.patch`` /
+        ``httpx.put`` / ``httpx.request`` (for ``DELETE``) preserves the
+        long-standing per-method patchable surface used by the test suite;
+        both invocations (primary + retry) go through the same dispatch so
+        the retry is transparent to callers and to test mocks alike.
+        """
+        kwargs: dict[str, Any] = {
+            "headers": self._headers(),
+            "timeout": self.timeout if timeout is None else timeout,
+        }
+        if params is not None:
+            kwargs["params"] = params
+        if json is not None:
+            kwargs["json"] = json
+
+        response: httpx.Response = self._dispatch_http(method, url, **kwargs)
+
+        if response.status_code in _AUTH_RETRY_STATUS_CODES:
+            alt: dict[str, str] | None = self._alt_auth_headers()
+            if alt is not None:
+                kwargs["headers"] = alt
+                response = self._dispatch_http(method, url, **kwargs)
+
+        return response
+
+    @staticmethod
+    def _dispatch_http(method: str, url: str, **kwargs: Any) -> httpx.Response:
+        """Route to the per-method ``httpx`` function so per-method patches
+        (``patch("httpx.get", ...)``) keep working. ``DELETE`` goes through
+        the generic ``httpx.request`` because ``httpx.delete`` does not
+        accept a ``json`` body in all supported versions.
+        """
+        method_upper: str = method.upper()
+        if method_upper == "GET":
+            return httpx.get(url, **kwargs)
+        if method_upper == "POST":
+            return httpx.post(url, **kwargs)
+        if method_upper == "PATCH":
+            return httpx.patch(url, **kwargs)
+        if method_upper == "PUT":
+            return httpx.put(url, **kwargs)
+        return httpx.request(method_upper, url, **kwargs)
 
     def _handle_response(self, response: httpx.Response) -> dict[str, Any]:
         """Parse API response and raise on errors."""
@@ -350,7 +433,7 @@ class DailyBotClient:
             def _do_get(
                 url: str = page_url, prm: dict[str, Any] | None = page_params
             ) -> httpx.Response:
-                return httpx.get(url, headers=self._headers(), params=prm, timeout=self.timeout)
+                return self._request("GET", url, params=prm)
 
             response: httpx.Response = self._send_with_retry(_do_get)
             if response.status_code >= 400:
@@ -413,15 +496,18 @@ class DailyBotClient:
 
     def auth_status(self) -> dict[str, Any]:
         """GET /v1/cli/auth/status/"""
-        response: httpx.Response = httpx.get(
-            f"{self.api_url}/v1/cli/auth/status/",
-            headers=self._headers(),
-            timeout=self.timeout,
+        response: httpx.Response = self._request(
+            "GET", f"{self.api_url}/v1/cli/auth/status/"
         )
         return self._handle_response(response)
 
     def logout(self) -> dict[str, Any]:
-        """POST /v1/cli/auth/logout/"""
+        """POST /v1/cli/auth/logout/
+
+        Uses ``_headers`` directly (no fallback) because logout is a
+        Bearer-only lifecycle operation — retrying with an API key would
+        neither succeed nor be semantically meaningful.
+        """
         response: httpx.Response = httpx.post(
             f"{self.api_url}/v1/cli/auth/logout/",
             headers=self._headers(),
@@ -448,20 +534,18 @@ class DailyBotClient:
             payload["doing"] = doing
         if blocked:
             payload["blocked"] = blocked
-        response: httpx.Response = httpx.post(
+        response: httpx.Response = self._request(
+            "POST",
             f"{self.api_url}/v1/cli/updates/",
             json=payload,
-            headers=self._headers(),
-            timeout=120.0,
+            timeout=LONG_TIMEOUT_SECS,
         )
         return self._handle_response(response)
 
     def get_status(self) -> dict[str, Any]:
         """GET /v1/cli/status/"""
-        response: httpx.Response = httpx.get(
-            f"{self.api_url}/v1/cli/status/",
-            headers=self._headers(),
-            timeout=self.timeout,
+        response: httpx.Response = self._request(
+            "GET", f"{self.api_url}/v1/cli/status/"
         )
         return self._handle_response(response)
 
@@ -490,11 +574,11 @@ class DailyBotClient:
         if available_commands is not None:
             payload["available_commands"] = available_commands
 
-        response: httpx.Response = httpx.post(
+        response: httpx.Response = self._request(
+            "POST",
             f"{self.api_url}/v1/cli/chat/completions/",
             json=payload,
-            headers=self._headers(),
-            timeout=120.0,
+            timeout=LONG_TIMEOUT_SECS,
         )
         return self._handle_response(response)
 
@@ -513,11 +597,10 @@ class DailyBotClient:
             payload["last_question_index"] = last_question_index
         if response_date:
             payload["response_date"] = response_date
-        response: httpx.Response = httpx.post(
+        response: httpx.Response = self._request(
+            "POST",
             f"{self.api_url}/v1/checkins/{followup_uuid}/responses/",
             json=payload,
-            headers=self._headers(),
-            timeout=self.timeout,
         )
         return self._handle_response(response)
 
@@ -561,10 +644,8 @@ class DailyBotClient:
 
     def get_checkin(self, followup_uuid: str) -> dict[str, Any]:
         """GET /v1/checkins/<followup_uuid>/."""
-        response: httpx.Response = httpx.get(
-            f"{self.api_url}/v1/checkins/{followup_uuid}/",
-            headers=self._headers(),
-            timeout=self.timeout,
+        response: httpx.Response = self._request(
+            "GET", f"{self.api_url}/v1/checkins/{followup_uuid}/"
         )
         return self._handle_response(response)
 
@@ -576,10 +657,8 @@ class DailyBotClient:
         and the ``is_archived`` flag — the shape aligned with form detail. Use
         this for authoring/verification rather than the v2 retrieve serializer.
         """
-        response: httpx.Response = httpx.get(
-            f"{self.api_url}/v1/checkins/{followup_uuid}/detail/",
-            headers=self._headers(),
-            timeout=self.timeout,
+        response: httpx.Response = self._request(
+            "GET", f"{self.api_url}/v1/checkins/{followup_uuid}/detail/"
         )
         return self._handle_response(response)
 
@@ -593,11 +672,10 @@ class DailyBotClient:
         params: dict[str, str] = {}
         if followup_uuid:
             params = {"render_special_vars": "true", "followup_id": followup_uuid}
-        response: httpx.Response = httpx.get(
+        response: httpx.Response = self._request(
+            "GET",
             f"{self.api_url}/v1/templates/{template_uuid}/",
-            headers=self._headers(),
             params=params,
-            timeout=self.timeout,
         )
         return self._handle_response(response)
 
@@ -660,11 +738,10 @@ class DailyBotClient:
         payload: dict[str, Any] = {"responses": responses}
         if last_question_index is not None:
             payload["last_question_index"] = last_question_index
-        response: httpx.Response = httpx.put(
+        response: httpx.Response = self._request(
+            "PUT",
             f"{self.api_url}/v1/checkins/{followup_uuid}/responses/",
             json=payload,
-            headers=self._headers(),
-            timeout=self.timeout,
         )
         return self._handle_response(response)
 
@@ -679,12 +756,10 @@ class DailyBotClient:
         if response_date:
             params["date_start"] = response_date
             params["date_end"] = response_date
-        response: httpx.Response = httpx.request(
+        response: httpx.Response = self._request(
             "DELETE",
             f"{self.api_url}/v1/checkins/{followup_uuid}/responses/",
-            headers=self._headers(),
             params=params,
-            timeout=self.timeout,
         )
         return self._handle_response(response)
 
@@ -721,11 +796,10 @@ class DailyBotClient:
             payload["generate_short_question"] = True
         if config:
             payload.update(config)
-        response: httpx.Response = httpx.post(
+        response: httpx.Response = self._request(
+            "POST",
             f"{self.api_url}/v1/checkins/create/",
             json=payload,
-            headers=self._headers(),
-            timeout=self.timeout,
         )
         return self._handle_response(response)
 
@@ -759,21 +833,18 @@ class DailyBotClient:
             payload["participants"] = participants
         if config:
             payload.update(config)
-        response: httpx.Response = httpx.patch(
+        response: httpx.Response = self._request(
+            "PATCH",
             f"{self.api_url}/v1/checkins/{followup_uuid}/config/",
             json=payload,
-            headers=self._headers(),
-            timeout=self.timeout,
         )
         return self._handle_response(response)
 
     def archive_checkin(self, followup_uuid: str) -> dict[str, Any]:
         """DELETE /v1/checkins/<followup_uuid>/archive/ — soft-delete a check-in (204)."""
-        response: httpx.Response = httpx.request(
+        response: httpx.Response = self._request(
             "DELETE",
             f"{self.api_url}/v1/checkins/{followup_uuid}/archive/",
-            headers=self._headers(),
-            timeout=self.timeout,
         )
         return self._handle_response(response)
 
@@ -783,11 +854,10 @@ class DailyBotClient:
         question: dict[str, Any],
     ) -> dict[str, Any]:
         """POST /v1/checkins/<followup_uuid>/questions/ — add a question."""
-        response: httpx.Response = httpx.post(
+        response: httpx.Response = self._request(
+            "POST",
             f"{self.api_url}/v1/checkins/{followup_uuid}/questions/",
             json=question,
-            headers=self._headers(),
-            timeout=self.timeout,
         )
         return self._handle_response(response)
 
@@ -798,11 +868,10 @@ class DailyBotClient:
         fields: dict[str, Any],
     ) -> dict[str, Any]:
         """PATCH /v1/checkins/<followup_uuid>/questions/<question_uuid>/ — update a question."""
-        response: httpx.Response = httpx.patch(
+        response: httpx.Response = self._request(
+            "PATCH",
             f"{self.api_url}/v1/checkins/{followup_uuid}/questions/{question_uuid}/",
             json=fields,
-            headers=self._headers(),
-            timeout=self.timeout,
         )
         return self._handle_response(response)
 
@@ -812,11 +881,9 @@ class DailyBotClient:
         question_uuid: str,
     ) -> dict[str, Any]:
         """DELETE /v1/checkins/<followup_uuid>/questions/<question_uuid>/delete/ (204)."""
-        response: httpx.Response = httpx.request(
+        response: httpx.Response = self._request(
             "DELETE",
             f"{self.api_url}/v1/checkins/{followup_uuid}/questions/{question_uuid}/delete/",
-            headers=self._headers(),
-            timeout=self.timeout,
         )
         return self._handle_response(response)
 
@@ -826,11 +893,10 @@ class DailyBotClient:
         order: list[str],
     ) -> dict[str, Any]:
         """PUT /v1/checkins/<followup_uuid>/questions/reorder/ — set a new question order."""
-        response: httpx.Response = httpx.put(
+        response: httpx.Response = self._request(
+            "PUT",
             f"{self.api_url}/v1/checkins/{followup_uuid}/questions/reorder/",
             json={"question_uuids": order},
-            headers=self._headers(),
-            timeout=self.timeout,
         )
         return self._handle_response(response)
 
@@ -839,11 +905,10 @@ class DailyBotClient:
         params: dict[str, str] = {}
         if mood_date:
             params["date"] = mood_date
-        response: httpx.Response = httpx.get(
+        response: httpx.Response = self._request(
+            "GET",
             f"{self.api_url}/v1/mood/track/",
-            headers=self._headers(),
             params=params,
-            timeout=self.timeout,
         )
         return self._handle_response(response)
 
@@ -852,11 +917,10 @@ class DailyBotClient:
         payload: dict[str, Any] = {"score": score}
         if mood_date:
             payload["date"] = mood_date
-        response: httpx.Response = httpx.post(
+        response: httpx.Response = self._request(
+            "POST",
             f"{self.api_url}/v1/mood/track/",
             json=payload,
-            headers=self._headers(),
-            timeout=self.timeout,
         )
         return self._handle_response(response)
 
@@ -936,20 +1000,17 @@ class DailyBotClient:
             params["offset"] = offset
         if limit is not None:
             params["limit"] = limit
-        response: httpx.Response = httpx.get(
+        response: httpx.Response = self._request(
+            "GET",
             f"{self.api_url}/v1/forms/form-owners/",
             params=params,
-            headers=self._headers(),
-            timeout=self.timeout,
         )
         return self._handle_response(response)
 
     def get_form(self, form_uuid: str) -> dict[str, Any]:
         """GET /v1/forms/<form_uuid>/ — form metadata and question definitions."""
-        response: httpx.Response = httpx.get(
-            f"{self.api_url}/v1/forms/{form_uuid}/",
-            headers=self._headers(),
-            timeout=self.timeout,
+        response: httpx.Response = self._request(
+            "GET", f"{self.api_url}/v1/forms/{form_uuid}/"
         )
         return self._handle_response(response)
 
@@ -973,11 +1034,10 @@ class DailyBotClient:
             payload["guest_user"] = guest_user
         if submission_source:
             payload["submission_source"] = submission_source
-        response: httpx.Response = httpx.post(
+        response: httpx.Response = self._request(
+            "POST",
             f"{self.api_url}/v1/forms/{form_uuid}/responses/",
             json=payload,
-            headers=self._headers(),
-            timeout=self.timeout,
         )
         return self._handle_response(response)
 
@@ -1050,10 +1110,9 @@ class DailyBotClient:
         response_uuid: str,
     ) -> dict[str, Any]:
         """GET /v1/forms/<form_uuid>/responses/<response_uuid>/"""
-        response: httpx.Response = httpx.get(
+        response: httpx.Response = self._request(
+            "GET",
             f"{self.api_url}/v1/forms/{form_uuid}/responses/{response_uuid}/",
-            headers=self._headers(),
-            timeout=self.timeout,
         )
         return self._handle_response(response)
 
@@ -1064,11 +1123,10 @@ class DailyBotClient:
         content: dict[str, Any],
     ) -> dict[str, Any]:
         """PATCH /v1/forms/<form_uuid>/responses/<response_uuid>/"""
-        response: httpx.Response = httpx.patch(
+        response: httpx.Response = self._request(
+            "PATCH",
             f"{self.api_url}/v1/forms/{form_uuid}/responses/{response_uuid}/",
             json={"content": content},
-            headers=self._headers(),
-            timeout=self.timeout,
         )
         return self._handle_response(response)
 
@@ -1083,11 +1141,10 @@ class DailyBotClient:
         payload: dict[str, Any] = {"to_state": to_state}
         if note:
             payload["note"] = note
-        response: httpx.Response = httpx.post(
+        response: httpx.Response = self._request(
+            "POST",
             f"{self.api_url}/v1/forms/{form_uuid}/responses/{response_uuid}/transition/",
             json=payload,
-            headers=self._headers(),
-            timeout=self.timeout,
         )
         return self._handle_response(response)
 
@@ -1097,11 +1154,9 @@ class DailyBotClient:
         response_uuid: str,
     ) -> dict[str, Any]:
         """DELETE /v1/forms/<form_uuid>/responses/<response_uuid>/"""
-        response: httpx.Response = httpx.request(
+        response: httpx.Response = self._request(
             "DELETE",
             f"{self.api_url}/v1/forms/{form_uuid}/responses/{response_uuid}/",
-            headers=self._headers(),
-            timeout=self.timeout,
         )
         return self._handle_response(response)
 
@@ -1114,10 +1169,8 @@ class DailyBotClient:
         older/other deployments may return ``{"results": [...]}`` or a bare list.
         All three are accepted.
         """
-        response: httpx.Response = httpx.get(
-            f"{self.api_url}/v1/report-channels/",
-            headers=self._headers(),
-            timeout=self.timeout,
+        response: httpx.Response = self._request(
+            "GET", f"{self.api_url}/v1/report-channels/"
         )
         if response.status_code >= 400:
             self._handle_response(response)
@@ -1158,11 +1211,10 @@ class DailyBotClient:
             payload["generate_short_question"] = True
         if config:
             payload.update(config)
-        response: httpx.Response = httpx.post(
+        response: httpx.Response = self._request(
+            "POST",
             f"{self.api_url}/v1/forms/create/",
             json=payload,
-            headers=self._headers(),
-            timeout=self.timeout,
         )
         return self._handle_response(response)
 
@@ -1186,21 +1238,18 @@ class DailyBotClient:
             payload["report_channels"] = report_channels
         if config:
             payload.update(config)
-        response: httpx.Response = httpx.patch(
+        response: httpx.Response = self._request(
+            "PATCH",
             f"{self.api_url}/v1/forms/{form_uuid}/config/",
             json=payload,
-            headers=self._headers(),
-            timeout=self.timeout,
         )
         return self._handle_response(response)
 
     def archive_form(self, form_uuid: str) -> dict[str, Any]:
         """DELETE /v1/forms/<form_uuid>/archive/ — soft-delete a form (204)."""
-        response: httpx.Response = httpx.request(
+        response: httpx.Response = self._request(
             "DELETE",
             f"{self.api_url}/v1/forms/{form_uuid}/archive/",
-            headers=self._headers(),
-            timeout=self.timeout,
         )
         return self._handle_response(response)
 
@@ -1210,11 +1259,10 @@ class DailyBotClient:
         question: dict[str, Any],
     ) -> dict[str, Any]:
         """POST /v1/forms/<form_uuid>/questions/ — add a question to a form."""
-        response: httpx.Response = httpx.post(
+        response: httpx.Response = self._request(
+            "POST",
             f"{self.api_url}/v1/forms/{form_uuid}/questions/",
             json=question,
-            headers=self._headers(),
-            timeout=self.timeout,
         )
         return self._handle_response(response)
 
@@ -1225,11 +1273,10 @@ class DailyBotClient:
         fields: dict[str, Any],
     ) -> dict[str, Any]:
         """PATCH /v1/forms/<form_uuid>/questions/<question_uuid>/ — update a question."""
-        response: httpx.Response = httpx.patch(
+        response: httpx.Response = self._request(
+            "PATCH",
             f"{self.api_url}/v1/forms/{form_uuid}/questions/{question_uuid}/",
             json=fields,
-            headers=self._headers(),
-            timeout=self.timeout,
         )
         return self._handle_response(response)
 
@@ -1239,11 +1286,9 @@ class DailyBotClient:
         question_uuid: str,
     ) -> dict[str, Any]:
         """DELETE /v1/forms/<form_uuid>/questions/<question_uuid>/delete/ (204)."""
-        response: httpx.Response = httpx.request(
+        response: httpx.Response = self._request(
             "DELETE",
             f"{self.api_url}/v1/forms/{form_uuid}/questions/{question_uuid}/delete/",
-            headers=self._headers(),
-            timeout=self.timeout,
         )
         return self._handle_response(response)
 
@@ -1253,11 +1298,10 @@ class DailyBotClient:
         order: list[str],
     ) -> dict[str, Any]:
         """PUT /v1/forms/<form_uuid>/questions/reorder/ — set a new question order."""
-        response: httpx.Response = httpx.put(
+        response: httpx.Response = self._request(
+            "PUT",
             f"{self.api_url}/v1/forms/{form_uuid}/questions/reorder/",
             json={"question_uuids": order},
-            headers=self._headers(),
-            timeout=self.timeout,
         )
         return self._handle_response(response)
 
@@ -1286,20 +1330,17 @@ class DailyBotClient:
         params: dict[str, str] = {}
         if include_email:
             params["include_email"] = "true"
-        response: httpx.Response = httpx.get(
+        response: httpx.Response = self._request(
+            "GET",
             f"{self.api_url}/v1/me/",
-            headers=self._headers(),
             params=params,
-            timeout=self.timeout,
         )
         return self._handle_response(response)
 
     def get_organization(self) -> dict[str, Any]:
         """GET /v1/organization/ — the org the current credential is scoped to."""
-        response: httpx.Response = httpx.get(
-            f"{self.api_url}/v1/organization/",
-            headers=self._headers(),
-            timeout=self.timeout,
+        response: httpx.Response = self._request(
+            "GET", f"{self.api_url}/v1/organization/"
         )
         return self._handle_response(response)
 
@@ -1308,11 +1349,10 @@ class DailyBotClient:
         params: dict[str, str] = {}
         if include_email:
             params["include_email"] = "true"
-        response: httpx.Response = httpx.get(
+        response: httpx.Response = self._request(
+            "GET",
             f"{self.api_url}/v1/users/{user_uuid}/",
-            headers=self._headers(),
             params=params,
-            timeout=self.timeout,
         )
         return self._handle_response(response)
 
@@ -1340,11 +1380,10 @@ class DailyBotClient:
             payload["teams_receivers"] = team_uuid_receivers
         if company_value:
             payload["company_value"] = company_value
-        response: httpx.Response = httpx.post(
+        response: httpx.Response = self._request(
+            "POST",
             f"{self.api_url}/v1/kudos/",
             json=payload,
-            headers=self._headers(),
-            timeout=self.timeout,
         )
         return self._handle_response(response)
 
@@ -1405,10 +1444,8 @@ class DailyBotClient:
 
     def get_workflow(self, workflow_uuid: str) -> dict[str, Any]:
         """GET /v1/workflows/<uuid>/ — a single workflow's configuration."""
-        response: httpx.Response = httpx.get(
-            f"{self.api_url}/v1/workflows/{workflow_uuid}/",
-            headers=self._headers(),
-            timeout=self.timeout,
+        response: httpx.Response = self._request(
+            "GET", f"{self.api_url}/v1/workflows/{workflow_uuid}/"
         )
         return self._handle_response(response)
 
@@ -1447,11 +1484,10 @@ class DailyBotClient:
         params: dict[str, str] = {}
         if limit is not None:
             params["limit"] = str(limit)
-        response: httpx.Response = httpx.get(
+        response: httpx.Response = self._request(
+            "GET",
             f"{self.api_url}/v1/kudos/wall-of-fame/",
-            headers=self._headers(),
             params=params,
-            timeout=self.timeout,
         )
         return self._handle_response(response)
 
@@ -1462,19 +1498,15 @@ class DailyBotClient:
 
     def get_team(self, team_uuid: str) -> dict[str, Any]:
         """GET /v1/teams/<team_uuid>/"""
-        response: httpx.Response = httpx.get(
-            f"{self.api_url}/v1/teams/{team_uuid}/",
-            headers=self._headers(),
-            timeout=self.timeout,
+        response: httpx.Response = self._request(
+            "GET", f"{self.api_url}/v1/teams/{team_uuid}/"
         )
         return self._handle_response(response)
 
     def list_team_members(self, team_uuid: str) -> list[dict[str, Any]]:
         """GET /v1/teams/<team_uuid>/members/"""
-        response: httpx.Response = httpx.get(
-            f"{self.api_url}/v1/teams/{team_uuid}/members/",
-            headers=self._headers(),
-            timeout=self.timeout,
+        response: httpx.Response = self._request(
+            "GET", f"{self.api_url}/v1/teams/{team_uuid}/members/"
         )
         if response.status_code >= 400:
             self._handle_response(response)

@@ -1106,20 +1106,61 @@ class TestAgentAuthFallback:
         assert exc_info.value.status_code == 401
         assert mock_req.call_count == 1
 
-    def test_no_retry_on_non_401_errors(self) -> None:
+    def test_403_triggers_retry_with_api_key(self) -> None:
+        """403 (auth-not-provided) also retries with the alt credential.
+
+        Many Django/DRF backends return 403 for both "credentials rejected"
+        and "credentials accepted but permission denied". Because we cannot
+        tell them apart from the status code alone, and because the retry
+        with a different identity is either strictly better (rejected case)
+        or a no-op with the same 403 outcome (permission-denied case), we
+        retry on both 401 and 403. This is what makes env.json + a stale
+        Bearer session work seamlessly against a local API that answers 403
+        to invalid Bearers.
+        """
+        client = DailyBotClient(
+            api_url="http://test.com", token="wrong-server-bearer", api_key="valid-key"
+        )
+        rejected: MagicMock = MagicMock(spec=httpx.Response)
+        rejected.status_code = 403
+        rejected.json.return_value = {"detail": "Authentication credentials were not provided."}
+
+        success: MagicMock = MagicMock(spec=httpx.Response)
+        success.status_code = 200
+        success.json.return_value = {"id": 2, "uuid": "xyz"}
+
+        with patch(
+            "dailybot_cli.api_client.httpx.request", side_effect=[rejected, success]
+        ) as mock_req:
+            result: dict[str, Any] = client.submit_agent_report(
+                agent_name="Test Agent", content="Hello"
+            )
+
+        assert result == {"id": 2, "uuid": "xyz"}
+        assert mock_req.call_count == 2
+        first_headers: dict[str, str] = mock_req.call_args_list[0][1]["headers"]
+        assert first_headers.get("Authorization") == "Bearer wrong-server-bearer"
+        retry_headers: dict[str, str] = mock_req.call_args_list[1][1]["headers"]
+        assert retry_headers.get("X-API-KEY") == "valid-key"
+
+    def test_no_retry_on_non_auth_errors(self) -> None:
+        """Genuine non-auth errors (400/404/500) must NOT retry."""
         client = DailyBotClient(api_url="http://test.com", token="valid-token", api_key="key")
-        forbidden: MagicMock = MagicMock(spec=httpx.Response)
-        forbidden.status_code = 403
-        forbidden.json.return_value = {"detail": "Forbidden"}
+        for status in (400, 404, 422, 500, 502, 503):
+            error_resp: MagicMock = MagicMock(spec=httpx.Response)
+            error_resp.status_code = status
+            error_resp.json.return_value = {"detail": f"HTTP {status}"}
 
-        with (
-            patch("dailybot_cli.api_client.httpx.request", return_value=forbidden) as mock_req,
-            pytest.raises(APIError) as exc_info,
-        ):
-            client.submit_agent_report(agent_name="Test", content="Hi")
+            with (
+                patch(
+                    "dailybot_cli.api_client.httpx.request", return_value=error_resp
+                ) as mock_req,
+                pytest.raises(APIError) as exc_info,
+            ):
+                client.submit_agent_report(agent_name="Test", content="Hi")
 
-        assert exc_info.value.status_code == 403
-        assert mock_req.call_count == 1
+            assert exc_info.value.status_code == status
+            assert mock_req.call_count == 1, f"Expected no retry for HTTP {status}"
 
     def test_no_retry_when_only_one_credential(self) -> None:
         """Bearer-only client: no alternative credential → no retry."""
@@ -1167,6 +1208,147 @@ class TestAgentAuthFallback:
         headers: dict[str, str] = mock_req.call_args[1]["headers"]
         assert headers.get("Authorization") == "Bearer good-token"
         assert "X-API-KEY" not in headers
+
+
+class TestUserAuthFallback:
+    """`_request()` mirrors `_agent_request` for user-scoped endpoints
+    (auth_status, checkin, form, kudos, chat, user, team, ...). It retries
+    on 401 OR 403 with the alternative credential, using `_headers()` as
+    the primary. This closes the "env.json active but prod Bearer session
+    still present" UX gap — the CLI silently falls back to the env.json
+    API key when the Bearer is rejected by a different-org API."""
+
+    def test_auth_status_retries_bearer_to_api_key_on_401(self) -> None:
+        """`dailybot status --auth` recovers when the login Bearer is stale
+        but the env.json API key is fresh."""
+        client = DailyBotClient(
+            api_url="http://test.com", token="expired-bearer", api_key="fresh-key"
+        )
+        rejected: MagicMock = MagicMock(spec=httpx.Response)
+        rejected.status_code = 401
+        rejected.json.return_value = {"detail": "Unauthorized"}
+
+        ok: MagicMock = MagicMock(spec=httpx.Response)
+        ok.status_code = 200
+        ok.json.return_value = {"email": "me@example.com", "organization_name": "Local"}
+
+        with patch(
+            "dailybot_cli.api_client.httpx.get", side_effect=[rejected, ok]
+        ) as mock_get:
+            result: dict[str, Any] = client.auth_status()
+
+        assert result["email"] == "me@example.com"
+        assert mock_get.call_count == 2
+        assert (
+            mock_get.call_args_list[0][1]["headers"].get("Authorization")
+            == "Bearer expired-bearer"
+        )
+        assert (
+            mock_get.call_args_list[1][1]["headers"].get("X-API-KEY") == "fresh-key"
+        )
+
+    def test_auth_status_retries_bearer_to_api_key_on_403(self) -> None:
+        """403 (DRF's default for a rejected Bearer against a different-server
+        API) also triggers the fallback."""
+        client = DailyBotClient(
+            api_url="http://test.com", token="wrong-server-bearer", api_key="local-key"
+        )
+        rejected: MagicMock = MagicMock(spec=httpx.Response)
+        rejected.status_code = 403
+        rejected.json.return_value = {"detail": "Authentication credentials were not provided."}
+
+        ok: MagicMock = MagicMock(spec=httpx.Response)
+        ok.status_code = 200
+        ok.json.return_value = {"email": "local@example.com"}
+
+        with patch(
+            "dailybot_cli.api_client.httpx.get", side_effect=[rejected, ok]
+        ) as mock_get:
+            result: dict[str, Any] = client.auth_status()
+
+        assert result["email"] == "local@example.com"
+        assert mock_get.call_count == 2
+        assert (
+            mock_get.call_args_list[1][1]["headers"].get("X-API-KEY") == "local-key"
+        )
+
+    def test_no_retry_when_only_bearer_available(self) -> None:
+        """Bearer-only client (no API key): no alternative → single request."""
+        client = DailyBotClient(
+            api_url="http://test.com", token="stale-bearer", api_key=None
+        )
+        rejected: MagicMock = MagicMock(spec=httpx.Response)
+        rejected.status_code = 401
+        rejected.json.return_value = {"detail": "Unauthorized"}
+
+        with (
+            patch(
+                "dailybot_cli.api_client.httpx.get", return_value=rejected
+            ) as mock_get,
+            pytest.raises(APIError) as exc_info,
+        ):
+            client.auth_status()
+
+        assert exc_info.value.status_code == 401
+        assert mock_get.call_count == 1
+
+    def test_no_retry_on_2xx_success(self) -> None:
+        """Happy path (Bearer works first try) makes only one request."""
+        client = DailyBotClient(
+            api_url="http://test.com", token="good", api_key="also-good"
+        )
+        ok: MagicMock = MagicMock(spec=httpx.Response)
+        ok.status_code = 200
+        ok.json.return_value = {"email": "me@example.com"}
+
+        with patch(
+            "dailybot_cli.api_client.httpx.get", return_value=ok
+        ) as mock_get:
+            client.auth_status()
+
+        assert mock_get.call_count == 1
+
+    def test_no_retry_on_non_auth_errors(self) -> None:
+        """Genuine non-auth errors (400/404/500/502) do NOT retry."""
+        client = DailyBotClient(
+            api_url="http://test.com", token="good", api_key="also-good"
+        )
+        for status in (400, 404, 422, 500, 502, 503):
+            error_resp: MagicMock = MagicMock(spec=httpx.Response)
+            error_resp.status_code = status
+            error_resp.json.return_value = {"detail": f"HTTP {status}"}
+
+            with (
+                patch(
+                    "dailybot_cli.api_client.httpx.get", return_value=error_resp
+                ) as mock_get,
+                pytest.raises(APIError) as exc_info,
+            ):
+                client.auth_status()
+
+            assert exc_info.value.status_code == status
+            assert mock_get.call_count == 1, f"Expected no retry for HTTP {status}"
+
+    def test_login_endpoints_never_retry(self) -> None:
+        """`request_code` / `verify_code` / `logout` / `register_agent` — the
+        auth-lifecycle endpoints — must never trigger the alt-credential
+        retry because the credential IS the thing being negotiated (or
+        because we're actively logging out). A failure at any of them means
+        exactly what it says."""
+        client = DailyBotClient(
+            api_url="http://test.com", token="tok", api_key="key"
+        )
+        rejected: MagicMock = MagicMock(spec=httpx.Response)
+        rejected.status_code = 401
+        rejected.json.return_value = {"detail": "Bad code"}
+
+        with (
+            patch("dailybot_cli.api_client.httpx.post", return_value=rejected) as mock_post,
+            pytest.raises(APIError),
+        ):
+            client.request_code("me@example.com")
+
+        assert mock_post.call_count == 1
 
 
 class TestHeadersDualAuth:

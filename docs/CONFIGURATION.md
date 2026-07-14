@@ -162,14 +162,35 @@ The two files are **orthogonal** and both can be present:
 
 ### Interaction with the login Bearer token
 
-When an `env.json` active profile provides an `api_key`, the CLI's `DailyBotClient` receives that key and — because Bearer is preferred over API key in `_headers()` — the presence of the login Bearer token would normally still win. To make "logged into different orgs in different repos" work correctly, the client should be constructed such that the API key takes precedence for env.json-authored contexts.
+When an `env.json` active profile provides an `api_key` **and** a login Bearer token also exists on disk, the CLI's `DailyBotClient` needs to reconcile the two. It does so with a **transparent alt-credential retry** that makes both single-org and cross-org setups behave sensibly with zero user intervention.
 
-Two ways this is achieved in practice:
+The mechanics:
 
-- **Different API URLs.** When the env.json profile carries `api_url` pointing at, say, `http://localhost:8000` while the stored Bearer session was issued against `https://api.dailybot.com`, the URL alone routes correctly and the server-side auth is the only thing that matters (each env has its own key/token).
-- **Auto-fallback on 401.** As of CLI `>= 3.5.1`, if Bearer fails with 401, the client automatically retries with the alternative credential (API key). So even if the Bearer wins the initial dispatch and the token isn't valid on the env.json's API, the API key retry succeeds.
+1. **`_headers()` still prefers the Bearer token** on the first attempt (preserves backward compat — every existing single-org flow is unchanged).
+2. **On a 401 or 403 response**, the client's `_request()` / `_agent_request()` helpers automatically retry the same call **once** with the alternative credential (the `env.json` API key). The retry is invisible to the caller — it happens inside the HTTP layer, not in each command.
+3. **`status --auth` inspects `_agent_auth_mode`** after the call returns to report which credential *actually* succeeded on the wire, so the UX is honest about the effective auth path.
 
-For a bulletproof "different org per repo" story, prefer profiles with distinct `api_url`s or use `dailybot logout` on machines where the mix would be ambiguous.
+Why retry on 403 too? Django/DRF frequently returns 403 instead of 401 for rejected credentials (see [DRF docs — "If not authenticated, 403"](https://www.django-rest-framework.org/api-guide/authentication/#unauthorized-and-forbidden-responses)). Retrying on only 401 misses this common local-Django case entirely — which is precisely the case `env.json` was designed to fix.
+
+Concrete example. You are logged in with `dailybot login` against production, and you `cd` into a repo that has `.dailybot/env.json` with an active `local-admin` profile pointing at `http://localhost:8000`:
+
+```
+                            + client.auth_status()
+                            |
+                            | Attempt 1: Bearer <prod-tok>  -> http://localhost:8000
+                            |            403 Forbidden (Bearer unknown to local API)
+                            |
+                            | Attempt 2: X-API-KEY <env.json local-admin>  -> http://localhost:8000
+                            |            200 OK
+                            |
+                            + returns { user, organization, ... } from LOCAL org
+```
+
+`dailybot status --auth` then prints `Authenticated via API key` (not "login (OTP)") because that is what actually worked. `dailybot user list`, `dailybot form list`, `dailybot kudos give`, etc. all follow the exact same path — they never hit the "you must log in again" wall when `env.json` is providing valid credentials for a different API URL.
+
+The retry costs at most one extra round-trip, only on the first request against a new server, and is completely silent to the user. The client's `_agent_auth_mode` attribute is used only by `dailybot status --auth` to describe which credential succeeded; no other command needs to care.
+
+For a bulletproof "different org per repo" story, prefer profiles with distinct `api_url`s (which is the whole point of `env.json`). `dailybot logout` remains available if a developer wants to eliminate the Bearer entirely.
 
 ### When NOT to use `env.json`
 
