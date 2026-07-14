@@ -18,7 +18,7 @@ Slash commands. Invoked as `/<name>` (Claude Code) or `#<name>` (Codex/Cursor/Ge
 
 ### Dailybot agent skill pack (vendored from [`DailybotHQ/agent-skill`](https://github.com/DailybotHQ/agent-skill))
 
-The full pack lives under [`.agents/skills/dailybot/`](../skills/dailybot/) (router + twelve sub-skills; vendored at **v3.0.0**). The router auto-routes by intent — read [`skills/dailybot/SKILL.md`](../skills/dailybot/SKILL.md) and let it pick the right sub-skill. Direct sub-skill entry points:
+The full pack lives under [`.agents/skills/dailybot/`](../skills/dailybot/) (router + fourteen sub-skills; vendored at **v3.10.2**). Every sub-skill requires `dailybot-cli >= 3.7.0` — the pack baseline. The router auto-routes by intent — read [`skills/dailybot/SKILL.md`](../skills/dailybot/SKILL.md) and let it pick the right sub-skill. Direct sub-skill entry points:
 
 | Slug | Procedure | Use when |
 |------|-----------|----------|
@@ -26,15 +26,16 @@ The full pack lives under [`.agents/skills/dailybot/`](../skills/dailybot/) (rou
 | `dailybot-messages` | [`skills/dailybot/messages/SKILL.md`](../skills/dailybot/messages/SKILL.md) | Polling for instructions sent to this agent by teammates |
 | `dailybot-health` | [`skills/dailybot/health/SKILL.md`](../skills/dailybot/health/SKILL.md) | Announcing online/offline status on long sessions |
 | `dailybot-email` | [`skills/dailybot/email/SKILL.md`](../skills/dailybot/email/SKILL.md) | Sending email on the agent's behalf (with mandatory pre-send safety checks) |
-| `dailybot-checkin` | [`skills/dailybot/checkin/SKILL.md`](../skills/dailybot/checkin/SKILL.md) | Listing/completing check-ins + authoring (create/config/archive + questions, CLI ≥ 1.17.0) |
+| `dailybot-checkin` | [`skills/dailybot/checkin/SKILL.md`](../skills/dailybot/checkin/SKILL.md) | Listing/completing check-ins + authoring (create/config/archive + questions) |
 | `dailybot-kudos` | [`skills/dailybot/kudos/SKILL.md`](../skills/dailybot/kudos/SKILL.md) | Giving kudos to a teammate or a whole team |
 | `dailybot-teams` | [`skills/dailybot/teams/SKILL.md`](../skills/dailybot/teams/SKILL.md) | Listing / resolving teams (the resolver `dailybot-kudos` and `dailybot-chat` delegate to) |
-| `dailybot-forms` | [`skills/dailybot/forms/SKILL.md`](../skills/dailybot/forms/SKILL.md) | Listing/submitting/updating/transitioning responses + authoring (create/config/archive + questions, CLI ≥ 1.17.0) |
-| `dailybot-channels` | [`skills/dailybot/channels/SKILL.md`](../skills/dailybot/channels/SKILL.md) | Discovering report-channel UUIDs for `--report-channel` (CLI ≥ 1.17.0) |
-| `dailybot-chat` | [`skills/dailybot/chat/SKILL.md`](../skills/dailybot/chat/SKILL.md) | Sending / editing Dailybot bot messages on Slack / Teams / Discord / Google Chat (DMs, channels, teams; report-style threads; in-place edits; `--send-as-user`/`--send-as-me` identity, CLI ≥ 2.0.0). Requires `dailybot-cli >= 1.13.0` |
-| `dailybot-conversation` | [`skills/dailybot/conversation/SKILL.md`](../skills/dailybot/conversation/SKILL.md) | Opening (or idempotently reusing) a Slack group DM with the bot + named teammates, then optionally posting a report (`conversation open -u … -m …`; Slack only, org-admin only). Requires `dailybot-cli >= 3.2.0` |
-| `dailybot-ask` | [`skills/dailybot/ask/SKILL.md`](../skills/dailybot/ask/SKILL.md) | Asking the Dailybot AI a one-shot, headless question. Requires `dailybot-cli >= 1.15.0` |
-| `dailybot-workflow` | [`skills/dailybot/workflow/SKILL.md`](../skills/dailybot/workflow/SKILL.md) | Reading the org's workflows — `workflow list` / `workflow get` (read-only; plan-gated). Requires `dailybot-cli >= 2.0.0` |
+| `dailybot-forms` | [`skills/dailybot/forms/SKILL.md`](../skills/dailybot/forms/SKILL.md) | Listing/submitting/updating/transitioning responses + authoring (create/config/archive + questions) |
+| `dailybot-channels` | [`skills/dailybot/channels/SKILL.md`](../skills/dailybot/channels/SKILL.md) | Discovering report-channel UUIDs for `--report-channel` |
+| `dailybot-chat` | [`skills/dailybot/chat/SKILL.md`](../skills/dailybot/chat/SKILL.md) | Sending / editing Dailybot bot messages on Slack / Teams / Discord / Google Chat (DMs, channels, teams; report-style threads; in-place edits; `--send-as-user`/`--send-as-me` identity) |
+| `dailybot-conversation` | [`skills/dailybot/conversation/SKILL.md`](../skills/dailybot/conversation/SKILL.md) | Opening (or idempotently reusing) a Slack group DM with the bot + named teammates, then optionally posting a report (`conversation open -u … -m …`; Slack only, org-admin only) |
+| `dailybot-ask` | [`skills/dailybot/ask/SKILL.md`](../skills/dailybot/ask/SKILL.md) | Asking the Dailybot AI a one-shot, headless question |
+| `dailybot-workflow` | [`skills/dailybot/workflow/SKILL.md`](../skills/dailybot/workflow/SKILL.md) | Reading the org's workflows — `workflow list` / `workflow get` (read-only; plan-gated) |
+| `dailybot-env` | [`skills/dailybot/env/SKILL.md`](../skills/dailybot/env/SKILL.md) | Managing per-repo API keys in the opt-in, gitignored `.dailybot/env.json` (`env add/use/show/list/remove/off/on`) — be "logged into different orgs in different repos" |
 
 ### Deep Work Plan skill pack (vendored from [`DailybotHQ/deepworkplan-skill`](https://github.com/DailybotHQ/deepworkplan-skill))
 
