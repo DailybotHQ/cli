@@ -8,10 +8,11 @@ build/
 *.egg
 *.spec
 
-# Virtual environments
-.venv/
-venv/
-env/
+# Virtual environments (anchored to the repo root — a bare `env/` would also
+# swallow the vendored `.agents/skills/dailybot/env/` sub-skill)
+/.venv/
+/venv/
+/env/
 
 # IDE
 .idea/
