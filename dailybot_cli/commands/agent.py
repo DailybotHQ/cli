@@ -10,9 +10,11 @@ import click
 from dailybot_cli import ledger
 from dailybot_cli.api_client import APIError, DailyBotClient
 from dailybot_cli.config import (
+    RepoEnvError,
     RepoProfileError,
     _slugify,
     find_repo_root,
+    get_active_env_profile,
     get_agent_auth,
     get_default_profile,
     get_profile,
@@ -91,9 +93,13 @@ def _resolve_agent_context(
 
     Resolution order (per-field, highest layer wins):
       1. CLI flags (``--name``, ``--profile``)
-      2. Repo file ``.dailybot/profile.json`` (walk-up from cwd, closest wins)
-      3. Global default profile from ``agents.json``
-      4. Hardcoded fallback ``"CLI Agent"`` for the display name
+      2. ``.dailybot/env.json`` active profile's API key (walk-up from cwd) —
+         applied unless ``--profile`` was passed explicitly; mirrors
+         :func:`dailybot_cli.config.resolve_active_profile` so that
+         ``agent profiles --resolve`` and the actual request always agree
+      3. Repo file ``.dailybot/profile.json`` (walk-up from cwd, closest wins)
+      4. Global default profile from ``agents.json``
+      5. Hardcoded fallback ``"CLI Agent"`` for the display name
 
     Returns ``(agent_name, client, default_metadata)`` — *default_metadata* is
     the repo file's ``default_metadata`` dict (``{}`` when absent), which the
@@ -144,12 +150,28 @@ def _resolve_agent_context(
     else:
         agent_name = "CLI Agent"
 
+    # env.json credentials beat a keyed agents.json profile — the repo-local
+    # file is the more specific opt-in — but an explicit --profile flag is a
+    # direct user instruction and keeps its own key. This mirrors
+    # `resolve_active_profile` (the `agent profiles --resolve` display) so
+    # what the CLI shows and what it sends never diverge.
+    env_key_active: bool = False
+    if not profile_flag:
+        try:
+            env_profile: dict[str, Any] | None = get_active_env_profile()
+        except RepoEnvError:
+            # The root cli() guard already surfaced fatal env.json states;
+            # stay resilient here and fall through to the other layers.
+            env_profile = None
+        env_key_active = bool(env_profile and env_profile.get("api_key"))
+
     if profile_data:
         api_key: str | None = profile_data.get("api_key")
-        if api_key:
+        if api_key and not env_key_active:
             return agent_name, DailyBotClient(api_key=api_key), repo_default_metadata
-        # Profile without key — fall through to Bearer token
-        if get_token():
+        # Keyed profile overridden by env.json, or keyless profile — use the
+        # ambient chain (env.json > env var > config.json > Bearer session).
+        if env_key_active or get_agent_auth():
             return agent_name, DailyBotClient(), repo_default_metadata
         print_error(
             f"Profile '{profile_data['profile']}' has no API key and no login session.\n"

@@ -261,6 +261,81 @@ class TestResolveAgentContext:
         assert exc_info.value.code == 1
 
 
+class TestResolveAgentContextEnvJson:
+    """env.json credentials vs. keyed agents.json profiles.
+
+    Regression guard for the asymmetry where `agent profiles --resolve`
+    (via `resolve_active_profile`) showed the env.json key as the winner
+    while the actual command client (via `_resolve_agent_context`) used
+    the agents.json profile key. Display and runtime must always agree:
+    env.json wins, except under an explicit `--profile` flag.
+    """
+
+    def _write_env_json(self, repo_root: Path) -> None:
+        env_dir: Path = repo_root / ".dailybot"
+        env_dir.mkdir(parents=True, exist_ok=True)
+        (env_dir / "env.json").write_text(
+            json.dumps(
+                {
+                    "active": "local",
+                    "profiles": [{"name": "local", "api_key": "env-json-key"}],
+                }
+            )
+        )
+
+    def test_env_json_beats_keyed_default_profile(self, chdir_tmp: Path) -> None:
+        from dailybot_cli.config import save_agent_profile
+
+        save_agent_profile("bot", "Bot", api_key="agents-json-key")
+        self._write_env_json(chdir_tmp)
+        _name, client, _meta = _resolve_agent_context(None, None)
+        assert client.api_key == "env-json-key"
+        assert client._prefer_api_key is True  # wins on the wire too
+
+    def test_explicit_profile_flag_beats_env_json(self, chdir_tmp: Path) -> None:
+        from dailybot_cli.config import save_agent_profile
+
+        save_agent_profile("bot", "Bot", api_key="agents-json-key")
+        self._write_env_json(chdir_tmp)
+        _name, client, _meta = _resolve_agent_context("bot", None)
+        assert client.api_key == "agents-json-key"
+
+    def test_repo_profile_slug_still_yields_to_env_json(self, chdir_tmp: Path) -> None:
+        """A slug pinned by profile.json is repo config, not a CLI flag —
+        env.json (the more specific repo-local auth file) still wins."""
+        from dailybot_cli.config import save_agent_profile
+
+        save_agent_profile("bot", "Bot", api_key="agents-json-key")
+        _write_repo_profile(chdir_tmp, {"profile": "bot"})
+        self._write_env_json(chdir_tmp)
+        _name, client, _meta = _resolve_agent_context(None, None)
+        assert client.api_key == "env-json-key"
+
+    def test_keyless_profile_uses_ambient_api_key(
+        self, chdir_tmp: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """A keyless profile with DAILYBOT_API_KEY available must use it
+        instead of erroring out (the ambient chain includes API keys)."""
+        from dailybot_cli.config import save_agent_profile
+
+        save_agent_profile("bot", "Bot")
+        monkeypatch.setenv("DAILYBOT_API_KEY", "ambient-key")
+        _name, client, _meta = _resolve_agent_context(None, None)
+        assert client.api_key == "ambient-key"
+
+    def test_display_and_runtime_agree(self, chdir_tmp: Path) -> None:
+        """`resolve_active_profile` (display) and `_resolve_agent_context`
+        (runtime) must pick the same key."""
+        from dailybot_cli.config import save_agent_profile
+
+        save_agent_profile("bot", "Bot", api_key="agents-json-key")
+        self._write_env_json(chdir_tmp)
+        shown: dict[str, Any] = resolve_active_profile(None, None)
+        _name, client, _meta = _resolve_agent_context(None, None)
+        assert shown["api_key"] == client.api_key == "env-json-key"
+        assert shown["resolved_from"]["api_key"] == "env.json"
+
+
 # --- End-to-end CLI tests ---------------------------------------------------
 
 

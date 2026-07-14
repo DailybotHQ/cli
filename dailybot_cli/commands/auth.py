@@ -7,9 +7,12 @@ import questionary
 
 from dailybot_cli.api_client import APIError, DailyBotClient
 from dailybot_cli.config import (
+    RepoEnvError,
     clear_credentials,
     clear_org_cache,
+    get_active_env_profile,
     get_api_key,
+    get_api_url,
     get_token,
     load_org_cache,
     save_credentials,
@@ -21,7 +24,35 @@ from dailybot_cli.display import (
     print_error,
     print_info,
     print_success,
+    print_warning,
 )
+
+
+def _warn_if_env_json_redirects_login() -> None:
+    """Warn when an active ``.dailybot/env.json`` profile redirects the login.
+
+    Login writes the resolved ``api_url`` (and the token issued by that
+    server) to the GLOBAL ``~/.config/dailybot/credentials.json`` — a
+    repo-local env.json must never rewrite the user's global session
+    silently. The login still proceeds; the developer just gets told
+    where it is going and how to opt out.
+    """
+    try:
+        env_profile: dict[str, Any] | None = get_active_env_profile()
+    except RepoEnvError:
+        # The root cli() guard already aborted on fatal states; stay quiet.
+        return
+    if (
+        env_profile
+        and env_profile.get("api_url")
+        and get_api_url() == str(env_profile["api_url"]).rstrip("/")
+    ):
+        print_warning(
+            f"This repo's .dailybot/env.json (profile '{env_profile['name']}') points "
+            f"the CLI at {get_api_url()}. Logging in will authenticate against that "
+            "server and update your GLOBAL session for every repo. Run `dailybot env "
+            "off` first if you meant to log into your default server."
+        )
 
 
 def _prompt_org_selection_numbered(organizations: list[dict[str, Any]]) -> dict[str, Any]:
@@ -273,6 +304,8 @@ def login(ctx: click.Context, email: str, code: str | None, org_uuid: str | None
     email_from_flag: bool = (
         ctx.get_parameter_source("email") == click.core.ParameterSource.COMMANDLINE
     )
+
+    _warn_if_env_json_redirects_login()
 
     if code is not None:
         # Non-interactive step 2: verify code directly

@@ -59,7 +59,11 @@ pip-delete-this-directory.txt
 # Dailybot repo profile — broad-ignore the folder, but the per-repo
 # `profile.json` itself MUST be tracked (it pins the agent identity for
 # everyone working in this repo). Any other on-disk state Dailybot stores
-# here (caches, transient OTP scratch, etc.) is correctly ignored.
+# here (caches, transient OTP scratch, .dailybot/env.json for per-repo
+# API keys, etc.) is correctly ignored.
+# IMPORTANT: `.dailybot/env.json` is INTENTIONALLY NEVER excepted — it
+# contains API keys and must never be committed. The CLI enforces this
+# at load time with a fatal `RepoEnvError`. See docs/SECURITY.md.
 .dailybot/*
 !.dailybot/profile.json
 

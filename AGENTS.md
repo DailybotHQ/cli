@@ -270,15 +270,27 @@ class DailyBotClient: ...
 The agent commands resolve credentials in this strict order — changing it is a **breaking change** for users:
 
 1. `--profile` flag (explicit profile from `~/.config/dailybot/agents.json`)
-2. `<repo>/.dailybot/profile.json::profile` — the closest ancestor of `$PWD` containing this file pins a profile slug for everyone working in the repo
-3. Default profile from `agents.json`
-4. `DAILYBOT_API_KEY` environment variable
-5. `dailybot config key=...` (stored in `~/.config/dailybot/config.json`)
-6. Login session (Bearer token from `~/.config/dailybot/credentials.json`)
+2. **`<repo>/.dailybot/env.json` active profile** — the closest ancestor of `$PWD` containing this file provides API key + optional `api_url` / `app_url` for the enclosing repo. Gitignored, opt-in, plain-text on disk (`0o600`). When `disabled: true` or `active` is empty/null/missing, the file is inert and resolution continues below. See § "Repo-level env override" in `docs/CONFIGURATION.md`.
+3. `<repo>/.dailybot/profile.json::profile` — the closest ancestor of `$PWD` containing this file pins a profile slug for everyone working in the repo
+4. Default profile from `agents.json`
+5. `DAILYBOT_API_KEY` environment variable
+6. `dailybot config key=...` (stored in `~/.config/dailybot/config.json`)
+7. Login session (Bearer token from `~/.config/dailybot/credentials.json`)
 
-The repo file may also pin the agent display name (`name`) and a `default_metadata` object that gets shallow-merged into every report. **Credentials never live in the repo file** — a `key` field in `.dailybot/profile.json` is a hard error. See [docs/CONFIGURATION.md](docs/CONFIGURATION.md) for the per-field precedence and the security rule.
+This order holds at the HTTP layer too: when the resolved API key comes from `env.json`, the client sends `X-API-KEY` on the **first** attempt even if a Bearer login session exists (`DailyBotClient._prefer_api_key`, auto-detected via `get_api_key_source()`); the transparent 401/403 retry covers the reverse direction. Keys from any other layer keep the long-standing Bearer-first wire order. A keyed `agents.json` profile only beats `env.json` when selected with an explicit `--profile` flag (layer 1); resolved via `profile.json` or as the default profile, it yields to `env.json` — `agent profiles --resolve` and the actual request always agree.
 
-The implementation lives in `dailybot_cli/commands/agent.py::_resolve_agent_context` and `dailybot_cli/api_client.py::_agent_headers`. See [docs/CONFIGURATION.md](docs/CONFIGURATION.md).
+The `profile.json` file may also pin the agent display name (`name`) and a `default_metadata` object that gets shallow-merged into every report. **Credentials never live in `profile.json`** — a `key` field there is a hard error.
+
+**`env.json` is the ONLY sanctioned place for API keys inside `.dailybot/`, and it MUST NEVER be committed.** The CLI enforces this with four independent protections (three enforced + one advisory), all of them mandatory:
+
+1. `.gitignore` MUST include `.dailybot/*` (with `!.dailybot/profile.json` as the ONLY exception). `env.json` is never un-ignored.
+2. Every write creates the file with mode `0o600` from the first byte (`os.open(..., 0o600)`), and every load re-chmods it defensively.
+3. The **root `cli()` callback** in `dailybot_cli/main.py` calls `load_repo_env()` on every invocation — if `.dailybot/env.json` is tracked by git (`git ls-files --error-unmatch` returns 0, staged or committed), `RepoEnvError` is raised, `print_error()` writes to stderr, and `SystemExit(1)` aborts the process **before any subcommand runs**. Every command (`status`, `user list`, `form list`, `agent update`, `env show`, `login`, `upgrade`, ...) is blocked. Exactly two carve-outs: `--help` / `--version` (Click short-circuits before the callback), and the `hook` group, which prints the same error to stderr but continues and exits 0 — its contract (`docs/AGENT_HOOKS.md`) is "always exit 0, never break the agent harness" and hooks never consume env.json auth. No silent fallback to global auth — ever. If git is not on PATH but a `.git` ancestor exists, the guard cannot verify and degrades to a loud warning.
+4. (Advisory) `dailybot env add` runs `git check-ignore` after writing and warns when the file is not covered by any ignore rule.
+
+See [docs/CONFIGURATION.md § "STOP — Read this before you author `env.json`"](docs/CONFIGURATION.md#stop--read-this-before-you-author-envjson) for the recovery recipe when a leak has already happened (spoiler: rotate first, don't rewrite history).
+
+The implementation lives in `dailybot_cli/config.py` (`get_active_env_profile`, `get_api_key`, `get_api_url`, `get_app_url`, `load_repo_env`), `dailybot_cli/main.py::cli` (root-callback guard), `dailybot_cli/commands/agent.py::_resolve_agent_context`, and `dailybot_cli/api_client.py::_agent_headers`. See [docs/CONFIGURATION.md](docs/CONFIGURATION.md).
 
 ### 15. Packaging & Versioning
 

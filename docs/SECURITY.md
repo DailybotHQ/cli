@@ -29,11 +29,27 @@ Files with secrets:
 - `credentials.json` (login Bearer token)
 - `config.json` (stored API key)
 - `agents.json` (per-profile API keys)
+- `<repo>/.dailybot/env.json` (per-repo API keys — see § below)
 
 Files without secrets (still written `0o600` for consistency):
 - `org_cache.json` (transient list of org names + UUIDs from step 1 of multi-org login)
 - `plan_cache.json` (non-sensitive org plan tier, keyed by org UUID; used to short-circuit
   non-allowlisted commands on a free plan — never stores tokens or keys)
+
+### Repo-level env override (`.dailybot/env.json`)
+
+The `env.json` file is the ONLY sanctioned place inside `.dailybot/` where API keys may live. It carries per-repo credential context (API key + optional URLs for one or more environments). Because it sits inside the repo tree, **four independent protections** apply beyond the standard `0o600`:
+
+1. **Gitignore is mandatory (`.gitignore`).** The broad `.dailybot/*` rule in the repo's `.gitignore` covers it automatically; the only excepted file is `!.dailybot/profile.json`. `env.json` MUST NEVER be excepted — not with a per-machine dot-file trick, not with a `git update-index --assume-unchanged`, not with anything.
+2. **File permissions (`0o600`).** Every write via `dailybot env` creates the file with mode `0o600` from the first byte (`os.open(..., 0o600)` — no umask window), and every read re-chmods it defensively. Implementation: `dailybot_cli/config.py::save_repo_env`.
+3. **Root-callback refuse-if-tracked guard (fatal, applies to EVERY command).** The root `cli()` callback in `dailybot_cli/main.py` calls `load_repo_env()` on every invocation, which internally runs `git ls-files --error-unmatch .dailybot/env.json`. If the file is tracked, `RepoEnvError` is raised, `print_error()` writes to stderr, and `SystemExit(1)` aborts **before any subcommand runs**. There is no silent fallback to global auth — the entire process refuses to operate until the developer runs `git rm --cached .dailybot/env.json`. The exempt paths are `--help` / `--version` (Click short-circuits) so the developer can always read instructions, and the `hook` group, which prints the same error to stderr but exits 0 — its harness contract ([AGENT_HOOKS.md](AGENT_HOOKS.md)) forbids non-zero exits, and hook commands never consume env.json auth. When git is not on PATH but a `.git` ancestor exists, the guard cannot verify tracking and degrades to a loud warning instead of a silent pass. Implementation: `dailybot_cli/config.py::_is_env_tracked_by_git` (independently mockable), invoked via `load_repo_env` from `main.py::cli`.
+4. **Write-time gitignore warning.** `dailybot env add` runs `git check-ignore --quiet .dailybot/env.json` after writing; if the file is NOT covered by any ignore rule, a warning fires on stderr with the exact `.gitignore` snippet to add. The warning is non-fatal because a fresh repo might not have a `.gitignore` yet, and the load-time guard (#3) catches the actual security violation.
+
+**All four protections must trip together** for a leak to happen: the developer would have to (a) remove or fail to add the `.gitignore` rule, (b) survive the write-time warning, (c) survive the load-time refuse-if-tracked check, and (d) somehow bypass the file permissions. The design is defense-in-depth on purpose.
+
+**If a key ever ends up in a commit**, treat it as compromised — rotate immediately via the Dailybot dashboard, then follow the recovery recipe in [CONFIGURATION.md § "STOP — Read this before you author `env.json`"](CONFIGURATION.md#stop--read-this-before-you-author-envjson). Git history is forever; `git revert` does not undo the exposure.
+
+The full schema, precedence, and CLI commands for `env.json` are in [CONFIGURATION.md § "Repo-level env override"](CONFIGURATION.md#repo-level-env-override-dailybotenvjson).
 
 ## Secrets in Output
 

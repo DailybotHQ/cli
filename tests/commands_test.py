@@ -519,6 +519,58 @@ class TestLoginCommand:
             "user@test.com", "123456", organization_id=1
         )
 
+    @patch("dailybot_cli.commands.auth.DailyBotClient")
+    def test_login_warns_when_env_json_redirects_the_server(
+        self,
+        mock_client_cls: MagicMock,
+        runner: CliRunner,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """Login persists the resolved api_url into the GLOBAL credentials
+        file — when an active env.json profile is what points the CLI at a
+        different server, the user must be warned before the OTP flow."""
+        repo: Path = tmp_path / "repo"
+        env_dir: Path = repo / ".dailybot"
+        env_dir.mkdir(parents=True)
+        (env_dir / "env.json").write_text(
+            json.dumps(
+                {
+                    "active": "local",
+                    "profiles": [
+                        {
+                            "name": "local",
+                            "api_key": "sk-local",
+                            "api_url": "http://localhost:8000",
+                        }
+                    ],
+                }
+            )
+        )
+        monkeypatch.chdir(repo)
+
+        mock_client: MagicMock = mock_client_cls.return_value
+        mock_client.api_url = "http://localhost:8000"
+        mock_client.request_code.side_effect = APIError(400, "stop here")
+
+        result = runner.invoke(cli, ["login", "--email", "user@test.com"])
+        assert "env.json" in result.output
+        assert "GLOBAL session" in result.output
+        assert "dailybot env off" in result.output
+
+    @patch("dailybot_cli.commands.auth.DailyBotClient")
+    def test_login_no_warning_without_env_json(
+        self,
+        mock_client_cls: MagicMock,
+        runner: CliRunner,
+    ) -> None:
+        mock_client: MagicMock = mock_client_cls.return_value
+        mock_client.api_url = "https://api.dailybot.com"
+        mock_client.request_code.side_effect = APIError(400, "stop here")
+
+        result = runner.invoke(cli, ["login", "--email", "user@test.com"])
+        assert "GLOBAL session" not in result.output
+
     @patch("dailybot_cli.commands.auth.questionary")
     @patch("dailybot_cli.commands.auth.DailyBotClient")
     @patch("dailybot_cli.commands.auth.save_credentials")
@@ -1031,18 +1083,25 @@ class TestStatusCommand:
         assert result.exit_code == 1
         assert "Not authenticated" in result.output
 
+    @patch("dailybot_cli.commands.status.get_api_key")
     @patch("dailybot_cli.commands.status.get_token")
     @patch("dailybot_cli.commands.status.DailyBotClient")
     def test_status_auth_valid_login(
-        self, mock_client_cls: MagicMock, mock_get_token: MagicMock, runner: CliRunner
+        self,
+        mock_client_cls: MagicMock,
+        mock_get_token: MagicMock,
+        mock_get_api_key: MagicMock,
+        runner: CliRunner,
     ) -> None:
         """--auth with valid OTP session shows login auth info."""
         mock_get_token.return_value = "tok"
+        mock_get_api_key.return_value = None
         mock_client: MagicMock = mock_client_cls.return_value
         mock_client.auth_status.return_value = {
             "user": {"email": "user@test.com"},
             "organization": {"name": "MyOrg", "uuid": "org-uuid"},
         }
+        mock_client._agent_auth_mode = "bearer"
 
         result = runner.invoke(cli, ["status", "--auth"])
         assert result.exit_code == 0
@@ -1060,11 +1119,17 @@ class TestStatusCommand:
         mock_get_api_key: MagicMock,
         runner: CliRunner,
     ) -> None:
-        """--auth falls back to API key when no login token."""
+        """--auth reports 'API key' when the client used the API key path
+        (either because no login token exists, or because env.json is
+        active and forces the API key as the effective credential)."""
         mock_get_token.return_value = None
         mock_get_api_key.return_value = "sk-abc123"
         mock_client: MagicMock = mock_client_cls.return_value
-        mock_client.get_agent_health.return_value = {"status": "healthy"}
+        mock_client.auth_status.return_value = {
+            "user": {"email": "user@test.com"},
+            "organization": {"name": "MyOrg", "uuid": "org-uuid"},
+        }
+        mock_client._agent_auth_mode = "api_key"
 
         result = runner.invoke(cli, ["status", "--auth"])
         assert result.exit_code == 0
@@ -1074,26 +1139,57 @@ class TestStatusCommand:
     @patch("dailybot_cli.commands.status.get_api_key")
     @patch("dailybot_cli.commands.status.get_token")
     @patch("dailybot_cli.commands.status.DailyBotClient")
-    def test_status_auth_expired_login_falls_back_to_api_key(
+    def test_status_auth_expired_login_transparently_falls_back(
         self,
         mock_client_cls: MagicMock,
         mock_get_token: MagicMock,
         mock_get_api_key: MagicMock,
         runner: CliRunner,
     ) -> None:
-        """--auth with expired login falls back to valid API key."""
+        """--auth with an expired login + valid API key succeeds silently:
+        the client's internal alt-credential retry (Bearer → API key) means
+        ``status --auth`` never surfaces the intermediate failure. The final
+        reported credential is the API key because that's what actually
+        succeeded on the wire."""
+        mock_get_token.return_value = "expired-tok"
+        mock_get_api_key.return_value = "sk-xyz789"
+        mock_client: MagicMock = mock_client_cls.return_value
+        mock_client.auth_status.return_value = {
+            "user": {"email": "user@test.com"},
+            "organization": {"name": "MyOrg", "uuid": "org-uuid"},
+        }
+        mock_client._agent_auth_mode = "api_key"
+
+        result = runner.invoke(cli, ["status", "--auth"])
+        assert result.exit_code == 0
+        assert "invalid or expired" not in result.output
+        assert "API key" in result.output
+        assert "sk-x****" in result.output
+
+    @patch("dailybot_cli.commands.status.get_api_key")
+    @patch("dailybot_cli.commands.status.get_token")
+    @patch("dailybot_cli.commands.status.DailyBotClient")
+    def test_status_auth_both_credentials_rejected(
+        self,
+        mock_client_cls: MagicMock,
+        mock_get_token: MagicMock,
+        mock_get_api_key: MagicMock,
+        runner: CliRunner,
+    ) -> None:
+        """When both Bearer and API key are on disk AND the API rejects both
+        (401/403), the CLI surfaces a distinctive error that names both
+        credentials — otherwise the user cannot tell whether the login is
+        expired, the API key is wrong, or both."""
         from dailybot_cli.api_client import APIError
 
         mock_get_token.return_value = "expired-tok"
         mock_get_api_key.return_value = "sk-xyz789"
         mock_client: MagicMock = mock_client_cls.return_value
         mock_client.auth_status.side_effect = APIError(401, "Unauthorized")
-        mock_client.get_agent_health.return_value = {"status": "healthy"}
 
         result = runner.invoke(cli, ["status", "--auth"])
-        assert result.exit_code == 0
-        assert "invalid or expired" in result.output
-        assert "API key" in result.output
+        assert result.exit_code == 1
+        assert "Both credentials were rejected" in result.output
 
     @patch("dailybot_cli.commands.status.get_api_key")
     @patch("dailybot_cli.commands.status.get_token")

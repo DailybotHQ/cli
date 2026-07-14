@@ -13,6 +13,7 @@ from dailybot_cli.commands.chat import chat
 from dailybot_cli.commands.checkin import checkin
 from dailybot_cli.commands.config import config
 from dailybot_cli.commands.conversation import conversation
+from dailybot_cli.commands.env import env
 from dailybot_cli.commands.form import form
 from dailybot_cli.commands.hook import hook
 from dailybot_cli.commands.identity import me, org
@@ -27,7 +28,13 @@ from dailybot_cli.commands.upgrade import upgrade
 from dailybot_cli.commands.user import user
 from dailybot_cli.commands.version import version
 from dailybot_cli.commands.workflow import workflow
-from dailybot_cli.config import set_api_url_override, set_app_url_override
+from dailybot_cli.config import (
+    RepoEnvError,
+    load_repo_env,
+    set_api_url_override,
+    set_app_url_override,
+)
+from dailybot_cli.display import print_error
 
 # Format used by `dailybot --version`. Single line so it's friendly to scripts
 # parsing the output. The richer multi-line panel lives in `dailybot version`.
@@ -72,6 +79,27 @@ def cli(ctx: click.Context, api_url: str | None, app_url: str | None) -> None:
 
     Run without arguments for interactive mode.
     """
+    # Fatal safety check: if `.dailybot/env.json` exists in the current tree
+    # AND it is tracked by git, refuse to run ANY command. Silently swallowing
+    # this in `_safe_active_env_profile()` (as the resilient per-getter path
+    # does) would mean the CLI happily continues with global auth while the
+    # user's org API keys leak in git history — precisely the disaster the
+    # gitignore + guard combo is meant to prevent. Blocking here is the
+    # correct security posture: force the user to `git rm --cached` (and
+    # rotate the exposed key) before the CLI does anything else.
+    #
+    # Single exemption: the `hook` group. Its contract (docs/AGENT_HOOKS.md)
+    # is "always exit 0, never break the developer's agent harness, never
+    # call the network" — hooks never consume env.json auth, so the guard
+    # degrades to a stderr warning there instead of aborting every agent
+    # session in the repo.
+    try:
+        load_repo_env()
+    except RepoEnvError as exc:
+        print_error(str(exc))
+        if ctx.invoked_subcommand != "hook":
+            raise SystemExit(1) from exc
+
     if api_url:
         set_api_url_override(api_url)
     if app_url:
@@ -99,6 +127,7 @@ cli.add_command(conversation)
 cli.add_command(ask)
 cli.add_command(interactive)
 cli.add_command(config)
+cli.add_command(env)
 cli.add_command(hook)
 cli.add_command(version)
 cli.add_command(upgrade)
