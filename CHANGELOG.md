@@ -9,6 +9,35 @@ Do not edit it by hand — your edits will be overwritten on the next release.
 
 <!-- version list -->
 
+## v3.7.0 (2026-07-14)
+
+### Bug Fixes
+
+- **client**: Silent Bearer→API-key retry on 401/403 for env.json UX
+  ([#69](https://github.com/DailybotHQ/cli/pull/69),
+  [`b8ca2a3`](https://github.com/DailybotHQ/cli/commit/b8ca2a34482aa0e9f4aff4ac25b1d5af83fe862e))
+
+- **env**: Fire refuse-if-tracked guard from root cli() + strict docs audit
+  ([#69](https://github.com/DailybotHQ/cli/pull/69),
+  [`b8ca2a3`](https://github.com/DailybotHQ/cli/commit/b8ca2a34482aa0e9f4aff4ac25b1d5af83fe862e))
+
+- **env**: Make env.json precedence real on the wire + harden the guard
+  ([#69](https://github.com/DailybotHQ/cli/pull/69),
+  [`b8ca2a3`](https://github.com/DailybotHQ/cli/commit/b8ca2a34482aa0e9f4aff4ac25b1d5af83fe862e))
+
+### Code Style
+
+- **client,tests**: Apply `ruff format` to api_client + tests
+  ([#69](https://github.com/DailybotHQ/cli/pull/69),
+  [`b8ca2a3`](https://github.com/DailybotHQ/cli/commit/b8ca2a34482aa0e9f4aff4ac25b1d5af83fe862e))
+
+### Features
+
+- **env**: Add .dailybot/env.json per-repo API key override
+  ([#69](https://github.com/DailybotHQ/cli/pull/69),
+  [`b8ca2a3`](https://github.com/DailybotHQ/cli/commit/b8ca2a34482aa0e9f4aff4ac25b1d5af83fe862e))
+
+
 ## v3.6.1 (2026-07-13)
 
 ### Chores
