@@ -496,9 +496,7 @@ class DailyBotClient:
 
     def auth_status(self) -> dict[str, Any]:
         """GET /v1/cli/auth/status/"""
-        response: httpx.Response = self._request(
-            "GET", f"{self.api_url}/v1/cli/auth/status/"
-        )
+        response: httpx.Response = self._request("GET", f"{self.api_url}/v1/cli/auth/status/")
         return self._handle_response(response)
 
     def logout(self) -> dict[str, Any]:
@@ -544,9 +542,7 @@ class DailyBotClient:
 
     def get_status(self) -> dict[str, Any]:
         """GET /v1/cli/status/"""
-        response: httpx.Response = self._request(
-            "GET", f"{self.api_url}/v1/cli/status/"
-        )
+        response: httpx.Response = self._request("GET", f"{self.api_url}/v1/cli/status/")
         return self._handle_response(response)
 
     def create_chat_completion(
@@ -1009,9 +1005,7 @@ class DailyBotClient:
 
     def get_form(self, form_uuid: str) -> dict[str, Any]:
         """GET /v1/forms/<form_uuid>/ — form metadata and question definitions."""
-        response: httpx.Response = self._request(
-            "GET", f"{self.api_url}/v1/forms/{form_uuid}/"
-        )
+        response: httpx.Response = self._request("GET", f"{self.api_url}/v1/forms/{form_uuid}/")
         return self._handle_response(response)
 
     def submit_form_response(
@@ -1169,9 +1163,7 @@ class DailyBotClient:
         older/other deployments may return ``{"results": [...]}`` or a bare list.
         All three are accepted.
         """
-        response: httpx.Response = self._request(
-            "GET", f"{self.api_url}/v1/report-channels/"
-        )
+        response: httpx.Response = self._request("GET", f"{self.api_url}/v1/report-channels/")
         if response.status_code >= 400:
             self._handle_response(response)
         body: Any = response.json()
@@ -1339,9 +1331,7 @@ class DailyBotClient:
 
     def get_organization(self) -> dict[str, Any]:
         """GET /v1/organization/ — the org the current credential is scoped to."""
-        response: httpx.Response = self._request(
-            "GET", f"{self.api_url}/v1/organization/"
-        )
+        response: httpx.Response = self._request("GET", f"{self.api_url}/v1/organization/")
         return self._handle_response(response)
 
     def get_user(self, user_uuid: str, *, include_email: bool = False) -> dict[str, Any]:
@@ -1498,9 +1488,7 @@ class DailyBotClient:
 
     def get_team(self, team_uuid: str) -> dict[str, Any]:
         """GET /v1/teams/<team_uuid>/"""
-        response: httpx.Response = self._request(
-            "GET", f"{self.api_url}/v1/teams/{team_uuid}/"
-        )
+        response: httpx.Response = self._request("GET", f"{self.api_url}/v1/teams/{team_uuid}/")
         return self._handle_response(response)
 
     def list_team_members(self, team_uuid: str) -> list[dict[str, Any]]:

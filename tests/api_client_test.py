@@ -1152,9 +1152,7 @@ class TestAgentAuthFallback:
             error_resp.json.return_value = {"detail": f"HTTP {status}"}
 
             with (
-                patch(
-                    "dailybot_cli.api_client.httpx.request", return_value=error_resp
-                ) as mock_req,
+                patch("dailybot_cli.api_client.httpx.request", return_value=error_resp) as mock_req,
                 pytest.raises(APIError) as exc_info,
             ):
                 client.submit_agent_report(agent_name="Test", content="Hi")
@@ -1232,20 +1230,15 @@ class TestUserAuthFallback:
         ok.status_code = 200
         ok.json.return_value = {"email": "me@example.com", "organization_name": "Local"}
 
-        with patch(
-            "dailybot_cli.api_client.httpx.get", side_effect=[rejected, ok]
-        ) as mock_get:
+        with patch("dailybot_cli.api_client.httpx.get", side_effect=[rejected, ok]) as mock_get:
             result: dict[str, Any] = client.auth_status()
 
         assert result["email"] == "me@example.com"
         assert mock_get.call_count == 2
         assert (
-            mock_get.call_args_list[0][1]["headers"].get("Authorization")
-            == "Bearer expired-bearer"
+            mock_get.call_args_list[0][1]["headers"].get("Authorization") == "Bearer expired-bearer"
         )
-        assert (
-            mock_get.call_args_list[1][1]["headers"].get("X-API-KEY") == "fresh-key"
-        )
+        assert mock_get.call_args_list[1][1]["headers"].get("X-API-KEY") == "fresh-key"
 
     def test_auth_status_retries_bearer_to_api_key_on_403(self) -> None:
         """403 (DRF's default for a rejected Bearer against a different-server
@@ -1261,30 +1254,22 @@ class TestUserAuthFallback:
         ok.status_code = 200
         ok.json.return_value = {"email": "local@example.com"}
 
-        with patch(
-            "dailybot_cli.api_client.httpx.get", side_effect=[rejected, ok]
-        ) as mock_get:
+        with patch("dailybot_cli.api_client.httpx.get", side_effect=[rejected, ok]) as mock_get:
             result: dict[str, Any] = client.auth_status()
 
         assert result["email"] == "local@example.com"
         assert mock_get.call_count == 2
-        assert (
-            mock_get.call_args_list[1][1]["headers"].get("X-API-KEY") == "local-key"
-        )
+        assert mock_get.call_args_list[1][1]["headers"].get("X-API-KEY") == "local-key"
 
     def test_no_retry_when_only_bearer_available(self) -> None:
         """Bearer-only client (no API key): no alternative → single request."""
-        client = DailyBotClient(
-            api_url="http://test.com", token="stale-bearer", api_key=None
-        )
+        client = DailyBotClient(api_url="http://test.com", token="stale-bearer", api_key=None)
         rejected: MagicMock = MagicMock(spec=httpx.Response)
         rejected.status_code = 401
         rejected.json.return_value = {"detail": "Unauthorized"}
 
         with (
-            patch(
-                "dailybot_cli.api_client.httpx.get", return_value=rejected
-            ) as mock_get,
+            patch("dailybot_cli.api_client.httpx.get", return_value=rejected) as mock_get,
             pytest.raises(APIError) as exc_info,
         ):
             client.auth_status()
@@ -1294,34 +1279,26 @@ class TestUserAuthFallback:
 
     def test_no_retry_on_2xx_success(self) -> None:
         """Happy path (Bearer works first try) makes only one request."""
-        client = DailyBotClient(
-            api_url="http://test.com", token="good", api_key="also-good"
-        )
+        client = DailyBotClient(api_url="http://test.com", token="good", api_key="also-good")
         ok: MagicMock = MagicMock(spec=httpx.Response)
         ok.status_code = 200
         ok.json.return_value = {"email": "me@example.com"}
 
-        with patch(
-            "dailybot_cli.api_client.httpx.get", return_value=ok
-        ) as mock_get:
+        with patch("dailybot_cli.api_client.httpx.get", return_value=ok) as mock_get:
             client.auth_status()
 
         assert mock_get.call_count == 1
 
     def test_no_retry_on_non_auth_errors(self) -> None:
         """Genuine non-auth errors (400/404/500/502) do NOT retry."""
-        client = DailyBotClient(
-            api_url="http://test.com", token="good", api_key="also-good"
-        )
+        client = DailyBotClient(api_url="http://test.com", token="good", api_key="also-good")
         for status in (400, 404, 422, 500, 502, 503):
             error_resp: MagicMock = MagicMock(spec=httpx.Response)
             error_resp.status_code = status
             error_resp.json.return_value = {"detail": f"HTTP {status}"}
 
             with (
-                patch(
-                    "dailybot_cli.api_client.httpx.get", return_value=error_resp
-                ) as mock_get,
+                patch("dailybot_cli.api_client.httpx.get", return_value=error_resp) as mock_get,
                 pytest.raises(APIError) as exc_info,
             ):
                 client.auth_status()
@@ -1335,9 +1312,7 @@ class TestUserAuthFallback:
         retry because the credential IS the thing being negotiated (or
         because we're actively logging out). A failure at any of them means
         exactly what it says."""
-        client = DailyBotClient(
-            api_url="http://test.com", token="tok", api_key="key"
-        )
+        client = DailyBotClient(api_url="http://test.com", token="tok", api_key="key")
         rejected: MagicMock = MagicMock(spec=httpx.Response)
         rejected.status_code = 401
         rejected.json.return_value = {"detail": "Bad code"}
