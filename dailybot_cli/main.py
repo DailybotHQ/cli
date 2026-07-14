@@ -87,11 +87,18 @@ def cli(ctx: click.Context, api_url: str | None, app_url: str | None) -> None:
     # gitignore + guard combo is meant to prevent. Blocking here is the
     # correct security posture: force the user to `git rm --cached` (and
     # rotate the exposed key) before the CLI does anything else.
+    #
+    # Single exemption: the `hook` group. Its contract (docs/AGENT_HOOKS.md)
+    # is "always exit 0, never break the developer's agent harness, never
+    # call the network" — hooks never consume env.json auth, so the guard
+    # degrades to a stderr warning there instead of aborting every agent
+    # session in the repo.
     try:
         load_repo_env()
     except RepoEnvError as exc:
         print_error(str(exc))
-        raise SystemExit(1) from exc
+        if ctx.invoked_subcommand != "hook":
+            raise SystemExit(1) from exc
 
     if api_url:
         set_api_url_override(api_url)

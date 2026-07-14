@@ -1089,9 +1089,8 @@ class TestAgentAuthFallback:
         assert retry_headers.get("X-API-KEY") == "valid-key"
         assert "Authorization" not in retry_headers
 
-    def test_api_key_rejected_retries_with_bearer(self) -> None:
-        """API-key-only client (no Bearer) fails → no retry. But if Bearer
-        is added later (e.g. only api_key set at init), retry would work."""
+    def test_api_key_only_no_alt_no_retry(self) -> None:
+        """API-key-only client (no Bearer): no alternative → single request."""
         client = DailyBotClient(api_url="http://test.com", token=None, api_key="stale-key")
         rejected: MagicMock = MagicMock(spec=httpx.Response)
         rejected.status_code = 401
@@ -1105,6 +1104,53 @@ class TestAgentAuthFallback:
 
         assert exc_info.value.status_code == 401
         assert mock_req.call_count == 1
+
+    def test_api_key_rejected_retries_with_bearer(self) -> None:
+        """The reverse direction: a preferred (env.json) API key fails →
+        retry with the Bearer session."""
+        client = DailyBotClient(
+            api_url="http://test.com",
+            token="valid-bearer",
+            api_key="stale-env-key",
+            prefer_api_key=True,
+        )
+        rejected: MagicMock = MagicMock(spec=httpx.Response)
+        rejected.status_code = 401
+        rejected.json.return_value = {"detail": "API Key Not Valid"}
+
+        success: MagicMock = MagicMock(spec=httpx.Response)
+        success.status_code = 200
+        success.json.return_value = {"id": 3, "uuid": "rev"}
+
+        with patch(
+            "dailybot_cli.api_client.httpx.request", side_effect=[rejected, success]
+        ) as mock_req:
+            result: dict[str, Any] = client.submit_agent_report(agent_name="Test", content="Hi")
+
+        assert result == {"id": 3, "uuid": "rev"}
+        assert mock_req.call_count == 2
+        first_headers: dict[str, str] = mock_req.call_args_list[0][1]["headers"]
+        assert first_headers.get("X-API-KEY") == "stale-env-key"
+        assert "Authorization" not in first_headers
+        retry_headers: dict[str, str] = mock_req.call_args_list[1][1]["headers"]
+        assert retry_headers.get("Authorization") == "Bearer valid-bearer"
+        assert "X-API-KEY" not in retry_headers
+
+    def test_retry_does_not_loop_when_both_credentials_fail(self) -> None:
+        """Double rejection: exactly one retry, then the APIError surfaces."""
+        client = DailyBotClient(api_url="http://test.com", token="bad-tok", api_key="bad-key")
+        rejected: MagicMock = MagicMock(spec=httpx.Response)
+        rejected.status_code = 401
+        rejected.json.return_value = {"detail": "Unauthorized"}
+
+        with (
+            patch("dailybot_cli.api_client.httpx.request", return_value=rejected) as mock_req,
+            pytest.raises(APIError) as exc_info,
+        ):
+            client.submit_agent_report(agent_name="Test", content="Hi")
+
+        assert exc_info.value.status_code == 401
+        assert mock_req.call_count == 2
 
     def test_403_triggers_retry_with_api_key(self) -> None:
         """403 (auth-not-provided) also retries with the alt credential.
@@ -1324,6 +1370,112 @@ class TestUserAuthFallback:
             client.request_code("me@example.com")
 
         assert mock_post.call_count == 1
+
+        with (
+            patch("dailybot_cli.api_client.httpx.post", return_value=rejected) as mock_post,
+            pytest.raises(APIError),
+        ):
+            client.verify_code("me@example.com", "123456")
+
+        assert mock_post.call_count == 1
+
+        with (
+            patch("dailybot_cli.api_client.httpx.post", return_value=rejected) as mock_post,
+            pytest.raises(APIError),
+        ):
+            client.logout()
+
+        assert mock_post.call_count == 1
+
+
+class TestEnvJsonWirePreference:
+    """A key resolved from `.dailybot/env.json` must win on the FIRST attempt.
+
+    Bearer-first is the long-standing default, but an env.json key expresses
+    per-repo intent: if the Bearer went first and the target server accepted
+    it, the CLI would silently operate as the wrong identity AND transmit the
+    global session token to whatever server the repo's env.json points at.
+    `prefer_api_key` (auto-detected from the key's provenance) inverts the
+    header priority; the 401/403 retry still covers the reverse direction.
+    """
+
+    def test_headers_prefer_api_key_when_flagged(self) -> None:
+        client = DailyBotClient(token="prod-bearer", api_key="env-key", prefer_api_key=True)
+        headers = client._headers()
+        assert headers["X-API-KEY"] == "env-key"
+        assert "Authorization" not in headers
+        assert client._agent_auth_mode == "api_key"
+
+    def test_agent_headers_prefer_api_key_when_flagged(self) -> None:
+        client = DailyBotClient(token="prod-bearer", api_key="env-key", prefer_api_key=True)
+        headers = client._agent_headers()
+        assert headers["X-API-KEY"] == "env-key"
+        assert "Authorization" not in headers
+        assert client._agent_auth_mode == "api_key"
+
+    def test_explicit_api_key_arg_keeps_bearer_first(self) -> None:
+        """An explicit api_key ctor arg (e.g. a keyed --profile) keeps the
+        long-standing Bearer-first order."""
+        client = DailyBotClient(token="tok", api_key="profile-key")
+        assert client._prefer_api_key is False
+        assert client._headers()["Authorization"] == "Bearer tok"
+
+    @patch("dailybot_cli.api_client.get_api_key_source", return_value="env.json")
+    @patch("dailybot_cli.api_client.get_api_key", return_value="env-key")
+    @patch("dailybot_cli.api_client.get_token", return_value="prod-bearer")
+    def test_auto_detects_env_json_provenance(
+        self, _tok: MagicMock, _key: MagicMock, _src: MagicMock
+    ) -> None:
+        """A zero-arg client whose key resolves from env.json auto-prefers it."""
+        client = DailyBotClient()
+        assert client._prefer_api_key is True
+        headers = client._headers()
+        assert headers["X-API-KEY"] == "env-key"
+        assert "Authorization" not in headers
+
+    @patch("dailybot_cli.api_client.get_api_key_source", return_value="env")
+    @patch("dailybot_cli.api_client.get_api_key", return_value="var-key")
+    @patch("dailybot_cli.api_client.get_token", return_value="prod-bearer")
+    def test_env_var_key_keeps_bearer_first(
+        self, _tok: MagicMock, _key: MagicMock, _src: MagicMock
+    ) -> None:
+        """DAILYBOT_API_KEY / config.json keys keep the historical order."""
+        client = DailyBotClient()
+        assert client._prefer_api_key is False
+        assert client._headers()["Authorization"] == "Bearer prod-bearer"
+
+
+class TestDispatchHttp:
+    """`_dispatch_http` routes each verb to its per-method httpx function so
+    long-standing per-method test patches keep working."""
+
+    def test_get_routes_to_httpx_get(self) -> None:
+        with patch("dailybot_cli.api_client.httpx.get", return_value="ok") as mock_get:
+            result = DailyBotClient._dispatch_http("GET", "http://x/y", timeout=1.0)
+        assert result == "ok"
+        mock_get.assert_called_once_with("http://x/y", timeout=1.0)
+
+    def test_post_routes_to_httpx_post(self) -> None:
+        with patch("dailybot_cli.api_client.httpx.post", return_value="ok") as mock_post:
+            DailyBotClient._dispatch_http("POST", "http://x/y", json={"a": 1})
+        mock_post.assert_called_once_with("http://x/y", json={"a": 1})
+
+    def test_patch_routes_to_httpx_patch(self) -> None:
+        with patch("dailybot_cli.api_client.httpx.patch", return_value="ok") as mock_patch:
+            DailyBotClient._dispatch_http("PATCH", "http://x/y")
+        mock_patch.assert_called_once_with("http://x/y")
+
+    def test_put_routes_to_httpx_put(self) -> None:
+        with patch("dailybot_cli.api_client.httpx.put", return_value="ok") as mock_put:
+            DailyBotClient._dispatch_http("PUT", "http://x/y")
+        mock_put.assert_called_once_with("http://x/y")
+
+    def test_delete_falls_through_to_httpx_request(self) -> None:
+        """DELETE has no dedicated branch — it must go through httpx.request
+        (httpx.delete rejects a json body in some supported versions)."""
+        with patch("dailybot_cli.api_client.httpx.request", return_value="ok") as mock_req:
+            DailyBotClient._dispatch_http("delete", "http://x/y", json={"a": 1})
+        mock_req.assert_called_once_with("DELETE", "http://x/y", json={"a": 1})
 
 
 class TestHeadersDualAuth:

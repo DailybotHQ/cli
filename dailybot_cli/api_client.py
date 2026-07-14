@@ -7,7 +7,13 @@ from typing import Any
 
 import httpx
 
-from dailybot_cli.config import get_api_key, get_api_url, get_token
+from dailybot_cli.config import (
+    API_KEY_SOURCE_ENV_JSON,
+    get_api_key,
+    get_api_key_source,
+    get_api_url,
+    get_token,
+)
 
 _MAX_LIST_PAGES: int = 50  # safety cap for paginated list endpoints
 LONG_TIMEOUT_SECS: float = 120.0  # AI-processing endpoints (ask, submit_update)
@@ -138,50 +144,69 @@ class DailyBotClient:
         token: str | None = None,
         api_key: str | None = None,
         timeout: float = 30.0,
+        prefer_api_key: bool | None = None,
     ) -> None:
         self.api_url: str = (api_url or get_api_url()).rstrip("/")
         self.token: str | None = token or get_token()
         self.api_key: str | None = api_key or get_api_key()
         self.timeout: float = timeout
         self._agent_auth_mode: str | None = None
+        # Credential preference on the wire. A key resolved from
+        # `.dailybot/env.json` expresses per-repo intent, so it must beat the
+        # global Bearer session on the FIRST attempt — otherwise the Bearer
+        # would silently win whenever the target server accepts it (wrong
+        # identity) and the session token would leak to whatever server the
+        # repo's env.json points at. Explicit `api_key` args and keys from
+        # env var / config.json keep the long-standing Bearer-first order.
+        if prefer_api_key is not None:
+            self._prefer_api_key: bool = prefer_api_key
+        else:
+            self._prefer_api_key = (
+                api_key is None
+                and self.api_key is not None
+                and get_api_key_source() == API_KEY_SOURCE_ENV_JSON
+            )
 
     def _headers(self, authenticated: bool = True) -> dict[str, str]:
         """Build request headers.
 
-        Prefers the Bearer login token; falls back to the org API key so that
-        user-scoped endpoints (users, teams, forms, kudos, check-ins) work under
-        either credential. The server accepts both on these endpoints.
+        Default priority is Bearer login token first, org API key second —
+        the server accepts both on user-scoped endpoints (users, teams,
+        forms, kudos, check-ins). When the key came from ``.dailybot/env.json``
+        (``self._prefer_api_key``), the order inverts so the per-repo key
+        wins on the first attempt; the 401/403 retry covers the reverse.
         """
         headers: dict[str, str] = {
             "Content-Type": "application/json",
             "Accept": "application/json",
         }
         if authenticated:
-            if self.token:
-                headers["Authorization"] = f"Bearer {self.token}"
-                self._agent_auth_mode = "bearer"
-            elif self.api_key:
+            if self.api_key and (self._prefer_api_key or not self.token):
                 headers["X-API-KEY"] = self.api_key
                 self._agent_auth_mode = "api_key"
+            elif self.token:
+                headers["Authorization"] = f"Bearer {self.token}"
+                self._agent_auth_mode = "bearer"
         return headers
 
     def _agent_headers(self) -> dict[str, str]:
         """Build headers for agent authentication.
 
         Uses the same priority as ``_headers()`` — Bearer first, API key
-        second — so that all endpoints behave consistently. The server
-        accepts both on every ``/v1/agent*`` endpoint.
+        second, inverted when the key came from ``.dailybot/env.json`` — so
+        that all endpoints behave consistently. The server accepts both on
+        every ``/v1/agent*`` endpoint.
         """
         headers: dict[str, str] = {
             "Content-Type": "application/json",
             "Accept": "application/json",
         }
-        if self.token:
-            headers["Authorization"] = f"Bearer {self.token}"
-            self._agent_auth_mode = "bearer"
-        elif self.api_key:
+        if self.api_key and (self._prefer_api_key or not self.token):
             headers["X-API-KEY"] = self.api_key
             self._agent_auth_mode = "api_key"
+        elif self.token:
+            headers["Authorization"] = f"Bearer {self.token}"
+            self._agent_auth_mode = "bearer"
         else:
             self._agent_auth_mode = None
         return headers

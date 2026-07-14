@@ -51,13 +51,14 @@ Introduced in CLI `>= 3.7.0`.
 >
 > The file stores API keys in plain text. Once committed to a repo — public or private — the keys are considered leaked and MUST be rotated. Git history is forever; a `git revert` does not undo the exposure.
 >
-> The CLI enforces this rule with **three independent layers of protection** — all of them must be in place, and any of them tripping is treated as a security incident, not a warning:
+> The CLI enforces this rule with **four independent protections (three enforced + one advisory)** — all of them must be in place, and any of them tripping is treated as a security incident, not a warning:
 >
 > 1. **Gitignore rule (mandatory).** The repo's `.gitignore` MUST contain `.dailybot/*` **without** ever un-ignoring `env.json`. Only `profile.json` may be excepted. This repo's [`.gitignore`](../.gitignore) is the reference implementation.
-> 2. **`0o600` file permissions.** Every load and every write via `dailybot env` re-chmods the file to owner-only. Even shared workstations cannot leak the file laterally.
-> 3. **Fatal refuse-if-tracked guard.** The root `cli()` callback calls `load_repo_env()` on every invocation. If `.dailybot/env.json` exists AND `git ls-files --error-unmatch .dailybot/env.json` returns 0 (i.e. the file is tracked), the CLI **immediately refuses to run any command** — `status`, `user list`, `form list`, `agent update`, `env show`, everything — and prints the exact `git rm --cached` recipe. There is no partial degradation, no "warning + continue" path, no silent fallback to global auth. The user must uncommit the file before the CLI does anything else. `--help` and `--version` are exempt (Click short-circuits them before the callback) so the user can always read instructions.
+> 2. **`0o600` file permissions.** Every write via `dailybot env` creates the file with mode `0o600` from the first byte (`os.open(..., 0o600)` — no umask window), and every load re-chmods it defensively. Even shared workstations cannot leak the file laterally.
+> 3. **Fatal refuse-if-tracked guard.** The root `cli()` callback calls `load_repo_env()` on every invocation. If `.dailybot/env.json` exists AND `git ls-files --error-unmatch .dailybot/env.json` returns 0 (i.e. the file is tracked — staged counts too, a commit is not required), the CLI **immediately refuses to run any command** — `status`, `user list`, `form list`, `agent update`, `env show`, everything — and prints the exact `git rm --cached` recipe. There is no partial degradation, no silent fallback to global auth. The user must untrack the file before the CLI does anything else. Exactly two carve-outs: `--help` / `--version` (Click short-circuits them before the callback) so the user can always read instructions, and the `hook` group, which prints the same error to stderr but exits 0 — its contract ([docs/AGENT_HOOKS.md](AGENT_HOOKS.md)) is "always exit 0, never break the agent harness", and hooks never consume env.json auth. If git is not on PATH but a `.git` directory exists in an ancestor, the guard cannot verify tracking and degrades to a loud warning.
+> 4. **Write-time gitignore warning (advisory).** `dailybot env add` runs `git check-ignore` after writing and warns on stderr when the file is not covered by any ignore rule.
 >
-> **If any of these three layers appears to be missing or misbehaving on your machine, treat it as a bug and report it — don't work around it.**
+> **If any of these protections appears to be missing or misbehaving on your machine, treat it as a bug and report it — don't work around it.**
 >
 > **If you have already committed `env.json`**, follow these steps in order:
 >
@@ -149,7 +150,7 @@ Cross-referenced with the top-of-section STOP block. Repeated here so this appea
      git commit -m 'chore: untrack .dailybot/env.json'
    The CLI refuses to load env.json while it is tracked.
    ```
-   **No command bypasses this** — `dailybot version`, `dailybot upgrade`, `dailybot uninstall`, `dailybot login`, `dailybot logout`, everything is blocked. Only `dailybot --help` and `dailybot --version` (Click short-circuits) still work so the developer can read instructions. This is the third and final layer that guarantees the CLI cannot silently degrade to global auth while `env.json` (and the keys it contains) leaks in git history.
+   **No auth-consuming command bypasses this** — `dailybot version`, `dailybot upgrade`, `dailybot uninstall`, `dailybot login`, `dailybot logout`, everything is blocked. Only `dailybot --help` / `dailybot --version` (Click short-circuits) still work so the developer can read instructions, and `dailybot hook *` prints the same error to stderr but exits 0 to honor its always-exit-0 harness contract (hooks are local-only and never consume env.json auth). This is the third and final layer that guarantees the CLI cannot silently degrade to global auth while `env.json` (and the keys it contains) leaks in git history.
 4. **Masked in all output.** `dailybot env show`, `dailybot env list`, and `dailybot agent profiles --resolve` all mask API keys as `abcd****` (first 4 chars + `****`), matching the pattern used by `dailybot config key`. Full keys never appear in logs, stderr, error traces, or telemetry.
 5. **No key export.** There is intentionally no `dailybot env export` or `dailybot env cat` command that would print the raw keys to stdout. Editing the file requires opening it in a text editor (which triggers the developer's own security awareness).
 
@@ -160,6 +161,11 @@ The full order for **`api_key`**:
 1. `.dailybot/env.json` active profile's `api_key` (walk-up from cwd) — new in 3.7.0
 2. `DAILYBOT_API_KEY` env var
 3. `config.json::api_key` (from `dailybot config key=...`)
+
+Two refinements to keep the whole story honest:
+
+- **Wire preference.** When the key resolves from `env.json` (layer 1), the HTTP client sends `X-API-KEY` on the **first** attempt even if a Bearer login session also exists — see "Interaction with the login Bearer token" below. Keys from layers 2–3 keep the long-standing Bearer-first order (backward compatible).
+- **`agent *` commands.** A keyed `agents.json` profile selected with an explicit `--profile` flag supplies its own key and beats `env.json` (a CLI flag is the highest layer). The same profile resolved implicitly — via `profile.json::profile` or as the `agents.json` default — **yields to `env.json`**. `dailybot agent profiles --resolve` always shows exactly what will be sent.
 
 The full order for **`api_url`**:
 
@@ -175,6 +181,8 @@ The full order for **`app_url`**:
 2. `.dailybot/env.json` active profile's `app_url` — new in 3.7.0
 3. `DAILYBOT_APP_URL` env var
 4. `DEFAULT_APP_URL` (`https://app.dailybot.com`)
+
+> `app_url` is **informational**: it tells you (via `dailybot env show` and `agent profiles --resolve`) which webapp the current context points at. Links printed after actions (e.g. the `View:` URL of a submitted report) come from the **server response**, so they already match the server the request went to.
 
 When `env.json::disabled` is `true` or `active` is empty/null/unknown, the file is transparently skipped and every resolver behaves as if the file didn't exist.
 
@@ -195,29 +203,26 @@ When an `env.json` active profile provides an `api_key` **and** a login Bearer t
 
 The mechanics:
 
-1. **`_headers()` still prefers the Bearer token** on the first attempt (preserves backward compat — every existing single-org flow is unchanged).
-2. **On a 401 or 403 response**, the client's `_request()` / `_agent_request()` helpers automatically retry the same call **once** with the alternative credential (the `env.json` API key). The retry is invisible to the caller — it happens inside the HTTP layer, not in each command.
+1. **The env.json key goes FIRST.** When the resolved API key comes from `.dailybot/env.json`, `_headers()` / `_agent_headers()` send `X-API-KEY` on the **first** attempt (`DailyBotClient._prefer_api_key`, auto-detected from the key's provenance via `get_api_key_source()`). This is what makes "env.json overrides the login Bearer session" literally true: the per-repo key wins even when the Bearer would have been accepted by the target server (same-server, different-org setups), and the global session token is never transmitted to whatever server the repo's env.json points at. Keys resolved from `DAILYBOT_API_KEY` / `config.json` keep the long-standing Bearer-first order — every pre-env.json flow is unchanged.
+2. **On a 401 or 403 response**, the client's `_request()` / `_agent_request()` helpers automatically retry the same call **once** with the alternative credential (in either direction — a stale env.json key falls back to the Bearer, and a stale Bearer falls back to an API key). The retry is invisible to the caller — it happens inside the HTTP layer, not in each command.
 3. **`status --auth` inspects `_agent_auth_mode`** after the call returns to report which credential *actually* succeeded on the wire, so the UX is honest about the effective auth path.
 
-Why retry on 403 too? Django/DRF frequently returns 403 instead of 401 for rejected credentials (see [DRF docs — "If not authenticated, 403"](https://www.django-rest-framework.org/api-guide/authentication/#unauthorized-and-forbidden-responses)). Retrying on only 401 misses this common local-Django case entirely — which is precisely the case `env.json` was designed to fix.
+Why retry on 403 too? Django/DRF frequently returns 403 instead of 401 for rejected credentials (see [DRF docs — "If not authenticated, 403"](https://www.django-rest-framework.org/api-guide/authentication/#unauthorized-and-forbidden-responses)). Retrying on only 401 misses this common local-Django case entirely.
 
 Concrete example. You are logged in with `dailybot login` against production, and you `cd` into a repo that has `.dailybot/env.json` with an active `local-admin` profile pointing at `http://localhost:8000`:
 
 ```
                             + client.auth_status()
                             |
-                            | Attempt 1: Bearer <prod-tok>  -> http://localhost:8000
-                            |            403 Forbidden (Bearer unknown to local API)
-                            |
-                            | Attempt 2: X-API-KEY <env.json local-admin>  -> http://localhost:8000
-                            |            200 OK
+                            | Attempt 1: X-API-KEY <env.json local-admin>  -> http://localhost:8000
+                            |            200 OK   (prod Bearer never leaves the machine)
                             |
                             + returns { user, organization, ... } from LOCAL org
 ```
 
-`dailybot status --auth` then prints `Authenticated via API key` (not "login (OTP)") because that is what actually worked. `dailybot user list`, `dailybot form list`, `dailybot kudos give`, etc. all follow the exact same path — they never hit the "you must log in again" wall when `env.json` is providing valid credentials for a different API URL.
+`dailybot status --auth` then prints `Authenticated via API key` (not "login (OTP)") because that is what is on the wire. `dailybot user list`, `dailybot form list`, `dailybot kudos give`, etc. all follow the exact same path — one round-trip, correct identity, no "you must log in again" wall. If the env.json key is ever stale, the 401/403 retry silently falls back to the Bearer, and `status --auth` reports that honestly too.
 
-The retry costs at most one extra round-trip, only on the first request against a new server, and is completely silent to the user. The client's `_agent_auth_mode` attribute is used only by `dailybot status --auth` to describe which credential succeeded; no other command needs to care.
+One extra guardrail: **`dailybot login` warns when an active env.json profile is redirecting it.** Login persists the resolved `api_url` (and the token issued by that server) into the GLOBAL `~/.config/dailybot/credentials.json`, so logging in from inside such a repo would repoint every other repo's session. The warning names the profile and the server and suggests `dailybot env off` first; the login itself still proceeds.
 
 For a bulletproof "different org per repo" story, prefer profiles with distinct `api_url`s (which is the whole point of `env.json`). `dailybot logout` remains available if a developer wants to eliminate the Bearer entirely.
 

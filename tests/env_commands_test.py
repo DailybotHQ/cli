@@ -224,6 +224,53 @@ class TestEnvShow:
         assert result.exit_code == 0, result.output
         assert "no active" in result.output.lower() or "inactive" in result.output.lower()
 
+    def test_malformed_json_prints_actionable_message(
+        self, runner: CliRunner, chdir_tmp: Path
+    ) -> None:
+        """A hand-edit gone wrong must yield the path + parse error + a
+        clear "malformed" verdict — never a traceback."""
+        from dailybot_cli.main import cli
+
+        env_dir: Path = chdir_tmp / ".dailybot"
+        env_dir.mkdir()
+        (env_dir / "env.json").write_text("{broken json")
+        result = runner.invoke(cli, ["env", "show"])
+        assert result.exception is None or isinstance(result.exception, SystemExit)
+        assert "Could not parse" in result.output
+        assert "malformed" in result.output.lower()
+
+    def test_shows_disabled_no_row_when_enabled(self, runner: CliRunner, chdir_tmp: Path) -> None:
+        """`disabled: false` is normalized away on write, so `env show`
+        prints an explicit Disabled row for reassurance."""
+        from dailybot_cli.main import cli
+
+        runner.invoke(cli, ["env", "add", "--name", "live", "--key", "sk_live_x"])
+        result = runner.invoke(cli, ["env", "show"])
+        assert result.exit_code == 0
+        assert "Disabled" in result.output
+
+    def test_empty_profiles_list_shows_hint(self, runner: CliRunner, chdir_tmp: Path) -> None:
+        """An existing file with `profiles: []` (not just a missing file)
+        gets the add-one hint from show/list and a clear error from use."""
+        from dailybot_cli.main import cli
+
+        env_dir: Path = chdir_tmp / ".dailybot"
+        env_dir.mkdir()
+        (env_dir / "env.json").write_text(json.dumps({"profiles": []}))
+
+        result = runner.invoke(cli, ["env", "show"])
+        assert result.exit_code == 0
+        assert "no active profile" in result.output.lower()
+
+        result = runner.invoke(cli, ["env", "list"])
+        assert result.exit_code == 0
+        assert "no profiles" in result.output.lower()
+
+        result = runner.invoke(cli, ["env", "use", "ghost"])
+        assert result.exit_code == 1
+        combined: str = result.output + (result.stderr or "")
+        assert "no profile named 'ghost'" in combined.lower()
+
     def test_no_file_message(self, runner: CliRunner, chdir_tmp: Path) -> None:
         from dailybot_cli.main import cli
 
@@ -411,3 +458,21 @@ class TestCommittedGuardSurfacing:
         for argv in (["--help"], ["--version"]):
             result = runner.invoke(cli, argv)
             assert result.exit_code == 0, f"{argv!r} should succeed even when env.json is tracked"
+
+    def test_hook_commands_exit_zero_when_env_json_tracked(
+        self,
+        runner: CliRunner,
+        chdir_tmp: Path,
+    ) -> None:
+        """The `hook` group's contract (docs/AGENT_HOOKS.md) is "always exit
+        0, never break the developer's agent harness". Hooks never consume
+        env.json auth, so the guard degrades to a stderr warning for them
+        instead of aborting every agent session in the repo."""
+        from dailybot_cli.main import cli
+
+        self._stage_tracked_env_json(runner, chdir_tmp)
+
+        result = runner.invoke(cli, ["hook", "session-start"])
+        assert result.exit_code == 0, "hook commands must keep their exit-0 contract"
+        combined: str = result.output + (result.stderr or "")
+        assert "tracked" in combined.lower()  # the warning still surfaces

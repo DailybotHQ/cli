@@ -519,6 +519,58 @@ class TestLoginCommand:
             "user@test.com", "123456", organization_id=1
         )
 
+    @patch("dailybot_cli.commands.auth.DailyBotClient")
+    def test_login_warns_when_env_json_redirects_the_server(
+        self,
+        mock_client_cls: MagicMock,
+        runner: CliRunner,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """Login persists the resolved api_url into the GLOBAL credentials
+        file — when an active env.json profile is what points the CLI at a
+        different server, the user must be warned before the OTP flow."""
+        repo: Path = tmp_path / "repo"
+        env_dir: Path = repo / ".dailybot"
+        env_dir.mkdir(parents=True)
+        (env_dir / "env.json").write_text(
+            json.dumps(
+                {
+                    "active": "local",
+                    "profiles": [
+                        {
+                            "name": "local",
+                            "api_key": "sk-local",
+                            "api_url": "http://localhost:8000",
+                        }
+                    ],
+                }
+            )
+        )
+        monkeypatch.chdir(repo)
+
+        mock_client: MagicMock = mock_client_cls.return_value
+        mock_client.api_url = "http://localhost:8000"
+        mock_client.request_code.side_effect = APIError(400, "stop here")
+
+        result = runner.invoke(cli, ["login", "--email", "user@test.com"])
+        assert "env.json" in result.output
+        assert "GLOBAL session" in result.output
+        assert "dailybot env off" in result.output
+
+    @patch("dailybot_cli.commands.auth.DailyBotClient")
+    def test_login_no_warning_without_env_json(
+        self,
+        mock_client_cls: MagicMock,
+        runner: CliRunner,
+    ) -> None:
+        mock_client: MagicMock = mock_client_cls.return_value
+        mock_client.api_url = "https://api.dailybot.com"
+        mock_client.request_code.side_effect = APIError(400, "stop here")
+
+        result = runner.invoke(cli, ["login", "--email", "user@test.com"])
+        assert "GLOBAL session" not in result.output
+
     @patch("dailybot_cli.commands.auth.questionary")
     @patch("dailybot_cli.commands.auth.DailyBotClient")
     @patch("dailybot_cli.commands.auth.save_credentials")

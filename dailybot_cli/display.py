@@ -15,6 +15,7 @@ from rich.table import Table
 from rich.text import Text
 
 from dailybot_cli.api_client import resource_uuid
+from dailybot_cli.config import get_api_url, get_app_url
 
 console: Console = Console()
 error_console: Console = Console(stderr=True)
@@ -549,12 +550,15 @@ def print_env_profile(
     table.add_row("API key", mask(str(api_key)) if api_key else "[dim]—[/dim]")
     table.add_row(
         "API URL",
-        str(profile.get("api_url", "")) or "[dim](default)[/dim]",
+        str(profile.get("api_url", "")) or f"[dim]{get_api_url()} (default)[/dim]",
     )
     table.add_row(
         "Webapp URL",
-        str(profile.get("app_url", "")) or "[dim](default)[/dim]",
+        str(profile.get("app_url", "")) or f"[dim]{get_app_url()} (default)[/dim]",
     )
+    # Explicit reassurance: the file is enabled. (`disabled: false` is
+    # normalized away on write, so the row is the only visible signal.)
+    table.add_row("Disabled", "[dim]no[/dim]")
     table.add_row("Source", str(path))
     console.print(table)
 

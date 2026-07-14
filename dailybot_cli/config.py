@@ -209,6 +209,28 @@ def get_api_key() -> str | None:
     return config.get("api_key") or None
 
 
+API_KEY_SOURCE_ENV_JSON: str = "env.json"
+API_KEY_SOURCE_ENV_VAR: str = "env"
+API_KEY_SOURCE_CONFIG: str = "config"
+
+
+def get_api_key_source() -> str | None:
+    """Return which layer :func:`get_api_key` resolves from, without the key.
+
+    One of :data:`API_KEY_SOURCE_ENV_JSON`, :data:`API_KEY_SOURCE_ENV_VAR`,
+    :data:`API_KEY_SOURCE_CONFIG`, or ``None`` when no key is configured.
+    The HTTP client uses this to decide credential preference on the wire:
+    an env.json key expresses per-repo intent and must beat the global
+    Bearer session on the first attempt, not only via the 401/403 retry.
+    """
+    env_profile: dict[str, Any] | None = _safe_active_env_profile()
+    if env_profile and env_profile.get("api_key"):
+        return API_KEY_SOURCE_ENV_JSON
+    if os.environ.get("DAILYBOT_API_KEY"):
+        return API_KEY_SOURCE_ENV_VAR
+    return API_KEY_SOURCE_CONFIG if load_config().get("api_key") else None
+
+
 def _safe_active_env_profile() -> dict[str, Any] | None:
     """Return the active env.json profile, swallowing any error.
 
@@ -439,9 +461,13 @@ def find_repo_profile_path(cwd: Path | None = None) -> Path | None:
 
     Returns ``None`` if no ancestor contains the file, if ``.dailybot`` exists
     along the path as a regular file rather than a directory, or if the file
-    itself is missing or non-regular.
+    itself is missing or non-regular. A stale working directory (deleted
+    while a shell was still inside it) resolves to ``None``.
     """
-    start: Path = (cwd or Path.cwd()).resolve()
+    try:
+        start: Path = (cwd or Path.cwd()).resolve()
+    except OSError:
+        return None
     for ancestor in [start, *start.parents]:
         candidate_dir: Path = ancestor / REPO_PROFILE_DIRNAME
         if not candidate_dir.is_dir():
@@ -766,8 +792,13 @@ def find_repo_env_path(cwd: Path | None = None) -> Path | None:
 
     Returns ``None`` when no ancestor contains the file, or when the file is
     non-regular. Mirrors the semantics of :func:`find_repo_profile_path`.
+    A stale working directory (deleted while a shell was still inside it)
+    resolves to ``None`` rather than crashing — there is no tree to walk.
     """
-    start: Path = (cwd or Path.cwd()).resolve()
+    try:
+        start: Path = (cwd or Path.cwd()).resolve()
+    except OSError:
+        return None
     for ancestor in [start, *start.parents]:
         candidate_dir: Path = ancestor / REPO_PROFILE_DIRNAME
         if not candidate_dir.is_dir():
@@ -794,6 +825,16 @@ def _is_env_tracked_by_git(env_path: Path) -> bool:
     import subprocess
 
     if not shutil.which("git"):
+        # A checkout without the git binary can still carry a tracked
+        # env.json (e.g. a repo mounted into a slim container). The guard
+        # cannot verify, so it degrades to a loud warning instead of a
+        # silent pass.
+        if any((ancestor / ".git").exists() for ancestor in env_path.parent.parents):
+            _warn_env_once(
+                f"no-git:{env_path}",
+                f"git is not on PATH; cannot verify that {env_path} is untracked. "
+                "Ensure .dailybot/env.json is gitignored — it contains API keys.",
+            )
         return False
 
     try:
@@ -931,7 +972,16 @@ def load_repo_env(cwd: Path | None = None) -> dict[str, Any] | None:
     active: str | None = active_raw if isinstance(active_raw, str) and active_raw else None
 
     disabled_raw: Any = data.get("disabled", False)
-    disabled: bool = bool(disabled_raw) if isinstance(disabled_raw, bool) else False
+    disabled: bool = disabled_raw if isinstance(disabled_raw, bool) else False
+    if "disabled" in data and not isinstance(disabled_raw, bool):
+        # A hand-edited `"disabled": "true"` (string) must not silently keep
+        # the file active while the developer believes they turned it off.
+        _warn_env_once(
+            f"disabled-shape:{path}",
+            f"{path} 'disabled' must be a JSON boolean (got {disabled_raw!r}); "
+            "treating it as false — the file stays ACTIVE. "
+            "Use `dailybot env off` to disable it.",
+        )
 
     return {
         "active": active,
@@ -1025,7 +1075,13 @@ def save_repo_env(payload: dict[str, Any], *, cwd: Path | None = None) -> Path:
     env_dir: Path = repo_root / REPO_PROFILE_DIRNAME
     env_dir.mkdir(parents=True, exist_ok=True)
     env_path: Path = env_dir / REPO_ENV_FILENAME
-    env_path.write_text(json.dumps(_normalize_env_payload(payload), indent=2) + "\n")
+    serialized: str = json.dumps(_normalize_env_payload(payload), indent=2) + "\n"
+    # Create with 0o600 from the very first byte — a plain write-then-chmod
+    # leaves a umask-permission window while the file already holds API keys.
+    fd: int = os.open(env_path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+    with os.fdopen(fd, "w") as handle:
+        handle.write(serialized)
+    # A pre-existing file keeps its old mode through os.open — tighten it.
     os.chmod(env_path, 0o600)
     return env_path
 

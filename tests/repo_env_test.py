@@ -80,14 +80,29 @@ class TestFindRepoEnvPath:
     def test_closest_ancestor_wins(self, chdir_tmp: Path) -> None:
         from dailybot_cli.config import find_repo_env_path
 
-        _write_env(chdir_tmp, {"profiles": []})
+        outer_env: Path = _write_env(chdir_tmp, {"profiles": []})
         inner: Path = chdir_tmp / "inner"
         inner.mkdir()
-        _write_env(inner, {"profiles": [{"name": "x", "api_key": "k"}]})
-        assert find_repo_env_path(inner / "src") is None or (
-            find_repo_env_path(inner) is not None
-            and find_repo_env_path(inner).parent.parent == inner  # type: ignore[union-attr]
-        )
+        inner_env: Path = _write_env(inner, {"profiles": [{"name": "x", "api_key": "k"}]})
+        src: Path = inner / "src"
+        src.mkdir()
+        # From inside inner (or below), the INNER file must win, not the outer.
+        assert find_repo_env_path(src) == inner_env
+        assert find_repo_env_path(inner) == inner_env
+        # From the outer root, the outer file is the closest.
+        assert find_repo_env_path(chdir_tmp) == outer_env
+
+    def test_stale_cwd_returns_none(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        """A deleted working directory resolves to None instead of crashing —
+        the root cli() guard calls this on every invocation."""
+        from dailybot_cli import config as config_mod
+
+        def _raise_cwd() -> Path:
+            raise FileNotFoundError("stale working directory")
+
+        monkeypatch.setattr(config_mod.Path, "cwd", _raise_cwd)
+        assert config_mod.find_repo_env_path() is None
+        assert config_mod.find_repo_profile_path() is None
 
     def test_returns_none_when_missing(self, chdir_tmp: Path) -> None:
         from dailybot_cli.config import find_repo_env_path
@@ -264,6 +279,73 @@ class TestLoadRepoEnv:
         mode: int = stat.S_IMODE(path.stat().st_mode)
         assert mode == 0o600
 
+    def test_disabled_non_bool_warns_and_stays_active(
+        self, chdir_tmp: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """A hand-edited `"disabled": "true"` (string) is NOT a kill-switch —
+        the file stays active, and the developer is told loudly."""
+        from dailybot_cli.config import get_active_env_profile, load_repo_env
+
+        _write_env(
+            chdir_tmp,
+            {
+                "disabled": "true",
+                "active": "x",
+                "profiles": [{"name": "x", "api_key": "k"}],
+            },
+        )
+        result: dict[str, Any] | None = load_repo_env(chdir_tmp)
+        assert result is not None
+        assert result["disabled"] is False
+        active: dict[str, Any] | None = get_active_env_profile(chdir_tmp)
+        assert active is not None and active["name"] == "x"
+        captured: str = capsys.readouterr().out
+        assert "must be a JSON boolean" in captured
+        assert "ACTIVE" in captured
+
+    def test_duplicate_profile_names_keep_first(self, chdir_tmp: Path) -> None:
+        from dailybot_cli.config import load_repo_env
+
+        _write_env(
+            chdir_tmp,
+            {
+                "profiles": [
+                    {"name": "dup", "api_key": "first-key"},
+                    {"name": "dup", "api_key": "second-key"},
+                ]
+            },
+        )
+        result: dict[str, Any] | None = load_repo_env(chdir_tmp)
+        assert result is not None
+        assert len(result["profiles"]) == 1
+        assert result["profiles"][0]["api_key"] == "first-key"
+
+    def test_non_dict_profile_entry_is_skipped(self, chdir_tmp: Path) -> None:
+        from dailybot_cli.config import load_repo_env
+
+        _write_env(
+            chdir_tmp,
+            {"profiles": ["a string", {"name": "good", "api_key": "k"}, 42]},
+        )
+        result: dict[str, Any] | None = load_repo_env(chdir_tmp)
+        assert result is not None
+        assert [p["name"] for p in result["profiles"]] == ["good"]
+
+    def test_warn_once_dedup_per_process(
+        self, chdir_tmp: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """The same warning fires once per process, not once per load."""
+        from dailybot_cli.config import load_repo_env
+
+        _write_env(
+            chdir_tmp,
+            {"profiles": [{"name": "x", "api_key": "k"}], "future_field": 1},
+        )
+        load_repo_env(chdir_tmp)
+        load_repo_env(chdir_tmp)
+        captured: str = capsys.readouterr().out
+        assert captured.count("future_field") == 1
+
 
 # --- Committed-to-git guard -------------------------------------------------
 
@@ -318,6 +400,48 @@ class TestCommittedGuard:
         _write_env(chdir_tmp, {"profiles": [{"name": "x", "api_key": "k"}]})
         result: dict[str, Any] | None = load_repo_env(chdir_tmp)
         assert result is not None
+
+    def test_staged_but_uncommitted_env_json_raises(self, chdir_tmp: Path) -> None:
+        """`git ls-files` sees the index — a `git add` without a commit is
+        already a tracking violation and must trip the guard."""
+        from dailybot_cli.config import RepoEnvError, load_repo_env
+
+        subprocess.run(["git", "init", "-q"], cwd=chdir_tmp, check=True)
+        _write_env(chdir_tmp, {"profiles": [{"name": "x", "api_key": "leaked"}]})
+        subprocess.run(
+            ["git", "add", "-f", ".dailybot/env.json"],
+            cwd=chdir_tmp,
+            check=True,
+        )
+        with pytest.raises(RepoEnvError):
+            load_repo_env(chdir_tmp)
+
+    def test_missing_git_binary_warns_when_repo_present(
+        self, chdir_tmp: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """Without git on PATH the guard cannot verify tracking. Inside what
+        looks like a git checkout it must warn instead of passing silently."""
+        from dailybot_cli.config import load_repo_env
+
+        (chdir_tmp / ".git").mkdir()
+        _write_env(chdir_tmp, {"profiles": [{"name": "x", "api_key": "k"}]})
+        with patch("shutil.which", return_value=None):
+            result: dict[str, Any] | None = load_repo_env(chdir_tmp)
+        assert result is not None  # degraded, not blocked
+        captured: str = capsys.readouterr().out
+        assert "cannot verify" in captured
+
+    def test_missing_git_binary_silent_outside_repo(
+        self, chdir_tmp: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """No git binary AND no `.git` ancestor → nothing to warn about."""
+        from dailybot_cli.config import load_repo_env
+
+        _write_env(chdir_tmp, {"profiles": [{"name": "x", "api_key": "k"}]})
+        with patch("shutil.which", return_value=None):
+            result: dict[str, Any] | None = load_repo_env(chdir_tmp)
+        assert result is not None
+        assert "cannot verify" not in capsys.readouterr().out
 
 
 # --- get_active_env_profile -------------------------------------------------

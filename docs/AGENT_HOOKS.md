@@ -288,7 +288,10 @@ prohibition still applies.
    path is local file reads plus at most two git subprocesses (5 s timeout).
 2. **Always exit 0.** Every subcommand catches all internal exceptions and
    degrades to silence — a broken ledger must never break a developer's
-   agent session.
+   agent session. This holds even under the fatal `.dailybot/env.json`
+   refuse-if-tracked guard: the root `cli()` callback exempts the `hook`
+   group (the error still prints to stderr, but the hook runs and exits 0),
+   because hooks are local-only and never consume env.json auth.
 3. **Machine output bypasses `display.py`.** Like `_print_org_list`, hook
    commands emit raw JSON/plain lines via `click.echo` because the consumer
    is a harness parsing stdout (see AGENTS.md rule 9).
