@@ -20,10 +20,10 @@ from dailybot_cli.commands.public_api_helpers import (
 from dailybot_cli.commands.query_options import build_query_params, query_options, resolve_fetch_all
 from dailybot_cli.display import (
     console,
-    print_detail_panel,
     print_error,
     print_kudos_result,
     print_kudos_table,
+    print_kudos_wall_of_fame,
     print_pagination_footer,
 )
 
@@ -394,19 +394,4 @@ def kudos_wall_of_fame(limit: int | None, json_mode: bool) -> None:
     if json_mode:
         emit_json(data)
         return
-    leaderboard: Any = data.get("leaderboard") or []
-    fields: list[tuple[str, str]] = [
-        ("Top receiver", "top_receiver"),
-        ("Top giver", "top_giver"),
-        ("Leaderboard entries", "leaderboard_summary"),
-    ]
-    summary: dict[str, Any] = {
-        "top_receiver": (data.get("top_receiver") or {}).get("full_name")
-        if isinstance(data.get("top_receiver"), dict)
-        else data.get("top_receiver"),
-        "top_giver": (data.get("top_giver") or {}).get("full_name")
-        if isinstance(data.get("top_giver"), dict)
-        else data.get("top_giver"),
-        "leaderboard_summary": len(leaderboard),
-    }
-    print_detail_panel("Kudos — Wall of Fame", summary, fields)
+    print_kudos_wall_of_fame(data)

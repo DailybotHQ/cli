@@ -77,16 +77,88 @@ def test_kudos_org_forwards_filters(monkeypatch: Any) -> None:
     assert kwargs["fetch_all"] is False
 
 
-def test_kudos_wall_of_fame(monkeypatch: Any) -> None:
+# Mirrors the real GET /v1/kudos/wall-of-fame/ payload: people are nested under
+# "user", the leaderboard is a paginated envelope, and "leaderboard_summary" is
+# the caller's own position.
+_WALL_OF_FAME_PAYLOAD: dict[str, Any] = {
+    "top_receiver": {
+        "user": {"uuid": "u-1", "full_name": "Zoe", "image": ""},
+        "kudos_received": 11,
+        "kudos_given": 5,
+        "total_plus_kudos_received": 18,
+        "total_plus_kudos_given": 2,
+    },
+    "top_giver": {
+        "user": {"uuid": "u-2", "full_name": "Gus", "image": ""},
+        "kudos_given": 14,
+        "kudos_received": 3,
+        "total_plus_kudos_given": 1,
+        "total_plus_kudos_received": 9,
+    },
+    "dna_distribution": [
+        {
+            "company_value": {"id": "v-1", "value": "Cares deeply", "emoji": "❤️"},
+            "count": 10,
+            "percentage": 38.5,
+        }
+    ],
+    "leaderboard": {
+        "count": 11,
+        "next": False,
+        "previous": False,
+        "results": [
+            {
+                "position": 1,
+                "user": {"uuid": "u-1", "full_name": "Zoe", "image": ""},
+                "score": 11,
+                "total_plus_kudos": 18,
+            },
+            {
+                "position": 2,
+                "user": {"uuid": "u-3", "full_name": "Sam", "image": ""},
+                "score": 7,
+                "total_plus_kudos": 8,
+            },
+        ],
+    },
+    "leaderboard_summary": {"position": 1, "total": 11},
+}
+
+
+def test_kudos_wall_of_fame_renders_real_payload(monkeypatch: Any) -> None:
+    """Top receiver/giver come from the nested ``user`` object, the leaderboard
+    from the ``{count, next, previous, results}`` envelope."""
+    client = _client(monkeypatch)
+    client.get_kudos_wall_of_fame.return_value = _WALL_OF_FAME_PAYLOAD
+    result = CliRunner().invoke(cli, ["kudos", "wall-of-fame", "--limit", "5"])
+    assert result.exit_code == 0
+    assert "Zoe" in result.output  # top receiver (nested user.full_name)
+    assert "Gus" in result.output  # top giver (nested user.full_name)
+    assert "Sam" in result.output  # leaderboard entry
+    assert "1 of 11" in result.output  # caller position from leaderboard_summary
+    assert "Showing 2 of 11" in result.output  # envelope count, not dict-key count
+    assert client.get_kudos_wall_of_fame.call_args[1]["limit"] == 5
+
+
+def test_kudos_wall_of_fame_tolerates_partial_payload(monkeypatch: Any) -> None:
+    """Missing/flat fields degrade to dashes instead of crashing."""
     client = _client(monkeypatch)
     client.get_kudos_wall_of_fame.return_value = {
         "top_receiver": {"full_name": "Zoe"},
-        "leaderboard": [1, 2, 3],
+        "leaderboard": [{"position": 1, "user": {"full_name": "Zoe"}, "score": 3}],
     }
-    result = CliRunner().invoke(cli, ["kudos", "wall-of-fame", "--limit", "5"])
+    result = CliRunner().invoke(cli, ["kudos", "wall-of-fame"])
     assert result.exit_code == 0
     assert "Zoe" in result.output
-    assert client.get_kudos_wall_of_fame.call_args[1]["limit"] == 5
+
+
+def test_kudos_wall_of_fame_json_passthrough(monkeypatch: Any) -> None:
+    client = _client(monkeypatch)
+    client.get_kudos_wall_of_fame.return_value = _WALL_OF_FAME_PAYLOAD
+    result = CliRunner().invoke(cli, ["kudos", "wall-of-fame", "--json"])
+    assert result.exit_code == 0
+    assert '"leaderboard_summary"' in result.output
+    assert '"full_name": "Gus"' in result.output
 
 
 def test_kudos_org_api_error(monkeypatch: Any) -> None:
