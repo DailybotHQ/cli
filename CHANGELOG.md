@@ -9,6 +9,15 @@ Do not edit it by hand — your edits will be overwritten on the next release.
 
 <!-- version list -->
 
+## v3.7.2 (2026-07-14)
+
+### Bug Fixes
+
+- **kudos**: Parse the real wall-of-fame payload and render the leaderboard
+  ([#71](https://github.com/DailybotHQ/cli/pull/71),
+  [`689dc49`](https://github.com/DailybotHQ/cli/commit/689dc490f76fda321ab719782de7cada496ec10e))
+
+
 ## v3.7.1 (2026-07-14)
 
 ### Chores
