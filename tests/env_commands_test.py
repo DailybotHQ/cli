@@ -322,16 +322,11 @@ class TestEnvKillSwitch:
 
 
 class TestCommittedGuardSurfacing:
-    def test_env_use_bubbles_fatal_when_env_json_tracked(
-        self,
-        runner: CliRunner,
-        chdir_tmp: Path,
-    ) -> None:
-        """Env.json tracked in git → any env subcommand exits non-zero with a
-        message the developer can act on."""
+    def _stage_tracked_env_json(self, runner: CliRunner, chdir_tmp: Path) -> None:
+        """Shared setup: write env.json via the CLI, then simulate a
+        developer mistake by force-adding and committing it."""
         from dailybot_cli.main import cli
 
-        # First, write env.json properly.
         runner.invoke(cli, ["env", "add", "--name", "live", "--key", "k"])
         subprocess.run(
             ["git", "config", "user.email", "test@example.com"],
@@ -343,15 +338,76 @@ class TestCommittedGuardSurfacing:
             cwd=chdir_tmp,
             check=True,
         )
-        # Force-add and commit — simulate a developer mistake.
         subprocess.run(
             ["git", "add", "-f", ".dailybot/env.json"],
             cwd=chdir_tmp,
             check=True,
         )
         subprocess.run(["git", "commit", "-q", "-m", "leak"], cwd=chdir_tmp, check=True)
-        # Now any env-touching command should refuse.
+
+    def test_env_use_bubbles_fatal_when_env_json_tracked(
+        self,
+        runner: CliRunner,
+        chdir_tmp: Path,
+    ) -> None:
+        """Env.json tracked in git → any env subcommand exits non-zero with a
+        message the developer can act on."""
+        from dailybot_cli.main import cli
+
+        self._stage_tracked_env_json(runner, chdir_tmp)
         result = runner.invoke(cli, ["env", "show"])
         assert result.exit_code == 1
         combined: str = result.output + (result.stderr or "")
         assert "tracked" in combined.lower()
+
+    def test_root_cli_refuses_every_command_when_env_json_tracked(
+        self,
+        runner: CliRunner,
+        chdir_tmp: Path,
+    ) -> None:
+        """Regression guard for the security bug where the refuse-if-tracked
+        check only fired for `env` subcommands — every other command
+        (`status`, `user list`, `form list`, `agent update`, ...) silently
+        ignored the guard and continued with fallback global auth, leaving
+        the tracked env.json (and the API keys it contains) exposed in git
+        history while the CLI happily kept running.
+
+        The fix wires the check into the root `cli()` callback so it fires
+        universally, before any subcommand executes. Any command that goes
+        through the root group should refuse."""
+        from dailybot_cli.main import cli
+
+        self._stage_tracked_env_json(runner, chdir_tmp)
+
+        # Sample non-env commands from every layer — user-scoped, agent,
+        # meta, and no-op subcommands. All must refuse identically.
+        for argv in (
+            ["status", "--auth"],
+            ["user", "list"],
+            ["form", "list"],
+            ["me"],
+            ["config", "list"],
+        ):
+            result = runner.invoke(cli, argv)
+            assert result.exit_code == 1, f"{argv!r} should have refused"
+            combined: str = result.output + (result.stderr or "")
+            assert "tracked" in combined.lower(), (
+                f"{argv!r} exit was 1 but the error text did not surface the "
+                f"tracked-env.json reason. Got: {combined!r}"
+            )
+
+    def test_root_cli_help_still_works_when_env_json_tracked(
+        self,
+        runner: CliRunner,
+        chdir_tmp: Path,
+    ) -> None:
+        """`--help` and `--version` must NOT be blocked by the guard —
+        Click short-circuits these before the root callback, so the user
+        can always discover the CLI (and read the fix instructions)."""
+        from dailybot_cli.main import cli
+
+        self._stage_tracked_env_json(runner, chdir_tmp)
+
+        for argv in (["--help"], ["--version"]):
+            result = runner.invoke(cli, argv)
+            assert result.exit_code == 0, f"{argv!r} should succeed even when env.json is tracked"

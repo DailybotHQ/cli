@@ -45,6 +45,31 @@ The Dailybot CLI persists state in `~/.config/dailybot/` by default. The path ca
 
 Introduced in CLI `>= 3.7.0`.
 
+> ## STOP — Read this before you author `env.json`
+>
+> **`.dailybot/env.json` MUST NEVER be committed to git. Ever. Under any circumstance.**
+>
+> The file stores API keys in plain text. Once committed to a repo — public or private — the keys are considered leaked and MUST be rotated. Git history is forever; a `git revert` does not undo the exposure.
+>
+> The CLI enforces this rule with **three independent layers of protection** — all of them must be in place, and any of them tripping is treated as a security incident, not a warning:
+>
+> 1. **Gitignore rule (mandatory).** The repo's `.gitignore` MUST contain `.dailybot/*` **without** ever un-ignoring `env.json`. Only `profile.json` may be excepted. This repo's [`.gitignore`](../.gitignore) is the reference implementation.
+> 2. **`0o600` file permissions.** Every load and every write via `dailybot env` re-chmods the file to owner-only. Even shared workstations cannot leak the file laterally.
+> 3. **Fatal refuse-if-tracked guard.** The root `cli()` callback calls `load_repo_env()` on every invocation. If `.dailybot/env.json` exists AND `git ls-files --error-unmatch .dailybot/env.json` returns 0 (i.e. the file is tracked), the CLI **immediately refuses to run any command** — `status`, `user list`, `form list`, `agent update`, `env show`, everything — and prints the exact `git rm --cached` recipe. There is no partial degradation, no "warning + continue" path, no silent fallback to global auth. The user must uncommit the file before the CLI does anything else. `--help` and `--version` are exempt (Click short-circuits them before the callback) so the user can always read instructions.
+>
+> **If any of these three layers appears to be missing or misbehaving on your machine, treat it as a bug and report it — don't work around it.**
+>
+> **If you have already committed `env.json`**, follow these steps in order:
+>
+> 1. **Rotate every key in the file immediately** (via the Dailybot dashboard). The old keys are compromised.
+> 2. `git rm --cached .dailybot/env.json`
+> 3. Verify `.gitignore` contains `.dailybot/*` (add it if missing).
+> 4. `git commit -m "chore: untrack .dailybot/env.json"`
+> 5. Force-clean the file from git history if the repo has been pushed anywhere (see [GitHub's guide to removing sensitive data](https://docs.github.com/en/authentication/keeping-your-account-and-data-secure/removing-sensitive-data-from-a-repository)).
+> 6. Only then re-author `env.json` with the freshly rotated keys.
+>
+> When in doubt, prefer `DAILYBOT_API_KEY` (an environment variable, never on disk in the repo) — that path has no exposure surface at all.
+
 ### Why it exists
 
 Before `env.json`, switching between local dev orgs / staging / production required exporting `DAILYBOT_API_URL` / `DAILYBOT_APP_URL` / `DAILYBOT_API_KEY` for every shell, or reconfiguring the global `agents.json`. This got painful when a developer wanted:
@@ -111,18 +136,22 @@ dailybot env on                         # Re-enable
 
 ### Security guarantees
 
-1. **Gitignored by convention.** The repo's root `.gitignore` should carry `.dailybot/*` with an explicit exception only for `!.dailybot/profile.json`. `env.json` is NEVER excepted. See the [example .gitignore for this repo](../.gitignore).
-2. **`0o600` permissions.** Every write via `dailybot env` — and every load — enforces owner-only permissions defensively (in case an editor created the file with a lax umask).
-3. **Fatal refuse-if-tracked guard.** On every load, the CLI runs `git ls-files --error-unmatch .dailybot/env.json` and raises `RepoEnvError` if the file is tracked. Any `dailybot env` subcommand (and any subsequent command that would consume env.json auth) exits non-zero with an actionable message:
+Cross-referenced with the top-of-section STOP block. Repeated here so this appears in every table-of-contents jump.
+
+1. **Gitignored by convention (`.gitignore`).** The repo's root `.gitignore` MUST carry `.dailybot/*`. `profile.json` is the ONLY file allowed to be excepted (`!.dailybot/profile.json`). `env.json` is NEVER excepted — no exception, no per-machine dot-file trick, nothing. See the [example .gitignore for this repo](../.gitignore).
+2. **`0o600` file permissions.** Every write via `dailybot env` AND every load re-chmods the file to owner-only, defensively (in case an editor created the file with a lax umask). Enforced in `dailybot_cli/config.py::save_repo_env`.
+3. **Fatal refuse-if-tracked guard — enforced at the ROOT `cli()` callback.** On every command invocation (yes, including non-`env` commands like `status`, `user list`, `form list`, `agent update`), the CLI runs `load_repo_env()`, which internally runs `git ls-files --error-unmatch .dailybot/env.json`. If the file is tracked, `RepoEnvError` is raised, `print_error()` writes the message to stderr, and `SystemExit(1)` aborts the process **before any subcommand runs**. Sample stderr output:
    ```
-   .dailybot/env.json is tracked by git. This file contains API keys and
-   must never be committed. Fix with:
+   Error: /path/to/repo/.dailybot/env.json is tracked by git. This file contains
+   API keys and must never be committed. Fix with:
      git rm --cached .dailybot/env.json
      # ensure your .gitignore ignores .dailybot/env.json
      git commit -m 'chore: untrack .dailybot/env.json'
    The CLI refuses to load env.json while it is tracked.
    ```
-4. **Masked in all output.** `dailybot env show` and `dailybot env list` mask API keys as `abcd****` (first 4 chars + `****`), matching the pattern used by `dailybot config key`.
+   **No command bypasses this** — `dailybot version`, `dailybot upgrade`, `dailybot uninstall`, `dailybot login`, `dailybot logout`, everything is blocked. Only `dailybot --help` and `dailybot --version` (Click short-circuits) still work so the developer can read instructions. This is the third and final layer that guarantees the CLI cannot silently degrade to global auth while `env.json` (and the keys it contains) leaks in git history.
+4. **Masked in all output.** `dailybot env show`, `dailybot env list`, and `dailybot agent profiles --resolve` all mask API keys as `abcd****` (first 4 chars + `****`), matching the pattern used by `dailybot config key`. Full keys never appear in logs, stderr, error traces, or telemetry.
+5. **No key export.** There is intentionally no `dailybot env export` or `dailybot env cat` command that would print the raw keys to stdout. Editing the file requires opening it in a text editor (which triggers the developer's own security awareness).
 
 ### Auth-resolution precedence (updated)
 

@@ -277,9 +277,17 @@ The agent commands resolve credentials in this strict order — changing it is a
 6. `dailybot config key=...` (stored in `~/.config/dailybot/config.json`)
 7. Login session (Bearer token from `~/.config/dailybot/credentials.json`)
 
-The `profile.json` file may also pin the agent display name (`name`) and a `default_metadata` object that gets shallow-merged into every report. **Credentials never live in `profile.json`** — a `key` field there is a hard error. `env.json` is the ONLY sanctioned place for API keys inside `.dailybot/`, and it is **fatally refused when tracked by git** (the CLI runs `git ls-files --error-unmatch` on load and raises `RepoEnvError` if the file is tracked). See [docs/CONFIGURATION.md](docs/CONFIGURATION.md) for the per-field precedence and the security rule.
+The `profile.json` file may also pin the agent display name (`name`) and a `default_metadata` object that gets shallow-merged into every report. **Credentials never live in `profile.json`** — a `key` field there is a hard error.
 
-The implementation lives in `dailybot_cli/config.py` (`get_active_env_profile`, `get_api_key`, `get_api_url`, `get_app_url`), `dailybot_cli/commands/agent.py::_resolve_agent_context`, and `dailybot_cli/api_client.py::_agent_headers`. See [docs/CONFIGURATION.md](docs/CONFIGURATION.md).
+**`env.json` is the ONLY sanctioned place for API keys inside `.dailybot/`, and it MUST NEVER be committed.** The CLI enforces this with three independent layers, all of them mandatory:
+
+1. `.gitignore` MUST include `.dailybot/*` (with `!.dailybot/profile.json` as the ONLY exception). `env.json` is never un-ignored.
+2. Every write and every load re-chmods the file to `0o600`.
+3. The **root `cli()` callback** in `dailybot_cli/main.py` calls `load_repo_env()` on every invocation — if `.dailybot/env.json` is tracked by git (`git ls-files --error-unmatch` returns 0), `RepoEnvError` is raised, `print_error()` writes to stderr, and `SystemExit(1)` aborts the process **before any subcommand runs**. Every command (`status`, `user list`, `form list`, `agent update`, `env show`, `login`, `upgrade`, ...) is blocked. Only `--help` and `--version` remain accessible (Click short-circuits). No silent fallback to global auth — ever.
+
+See [docs/CONFIGURATION.md § "STOP — Read this before you author `env.json`"](docs/CONFIGURATION.md#stop--read-this-before-you-author-envjson) for the recovery recipe when a leak has already happened (spoiler: rotate first, don't rewrite history).
+
+The implementation lives in `dailybot_cli/config.py` (`get_active_env_profile`, `get_api_key`, `get_api_url`, `get_app_url`, `load_repo_env`), `dailybot_cli/main.py::cli` (root-callback guard), `dailybot_cli/commands/agent.py::_resolve_agent_context`, and `dailybot_cli/api_client.py::_agent_headers`. See [docs/CONFIGURATION.md](docs/CONFIGURATION.md).
 
 ### 15. Packaging & Versioning
 

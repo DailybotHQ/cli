@@ -28,7 +28,13 @@ from dailybot_cli.commands.upgrade import upgrade
 from dailybot_cli.commands.user import user
 from dailybot_cli.commands.version import version
 from dailybot_cli.commands.workflow import workflow
-from dailybot_cli.config import set_api_url_override, set_app_url_override
+from dailybot_cli.config import (
+    RepoEnvError,
+    load_repo_env,
+    set_api_url_override,
+    set_app_url_override,
+)
+from dailybot_cli.display import print_error
 
 # Format used by `dailybot --version`. Single line so it's friendly to scripts
 # parsing the output. The richer multi-line panel lives in `dailybot version`.
@@ -73,6 +79,20 @@ def cli(ctx: click.Context, api_url: str | None, app_url: str | None) -> None:
 
     Run without arguments for interactive mode.
     """
+    # Fatal safety check: if `.dailybot/env.json` exists in the current tree
+    # AND it is tracked by git, refuse to run ANY command. Silently swallowing
+    # this in `_safe_active_env_profile()` (as the resilient per-getter path
+    # does) would mean the CLI happily continues with global auth while the
+    # user's org API keys leak in git history — precisely the disaster the
+    # gitignore + guard combo is meant to prevent. Blocking here is the
+    # correct security posture: force the user to `git rm --cached` (and
+    # rotate the exposed key) before the CLI does anything else.
+    try:
+        load_repo_env()
+    except RepoEnvError as exc:
+        print_error(str(exc))
+        raise SystemExit(1) from exc
+
     if api_url:
         set_api_url_override(api_url)
     if app_url:
