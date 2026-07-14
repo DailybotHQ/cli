@@ -13,6 +13,7 @@ from dailybot_cli.commands.chat import chat
 from dailybot_cli.commands.checkin import checkin
 from dailybot_cli.commands.config import config
 from dailybot_cli.commands.conversation import conversation
+from dailybot_cli.commands.env import env
 from dailybot_cli.commands.form import form
 from dailybot_cli.commands.hook import hook
 from dailybot_cli.commands.identity import me, org
@@ -99,6 +100,7 @@ cli.add_command(conversation)
 cli.add_command(ask)
 cli.add_command(interactive)
 cli.add_command(config)
+cli.add_command(env)
 cli.add_command(hook)
 cli.add_command(version)
 cli.add_command(upgrade)

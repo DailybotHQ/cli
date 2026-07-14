@@ -270,15 +270,16 @@ class DailyBotClient: ...
 The agent commands resolve credentials in this strict order — changing it is a **breaking change** for users:
 
 1. `--profile` flag (explicit profile from `~/.config/dailybot/agents.json`)
-2. `<repo>/.dailybot/profile.json::profile` — the closest ancestor of `$PWD` containing this file pins a profile slug for everyone working in the repo
-3. Default profile from `agents.json`
-4. `DAILYBOT_API_KEY` environment variable
-5. `dailybot config key=...` (stored in `~/.config/dailybot/config.json`)
-6. Login session (Bearer token from `~/.config/dailybot/credentials.json`)
+2. **`<repo>/.dailybot/env.json` active profile** — the closest ancestor of `$PWD` containing this file provides API key + optional `api_url` / `app_url` for the enclosing repo. Gitignored, opt-in, plain-text on disk (`0o600`). When `disabled: true` or `active` is empty/null/missing, the file is inert and resolution continues below. See § "Repo-level env override" in `docs/CONFIGURATION.md`.
+3. `<repo>/.dailybot/profile.json::profile` — the closest ancestor of `$PWD` containing this file pins a profile slug for everyone working in the repo
+4. Default profile from `agents.json`
+5. `DAILYBOT_API_KEY` environment variable
+6. `dailybot config key=...` (stored in `~/.config/dailybot/config.json`)
+7. Login session (Bearer token from `~/.config/dailybot/credentials.json`)
 
-The repo file may also pin the agent display name (`name`) and a `default_metadata` object that gets shallow-merged into every report. **Credentials never live in the repo file** — a `key` field in `.dailybot/profile.json` is a hard error. See [docs/CONFIGURATION.md](docs/CONFIGURATION.md) for the per-field precedence and the security rule.
+The `profile.json` file may also pin the agent display name (`name`) and a `default_metadata` object that gets shallow-merged into every report. **Credentials never live in `profile.json`** — a `key` field there is a hard error. `env.json` is the ONLY sanctioned place for API keys inside `.dailybot/`, and it is **fatally refused when tracked by git** (the CLI runs `git ls-files --error-unmatch` on load and raises `RepoEnvError` if the file is tracked). See [docs/CONFIGURATION.md](docs/CONFIGURATION.md) for the per-field precedence and the security rule.
 
-The implementation lives in `dailybot_cli/commands/agent.py::_resolve_agent_context` and `dailybot_cli/api_client.py::_agent_headers`. See [docs/CONFIGURATION.md](docs/CONFIGURATION.md).
+The implementation lives in `dailybot_cli/config.py` (`get_active_env_profile`, `get_api_key`, `get_api_url`, `get_app_url`), `dailybot_cli/commands/agent.py::_resolve_agent_context`, and `dailybot_cli/api_client.py::_agent_headers`. See [docs/CONFIGURATION.md](docs/CONFIGURATION.md).
 
 ### 15. Packaging & Versioning
 

@@ -29,11 +29,22 @@ Files with secrets:
 - `credentials.json` (login Bearer token)
 - `config.json` (stored API key)
 - `agents.json` (per-profile API keys)
+- `<repo>/.dailybot/env.json` (per-repo API keys — see § below)
 
 Files without secrets (still written `0o600` for consistency):
 - `org_cache.json` (transient list of org names + UUIDs from step 1 of multi-org login)
 - `plan_cache.json` (non-sensitive org plan tier, keyed by org UUID; used to short-circuit
   non-allowlisted commands on a free plan — never stores tokens or keys)
+
+### Repo-level env override (`.dailybot/env.json`)
+
+The `env.json` file is the ONLY sanctioned place inside `.dailybot/` where API keys may live. It carries per-repo credential context (API key + optional URLs for one or more environments). Because it sits inside the repo tree, three additional protections apply beyond the standard `0o600`:
+
+1. **Gitignore is mandatory.** The broad `.dailybot/*` rule in the repo's `.gitignore` covers it automatically; the only excepted file is `!.dailybot/profile.json`. `env.json` MUST NEVER be excepted.
+2. **Load-time refuse-if-tracked guard.** On every load, the CLI runs `git ls-files --error-unmatch .dailybot/env.json` and raises `RepoEnvError` if the file is tracked (fatal — the CLI exits non-zero with an actionable message and refuses to use env.json until fixed). The check runs even outside `env`-group commands because `get_api_key()`, `get_api_url()`, and `get_app_url()` all consult env.json on every construction of `DailyBotClient`. Implementation: `dailybot_cli/config.py::_is_env_tracked_by_git` (independently mockable).
+3. **Write-time gitignore warning.** `dailybot env add` runs `git check-ignore --quiet .dailybot/env.json` after writing; if the file is NOT covered by any ignore rule, a warning fires on stderr with the exact `.gitignore` snippet to add. The warning is non-fatal because a fresh repo might not have a `.gitignore` yet, and the load-time guard catches the actual security violation.
+
+The full schema, precedence, and CLI commands for `env.json` are in [CONFIGURATION.md § "Repo-level env override"](CONFIGURATION.md#repo-level-env-override-dailybotenvjson).
 
 ## Secrets in Output
 

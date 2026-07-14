@@ -992,6 +992,20 @@ same delivery path as `chat send`).
 | `dailybot agent message claim-all` | Mark all pending messages as delivered |
 | `dailybot agent email send` | Send an email through an agent |
 
+### Env commands (per-repo API key overrides)
+
+`dailybot env` manages `.dailybot/env.json` — an **opt-in, gitignored** file that carries API keys + URLs for one or more environments (production, local dev, staging). One profile is *active* at a time; when set, it overrides `DAILYBOT_API_KEY`, `config.json`, and the login Bearer session **for the enclosing repo**. This is the recommended way to be "logged into different orgs in different repos" simultaneously. Full docs: [docs/CONFIGURATION.md § "Repo-level env override"](docs/CONFIGURATION.md#repo-level-env-override-dailybotenvjson).
+
+| Command | Description |
+|---------|-------------|
+| `dailybot env add --name NAME --key KEY [--api-url URL] [--app-url URL]` | Add a profile (creates the file + auto-active on first add) |
+| `dailybot env use NAME` | Switch the active profile (empty string clears active) |
+| `dailybot env show` | Show the currently resolved profile (API key masked) |
+| `dailybot env list` | List every profile in the file (active marked) |
+| `dailybot env remove NAME [--yes]` | Remove a profile (clears active if it was the active one) |
+| `dailybot env off` | Disable the file without deleting it (preserves active) |
+| `dailybot env on` | Re-enable the file (restores the previously active profile) |
+
 ### Hook commands (agent harness integration)
 
 Local-only lifecycle commands that agent harnesses (Claude Code, Cursor,

@@ -487,7 +487,22 @@ def print_resolved_profile(resolved: dict[str, Any]) -> None:
     table.add_row("Profile slug", slug, sources.get("profile", ""))
 
     api_key: str | None = resolved.get("api_key")
-    table.add_row("API key", "set" if api_key else "(none)", "global" if api_key else "")
+    api_key_source: str = sources.get("api_key", "absent")
+    table.add_row(
+        "API key",
+        "set" if api_key else "(none)",
+        api_key_source if api_key else "",
+    )
+
+    env_name: str | None = resolved.get("env_profile_name")
+    if env_name:
+        table.add_row("env.json profile", env_name, "walk-up")
+        env_api_url: str | None = resolved.get("env_profile_api_url")
+        if env_api_url:
+            table.add_row("env.json API URL", env_api_url, "env.json")
+        env_app_url: str | None = resolved.get("env_profile_app_url")
+        if env_app_url:
+            table.add_row("env.json Webapp URL", env_app_url, "env.json")
 
     repo_path: str | None = resolved.get("repo_profile_path")
     table.add_row("Repo file", repo_path or "(not found)", "walk-up" if repo_path else "")
@@ -509,6 +524,76 @@ def print_resolved_profile(resolved: dict[str, Any]) -> None:
             f"Repo declared profile '{resolved.get('profile_slug')}' but it is not "
             "in agents.json. Falling back to session credentials."
         )
+
+    env_error: str | None = resolved.get("env_profile_error")
+    if env_error:
+        print_warning(f".dailybot/env.json is invalid: {env_error}")
+
+
+def print_env_profile(
+    profile: dict[str, Any],
+    path: Any,
+    mask: Any,
+) -> None:
+    """Render a single resolved ``env.json`` profile with the API key masked.
+
+    ``path`` is the on-disk path to env.json (shown as provenance so the
+    developer can find and edit the file). ``mask`` is a callable that
+    takes the raw key and returns the display-safe representation.
+    """
+    table: Table = Table(title="Active env.json Profile", border_style="cyan")
+    table.add_column("Field", style="bold")
+    table.add_column("Value")
+    table.add_row("Profile", str(profile.get("name", "")))
+    api_key: Any = profile.get("api_key", "")
+    table.add_row("API key", mask(str(api_key)) if api_key else "[dim]—[/dim]")
+    table.add_row(
+        "API URL",
+        str(profile.get("api_url", "")) or "[dim](default)[/dim]",
+    )
+    table.add_row(
+        "Webapp URL",
+        str(profile.get("app_url", "")) or "[dim](default)[/dim]",
+    )
+    table.add_row("Source", str(path))
+    console.print(table)
+
+
+def print_env_profiles_table(
+    profiles: list[dict[str, Any]],
+    active: str | None,
+    disabled: bool,
+    path: Any,
+    mask: Any,
+) -> None:
+    """Render every ``env.json`` profile, marking the active one.
+
+    When ``disabled`` is True, a warning banner appears above the table.
+    ``mask`` is used to redact each row's API key for safe display.
+    """
+    if disabled:
+        console.print(
+            "[bold yellow]env.json is currently disabled[/bold yellow] "
+            "(re-enable with `dailybot env on`)"
+        )
+    table: Table = Table(title=f"Profiles in {path}", border_style="cyan")
+    table.add_column("Active", justify="center")
+    table.add_column("Name", style="bold")
+    table.add_column("API key")
+    table.add_column("API URL")
+    table.add_column("Webapp URL")
+    for profile in profiles:
+        name: str = str(profile.get("name", ""))
+        is_active: str = "[green]•[/green]" if name == (active or "") else ""
+        api_key: Any = profile.get("api_key", "")
+        table.add_row(
+            is_active,
+            name,
+            mask(str(api_key)) if api_key else "[dim]—[/dim]",
+            str(profile.get("api_url", "")) or "[dim](default)[/dim]",
+            str(profile.get("app_url", "")) or "[dim](default)[/dim]",
+        )
+    console.print(table)
 
 
 def print_registration_result(data: dict[str, Any]) -> None:
