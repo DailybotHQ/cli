@@ -9,6 +9,29 @@ Do not edit it by hand — your edits will be overwritten on the next release.
 
 <!-- version list -->
 
+## v3.7.1 (2026-07-14)
+
+### Chores
+
+- **skills**: Sync vendored dailybot skill pack to v3.10.2
+  ([#70](https://github.com/DailybotHQ/cli/pull/70),
+  [`c1838dd`](https://github.com/DailybotHQ/cli/commit/c1838dd49f93c327383209fcdb79b646f8a04037))
+
+### Documentation
+
+- **env**: Genericize hostnames in the env.json example (rule 11.a)
+  ([#70](https://github.com/DailybotHQ/cli/pull/70),
+  [`c1838dd`](https://github.com/DailybotHQ/cli/commit/c1838dd49f93c327383209fcdb79b646f8a04037))
+
+- **readme**: Raise version pin examples to the 3.7.0 baseline
+  ([#70](https://github.com/DailybotHQ/cli/pull/70),
+  [`c1838dd`](https://github.com/DailybotHQ/cli/commit/c1838dd49f93c327383209fcdb79b646f8a04037))
+
+- **readme,skills**: 3.7.0 as the documented baseline + sync vendored skill pack to v3.10.2
+  ([#70](https://github.com/DailybotHQ/cli/pull/70),
+  [`c1838dd`](https://github.com/DailybotHQ/cli/commit/c1838dd49f93c327383209fcdb79b646f8a04037))
+
+
 ## v3.7.0 (2026-07-14)
 
 ### Bug Fixes
