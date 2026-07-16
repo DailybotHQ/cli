@@ -537,7 +537,7 @@ When invoked: look up in `.agents/docs/skills_agents_catalog.md`, READ the proce
 
 ## Working with Deep Work Plans (DWP)
 
-For any non-trivial change (more than ~3 files, more than one logical step, anything spanning auth + API client + commands + docs, anything you'd otherwise want a TodoList for), **drive the work through a Deep Work Plan** instead of free-form coding. The repo ships the [DWP skill pack](.agents/skills/deepworkplan/) (vendored at v2.16.0) and the matching `dwp-*` slash commands.
+For any non-trivial change (more than ~3 files, more than one logical step, anything spanning auth + API client + commands + docs, anything you'd otherwise want a TodoList for), **drive the work through a Deep Work Plan** instead of free-form coding. The repo ships the [DWP skill pack](.agents/skills/deepworkplan/) (vendored at **v2.17.0**) and the matching `dwp-*` slash commands.
 
 ### The loop
 
@@ -571,6 +571,21 @@ Every Deep Work Plan ends with three mandatory final tasks (per the DWP spec):
 3. **Executive Report** — a one-page summary written to `.dwp/<plan>/REPORT.md`.
 
 You do not need to author these manually; `/dwp-create` adds them to every plan.
+
+### AI Diff Reviewer (Flow B — dual-surface)
+
+This repo opts into the DWP **AI Diff Reviewer** addon ([`DailybotHQ/ai-diff-reviewer`](https://github.com/DailybotHQ/ai-diff-reviewer) **v2**):
+
+| Surface | What | How |
+|---------|------|-----|
+| **Local** | Augments the mandatory Security Review | Vendored skill at [`.agents/skills/ai-diff-reviewer/`](.agents/skills/ai-diff-reviewer/) + [`.review/extension.md`](.review/extension.md). Invoke *"Review my current branch"*. Soft-fail if skill/extension/invocation errors; `critical` findings from a completed pass still block Security Review. |
+| **CI** | PR merge gate | [`.github/workflows/pr-review.yml`](.github/workflows/pr-review.yml) — apply the **`Ready`** label on a PR targeting `main` to run the review (remove + re-add to re-run). Stable check name: **`AI review gate`**. Emergency bypass label: `skip-ai-review` (protect with a ruleset if the gate is required). |
+
+**Secret required for CI:** `CURSOR_API_KEY` (repo Settings → Secrets and variables → Actions). Without it, applying `Ready` fails the merge gate loudly.
+
+**Post-CI walkthrough (optional):** after CI posts findings, invoke the vendored `apply-review` sub-skill to walk findings per-finding (apply / defer / skip). Read-only by default; never commits or pushes.
+
+How to read review comments without acting on stale feedback: [`docs/PR_REVIEW_WORKFLOW.md`](docs/PR_REVIEW_WORKFLOW.md).
 
 ### Updating the kit
 

@@ -11,7 +11,7 @@ If you naively read all comments on a PR, you'll mix the latest review with stal
 ## The Rules
 
 1. **Skip `isMinimized == true` comments.** GitHub auto-collapses outdated review threads with this flag.
-2. **Find the most recent `<!-- claude-review-marker -->` comment.** This HTML comment is left by the reviewer at the start of every review pass, and it includes the SHA the review was performed against.
+2. **Find the most recent review marker comment.** Prefer `<!-- ai-pr-reviewer-marker -->` (AI Diff Reviewer / Flow B CI). Legacy Claude reviews may still use `<!-- claude-review-marker -->`. The marker includes the SHA the review was performed against.
 3. **Only act on comments tied to that SHA.** Anything older is stale.
 
 ## GraphQL Query (ready to copy)
@@ -59,7 +59,7 @@ gh api graphql -f query='...' -F owner=DailyBotHQ -F repo=cli -F number=<PR>
 
 ## Step-by-Step
 
-1. **Identify the live review SHA.** Filter top-level comments where `isMinimized == false` and `body` contains `<!-- claude-review-marker -->`. The most recent one is authoritative.
+1. **Identify the live review SHA.** Filter top-level comments where `isMinimized == false` and `body` contains `<!-- ai-pr-reviewer-marker -->` (or the legacy `<!-- claude-review-marker -->`). The most recent one is authoritative.
 2. **Filter review threads.** For each thread, drop any comment with `isMinimized == true`. Keep threads where at least one live comment survives.
 3. **Apply.** For each surviving comment, decide:
    - Is the issue still real on the current SHA?
@@ -76,9 +76,9 @@ gh api graphql -f query='...' -F owner=DailyBotHQ -F repo=cli -F number=<PR>
 | "The bot keeps complaining about a thing I already fixed" | Your fix didn't actually land in a commit, or was reverted in a later push |
 | "Two PRs from different agents are diverging" | Coordinate via the PR description; one agent should own the rebase |
 
-## When There's No `<!-- claude-review-marker -->`
+## When There's No Review Marker
 
-If the PR doesn't have automated review (e.g., human-only), the rules collapse:
+If the PR doesn't have automated review (e.g., human-only, or `Ready` never applied), the rules collapse:
 
 - Read all non-minimized comments.
 - Use commit timestamps and `createdAt` to order them.
@@ -86,4 +86,15 @@ If the PR doesn't have automated review (e.g., human-only), the rules collapse:
 
 ## What This Repo Does
 
-This repo (`cli`) does not yet have an automated reviewer wired in. When that changes, this doc and `AGENTS.md` should be updated together — make sure they reference the actual marker tag the reviewer emits.
+This repo (`cli`) uses **AI Diff Reviewer v2** in Flow B (local skill + CI):
+
+- **CI workflow:** [`.github/workflows/pr-review.yml`](../.github/workflows/pr-review.yml)
+- **Trigger:** apply the **`Ready`** label on a PR targeting `main` (remove + re-add to re-run)
+- **Extension:** [`.review/extension.md`](../.review/extension.md) (shared by local + CI)
+- **Merge gate check name:** `AI review gate`
+- **Secret:** `CURSOR_API_KEY`
+- **Emergency bypass:** `skip-ai-review` (protect with a ruleset if the gate is required)
+- **Marker:** `<!-- ai-pr-reviewer-marker -->`
+
+Local reviews (DWP Security Review augmentation) use the vendored skill at
+[`.agents/skills/ai-diff-reviewer/`](../.agents/skills/ai-diff-reviewer/).
