@@ -29,7 +29,7 @@ Vendored skill at [`../skills/ai-diff-reviewer/`](../skills/ai-diff-reviewer/) (
 
 | Command / phrase | Routes to | What it does | Example trigger |
 |------------------|-----------|--------------|-----------------|
-| "Review my current branch" | `../skills/ai-diff-reviewer/SKILL.md` | Local review (verdict + findings); used by DWP Security Review when skill + extension are present | "Review my current branch" |
+| `/ai-diff-reviewer` | `../skills/ai-diff-reviewer/SKILL.md` | Local review of the current branch (verdict + findings); used by DWP Security Review when skill + extension are present | "Review my current branch" |
 | `/ai-diff-reviewer-generate-extension` | `../skills/ai-diff-reviewer/generate-extension/SKILL.md` | Regenerate `.review/extension.md` from repo evidence | "Customize the review for this repo" |
 | `/ai-diff-reviewer-setup` | `../skills/ai-diff-reviewer/setup/SKILL.md` | Re-run the CI workflow wizard | "Set up AI Diff Reviewer for this repo" |
 | `/ai-diff-reviewer-open-pr` | `../skills/ai-diff-reviewer/open-pr/SKILL.md` | Draft PR title/body from the branch diff | "Open a PR for this branch" |

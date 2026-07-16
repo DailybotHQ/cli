@@ -72,6 +72,17 @@ prompt for the patterns most likely to slip a review.
   bump — note the version change once; do not nit the hash.
 - Auto-generated `CHANGELOG.md` / `pyproject.toml` version bumps from
   `auto-release.yml`.
+- **Accepted, documented design decisions** — do not re-flag these on
+  every round:
+  - `pr-review.yml` deliberately omits the `synchronize` trigger (cost
+    control). The stale-green-gate trade-off is documented in the
+    workflow header, the trigger comment, and
+    `docs/PR_REVIEW_WORKFLOW.md` § "Re-running the review after a fix
+    push". Only comment if a change makes the documentation and the
+    behavior disagree.
+  - A skipped `AI review gate` counting as passing for external and
+    fork PRs — same doc, § "Fork and external-contributor PRs skip the
+    gate".
 
 ## Reviewer style additions
 
