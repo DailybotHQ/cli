@@ -512,7 +512,7 @@ See [docs/ECOSYSTEM_CONTEXT.md](docs/ECOSYSTEM_CONTEXT.md) for the agent-vs-huma
 
 ## Reading PR Review Comments (Mandatory)
 
-When applying bot feedback on a PR, agents **must** skip `isMinimized == true` comments and anchor on the most recent `<!-- claude-review-marker -->` comment to identify the authoritative review SHA. Previous reviews are auto-collapsed as `OUTDATED` on every new push, so reading all comments blindly will mix live and stale feedback. Full specification: [docs/PR_REVIEW_WORKFLOW.md](docs/PR_REVIEW_WORKFLOW.md).
+When applying bot feedback on a PR, agents **must** skip `isMinimized == true` comments and anchor on the most recent `<!-- ai-pr-reviewer-marker -->` comment (legacy reviews may still use `<!-- claude-review-marker -->`) to identify the authoritative review SHA. Stale reviews are auto-collapsed as `OUTDATED` when a fresh one posts — and in this repo a fresh review is **label-gated**, not push-triggered: pushing a fix does not re-review until a maintainer re-applies the `Ready` label. Reading all comments blindly will mix live and stale feedback. Full specification: [docs/PR_REVIEW_WORKFLOW.md](docs/PR_REVIEW_WORKFLOW.md).
 
 ## Skills & Agents System
 

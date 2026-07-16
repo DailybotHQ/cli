@@ -4,7 +4,7 @@ How to read and respond to bot review comments on a PR without picking up stale 
 
 ## Why This Doc Exists
 
-If automated reviewers are wired into this repo, they typically re-run on every push. When a reviewer leaves comments and you push a fix, the reviewer **collapses** its previous comments as `OUTDATED` and posts a fresh review.
+When an automated reviewer runs more than once on a PR, it **collapses** its previous comments as `OUTDATED` and posts a fresh review. In this repo the re-run is **label-gated, not push-triggered**: the workflow deliberately omits the `synchronize` event, so pushing a fix does NOT re-review — a maintainer must remove and re-apply the `Ready` label (see [Re-running the review after a fix push](#re-running-the-review-after-a-fix-push)).
 
 If you naively read all comments on a PR, you'll mix the latest review with stale feedback from earlier pushes — and risk re-implementing fixes that were already applied.
 
@@ -65,7 +65,7 @@ gh api graphql -f query='...' -F owner=DailyBotHQ -F repo=cli -F number=<PR>
    - Is the issue still real on the current SHA?
    - Is it a duplicate of something already addressed?
    - Is it actionable, or just informational?
-4. **Reply or push a fix.** If you push a fix, the bot will re-review and the previous live comments become `OUTDATED` automatically.
+4. **Reply or push a fix.** Pushing alone does NOT re-review in this repo (no `synchronize` trigger). After the fix push, remove + re-apply the `Ready` label; the fresh review then collapses the previous live comments as `OUTDATED`.
 
 ## Common Pitfalls
 
@@ -98,3 +98,29 @@ This repo (`cli`) uses **AI Diff Reviewer v2** in Flow B (local skill + CI):
 
 Local reviews (DWP Security Review augmentation) use the vendored skill at
 [`.agents/skills/ai-diff-reviewer/`](../.agents/skills/ai-diff-reviewer/).
+
+## Re-running the review after a fix push
+
+The workflow triggers only on `opened` and `labeled` — **not** `synchronize`
+(cost control). Consequences every maintainer must know:
+
+1. **Pushing a fix does not re-review.** The `AI review gate` check keeps its
+   last verdict, so a PR can accumulate unaudited commits while the gate stays
+   green. After every fix push, remove + re-apply the **`Ready`** label to
+   force a fresh review of the new HEAD.
+2. **Check the marker SHA before trusting a green gate.** The live
+   `<!-- ai-pr-reviewer-marker -->` comment records the SHA it reviewed; if it
+   is not the PR's current HEAD, the verdict is stale — re-label before merging.
+
+## Fork and external-contributor PRs skip the gate
+
+The `scope` job only runs the review for authors in the
+`author-association` whitelist (`OWNER,MEMBER,COLLABORATOR`) — an API-budget
+protection. For fork/external PRs the review job is skipped, and **GitHub
+treats a skipped required check as passing**, so `AI review gate` is satisfied
+without any review having run. Maintainers must therefore:
+
+- **Review fork PRs by hand** (or push the branch to the main repo and apply
+  `Ready` from a trusted account to get an AI pass).
+- **Not treat a green `AI review gate` on a fork PR as evidence of review** —
+  it only means the gate was skipped by design.

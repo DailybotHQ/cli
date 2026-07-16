@@ -33,6 +33,11 @@ name: PR review
 on:
   pull_request:
     branches: [main]
+    # Deliberately NOT `synchronize` (cost control): commits pushed after a
+    # review do NOT re-trigger it, and `AI review gate` stays green while
+    # unaudited commits accumulate. After every fix push, a maintainer must
+    # remove + re-apply `Ready` to force a fresh review — see
+    # docs/PR_REVIEW_WORKFLOW.md § "Re-running the review after a fix push".
     types: [opened, labeled]
 
 concurrency:
