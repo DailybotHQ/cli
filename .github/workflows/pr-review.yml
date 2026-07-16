@@ -1,6 +1,6 @@
 name: PR review
 
-# AI-driven pre-merge review powered by `DailybotHQ/ai-diff-reviewer@v2`
+# AI-driven pre-merge review powered by `DailybotHQ/ai-diff-reviewer@v2.0.0`
 # (marketplace listing: "AI Diff Reviewer"). Cursor-only, label-gated on
 # `Ready`, gated on write-tier authorship (author-association whitelist),
 # stable-named merge gate for branch protection. Runs the same review
@@ -21,8 +21,10 @@ name: PR review
 #
 # Secrets required (repo settings > Secrets):
 #   * CURSOR_API_KEY — Cursor subscription key (unlimited on Pro).
-#     Without it the review job is absent from the matrix and the merge gate
-#     reports "no provider secret configured".
+#     Without it the review job is skipped (should_run=false) and the merge
+#     gate fails loud ("no provider secret configured"). Fork PRs never see
+#     repo secrets (GitHub behavior on `pull_request` runs), so fork heads are
+#     skipped with their own reason instead of failing on a phantom secret.
 #
 # Labels used (auto-created on first run):
 #   * Ready          — apply to unlock the review (matched case-insensitively).
@@ -65,6 +67,7 @@ jobs:
           LABELS_JSON: ${{ toJSON(github.event.pull_request.labels.*.name) }}
           AUTHOR_ASSOC: ${{ github.event.pull_request.author_association }}
           HAS_CURSOR: ${{ secrets.CURSOR_API_KEY != '' }}
+          IS_FORK: ${{ github.event.pull_request.head.repo.full_name != github.repository }}
         run: |
           set -euo pipefail
 
@@ -109,6 +112,20 @@ jobs:
             {
               echo 'should_run=false'
               echo 'empty_reason=no-ready-label'
+            } >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          # Fork gate. GitHub never exposes repo secrets to `pull_request` runs
+          # whose head lives in a fork — even for OWNER/MEMBER/COLLABORATOR
+          # authors. Without this check those PRs would fall through to the
+          # secret gate and fail with a misleading "secret not configured"
+          # error. Skip (gate job is skipped too) with an actionable notice.
+          if [ "$IS_FORK" = "true" ]; then
+            echo "::notice::PR head is a fork — repo secrets are unavailable on fork pull_request runs, so the AI review cannot execute. Push the branch to this repository and re-apply 'Ready' to get a review."
+            {
+              echo 'should_run=false'
+              echo 'empty_reason=fork-no-secrets'
             } >> "$GITHUB_OUTPUT"
             exit 0
           fi
@@ -169,7 +186,11 @@ jobs:
           # with broad local access; a persisted token on disk is an exfil
           # surface. The reviewer talks to the GitHub API in-process.
           persist-credentials: false
-      - uses: DailybotHQ/ai-diff-reviewer@v2
+      # Pinned to the exact tag recorded in skills-lock.json for the vendored
+      # skill — a floating @v2 could change prompts/default.md while the local
+      # skill stays at v2.0.0, silently breaking the parity claim above. Bump
+      # this pin and the vendored skill together, in one PR.
+      - uses: DailybotHQ/ai-diff-reviewer@v2.0.0
         with:
           provider: cursor
           api-key: ${{ secrets.CURSOR_API_KEY }}
@@ -186,13 +207,14 @@ jobs:
   gate:
     # STABLE NAME — mark ONLY this as the required check in branch protection.
     # A `skipped` required check counts as passing (GitHub behavior), so PRs
-    # without `Ready` are mergeable without a review. To force reviews on every
+    # without `Ready`, from non-write-tier authors, or from fork heads
+    # (fork-no-secrets) are mergeable without a review. To force reviews on every
     # PR, pair this required check with a separate rule that enforces the
     # `Ready` label. Emergency bypass via `skip-ai-review` makes the review
     # job succeed (Action short-circuit) — protect that label with a ruleset.
     name: 'AI review gate'
     needs: [scope, review]
-    if: always() && needs.scope.outputs.empty_reason != 'no-ready-label' && needs.scope.outputs.empty_reason != 'author-association'
+    if: always() && needs.scope.outputs.empty_reason != 'no-ready-label' && needs.scope.outputs.empty_reason != 'author-association' && needs.scope.outputs.empty_reason != 'fork-no-secrets'
     runs-on: ubuntu-latest
     permissions:
       actions: read

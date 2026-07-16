@@ -114,11 +114,18 @@ The workflow triggers only on `opened` and `labeled` — **not** `synchronize`
 
 ## Fork and external-contributor PRs skip the gate
 
-The `scope` job only runs the review for authors in the
-`author-association` whitelist (`OWNER,MEMBER,COLLABORATOR`) — an API-budget
-protection. For fork/external PRs the review job is skipped, and **GitHub
-treats a skipped required check as passing**, so `AI review gate` is satisfied
-without any review having run. Maintainers must therefore:
+The `scope` job decides whether the review runs, and the outcome depends on
+**both** the author's association and where the PR head lives. Three cases:
+
+| PR author / head | Outcome | Why |
+|---|---|---|
+| External contributor (not `OWNER`/`MEMBER`/`COLLABORATOR`) | Review skipped, gate **skipped** | API-budget protection — the `author-association` whitelist rejects before anything runs. |
+| Write-tier author, branch in **this repo** | Review **runs** (when `Ready` is applied) | The normal path. |
+| Write-tier author, PR from a **fork** | Review skipped, gate **skipped** (`fork-no-secrets`) | GitHub never exposes repo secrets to `pull_request` runs from fork heads, so the reviewer cannot execute. The workflow detects the fork and skips with an actionable notice — push the branch to this repository and re-apply `Ready` to get a review. |
+
+In both skip cases, **GitHub treats a skipped required check as passing**, so
+`AI review gate` is satisfied without any review having run. Maintainers must
+therefore:
 
 - **Review fork PRs by hand** (or push the branch to the main repo and apply
   `Ready` from a trusted account to get an AI pass).
