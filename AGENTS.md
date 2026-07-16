@@ -309,7 +309,7 @@ The implementation lives in `dailybot_cli/config.py` (`get_active_env_profile`, 
 
 > **TL;DR — every PR releases by default. The only way to suppress it is to type `[skip release]` into the squash-commit body in the GitHub merge dialog yourself, on a PR that meets one of the accepted use cases below.**
 
-There is **one** narrow situation in which auto-releasing the CLI is actively harmful: syncing the in-repo vendored copy of the Dailybot agent skill pack at `.agents/skills/dailybot/` to a newly published `DailybotHQ/agent-skill` release. The skill pack pins a `dailybot-cli >= X.Y.Z` floor, so if the dogfood-sync PR triggered a release, the CLI would advance past that floor, the freshly synced skill pack would go stale instantly, and we would enter an infinite loop:
+There are **two** narrow situations in which auto-releasing the CLI is wrong (both enumerated in rule 3 below). The motivating one — where a release is actively harmful, not just empty — is syncing the in-repo vendored copy of the Dailybot agent skill pack at `.agents/skills/dailybot/` to a newly published `DailybotHQ/agent-skill` release. The skill pack pins a `dailybot-cli >= X.Y.Z` floor, so if the dogfood-sync PR triggered a release, the CLI would advance past that floor, the freshly synced skill pack would go stale instantly, and we would enter an infinite loop:
 
 ```
 sync skill pack → merge → CLI auto-bumps → skill pack now references old CLI

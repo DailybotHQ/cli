@@ -156,12 +156,15 @@ If you need a release for commits that don't qualify (e.g. an emergency `chore`-
 
 #### When (and only when) to use it
 
-There is **one** accepted use case: a PR whose entire diff is the synchronisation of the in-repo Dailybot agent skill pack at `.agents/skills/dailybot/` to a newly published [`DailybotHQ/agent-skill`](https://github.com/DailybotHQ/agent-skill) release (plus the minimal catalog / `AGENTS.md` updates that reference it). Without the marker, that PR would auto-bump the CLI, which in turn would push the skill pack out of sync with the CLI version it just pinned, creating an infinite sync→bump→resync loop. See [AGENTS.md Rule 15.a](../AGENTS.md#15a-opt-in-release-skip--skip-release-marker) for the full rationale.
+There are **two** accepted use cases (mirroring [AGENTS.md Rule 15.a](../AGENTS.md#15a-opt-in-release-skip--skip-release-marker)):
+
+1. **Dailybot skill-pack dogfood sync** — a PR whose entire diff is the synchronisation of the in-repo Dailybot agent skill pack at `.agents/skills/dailybot/` to a newly published [`DailybotHQ/agent-skill`](https://github.com/DailybotHQ/agent-skill) release (plus the minimal catalog / `AGENTS.md` updates that reference it). Without the marker, that PR would auto-bump the CLI, which in turn would push the skill pack out of sync with the CLI version it just pinned, creating an infinite sync→bump→resync loop.
+2. **Vendored agent-tooling sync (maintainer-requested)** — a PR whose entire diff lives in agent/CI tooling that ships nothing to CLI users: vendored skill packs under `.agents/` (DWP, AI Diff Reviewer, …), `.agents/commands/` delegators, `.review/`, `skills-lock.json`, the workflows that wire them, and the docs that reference them. A release would be an empty version bump. This case additionally requires the maintainer to **explicitly request the marker on that specific PR** — there is no standing approval.
 
 Any other use of the marker is a bug. In particular, do **not** apply it to:
 
-- Doc-only PRs (let the PATCH go out — the changelog entry is the record that the doc shipped).
-- CI-only or workflow-only PRs (same reason).
+- Doc-only PRs about the CLI itself (let the PATCH go out — the changelog entry is the record that the doc shipped).
+- CI tweaks to the release/test pipelines (same reason).
 - Dependency-bump PRs (downstream users need to see the bump).
 - Refactors, test-only PRs, comment-only PRs — same.
 
