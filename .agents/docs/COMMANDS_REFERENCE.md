@@ -23,6 +23,18 @@ The full plan-execute-verify loop, delegating to the vendored `deepworkplan` ski
 | `/agent-create` | `../skills/deepworkplan/author/SKILL.md` | Create a new agent persona in `.agents/agents/<slug>.md`. | "Create an agent persona for the CI investigator role" |
 | `/design-system` | `../skills/deepworkplan/addons/design-system/SKILL.md` | Refresh `docs/DESIGN.md` from the real design source (`display.py` + `DISPLAY_OUTPUT_BEST_PRACTICES.md`) via the DWP design-system addon. | "Re-sync DESIGN.md after refactoring `display.py`" |
 
+## AI Diff Reviewer (Flow B)
+
+Vendored skill at [`../skills/ai-diff-reviewer/`](../skills/ai-diff-reviewer/) (**v2.0.0**). CI gate: apply the **`Ready`** label on a PR to `main` (see [`.github/workflows/pr-review.yml`](../../.github/workflows/pr-review.yml); requires `CURSOR_API_KEY`). Extension: [`.review/extension.md`](../../.review/extension.md).
+
+| Command / phrase | Routes to | What it does | Example trigger |
+|------------------|-----------|--------------|-----------------|
+| `/ai-diff-reviewer` | `../skills/ai-diff-reviewer/SKILL.md` | Local review of the current branch (verdict + findings); used by DWP Security Review when skill + extension are present | "Review my current branch" |
+| `/ai-diff-reviewer-generate-extension` | `../skills/ai-diff-reviewer/generate-extension/SKILL.md` | Regenerate `.review/extension.md` from repo evidence | "Customize the review for this repo" |
+| `/ai-diff-reviewer-setup` | `../skills/ai-diff-reviewer/setup/SKILL.md` | Re-run the CI workflow wizard | "Set up AI Diff Reviewer for this repo" |
+| `/ai-diff-reviewer-open-pr` | `../skills/ai-diff-reviewer/open-pr/SKILL.md` | Draft PR title/body from the branch diff | "Open a PR for this branch" |
+| `/ai-diff-reviewer-apply-review` | `../skills/ai-diff-reviewer/apply-review/SKILL.md` | Walk CI findings per-finding (apply / defer / skip); never commits | "Apply the CI review findings" |
+
 Every plan ends with three mandatory final tasks (per the DWP spec): a **Security Review** of the plan's own changes (a critical finding blocks completion), a **Skills & Agents Discovery** pass, and an **Executive Report**.
 
 State persists in [`.dwp/`](../../.dwp/) which is gitignored — only the placeholders `.dwp/plans/.gitkeep` and `.dwp/drafts/.gitkeep` are tracked.

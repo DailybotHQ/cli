@@ -39,7 +39,7 @@ The full pack lives under [`.agents/skills/dailybot/`](../skills/dailybot/) (rou
 
 ### Deep Work Plan skill pack (vendored from [`DailybotHQ/deepworkplan-skill`](https://github.com/DailybotHQ/deepworkplan-skill))
 
-The full pack lives under [`.agents/skills/deepworkplan/`](../skills/deepworkplan/) (router + 9 sub-skills + addons). Vendored at **v2.16.0**. The router auto-routes by intent — read [`skills/deepworkplan/SKILL.md`](../skills/deepworkplan/SKILL.md) and let it pick the right sub-skill. Each sub-skill is independently invocable, and each has a short `dwp-*` alias in [`.agents/commands/`](../commands/) for ergonomic typing.
+The full pack lives under [`.agents/skills/deepworkplan/`](../skills/deepworkplan/) (router + 8 sub-skills + addons). Vendored at **v2.17.0**. The router auto-routes by intent — read [`skills/deepworkplan/SKILL.md`](../skills/deepworkplan/SKILL.md) and let it pick the right sub-skill. Each sub-skill is independently invocable, and each has a short `dwp-*` alias in [`.agents/commands/`](../commands/) for ergonomic typing.
 
 | Slug | Procedure | Use when |
 |------|-----------|----------|
@@ -53,6 +53,19 @@ The full pack lives under [`.agents/skills/deepworkplan/`](../skills/deepworkpla
 | `skill-create` | [`skills/deepworkplan/author/SKILL.md`](../skills/deepworkplan/author/SKILL.md) | Creating a new skill in `.agents/skills/<slug>/` |
 | `agent-create` | [`skills/deepworkplan/author/SKILL.md`](../skills/deepworkplan/author/SKILL.md) | Creating a new agent persona in `.agents/agents/<slug>.md` |
 | `design-system` | [`skills/deepworkplan/addons/design-system/SKILL.md`](../skills/deepworkplan/addons/design-system/SKILL.md) | Refreshing [`docs/DESIGN.md`](../../docs/DESIGN.md) from the real design source (`display.py` + `DISPLAY_OUTPUT_BEST_PRACTICES.md`) — the `cli-output` profile of the DWP design-system addon |
+| `ai-diff-reviewer` (addon) | [`skills/deepworkplan/addons/ai-diff-reviewer/SKILL.md`](../skills/deepworkplan/addons/ai-diff-reviewer/SKILL.md) | Opt-in DWP addon — wires Security Review to the vendored AI Diff Reviewer (Flow B: local + CI). See also the installed skill below. |
+
+### AI Diff Reviewer (vendored from [`DailybotHQ/ai-diff-reviewer`](https://github.com/DailybotHQ/ai-diff-reviewer))
+
+Vendored at **v2.0.0** under [`.agents/skills/ai-diff-reviewer/`](../skills/ai-diff-reviewer/). Flow B is enabled: local Security Review augmentation + CI gate via [`.github/workflows/pr-review.yml`](../../.github/workflows/pr-review.yml) (trigger label **`Ready`**; secret `CURSOR_API_KEY`; extension [`.review/extension.md`](../../.review/extension.md)).
+
+| Slug | Procedure | Use when |
+|------|-----------|----------|
+| `ai-diff-reviewer` | [`skills/ai-diff-reviewer/SKILL.md`](../skills/ai-diff-reviewer/SKILL.md) | Running a local review on the current branch ("Review my current branch") |
+| `ai-diff-reviewer-generate-extension` | [`skills/ai-diff-reviewer/generate-extension/SKILL.md`](../skills/ai-diff-reviewer/generate-extension/SKILL.md) | Regenerating [`.review/extension.md`](../../.review/extension.md) from repo evidence |
+| `ai-diff-reviewer-setup` | [`skills/ai-diff-reviewer/setup/SKILL.md`](../skills/ai-diff-reviewer/setup/SKILL.md) | Re-running the CI workflow wizard |
+| `ai-diff-reviewer-open-pr` | [`skills/ai-diff-reviewer/open-pr/SKILL.md`](../skills/ai-diff-reviewer/open-pr/SKILL.md) | Drafting a PR title/body from the branch diff |
+| `ai-diff-reviewer-apply-review` | [`skills/ai-diff-reviewer/apply-review/SKILL.md`](../skills/ai-diff-reviewer/apply-review/SKILL.md) | Walking CI-posted findings per-finding (apply / defer / skip) |
 
 Plans and drafts persist under [`.dwp/`](../../.dwp/) which is gitignored — only the `plans/.gitkeep` and `drafts/.gitkeep` placeholders are tracked. Full command catalog in [`COMMANDS_REFERENCE.md`](COMMANDS_REFERENCE.md), and the rationale in [`../../AGENTS.md`](../../AGENTS.md) "Working with Deep Work Plans".
 

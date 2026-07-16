@@ -23,7 +23,7 @@ name: Auto Release
 # unchanged — a release is always cut, even for docs-only or chore-only PRs
 # (because of `default_bump_level = 2` in pyproject.toml).
 #
-# WHEN TO USE IT — narrow, single, vetted use case:
+# WHEN TO USE IT — two narrow, vetted use cases:
 #
 #   * Syncing the in-repo copy of the Dailybot agent skill pack at
 #     `.agents/skills/dailybot/` to a newly published `DailybotHQ/agent-skill`
@@ -32,6 +32,13 @@ name: Auto Release
 #     advance past that floor, the skill pack would immediately go stale, and
 #     we would loop forever (sync skill → bump CLI → resync skill → bump
 #     CLI → …). The marker breaks the loop.
+#
+#   * Vendored agent-tooling syncs, on explicit per-PR maintainer request:
+#     PRs whose entire diff lives in `.agents/` skill packs (DWP,
+#     AI Diff Reviewer, …), `.agents/commands/`, `.review/`,
+#     `skills-lock.json`, the workflows that wire them, and the docs that
+#     reference them. Nothing a CLI user installs changes, so a release
+#     would be an empty version bump.
 #
 # Any other use of `[skip release]` is considered a bug. If a doc fix, CI
 # tweak, or refactor genuinely should not produce a release, the answer is

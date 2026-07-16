@@ -307,7 +307,7 @@ The implementation lives in `dailybot_cli/config.py` (`get_active_env_profile`, 
 
 #### 15.a Opt-in release skip — `[skip release]` marker
 
-> **TL;DR — every PR releases by default. The only way to suppress it is to type `[skip release]` into the squash-commit body in the GitHub merge dialog yourself, on a PR that meets the single accepted use case below.**
+> **TL;DR — every PR releases by default. The only way to suppress it is to type `[skip release]` into the squash-commit body in the GitHub merge dialog yourself, on a PR that meets one of the accepted use cases below.**
 
 There is **one** narrow situation in which auto-releasing the CLI is actively harmful: syncing the in-repo vendored copy of the Dailybot agent skill pack at `.agents/skills/dailybot/` to a newly published `DailybotHQ/agent-skill` release. The skill pack pins a `dailybot-cli >= X.Y.Z` floor, so if the dogfood-sync PR triggered a release, the CLI would advance past that floor, the freshly synced skill pack would go stale instantly, and we would enter an infinite loop:
 
@@ -322,7 +322,11 @@ To break the loop without changing the default behaviour for any other PR, `auto
 
 1. **Default is always release.** Forgetting the marker on a dogfood PR is *not* a critical problem (the next dogfood PR can correct course); using the marker when you should not have is a *real* problem (the change goes unreleased and users never see it).
 2. **The marker is opt-in only.** No workflow, hook, label, or path filter ever applies it automatically. A human (or an agent on explicit human request) must type it into the squash-commit body in the GitHub merge dialog, or pass it via `gh pr merge --body "..."`. Commits inside the PR branch carrying the marker do **not** trigger the skip — only the squash commit's body is checked, because PRs are squash-merged.
-3. **Allowed scope: exactly one use case.** A PR whose entire diff is the synchronisation of `.agents/skills/dailybot/` (plus the minimal catalog / `AGENTS.md` updates that reference it) to a newly published upstream `DailybotHQ/agent-skill` release. Any other use is treated as a bug. In particular: doc-only PRs, CI tweaks, refactors, and dependency bumps **must** release a PATCH so that the change is reflected in `pyproject.toml` and the changelog.
+3. **Allowed scope: exactly two use cases.**
+   - **(a) Dailybot skill-pack dogfood sync** — a PR whose entire diff is the synchronisation of `.agents/skills/dailybot/` (plus the minimal catalog / `AGENTS.md` updates that reference it) to a newly published upstream `DailybotHQ/agent-skill` release. This is the loop-breaking case described above.
+   - **(b) Vendored agent-tooling sync (maintainer-requested)** — a PR whose entire diff lives in agent/CI tooling that ships nothing to CLI users: vendored skill packs under `.agents/` (DWP, AI Diff Reviewer, …), `.agents/commands/` delegators, `.review/`, `skills-lock.json`, the workflows that wire them, and the docs that reference them. Because no user-installable artifact changes, a release would be an empty version bump. This case additionally requires the **maintainer to explicitly request the marker on that PR** (rule 2 already forbids automatic application; for case (b) the request must be per-PR, not standing).
+
+   Any other use is treated as a bug. In particular: doc-only PRs about the CLI itself, CI tweaks to the release/test pipelines, refactors, and dependency bumps **must** release a PATCH so that the change is reflected in `pyproject.toml` and the changelog.
 4. **The marker is exact, literal text:** `[skip release]` — lowercase, square brackets included. Matched with `grep -F` (no regex). Place it on its own line in the squash-commit body for readability.
 5. **Auditability.** The marker stays in `git log` forever, so `git log --grep '\[skip release\]'` always reproduces the full list of intentionally-suppressed releases.
 6. **Escape hatch from the escape hatch.** If you applied the marker by mistake, manually dispatch a release with `gh workflow run auto-release.yml --ref main` — it will re-run, see no marker on the *next* head commit (because nothing new was committed), and exit without releasing. The recovery is therefore to make any qualifying follow-up PR (no marker) which will cut the suppressed release as part of its own bump.
@@ -512,7 +516,7 @@ See [docs/ECOSYSTEM_CONTEXT.md](docs/ECOSYSTEM_CONTEXT.md) for the agent-vs-huma
 
 ## Reading PR Review Comments (Mandatory)
 
-When applying bot feedback on a PR, agents **must** skip `isMinimized == true` comments and anchor on the most recent `<!-- claude-review-marker -->` comment to identify the authoritative review SHA. Previous reviews are auto-collapsed as `OUTDATED` on every new push, so reading all comments blindly will mix live and stale feedback. Full specification: [docs/PR_REVIEW_WORKFLOW.md](docs/PR_REVIEW_WORKFLOW.md).
+When applying bot feedback on a PR, agents **must** skip `isMinimized == true` comments and anchor on the most recent `<!-- ai-pr-reviewer-marker -->` comment (legacy reviews may still use `<!-- claude-review-marker -->`) to identify the authoritative review SHA. Stale reviews are auto-collapsed as `OUTDATED` when a fresh one posts — and in this repo a fresh review is **label-gated**, not push-triggered: pushing a fix does not re-review until a maintainer re-applies the `Ready` label. Reading all comments blindly will mix live and stale feedback. Full specification: [docs/PR_REVIEW_WORKFLOW.md](docs/PR_REVIEW_WORKFLOW.md).
 
 ## Skills & Agents System
 
@@ -537,7 +541,7 @@ When invoked: look up in `.agents/docs/skills_agents_catalog.md`, READ the proce
 
 ## Working with Deep Work Plans (DWP)
 
-For any non-trivial change (more than ~3 files, more than one logical step, anything spanning auth + API client + commands + docs, anything you'd otherwise want a TodoList for), **drive the work through a Deep Work Plan** instead of free-form coding. The repo ships the [DWP skill pack](.agents/skills/deepworkplan/) (vendored at v2.16.0) and the matching `dwp-*` slash commands.
+For any non-trivial change (more than ~3 files, more than one logical step, anything spanning auth + API client + commands + docs, anything you'd otherwise want a TodoList for), **drive the work through a Deep Work Plan** instead of free-form coding. The repo ships the [DWP skill pack](.agents/skills/deepworkplan/) (vendored at **v2.17.0**) and the matching `dwp-*` slash commands.
 
 ### The loop
 
@@ -571,6 +575,21 @@ Every Deep Work Plan ends with three mandatory final tasks (per the DWP spec):
 3. **Executive Report** — a one-page summary written to `.dwp/<plan>/REPORT.md`.
 
 You do not need to author these manually; `/dwp-create` adds them to every plan.
+
+### AI Diff Reviewer (Flow B — dual-surface)
+
+This repo opts into the DWP **AI Diff Reviewer** addon ([`DailybotHQ/ai-diff-reviewer`](https://github.com/DailybotHQ/ai-diff-reviewer) **v2**):
+
+| Surface | What | How |
+|---------|------|-----|
+| **Local** | Augments the mandatory Security Review | Vendored skill at [`.agents/skills/ai-diff-reviewer/`](.agents/skills/ai-diff-reviewer/) + [`.review/extension.md`](.review/extension.md). Invoke *"Review my current branch"*. Soft-fail if skill/extension/invocation errors; `critical` findings from a completed pass still block Security Review. |
+| **CI** | PR merge gate | [`.github/workflows/pr-review.yml`](.github/workflows/pr-review.yml) — apply the **`Ready`** label on a PR targeting `main` to run the review (remove + re-add to re-run). Stable check name: **`AI review gate`**. Emergency bypass label: `skip-ai-review` (protect with a ruleset if the gate is required). |
+
+**Secret required for CI:** `CURSOR_API_KEY` (repo Settings → Secrets and variables → Actions). Without it, applying `Ready` fails the merge gate loudly.
+
+**Post-CI walkthrough (optional):** after CI posts findings, invoke the vendored `apply-review` sub-skill to walk findings per-finding (apply / defer / skip). Read-only by default; never commits or pushes.
+
+How to read review comments without acting on stale feedback: [`docs/PR_REVIEW_WORKFLOW.md`](docs/PR_REVIEW_WORKFLOW.md).
 
 ### Updating the kit
 
