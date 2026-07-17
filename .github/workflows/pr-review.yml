@@ -149,9 +149,11 @@ jobs:
 
   labels-bootstrap:
     name: 'Bootstrap review labels'
+    # Runs on every trigger event, NOT gated on should_run: on a clean
+    # installation the `Ready` label does not exist yet, and gating this job
+    # on `Ready` being applied would make the bootstrap unreachable
+    # (chicken-and-egg). The job is idempotent and costs ~4s.
     needs: scope
-    # Only bootstrap when we're actually going to review — no work otherwise.
-    if: needs.scope.outputs.should_run == 'true'
     runs-on: ubuntu-latest
     permissions:
       issues: write
