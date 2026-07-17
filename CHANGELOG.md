@@ -9,6 +9,51 @@ Do not edit it by hand — your edits will be overwritten on the next release.
 
 <!-- version list -->
 
+## v3.7.4 (2026-07-17)
+
+### Bug Fixes
+
+- **ci**: PR-review follow-ups that missed the #73 merge window
+  ([#74](https://github.com/DailybotHQ/cli/pull/74),
+  [`f14e44e`](https://github.com/DailybotHQ/cli/commit/f14e44e2e469407290556ef429157b6fe2c4d857))
+
+- **ci**: Run label bootstrap unconditionally to break the Ready chicken-and-egg
+  ([#74](https://github.com/DailybotHQ/cli/pull/74),
+  [`f14e44e`](https://github.com/DailybotHQ/cli/commit/f14e44e2e469407290556ef429157b6fe2c4d857))
+
+- **ci**: Skip AI review gate on fork heads + pin action to v2.0.0
+  ([#73](https://github.com/DailybotHQ/cli/pull/73),
+  [`1b8127a`](https://github.com/DailybotHQ/cli/commit/1b8127a6b3ea02bd971bbf618591bccb7c583312))
+
+- **tui**: Spell DAILYBOT correctly in the chat pixel logo
+  ([#75](https://github.com/DailybotHQ/cli/pull/75),
+  [`ef54dcf`](https://github.com/DailybotHQ/cli/commit/ef54dcfa286d284bf4cb33877a01b3028b519744))
+
+### Chores
+
+- **agents**: Upgrade DWP to 2.17.0 + AI Diff Reviewer Flow B [skip release]
+  ([#73](https://github.com/DailybotHQ/cli/pull/73),
+  [`1b8127a`](https://github.com/DailybotHQ/cli/commit/1b8127a6b3ea02bd971bbf618591bccb7c583312))
+
+- **agents**: Upgrade DWP to 2.17.0 and add AI Diff Reviewer Flow B
+  ([#73](https://github.com/DailybotHQ/cli/pull/73),
+  [`1b8127a`](https://github.com/DailybotHQ/cli/commit/1b8127a6b3ea02bd971bbf618591bccb7c583312))
+
+### Documentation
+
+- **ci**: Address AI review findings — command delegators + label-gate caveats
+  ([#73](https://github.com/DailybotHQ/cli/pull/73),
+  [`1b8127a`](https://github.com/DailybotHQ/cli/commit/1b8127a6b3ea02bd971bbf618591bccb7c583312))
+
+- **release**: Align RELEASE_AND_DISTRIBUTION.md with the two-case [skip release] policy
+  ([#74](https://github.com/DailybotHQ/cli/pull/74),
+  [`f14e44e`](https://github.com/DailybotHQ/cli/commit/f14e44e2e469407290556ef429157b6fe2c4d857))
+
+- **release**: Codify the vendored agent-tooling [skip release] use case
+  ([#73](https://github.com/DailybotHQ/cli/pull/73),
+  [`1b8127a`](https://github.com/DailybotHQ/cli/commit/1b8127a6b3ea02bd971bbf618591bccb7c583312))
+
+
 ## v3.7.3 (2026-07-14)
 
 ### Chores
