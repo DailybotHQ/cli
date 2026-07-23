@@ -495,20 +495,32 @@ The `user list` table shows **Name** and **User UUID**. You can copy a UUID dire
 
 ## Workflows
 
-Browse the workflows configured in your organization. This surface is
-**read-only** — workflows are created and edited in the Dailybot web app. The
-feature is plan-gated; an org on a plan without workflows gets a clear upgrade
-message.
+Browse the workflows configured in your organization, and **trigger** ones whose
+trigger type is `api_trigger` ("When triggered via API or button" in the
+automations builder). Creating and editing workflow definitions remains in the
+Dailybot web app. The feature is plan-gated; an org on a plan without workflows
+gets a clear upgrade message.
 
 ```bash
 # List workflows visible to you (paginated + searchable)
 dailybot workflow list
 dailybot workflow list --search "release" --all --json
+# Find triggerable workflows
+dailybot workflow list --filter api_trigger --all
 
 # Get a single workflow by UUID
 dailybot workflow get <workflow_uuid>
 dailybot workflow get <workflow_uuid> --json
+
+# Queue an api_trigger run (async — returns 202; no run output)
+dailybot workflow trigger <workflow-uuid>
+dailybot workflow trigger <workflow-uuid> \
+  --payload '{"env":"production","requested_by":"release-bot"}'
 ```
+
+The optional `--payload` must be a JSON object ≤ 8 KiB; workflow steps read it
+as `{{trigger.body.*}}`. The same `api_trigger` workflows can also be fired from
+a chat button via `callback_workflow` (see Chat below).
 
 `dailybot workflow list` accepts the shared list flags — see
 [Listing, search, and pagination](#listing-search-and-pagination).
@@ -869,8 +881,9 @@ Replies to agent emails land as messages retrievable via `dailybot agent message
 
 | Command | Description |
 |---------|-------------|
-| `dailybot workflow list` | List workflows visible to you (read-only; search + pagination) |
+| `dailybot workflow list` | List workflows visible to you (search + pagination; `--filter api_trigger`) |
 | `dailybot workflow get <uuid>` | Show a single workflow by UUID |
+| `dailybot workflow trigger <uuid>` | Queue an `api_trigger` workflow run (async 202; optional `--payload`) |
 
 ### Chat (send bot messages to Slack/Teams/Discord/Google Chat)
 
@@ -906,6 +919,22 @@ dailybot chat send -c C0123 -m "🚀 Release v2.4 shipped" \
 dailybot chat send -c C0123 -m "Build #421 ✅" \
   --bot-name "Release Bot" --bot-icon-emoji ":rocket:" \
   --link-button "Open report::https://app.company.com/report"
+
+# Approval flow — callback_url buttons (+ optional bearer auth on the POST)
+dailybot chat send -u <user-uuid> -m "Deploy to prod?" \
+  --approve-button "Yes=approve" --reject-button "No=deny" \
+  --callback-url https://hooks.example.com/req42 --callback-bearer "$TOKEN"
+
+# Fire an api_trigger workflow from a button click
+dailybot chat send -c C0123 -m "Ready to release?" \
+  --workflow-button "Run release=<workflow-uuid>"
+
+# Full button contract (modals, response trees, callback_prompt, …) via JSON
+dailybot chat send -u <user-uuid> -m "Need details" --buttons '[
+  {"label":"Open","button_type":"interactive","value":"open",
+   "callback_url":"https://hooks.example.com/x",
+   "modal_body":{"title":"Notes","blocks":[
+     {"type":"input","name":"notes","label":"Notes","multiline":true}]}}]'
 
 # Send with another user's identity, or as yourself (Slack only, admin-only)
 dailybot chat send -c C0123 -m "Posting for the team" --send-as-user <user-uuid>

@@ -30,6 +30,7 @@ from dailybot_cli.commands.agent import _merge_repo_metadata, _resolve_agent_con
 from dailybot_cli.commands.public_api_helpers import (
     UUID_PATTERN,
     emit_json,
+    exit_for_api_error,
     get_current_user_uuid,
 )
 from dailybot_cli.display import (
@@ -46,8 +47,32 @@ CHANNEL_TYPES: tuple[str, ...] = (
     "direct_message",
 )
 BUTTON_SEPARATOR: str = "::"
+ERGONOMIC_BUTTON_SEPARATOR: str = "="
 MAX_BOT_USERNAME_CHARS: int = 80
 MAX_THREAD_RESPONSES: int = 10
+MAX_BUTTONS_PER_MESSAGE: int = 25
+BUTTON_CALLBACK_KEYS: tuple[str, ...] = (
+    "callback_url",
+    "callback_form",
+    "callback_command",
+    "callback_prompt",
+    "callback_workflow",
+)
+BUTTON_ERROR_CODES: frozenset[str] = frozenset(
+    {
+        "button_link_and_callback_conflict",
+        "button_callback_conflict",
+        "button_callback_url_invalid",
+        "button_modal_body_invalid",
+        "button_callback_form_not_found",
+        "button_callback_command_invalid",
+        "button_callback_prompt_invalid",
+        "button_callback_workflow_not_found",
+        "button_response_invalid",
+        "button_callback_auth_invalid",
+        "buttons_count_out_of_range",
+    }
+)
 
 
 class ChatPayloadError(ValueError):
@@ -68,6 +93,55 @@ def _parse_button(raw: str, *, kind: str) -> tuple[str, str]:
     return label, value
 
 
+def _parse_ergonomic_button(raw: str, *, flag: str) -> tuple[str, str]:
+    """Split a ``"Label=value"`` ergonomic button spec into ``(label, value)``."""
+    label, sep, value = raw.partition(ERGONOMIC_BUTTON_SEPARATOR)
+    label = label.strip()
+    value = value.strip()
+    if not sep or not label or not value:
+        raise ChatPayloadError(
+            f"Invalid {flag} '{raw}'. Expected 'Label{ERGONOMIC_BUTTON_SEPARATOR}value' "
+            f"(e.g. 'Yes{ERGONOMIC_BUTTON_SEPARATOR}approve')."
+        )
+    return label, value
+
+
+def validate_buttons(buttons: list[Any], *, flag_hint: str = "--buttons") -> None:
+    """Light client-side checks; never strips unknown keys (API owns the contract).
+
+    Enforces: ≤25 buttons, each entry is an object with a non-empty ``label``,
+    and at most one of the five callback fields per button. Richer rules
+    (modal size, URL shape, recursive ``response`` trees) stay server-side.
+    """
+    if len(buttons) > MAX_BUTTONS_PER_MESSAGE:
+        raise ChatPayloadError(
+            f"At most {MAX_BUTTONS_PER_MESSAGE} buttons are allowed per message "
+            f"({flag_hint})."
+        )
+    for index, button in enumerate(buttons, start=1):
+        if not isinstance(button, dict):
+            raise ChatPayloadError(
+                f"Button #{index} must be a JSON object ({flag_hint})."
+            )
+        label_raw: Any = button.get("label")
+        label: str = str(label_raw).strip() if label_raw is not None else ""
+        if not label:
+            raise ChatPayloadError(
+                f"Button #{index} is missing a required 'label' ({flag_hint})."
+            )
+        present: list[str] = [
+            key
+            for key in BUTTON_CALLBACK_KEYS
+            if button.get(key) not in (None, "")
+        ]
+        if len(present) > 1:
+            raise ChatPayloadError(
+                f"Button '{label}' sets more than one callback ({', '.join(present)}). "
+                "At most one of callback_url, callback_form, callback_command, "
+                "callback_prompt, or callback_workflow is allowed."
+            )
+
+
 def build_chat_payload(
     *,
     text: str | None = None,
@@ -77,6 +151,7 @@ def build_chat_payload(
     image_url: str | None = None,
     link_buttons: list[tuple[str, str]] | None = None,
     action_buttons: list[tuple[str, str]] | None = None,
+    extra_buttons: list[dict[str, Any]] | None = None,
     thread: str | None = None,
     channel_type: str | None = None,
     bot_name: str | None = None,
@@ -95,6 +170,9 @@ def build_chat_payload(
     :class:`ChatPayloadError` on invalid combinations the API would reject —
     surfacing a friendly message before the network call.
 
+    *extra_buttons* is a list of raw button objects (from ``--buttons`` JSON or
+    ergonomic approval/workflow flags). Keys are forwarded untouched — the CLI
+    stays forward-compatible with every current and future button field.
     *thread_responses* posts follow-up messages inside the parent's thread in
     the same call (each reply inherits the parent's recipients). The API mints
     one id per reply in the response, so each is independently editable.
@@ -136,7 +214,10 @@ def build_chat_payload(
         buttons.append({"label": label, "button_type": "link", "url": url})
     for label, value in action_buttons or []:
         buttons.append({"label": label, "button_type": "interactive", "value": value})
+    if extra_buttons:
+        buttons.extend(extra_buttons)
     if buttons:
+        validate_buttons(buttons)
         payload["buttons"] = buttons
 
     if users:
@@ -212,7 +293,9 @@ def _send(
     client: DailyBotClient, payload: dict[str, Any], *, updated: bool, json_mode: bool
 ) -> None:
     """Run a single send/update call and render the result (used by `update`)."""
-    result: dict[str, Any] = _execute_send(client, payload, status="Sending message...")
+    result: dict[str, Any] = _execute_send(
+        client, payload, status="Sending message...", json_mode=json_mode
+    )
     if json_mode:
         emit_json(result)
         return
@@ -220,9 +303,13 @@ def _send(
 
 
 def _execute_send(
-    client: DailyBotClient, payload: dict[str, Any], *, status: str
+    client: DailyBotClient,
+    payload: dict[str, Any],
+    *,
+    status: str,
+    json_mode: bool = False,
 ) -> dict[str, Any]:
-    """Call the API with friendly error translation; return the result or exit 1."""
+    """Call the API with friendly error translation; return the result or exit."""
     if payload.get("platform_settings", {}).get("is_ephemeral") and not payload.get("target_users"):
         # The API silently skips an ephemeral message with no resolvable user.
         print_warning(
@@ -233,31 +320,45 @@ def _execute_send(
         with console.status(status):
             return client.send_chat_message(payload)
     except APIError as e:
-        if e.code == "org_admin_required":
-            print_error(
+        overrides: dict[str, str] = {
+            "org_admin_required": (
                 "Sending as another user (--send-as-user / --send-as-me) requires organization "
                 "admin privileges. Run it with an admin account or an org admin's API key."
-            )
-        elif e.code == "cli_send_message_target_not_allowed":
-            print_error(
+            ),
+            "cli_send_message_target_not_allowed": (
                 f"{e.detail}\n  Your role can only reach teammates, public channels, and teams "
                 "you belong to. Use an allowed target, or an org API key for org-wide reach."
-            )
-        elif e.code == "invalid_thread_responses":
-            print_error(
+            ),
+            "invalid_thread_responses": (
                 f"{e.detail}\n  Thread replies allow at most 10 items, one level deep, with no "
                 "targeting of their own (they inherit the parent's recipients)."
-            )
-        elif e.status_code in (401, 403):
-            print_error(
+            ),
+        }
+        # Button contract errors: surface the server detail verbatim (richest signal).
+        if e.code and e.code in BUTTON_ERROR_CODES and e.detail:
+            overrides[e.code] = e.detail
+        # Auth hint when the server didn't send a more specific code.
+        if e.status_code in (401, 403) and e.code not in overrides:
+            auth_hint = (
                 f"{e.detail}\n  Authenticate first: run 'dailybot login' (sends as you) or set an "
                 "org API key with 'dailybot config key=<API_KEY>'."
             )
-        elif e.status_code == 429:
-            print_error("Rate limit exceeded for chat sends. Wait a bit and retry.")
-        else:
-            print_error(e.detail)
-        raise SystemExit(1)
+            if e.code:
+                overrides[e.code] = auth_hint
+            else:
+                if json_mode:
+                    emit_json({"error": auth_hint, "status": e.status_code, "detail": e.detail})
+                else:
+                    print_error(auth_hint)
+                raise SystemExit(1)
+        if e.status_code == 429 and e.code is None:
+            rate_msg = "Rate limit exceeded for chat sends. Wait a bit and retry."
+            if json_mode:
+                emit_json({"error": rate_msg, "status": 429, "detail": e.detail})
+            else:
+                print_error(rate_msg)
+            raise SystemExit(1)
+        exit_for_api_error(e, json_mode, code_overrides=overrides)
 
 
 # --- chat group ---
@@ -313,6 +414,45 @@ def _target_options(fn: Any) -> Any:
             multiple=True,
             help="Interactive button 'Label::value' (repeatable).",
         ),
+        click.option(
+            "--buttons",
+            "buttons_json",
+            default=None,
+            help=(
+                "Raw buttons JSON array — full API contract (callbacks, modals, response, "
+                "callback_auth). Keys forwarded untouched; max 25."
+            ),
+        ),
+        click.option(
+            "--approve-button",
+            "approve_button_raw",
+            default=None,
+            help="Approval button 'Label=value' (needs --callback-url).",
+        ),
+        click.option(
+            "--reject-button",
+            "reject_button_raw",
+            default=None,
+            help="Reject button 'Label=value' (needs --callback-url).",
+        ),
+        click.option(
+            "--callback-url",
+            "callback_url",
+            default=None,
+            help="HTTPS callback URL for --approve-button / --reject-button.",
+        ),
+        click.option(
+            "--callback-bearer",
+            "callback_bearer",
+            default=None,
+            help="Optional bearer token attached as callback_auth on approval buttons.",
+        ),
+        click.option(
+            "--workflow-button",
+            "workflow_buttons_raw",
+            multiple=True,
+            help="Workflow button 'Label=<workflow-uuid>' (callback_workflow; repeatable).",
+        ),
         click.option("--thread", default=None, help="Thread id to reply inside (channels)."),
         click.option(
             "--channel-type",
@@ -353,6 +493,77 @@ def _target_options(fn: Any) -> Any:
     return fn
 
 
+def _build_extra_buttons(
+    *,
+    buttons_json: str | None,
+    approve_button_raw: str | None,
+    reject_button_raw: str | None,
+    callback_url: str | None,
+    callback_bearer: str | None,
+    workflow_buttons_raw: tuple[str, ...],
+) -> list[dict[str, Any]]:
+    """Assemble raw button objects from --buttons JSON and ergonomic flags."""
+    extra: list[dict[str, Any]] = []
+
+    if buttons_json is not None:
+        try:
+            parsed: Any = json.loads(buttons_json)
+        except json.JSONDecodeError:
+            raise ChatPayloadError("Invalid JSON in --buttons.") from None
+        if not isinstance(parsed, list):
+            raise ChatPayloadError("--buttons must be a JSON array of button objects.")
+        for item in parsed:
+            if not isinstance(item, dict):
+                raise ChatPayloadError("--buttons entries must be JSON objects.")
+            extra.append(dict(item))  # shallow copy; keys untouched
+
+    if callback_bearer and not callback_url:
+        raise ChatPayloadError("--callback-bearer requires --callback-url.")
+    if (approve_button_raw or reject_button_raw) and not callback_url:
+        raise ChatPayloadError(
+            "--approve-button / --reject-button require --callback-url."
+        )
+    if callback_url and not (approve_button_raw or reject_button_raw):
+        raise ChatPayloadError(
+            "--callback-url needs at least one of --approve-button / --reject-button "
+            "(or put callback_url inside --buttons JSON)."
+        )
+
+    callback_auth: dict[str, Any] | None = None
+    if callback_bearer:
+        callback_auth = {"type": "bearer", "token": callback_bearer}
+
+    for raw, flag in (
+        (approve_button_raw, "--approve-button"),
+        (reject_button_raw, "--reject-button"),
+    ):
+        if not raw:
+            continue
+        label, value = _parse_ergonomic_button(raw, flag=flag)
+        button: dict[str, Any] = {
+            "label": label,
+            "button_type": "interactive",
+            "value": value,
+            "callback_url": callback_url,
+        }
+        if callback_auth is not None:
+            button["callback_auth"] = dict(callback_auth)
+        extra.append(button)
+
+    for raw in workflow_buttons_raw:
+        label, workflow_uuid = _parse_ergonomic_button(raw, flag="--workflow-button")
+        extra.append(
+            {
+                "label": label,
+                "button_type": "interactive",
+                "value": workflow_uuid,
+                "callback_workflow": workflow_uuid,
+            }
+        )
+
+    return extra
+
+
 def _assemble_payload(
     *,
     payload_json: str | None,
@@ -391,6 +602,11 @@ def _assemble_payload(
             raw["bot_message_id"] = bot_message_id
         try:
             _validate_targets(raw)
+            raw_buttons: Any = raw.get("buttons")
+            if raw_buttons is not None:
+                if not isinstance(raw_buttons, list):
+                    raise ChatPayloadError("--payload-json 'buttons' must be a JSON array.")
+                validate_buttons(raw_buttons, flag_hint="--payload-json buttons")
         except ChatPayloadError as exc:
             print_error(str(exc))
             raise SystemExit(1)
@@ -400,14 +616,29 @@ def _assemble_payload(
     action_buttons: list[tuple[str, str]] = []
     thread_messages: tuple[str, ...] = build_kwargs.pop("thread_messages_raw", ())
     thread_responses: list[dict[str, Any]] = [{"message": t} for t in thread_messages if t]
+    buttons_json: str | None = build_kwargs.pop("buttons_json", None)
+    approve_button_raw: str | None = build_kwargs.pop("approve_button_raw", None)
+    reject_button_raw: str | None = build_kwargs.pop("reject_button_raw", None)
+    callback_url: str | None = build_kwargs.pop("callback_url", None)
+    callback_bearer: str | None = build_kwargs.pop("callback_bearer", None)
+    workflow_buttons_raw: tuple[str, ...] = build_kwargs.pop("workflow_buttons_raw", ())
     try:
         for raw_btn in build_kwargs.pop("link_buttons_raw", ()):
             link_buttons.append(_parse_button(raw_btn, kind="link"))
         for raw_btn in build_kwargs.pop("action_buttons_raw", ()):
             action_buttons.append(_parse_button(raw_btn, kind="interactive"))
+        extra_buttons: list[dict[str, Any]] = _build_extra_buttons(
+            buttons_json=buttons_json,
+            approve_button_raw=approve_button_raw,
+            reject_button_raw=reject_button_raw,
+            callback_url=callback_url,
+            callback_bearer=callback_bearer,
+            workflow_buttons_raw=workflow_buttons_raw,
+        )
         return build_chat_payload(
             link_buttons=link_buttons,
             action_buttons=action_buttons,
+            extra_buttons=extra_buttons or None,
             metadata=metadata_dict,
             bot_message_id=bot_message_id,
             thread_responses=thread_responses or None,
@@ -452,6 +683,12 @@ def chat_send(
     image_url: str | None,
     link_buttons_raw: tuple[str, ...],
     action_buttons_raw: tuple[str, ...],
+    buttons_json: str | None,
+    approve_button_raw: str | None,
+    reject_button_raw: str | None,
+    callback_url: str | None,
+    callback_bearer: str | None,
+    workflow_buttons_raw: tuple[str, ...],
     thread: str | None,
     channel_type: str | None,
     bot_name: str | None,
@@ -477,6 +714,25 @@ def chat_send(
       dailybot chat send -c C0123 -m "Actions:" --link-button "Open report::https://app/r"
       dailybot chat send -u ana@co.com -m "Heads up" --ephemeral
       dailybot chat send --payload-json '{"target_channels":["C0"],"messages":[...]}' --json
+
+    \b
+    Approval flow (callback_url buttons + optional bearer auth):
+      dailybot chat send -u <uuid> -m "Deploy?" \\
+        --approve-button "Yes=approve" --reject-button "No=deny" \\
+        --callback-url https://hooks.example.com/req42 --callback-bearer "$TOKEN"
+
+    \b
+    Workflow button (fires an api_trigger workflow on click):
+      dailybot chat send -c C0123 -m "Ready?" \\
+        --workflow-button "Run release=<workflow-uuid>"
+
+    \b
+    Full button contract via --buttons JSON (modals, response trees, …):
+      dailybot chat send -u <uuid> -m "Details?" --buttons '[
+        {"label":"Open","button_type":"interactive","value":"open",
+         "callback_url":"https://hooks.example.com/x",
+         "modal_body":{"title":"Notes","blocks":[
+           {"type":"input","name":"notes","label":"Notes","multiline":true}]}}]'
 
     \b
     Report style — a short headline plus the detail inside its thread:
@@ -511,6 +767,12 @@ def chat_send(
         image_url=image_url,
         link_buttons_raw=link_buttons_raw,
         action_buttons_raw=action_buttons_raw,
+        buttons_json=buttons_json,
+        approve_button_raw=approve_button_raw,
+        reject_button_raw=reject_button_raw,
+        callback_url=callback_url,
+        callback_bearer=callback_bearer,
+        workflow_buttons_raw=workflow_buttons_raw,
         thread_messages_raw=thread_messages_raw,
         thread=thread,
         channel_type=channel_type,
@@ -538,6 +800,12 @@ def chat_update(
     image_url: str | None,
     link_buttons_raw: tuple[str, ...],
     action_buttons_raw: tuple[str, ...],
+    buttons_json: str | None,
+    approve_button_raw: str | None,
+    reject_button_raw: str | None,
+    callback_url: str | None,
+    callback_bearer: str | None,
+    workflow_buttons_raw: tuple[str, ...],
     thread: str | None,
     channel_type: str | None,
     bot_name: str | None,
@@ -554,8 +822,9 @@ def chat_update(
     \b
       dailybot chat update <bot_message_id> -c C0123 -m "Status: DONE ✅"
 
-    Note: the chat platform keeps the message's original bot name/avatar on an
-    edit, so identity flags are ignored when updating.
+    Buttons round-trip on update the same way as send. Note: the chat platform
+    keeps the message's original bot name/avatar on an edit, so identity flags
+    are ignored when updating. Re-send within 72h with the same bot_message_id.
     """
     profile_flag: str | None = ctx.obj.get("profile")
     client, repo_default_metadata = _resolved_client(profile_flag)
@@ -572,6 +841,12 @@ def chat_update(
         image_url=image_url,
         link_buttons_raw=link_buttons_raw,
         action_buttons_raw=action_buttons_raw,
+        buttons_json=buttons_json,
+        approve_button_raw=approve_button_raw,
+        reject_button_raw=reject_button_raw,
+        callback_url=callback_url,
+        callback_bearer=callback_bearer,
+        workflow_buttons_raw=workflow_buttons_raw,
         thread=thread,
         channel_type=channel_type,
         bot_name=bot_name,

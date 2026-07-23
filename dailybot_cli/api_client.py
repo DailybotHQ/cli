@@ -1443,7 +1443,7 @@ class DailyBotClient:
         limit: int | None = None,
         meta: dict[str, Any] | None = None,
     ) -> list[dict[str, Any]]:
-        """GET /v1/workflows/ — list workflows (read-only; plan-gated feature)."""
+        """GET /v1/workflows/ — list workflows (plan-gated feature)."""
         params: dict[str, Any] = {}
         _merge_list_query(params, search=search, start_date=start_date, end_date=end_date)
         result: PaginatedResult = self._paginated_get(
@@ -1461,6 +1461,30 @@ class DailyBotClient:
         """GET /v1/workflows/<uuid>/ — a single workflow's configuration."""
         response: httpx.Response = self._request(
             "GET", f"{self.api_url}/v1/workflows/{workflow_uuid}/"
+        )
+        return self._handle_response(response)
+
+    def trigger_workflow(
+        self,
+        workflow_uuid: str,
+        *,
+        payload: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        """POST /v1/workflows/<uuid>/trigger/ — queue an ``api_trigger`` workflow.
+
+        Only workflows whose trigger type is ``api_trigger`` ("When triggered via
+        API or button") can be fired this way. The run is asynchronous — success
+        is ``202 {queued: true, workflow_uuid, detail}`` with no run output.
+        Optional *payload* (a JSON object ≤ 8 KiB) is exposed to workflow steps
+        as ``{{trigger.body.*}}`` variables.
+        """
+        body: dict[str, Any] = {}
+        if payload is not None:
+            body["payload"] = payload
+        response: httpx.Response = self._request(
+            "POST",
+            f"{self.api_url}/v1/workflows/{workflow_uuid}/trigger/",
+            json=body,
         )
         return self._handle_response(response)
 

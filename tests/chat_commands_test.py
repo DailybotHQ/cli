@@ -112,6 +112,59 @@ class TestBuildChatPayload:
                 thread_responses=[{"message": str(i)} for i in range(11)],
             )
 
+    def test_extra_buttons_passthrough_new_keys(self) -> None:
+        raw = [
+            {
+                "label": "Yes",
+                "button_type": "interactive",
+                "value": "approve",
+                "callback_url": "https://hooks.example.com/x",
+                "label_after_click": "Approved",
+                "response": {"message": "Got it", "ephemeral": True},
+                "callback_auth": {"type": "bearer", "token": "tok"},
+                "future_field": {"kept": True},
+            }
+        ]
+        payload = build_chat_payload(text="hi", channels=["C0"], extra_buttons=raw)
+        assert payload["buttons"][0]["callback_url"] == "https://hooks.example.com/x"
+        assert payload["buttons"][0]["future_field"] == {"kept": True}
+        assert payload["buttons"][0]["callback_auth"]["token"] == "tok"
+
+    def test_callback_exclusivity_prevalidation(self) -> None:
+        with pytest.raises(ChatPayloadError, match="more than one callback"):
+            build_chat_payload(
+                text="hi",
+                channels=["C0"],
+                extra_buttons=[
+                    {
+                        "label": "Go",
+                        "button_type": "interactive",
+                        "value": "go",
+                        "callback_url": "https://x.example/a",
+                        "callback_prompt": "Summarize",
+                    }
+                ],
+            )
+
+    def test_buttons_cap_prevalidation(self) -> None:
+        with pytest.raises(ChatPayloadError, match="At most 25"):
+            build_chat_payload(
+                text="hi",
+                channels=["C0"],
+                extra_buttons=[
+                    {"label": f"B{i}", "button_type": "interactive", "value": str(i)}
+                    for i in range(26)
+                ],
+            )
+
+    def test_missing_label_prevalidation(self) -> None:
+        with pytest.raises(ChatPayloadError, match="required 'label'"):
+            build_chat_payload(
+                text="hi",
+                channels=["C0"],
+                extra_buttons=[{"button_type": "interactive", "value": "x"}],
+            )
+
 
 # --- chat send / update commands ---
 
@@ -272,7 +325,7 @@ class TestChatSendCommand:
             status_code=403, detail="Not allowed", code="cli_send_message_target_not_allowed"
         )
         result = runner.invoke(cli, ["chat", "send", "-c", "C0", "-m", "x"])
-        assert result.exit_code == 1
+        assert result.exit_code == 4
         assert "role can only reach" in result.output
 
     @patch("dailybot_cli.commands.chat._resolve_agent_context")
@@ -282,6 +335,129 @@ class TestChatSendCommand:
         result = runner.invoke(cli, ["chat", "send", "-c", "C0", "-m", "x"])
         assert result.exit_code == 1
         assert "Rate limit" in result.output
+
+    @patch("dailybot_cli.commands.chat._resolve_agent_context")
+    def test_approve_reject_callback_buttons(
+        self, mock_resolve: MagicMock, runner: CliRunner
+    ) -> None:
+        client = _mock_resolve(mock_resolve)
+        result = runner.invoke(
+            cli,
+            [
+                "chat",
+                "send",
+                "-u",
+                "ana@co.com",
+                "-m",
+                "Deploy?",
+                "--approve-button",
+                "Yes=approve",
+                "--reject-button",
+                "No=deny",
+                "--callback-url",
+                "https://hooks.example.com/req42",
+                "--callback-bearer",
+                "secret-token",
+            ],
+        )
+        assert result.exit_code == 0
+        buttons = client.send_chat_message.call_args[0][0]["buttons"]
+        assert buttons[0]["callback_url"] == "https://hooks.example.com/req42"
+        assert buttons[0]["value"] == "approve"
+        assert buttons[0]["callback_auth"] == {"type": "bearer", "token": "secret-token"}
+        assert buttons[1]["value"] == "deny"
+        assert buttons[1]["callback_auth"]["type"] == "bearer"
+
+    @patch("dailybot_cli.commands.chat._resolve_agent_context")
+    def test_workflow_button(self, mock_resolve: MagicMock, runner: CliRunner) -> None:
+        client = _mock_resolve(mock_resolve)
+        wf = "a1b2c3d4-e5f6-7890-abcd-ef1234567890"
+        result = runner.invoke(
+            cli,
+            [
+                "chat",
+                "send",
+                "-c",
+                "C0",
+                "-m",
+                "Ready?",
+                "--workflow-button",
+                f"Run release={wf}",
+            ],
+        )
+        assert result.exit_code == 0
+        button = client.send_chat_message.call_args[0][0]["buttons"][0]
+        assert button["label"] == "Run release"
+        assert button["callback_workflow"] == wf
+        assert button["value"] == wf
+
+    @patch("dailybot_cli.commands.chat._resolve_agent_context")
+    def test_buttons_json_passthrough(self, mock_resolve: MagicMock, runner: CliRunner) -> None:
+        client = _mock_resolve(mock_resolve)
+        buttons_json = (
+            '[{"label":"Ask","button_type":"interactive","value":"ask",'
+            '"callback_prompt":"Summarize incidents","response":{"message":"On it"}}]'
+        )
+        result = runner.invoke(
+            cli, ["chat", "send", "-c", "C0", "-m", "x", "--buttons", buttons_json]
+        )
+        assert result.exit_code == 0
+        button = client.send_chat_message.call_args[0][0]["buttons"][0]
+        assert button["callback_prompt"] == "Summarize incidents"
+        assert button["response"]["message"] == "On it"
+
+    @patch("dailybot_cli.commands.chat._resolve_agent_context")
+    def test_callback_exclusivity_fails_cli(
+        self, mock_resolve: MagicMock, runner: CliRunner
+    ) -> None:
+        _mock_resolve(mock_resolve)
+        buttons_json = (
+            '[{"label":"X","button_type":"interactive","value":"x",'
+            '"callback_url":"https://a.example","callback_form":"form-uuid"}]'
+        )
+        result = runner.invoke(
+            cli, ["chat", "send", "-c", "C0", "-m", "x", "--buttons", buttons_json]
+        )
+        assert result.exit_code == 1
+        assert "more than one callback" in result.output
+
+    @patch("dailybot_cli.commands.chat._resolve_agent_context")
+    def test_button_server_error_json_passthrough(
+        self, mock_resolve: MagicMock, runner: CliRunner
+    ) -> None:
+        client = _mock_resolve(mock_resolve)
+        client.send_chat_message.side_effect = APIError(
+            status_code=400,
+            detail="modal needs callback_url",
+            code="button_modal_body_invalid",
+        )
+        result = runner.invoke(cli, ["chat", "send", "-c", "C0", "-m", "x", "--json"])
+        assert result.exit_code == 2
+        assert '"code": "button_modal_body_invalid"' in result.output
+        assert "modal needs callback_url" in result.output
+
+    @patch("dailybot_cli.commands.chat._resolve_agent_context")
+    def test_update_with_buttons_json(self, mock_resolve: MagicMock, runner: CliRunner) -> None:
+        client = _mock_resolve(mock_resolve)
+        result = runner.invoke(
+            cli,
+            [
+                "chat",
+                "update",
+                "m-123",
+                "-c",
+                "C0",
+                "-m",
+                "Updated",
+                "--buttons",
+                '[{"label":"Ok","button_type":"interactive","value":"ok",'
+                '"callback_command":"help"}]',
+            ],
+        )
+        assert result.exit_code == 0
+        sent = client.send_chat_message.call_args[0][0]
+        assert sent["bot_message_id"] == "m-123"
+        assert sent["buttons"][0]["callback_command"] == "help"
 
 
 class TestChatUpdateCommand:

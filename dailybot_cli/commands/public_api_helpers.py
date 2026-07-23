@@ -275,6 +275,55 @@ ERROR_CODE_MESSAGES: dict[str, str] = {
     ),
     "send_as_user_invalid_uuid": "Invalid UUID for --send-as-user.",
     "send_as_user_not_found": "User not found in your organization (must be active).",
+    # Interactive buttons (POST /v1/send-message/) — prefer server detail when
+    # present; these are fallbacks for older backends that omit detail.
+    "button_link_and_callback_conflict": (
+        "A link button can't carry a callback. Use button_type=interactive for callbacks."
+    ),
+    "button_callback_conflict": (
+        "An interactive button can set at most one of callback_url, callback_form, "
+        "callback_command, callback_prompt, or callback_workflow."
+    ),
+    "button_callback_url_invalid": "Invalid callback_url (must be https, ≤2048 chars).",
+    "button_modal_body_invalid": (
+        "Invalid modal_body. Check block types, unique input names, size limits, "
+        "and that input modals include callback_url or callback_workflow."
+    ),
+    "button_callback_form_not_found": (
+        "callback_form did not resolve to a form in your organization."
+    ),
+    "button_callback_command_invalid": (
+        "Invalid callback_command (≤200 chars; the legacy 'prompt:' prefix is rejected "
+        "— use callback_prompt)."
+    ),
+    "button_callback_prompt_invalid": (
+        "Invalid callback_prompt (required, ≤2000 chars)."
+    ),
+    "button_callback_workflow_not_found": (
+        "callback_workflow did not resolve to an active api_trigger workflow in your org."
+    ),
+    "button_response_invalid": (
+        "Invalid button response (message ≤2000; nested buttons depth ≤3, ≤25/level)."
+    ),
+    "button_callback_auth_invalid": (
+        "Invalid callback_auth (bearer / basic / custom_header; only with callback_url)."
+    ),
+    "buttons_count_out_of_range": "A message can carry at most 25 buttons.",
+    # Workflow trigger (POST /v1/workflows/<uuid>/trigger/)
+    "workflow_not_triggerable": (
+        "This workflow's trigger type isn't 'api_trigger' (set it in the automations "
+        "builder to \"When triggered via API or button\") or the workflow is inactive."
+    ),
+    "workflow_trigger_payload_invalid": (
+        "--payload must be a JSON object and serialize to at most 8 KiB."
+    ),
+    "workflow_execute_not_allowed": (
+        "You don't have permission to execute this workflow."
+    ),
+    "workflow_frozen": (
+        "This workflow is frozen on your organization's plan. Upgrade or unfreeze it "
+        "in the automations builder."
+    ),
 }
 
 

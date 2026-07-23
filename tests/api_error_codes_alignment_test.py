@@ -27,6 +27,19 @@ def test_invalid_kudos_filter_has_a_handler() -> None:
     assert "received" in ERROR_CODE_MESSAGES["invalid_kudos_filter"].lower()
 
 
+def test_interactive_button_and_workflow_trigger_codes_are_mapped() -> None:
+    for code in (
+        "button_callback_conflict",
+        "button_callback_workflow_not_found",
+        "buttons_count_out_of_range",
+        "workflow_not_triggerable",
+        "workflow_trigger_payload_invalid",
+        "workflow_execute_not_allowed",
+        "workflow_frozen",
+    ):
+        assert code in ERROR_CODE_MESSAGES
+
+
 @patch("dailybot_cli.commands.public_api_helpers.get_agent_auth", return_value="tok")
 @patch("dailybot_cli.commands.public_api_helpers.DailyBotClient")
 def test_kudos_org_member_sees_generic_admin_message(

@@ -350,17 +350,40 @@ Fetches a team via `GET /v1/teams/<uuid>/`. A name argument is resolved to UUID 
 
 ### `dailybot workflow` (group) — user-scoped, Bearer or API key auth
 
-Read-only browsing of the org's workflows. Workflow writes are done in the web
-app; this group only lists and retrieves. The feature is **plan-gated** — an org
-on a plan without workflows gets `403 plan_upgrade_required` (with `upgrade_url`).
+Browse workflows and trigger `api_trigger` ones. Creating and editing workflow
+definitions is done in the web app (automations builder). The feature is
+**plan-gated** — an org on a plan without workflows gets
+`403 plan_upgrade_required` (with `upgrade_url`).
 
-#### `dailybot workflow list [--json]`
+#### `dailybot workflow list [--filter TRIGGER] [--json]`
 
-Lists workflows visible to the caller via `GET /v1/workflows/`. Accepts the [shared list query flags](#shared-list-query-flags) (pagination + `--search`/`--grep`).
+Lists workflows visible to the caller via `GET /v1/workflows/`. Accepts the
+[shared list query flags](#shared-list-query-flags) (pagination + `--search`/`--grep`).
+`--filter api_trigger` is a client-side filter on `trigger_type` (helps find
+workflows that can be fired with `workflow trigger` or a chat
+`callback_workflow` button).
 
 #### `dailybot workflow get <workflow_uuid> [--json]`
 
 Fetches a single workflow via `GET /v1/workflows/<uuid>/`.
+
+#### `dailybot workflow trigger <workflow_uuid> [--payload JSON] [--json]`
+
+Queues a run via `POST /v1/workflows/<uuid>/trigger/`. Only workflows whose
+trigger type is **`api_trigger`** ("When triggered via API or button") are
+triggerable; others return `400 workflow_not_triggerable`. Success is
+**`202 {queued: true, workflow_uuid, detail}`** — the run is asynchronous and
+there is no run output to show.
+
+`--payload` must be a JSON **object** ≤ 8 KiB (client-side check); it reaches
+workflow steps as `{{trigger.body.*}}`. Error codes:
+`workflow_not_triggerable`, `workflow_trigger_payload_invalid`,
+`workflow_execute_not_allowed` (403), `workflow_frozen` (409 — plan/limit),
+and 404 when the UUID is unknown or out of org.
+
+The same `api_trigger` workflows can also be fired from an interactive chat
+button via `buttons[].callback_workflow` (optionally with a `modal_body`
+whose submitted fields arrive as `{{trigger.fields.<name>}}`).
 
 ---
 
@@ -499,6 +522,12 @@ At least one target is required. Targets:
 
 Content & options: `--text/-m`, `--image-url/-i`, `--link-button "Label::url"`
 (repeatable), `--button "Label::value"` (interactive, repeatable),
+`--buttons '<json-array>'` (full button contract — callbacks, modals, response,
+callback_auth; keys forwarded untouched; max 25),
+`--approve-button "Label=value"` / `--reject-button "Label=value"` with
+`--callback-url` and optional `--callback-bearer` (builds two `callback_url`
+buttons), `--workflow-button "Label=<workflow-uuid>"` (repeatable;
+`callback_workflow`),
 `--thread-message` (repeatable, max 10 — posts a reply in the parent's thread),
 `--thread` (reply into an existing platform thread id),
 `--channel-type` (`channel`/`private_channel`/`group_chat`/`direct_message`),
@@ -511,6 +540,20 @@ Content & options: `--text/-m`, `--image-url/-i`, `--link-button "Label::url"`
   bypasses the building flags. Forward-compatible by design.
 - `--json` — emit the raw API response to stdout for headless/agent use:
   `{ "bot_message_id": "<parent>", "thread_responses": ["<reply1>", …] }`.
+  On failure, emits `{ "error", "status", "code?", "detail?" }` and a structured
+  exit code.
+
+**Interactive buttons.** Up to 25 per message. Each interactive button may set
+**at most one** of `callback_url`, `callback_form`, `callback_command`,
+`callback_prompt`, or `callback_workflow`. Optional composers: `modal_body`
+(with `callback_url` or `callback_workflow` when it has inputs), `response`
+(auto-reply; recursive nested buttons), `callback_auth` (bearer / basic /
+custom_header — only with `callback_url`). The CLI pre-validates mutual
+exclusivity and the 25 cap, then forwards every key untouched (including
+unknown future fields). Server codes: `button_callback_conflict`,
+`button_modal_body_invalid`, `button_callback_workflow_not_found`,
+`buttons_count_out_of_range`, and related `button_*` codes — `--json` passes
+`{detail, code}` through.
 
 **Threads.** `--thread-message` builds the request's `thread_responses` array:
 a short parent message plus its replies, posted inside the parent's thread in
@@ -675,6 +718,7 @@ key, so all of these commands work with `DAILYBOT_API_KEY` set even without
 | `GET` | `/v1/kudos/wall-of-fame/` | `?limit` (optional) | `{ top_receiver, top_giver, dna_distribution, leaderboard: { count, next, previous, results }, leaderboard_summary }` | `kudos wall-of-fame` |
 | `GET` | `/v1/workflows/` | shared list params (all optional) | `{ count, next, previous, results }` | `workflow list`; plan-gated (403 `plan_upgrade_required`) |
 | `GET` | `/v1/workflows/<uuid>/` | — | `{ uuid, name, ... }` | `workflow get`; plan-gated |
+| `POST` | `/v1/workflows/<uuid>/trigger/` | `{ payload? }` (object ≤8 KiB) | `202 { queued, workflow_uuid, detail }` | `workflow trigger`; `api_trigger` only; codes `workflow_not_triggerable`, `workflow_trigger_payload_invalid`, `workflow_execute_not_allowed`, `workflow_frozen` |
 
 ### Agent (X-API-KEY *or* Bearer)
 
