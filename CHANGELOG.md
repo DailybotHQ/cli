@@ -9,6 +9,27 @@ Do not edit it by hand — your edits will be overwritten on the next release.
 
 <!-- version list -->
 
+## v3.8.0 (2026-07-24)
+
+### Bug Fixes
+
+- **chat**: Address AI review findings on buttons/workflow trigger
+  ([#76](https://github.com/DailybotHQ/cli/pull/76),
+  [`dc87849`](https://github.com/DailybotHQ/cli/commit/dc8784945ea6edce5b7702cc4b45d1e2ffe52ae9))
+
+### Code Style
+
+- Apply ruff format to chat/workflow button changes
+  ([#76](https://github.com/DailybotHQ/cli/pull/76),
+  [`dc87849`](https://github.com/DailybotHQ/cli/commit/dc8784945ea6edce5b7702cc4b45d1e2ffe52ae9))
+
+### Features
+
+- **chat**: Interactive button contract + workflow trigger
+  ([#76](https://github.com/DailybotHQ/cli/pull/76),
+  [`dc87849`](https://github.com/DailybotHQ/cli/commit/dc8784945ea6edce5b7702cc4b45d1e2ffe52ae9))
+
+
 ## v3.7.4 (2026-07-17)
 
 ### Bug Fixes
