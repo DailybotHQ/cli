@@ -126,11 +126,7 @@ def workflow_list(
         exit_for_api_error(exc, json_mode)
     if trigger_filter:
         needle: str = trigger_filter.strip().lower()
-        workflows = [
-            wf
-            for wf in workflows
-            if str(wf.get("trigger_type", "")).lower() == needle
-        ]
+        workflows = [wf for wf in workflows if str(wf.get("trigger_type", "")).lower() == needle]
     if json_mode:
         emit_json(workflows)
         return

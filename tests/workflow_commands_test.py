@@ -33,7 +33,12 @@ def test_workflow_list_filter_api_trigger(monkeypatch: Any) -> None:
     client = _client(monkeypatch)
     client.list_workflows.return_value = [
         {"name": "Deploy", "uuid": "w-1", "trigger_type": "api_trigger", "active": True},
-        {"name": "Nightly", "uuid": "w-2", "trigger_type": "scheduled_task_execution", "active": True},
+        {
+            "name": "Nightly",
+            "uuid": "w-2",
+            "trigger_type": "scheduled_task_execution",
+            "active": True,
+        },
     ]
     result = CliRunner().invoke(cli, ["workflow", "list", "--filter", "api_trigger", "--json"])
     assert result.exit_code == 0

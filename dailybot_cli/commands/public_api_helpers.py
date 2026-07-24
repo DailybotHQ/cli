@@ -296,9 +296,7 @@ ERROR_CODE_MESSAGES: dict[str, str] = {
         "Invalid callback_command (≤200 chars; the legacy 'prompt:' prefix is rejected "
         "— use callback_prompt)."
     ),
-    "button_callback_prompt_invalid": (
-        "Invalid callback_prompt (required, ≤2000 chars)."
-    ),
+    "button_callback_prompt_invalid": ("Invalid callback_prompt (required, ≤2000 chars)."),
     "button_callback_workflow_not_found": (
         "callback_workflow did not resolve to an active api_trigger workflow in your org."
     ),
@@ -312,14 +310,12 @@ ERROR_CODE_MESSAGES: dict[str, str] = {
     # Workflow trigger (POST /v1/workflows/<uuid>/trigger/)
     "workflow_not_triggerable": (
         "This workflow's trigger type isn't 'api_trigger' (set it in the automations "
-        "builder to \"When triggered via API or button\") or the workflow is inactive."
+        'builder to "When triggered via API or button") or the workflow is inactive.'
     ),
     "workflow_trigger_payload_invalid": (
         "--payload must be a JSON object and serialize to at most 8 KiB."
     ),
-    "workflow_execute_not_allowed": (
-        "You don't have permission to execute this workflow."
-    ),
+    "workflow_execute_not_allowed": ("You don't have permission to execute this workflow."),
     "workflow_frozen": (
         "This workflow is frozen on your organization's plan. Upgrade or unfreeze it "
         "in the automations builder."

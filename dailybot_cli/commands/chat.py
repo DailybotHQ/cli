@@ -115,24 +115,17 @@ def validate_buttons(buttons: list[Any], *, flag_hint: str = "--buttons") -> Non
     """
     if len(buttons) > MAX_BUTTONS_PER_MESSAGE:
         raise ChatPayloadError(
-            f"At most {MAX_BUTTONS_PER_MESSAGE} buttons are allowed per message "
-            f"({flag_hint})."
+            f"At most {MAX_BUTTONS_PER_MESSAGE} buttons are allowed per message ({flag_hint})."
         )
     for index, button in enumerate(buttons, start=1):
         if not isinstance(button, dict):
-            raise ChatPayloadError(
-                f"Button #{index} must be a JSON object ({flag_hint})."
-            )
+            raise ChatPayloadError(f"Button #{index} must be a JSON object ({flag_hint}).")
         label_raw: Any = button.get("label")
         label: str = str(label_raw).strip() if label_raw is not None else ""
         if not label:
-            raise ChatPayloadError(
-                f"Button #{index} is missing a required 'label' ({flag_hint})."
-            )
+            raise ChatPayloadError(f"Button #{index} is missing a required 'label' ({flag_hint}).")
         present: list[str] = [
-            key
-            for key in BUTTON_CALLBACK_KEYS
-            if button.get(key) not in (None, "")
+            key for key in BUTTON_CALLBACK_KEYS if button.get(key) not in (None, "")
         ]
         if len(present) > 1:
             raise ChatPayloadError(
@@ -520,9 +513,7 @@ def _build_extra_buttons(
     if callback_bearer and not callback_url:
         raise ChatPayloadError("--callback-bearer requires --callback-url.")
     if (approve_button_raw or reject_button_raw) and not callback_url:
-        raise ChatPayloadError(
-            "--approve-button / --reject-button require --callback-url."
-        )
+        raise ChatPayloadError("--approve-button / --reject-button require --callback-url.")
     if callback_url and not (approve_button_raw or reject_button_raw):
         raise ChatPayloadError(
             "--callback-url needs at least one of --approve-button / --reject-button "
