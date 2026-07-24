@@ -972,6 +972,34 @@ class TestDailyBotClientChat:
         assert result["bot_message_id"] == "task-uuid"
 
 
+class TestDailyBotClientWorkflowTrigger:
+    def test_trigger_workflow_posts_payload(self, client: DailyBotClient) -> None:
+        mock_response: MagicMock = MagicMock(spec=httpx.Response)
+        mock_response.status_code = 202
+        mock_response.json.return_value = {
+            "detail": "Workflow trigger accepted.",
+            "workflow_uuid": "w-1",
+            "queued": True,
+        }
+
+        with patch("httpx.post", return_value=mock_response) as mock_post:
+            result: dict[str, Any] = client.trigger_workflow("w-1", payload={"env": "prod"})
+
+        assert mock_post.call_args[0][0] == "http://test-api.example.com/v1/workflows/w-1/trigger/"
+        assert mock_post.call_args[1]["json"] == {"payload": {"env": "prod"}}
+        assert result["queued"] is True
+
+    def test_trigger_workflow_empty_body_when_no_payload(self, client: DailyBotClient) -> None:
+        mock_response: MagicMock = MagicMock(spec=httpx.Response)
+        mock_response.status_code = 202
+        mock_response.json.return_value = {"queued": True, "workflow_uuid": "w-1"}
+
+        with patch("httpx.post", return_value=mock_response) as mock_post:
+            client.trigger_workflow("w-1")
+
+        assert mock_post.call_args[1]["json"] == {}
+
+
 class TestAPIError:
     def test_api_error_raised(self, client: DailyBotClient) -> None:
         mock_response: MagicMock = MagicMock(spec=httpx.Response)

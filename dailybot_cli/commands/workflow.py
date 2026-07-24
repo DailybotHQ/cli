@@ -1,5 +1,11 @@
-"""Workflow read commands (list / get). Read-only — workflow writes are API-side."""
+"""Workflow commands (list / get / trigger).
 
+Browse workflows and fire ``api_trigger`` ones via
+``POST /v1/workflows/{uuid}/trigger/``. Creating and editing workflow
+definitions remains in the Dailybot web app (automations builder).
+"""
+
+import json
 from typing import Any
 
 import click
@@ -16,7 +22,9 @@ from dailybot_cli.display import (
     console,
     print_detail_panel,
     print_error,
+    print_info,
     print_pagination_footer,
+    print_success,
     print_workflows_table,
 )
 
@@ -30,19 +38,35 @@ _WORKFLOW_FIELDS: list[tuple[str, str]] = [
     ("Last run", "last_run_at"),
 ]
 
+# Server rejects non-object / oversized payloads with
+# ``workflow_trigger_payload_invalid``; catch the common cases client-side.
+MAX_TRIGGER_PAYLOAD_BYTES: int = 8 * 1024
+API_TRIGGER_TYPE: str = "api_trigger"
+
 
 @click.group()
 def workflow() -> None:
-    """Browse your organization's workflows (read-only).
+    """Browse and trigger your organization's workflows.
 
     \b
     Acts as you — visibility matches the webapp. Workflows are a plan-gated
-    feature; creating/editing them is done in the Dailybot web app.
+    feature; creating/editing them is done in the Dailybot automations builder.
+
+    \b
+    Only workflows with trigger type 'api_trigger' ("When triggered via API or
+    button") can be fired with 'workflow trigger' or via a chat button's
+    callback_workflow. The optional --payload reaches steps as {{trigger.body.*}}.
     """
 
 
 @workflow.command("list")
 @query_options
+@click.option(
+    "--filter",
+    "trigger_filter",
+    default=None,
+    help=f"Client-side filter on trigger type (e.g. {API_TRIGGER_TYPE}).",
+)
 @click.option("--json", "json_mode", is_flag=True, help="Emit machine-readable JSON to stdout.")
 def workflow_list(
     page: int | None,
@@ -55,6 +79,7 @@ def workflow_list(
     on_date: str | None,
     last_week: bool,
     today: bool,
+    trigger_filter: str | None,
     json_mode: bool,
 ) -> None:
     """List workflows in your organization.
@@ -63,6 +88,7 @@ def workflow_list(
     Examples:
       dailybot workflow list
       dailybot workflow list --search deploy --json
+      dailybot workflow list --filter api_trigger --all
     """
     enforce_plan_access("workflow_list", json_mode=json_mode)
     try:
@@ -98,6 +124,16 @@ def workflow_list(
             )
     except APIError as exc:
         exit_for_api_error(exc, json_mode)
+    if trigger_filter:
+        needle: str = trigger_filter.strip().lower()
+        # Compare against the same canonical value used by chat buttons /
+        # ``workflow trigger`` (API_TRIGGER_TYPE) and any other server type.
+        workflows = [wf for wf in workflows if str(wf.get("trigger_type", "")).lower() == needle]
+        if needle == API_TRIGGER_TYPE and not workflows and not json_mode:
+            print_info(
+                f"No workflows with trigger_type={API_TRIGGER_TYPE!r}. "
+                "Only that type can be fired via 'workflow trigger' or a chat button."
+            )
     if json_mode:
         emit_json(workflows)
         return
@@ -127,3 +163,65 @@ def workflow_get(workflow_uuid: str, json_mode: bool) -> None:
         emit_json(data)
         return
     print_detail_panel("Workflow", data, _WORKFLOW_FIELDS)
+
+
+@workflow.command("trigger")
+@click.argument("workflow_uuid")
+@click.option(
+    "--payload",
+    "payload_raw",
+    default=None,
+    help="JSON object (≤8 KiB) exposed to steps as {{trigger.body.*}}.",
+)
+@click.option("--json", "json_mode", is_flag=True, help="Emit machine-readable JSON to stdout.")
+def workflow_trigger(workflow_uuid: str, payload_raw: str | None, json_mode: bool) -> None:
+    """Queue an api_trigger workflow run (async — returns 202).
+
+    \b
+    Only workflows with trigger type 'api_trigger' ("When triggered via API or
+    button" in the automations builder) are triggerable. The run is queued —
+    there is no run output to show. The same workflows can also be fired from
+    a chat button via callback_workflow (see 'dailybot chat send --help').
+
+    \b
+    Examples:
+      dailybot workflow trigger <workflow-uuid>
+      dailybot workflow trigger <workflow-uuid> \\
+        --payload '{"env":"production","requested_by":"release-bot"}'
+      dailybot workflow trigger <workflow-uuid> --json
+    """
+    enforce_plan_access("workflow_trigger", json_mode=json_mode)
+    payload: dict[str, Any] | None = None
+    if payload_raw is not None:
+        try:
+            parsed: Any = json.loads(payload_raw)
+        except json.JSONDecodeError:
+            print_error("Invalid JSON in --payload.")
+            raise SystemExit(1)
+        if not isinstance(parsed, dict):
+            print_error("--payload must be a JSON object.")
+            raise SystemExit(1)
+        # Match httpx's json= serialization (default separators + ensure_ascii=False)
+        # so the local size guard measures the same bytes that hit the wire.
+        encoded: bytes = json.dumps(parsed, ensure_ascii=False).encode("utf-8")
+        if len(encoded) > MAX_TRIGGER_PAYLOAD_BYTES:
+            print_error(
+                f"--payload must serialize to at most {MAX_TRIGGER_PAYLOAD_BYTES} bytes "
+                f"(got {len(encoded)})."
+            )
+            raise SystemExit(1)
+        payload = parsed
+
+    client = require_auth()
+    try:
+        with console.status("Queuing workflow..."):
+            result: dict[str, Any] = client.trigger_workflow(workflow_uuid, payload=payload)
+    except APIError as exc:
+        exit_for_api_error(exc, json_mode)
+
+    if json_mode:
+        emit_json(result)
+        return
+    print_success("Workflow queued")
+    print_info(f"Workflow UUID: {result.get('workflow_uuid', workflow_uuid)}")
+    print_info("The run is asynchronous — there is no run output to show.")
