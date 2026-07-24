@@ -65,7 +65,7 @@ def workflow() -> None:
     "--filter",
     "trigger_filter",
     default=None,
-    help="Client-side filter on trigger type (e.g. api_trigger).",
+    help=f"Client-side filter on trigger type (e.g. {API_TRIGGER_TYPE}).",
 )
 @click.option("--json", "json_mode", is_flag=True, help="Emit machine-readable JSON to stdout.")
 def workflow_list(
@@ -126,7 +126,14 @@ def workflow_list(
         exit_for_api_error(exc, json_mode)
     if trigger_filter:
         needle: str = trigger_filter.strip().lower()
+        # Compare against the same canonical value used by chat buttons /
+        # ``workflow trigger`` (API_TRIGGER_TYPE) and any other server type.
         workflows = [wf for wf in workflows if str(wf.get("trigger_type", "")).lower() == needle]
+        if needle == API_TRIGGER_TYPE and not workflows and not json_mode:
+            print_info(
+                f"No workflows with trigger_type={API_TRIGGER_TYPE!r}. "
+                "Only that type can be fired via 'workflow trigger' or a chat button."
+            )
     if json_mode:
         emit_json(workflows)
         return
@@ -194,7 +201,9 @@ def workflow_trigger(workflow_uuid: str, payload_raw: str | None, json_mode: boo
         if not isinstance(parsed, dict):
             print_error("--payload must be a JSON object.")
             raise SystemExit(1)
-        encoded: bytes = json.dumps(parsed, separators=(",", ":")).encode("utf-8")
+        # Match httpx's json= serialization (default separators + ensure_ascii=False)
+        # so the local size guard measures the same bytes that hit the wire.
+        encoded: bytes = json.dumps(parsed, ensure_ascii=False).encode("utf-8")
         if len(encoded) > MAX_TRIGGER_PAYLOAD_BYTES:
             print_error(
                 f"--payload must serialize to at most {MAX_TRIGGER_PAYLOAD_BYTES} bytes "

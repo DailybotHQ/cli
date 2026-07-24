@@ -265,7 +265,8 @@ class TestChatSendCommand:
         client = _mock_resolve(mock_resolve)
         client.send_chat_message.side_effect = APIError(status_code=403, detail="API Key Not Valid")
         result = runner.invoke(cli, ["chat", "send", "-c", "C0", "-m", "x"])
-        assert result.exit_code == 1
+        # Code-less 403 must match exit_for_api_error → EXIT_PERMISSION_DENIED.
+        assert result.exit_code == 4
         # Rich may hard-wrap the hint; collapse whitespace before asserting.
         assert "dailybot config" in result.output.replace("\n", " ")
         assert "key=" in result.output

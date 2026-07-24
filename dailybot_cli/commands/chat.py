@@ -28,6 +28,8 @@ import click
 from dailybot_cli.api_client import APIError, DailyBotClient
 from dailybot_cli.commands.agent import _merge_repo_metadata, _resolve_agent_context
 from dailybot_cli.commands.public_api_helpers import (
+    EXIT_NOT_AUTHENTICATED,
+    EXIT_PERMISSION_DENIED,
     UUID_PATTERN,
     emit_json,
     exit_for_api_error,
@@ -332,7 +334,7 @@ def _execute_send(
             overrides[e.code] = e.detail
         # Auth hint when the server didn't send a more specific code.
         if e.status_code in (401, 403) and e.code not in overrides:
-            auth_hint = (
+            auth_hint: str = (
                 f"{e.detail}\n  Authenticate first: run 'dailybot login' (sends as you) or set an "
                 "org API key with 'dailybot config key=<API_KEY>'."
             )
@@ -343,9 +345,14 @@ def _execute_send(
                     emit_json({"error": auth_hint, "status": e.status_code, "detail": e.detail})
                 else:
                     print_error(auth_hint)
-                raise SystemExit(1)
+                # Match exit_for_api_error's status→exit-code contract so headless
+                # consumers see a stable code whether or not the server sent `code`.
+                exit_code: int = (
+                    EXIT_NOT_AUTHENTICATED if e.status_code == 401 else EXIT_PERMISSION_DENIED
+                )
+                raise SystemExit(exit_code)
         if e.status_code == 429 and e.code is None:
-            rate_msg = "Rate limit exceeded for chat sends. Wait a bit and retry."
+            rate_msg: str = "Rate limit exceeded for chat sends. Wait a bit and retry."
             if json_mode:
                 emit_json({"error": rate_msg, "status": 429, "detail": e.detail})
             else:
@@ -438,7 +445,11 @@ def _target_options(fn: Any) -> Any:
             "--callback-bearer",
             "callback_bearer",
             default=None,
-            help="Optional bearer token attached as callback_auth on approval buttons.",
+            help=(
+                "Optional bearer token for callback_auth on approval buttons. Prefer "
+                'passing via an env var (e.g. --callback-bearer "$TOKEN") — a raw '
+                "token on the command line lands in shell history and process lists."
+            ),
         ),
         click.option(
             "--workflow-button",
