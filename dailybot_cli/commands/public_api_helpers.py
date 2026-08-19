@@ -115,6 +115,12 @@ ERROR_CODE_MESSAGES: dict[str, str] = {
         "Your role doesn't allow authoring check-ins. Ask an admin or manager. "
         "The CLI acts within your role and can't elevate."
     ),
+    "paid_plan_required": "Organization Labels require a paid plan with Feature.LABELS enabled.",
+    "feature_not_available": "Organization Labels are not available on this plan.",
+    "guest_not_allowed": "Guests cannot manage organization Labels.",
+    "duplicate_name": "A label with this name already exists.",
+    "archived_label_not_assignable": "This label is archived and cannot be assigned.",
+    "permission_denied": "You don't have permission for this Labels action.",
     "form_edit_forbidden": (
         "You don't have permission to edit this form (you're not the owner or an admin). "
         "The CLI acts within your role and can't elevate."

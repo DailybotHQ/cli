@@ -1789,6 +1789,127 @@ class DailyBotClient:
         )
         return self._handle_response(response)
 
+    # --- Organization Labels (/v1/labels/) ---
+
+    def get_labels_entitlement(self) -> dict[str, Any]:
+        """GET /v1/labels/entitlement/ — org Labels feature flags for the caller."""
+        response: httpx.Response = self._request("GET", f"{self.api_url}/v1/labels/entitlement/")
+        return self._handle_response(response)
+
+    def list_labels(
+        self,
+        *,
+        search: str | None = None,
+        is_archived: bool = False,
+        limit: int = 20,
+        offset: int = 0,
+    ) -> dict[str, Any]:
+        """GET /v1/labels/ — paginated org Labels (limit/offset)."""
+        params: dict[str, Any] = {
+            "limit": max(1, min(limit, 100)),
+            "offset": max(0, offset),
+            "is_archived": is_archived,
+        }
+        if search:
+            params["search"] = search
+        response: httpx.Response = self._request(
+            "GET", f"{self.api_url}/v1/labels/", params=params
+        )
+        return self._handle_response(response)
+
+    def get_label(self, label_uuid: str) -> dict[str, Any]:
+        """GET /v1/labels/<uuid>/ — one organization Label."""
+        response: httpx.Response = self._request(
+            "GET", f"{self.api_url}/v1/labels/{label_uuid}/"
+        )
+        return self._handle_response(response)
+
+    def create_label(
+        self,
+        *,
+        name: str,
+        color: str | None = None,
+        description: str | None = None,
+    ) -> dict[str, Any]:
+        """POST /v1/labels/ — create an organization Label."""
+        body: dict[str, Any] = {"name": name}
+        if color is not None:
+            body["color"] = color
+        if description is not None:
+            body["description"] = description
+        response: httpx.Response = self._request(
+            "POST", f"{self.api_url}/v1/labels/", json=body
+        )
+        return self._handle_response(response)
+
+    def update_label(self, label_uuid: str, body: dict[str, Any]) -> dict[str, Any]:
+        """PATCH /v1/labels/<uuid>/ — update an organization Label."""
+        response: httpx.Response = self._request(
+            "PATCH", f"{self.api_url}/v1/labels/{label_uuid}/", json=body
+        )
+        return self._handle_response(response)
+
+    def delete_label(self, label_uuid: str) -> None:
+        """DELETE /v1/labels/<uuid>/ — hard-delete (elevated only)."""
+        response: httpx.Response = self._request(
+            "DELETE", f"{self.api_url}/v1/labels/{label_uuid}/"
+        )
+        if response.status_code == 204:
+            return
+        self._handle_response(response)
+
+    def archive_label(self, label_uuid: str) -> dict[str, Any]:
+        """POST /v1/labels/<uuid>/archive/ — archive a Label."""
+        response: httpx.Response = self._request(
+            "POST", f"{self.api_url}/v1/labels/{label_uuid}/archive/"
+        )
+        return self._handle_response(response)
+
+    # --- Private Featured stars (/v1/me/featured/) ---
+
+    def list_featured(self, *, entity_type: str) -> dict[str, Any]:
+        """GET /v1/me/featured/?entity_type= — list Featured entity UUIDs for the caller."""
+        response: httpx.Response = self._request(
+            "GET",
+            f"{self.api_url}/v1/me/featured/",
+            params={"entity_type": entity_type},
+        )
+        return self._handle_response(response)
+
+    def set_featured(
+        self,
+        entity_type: str,
+        entity_uuid: str,
+        *,
+        featured: bool,
+    ) -> dict[str, Any]:
+        """PUT /v1/me/featured/{entity_type}/{uuid}/ — toggle Featured for one entity."""
+        response: httpx.Response = self._request(
+            "PUT",
+            f"{self.api_url}/v1/me/featured/{entity_type}/{entity_uuid}/",
+            json={"featured": featured},
+        )
+        return self._handle_response(response)
+
+    def batch_featured(
+        self,
+        *,
+        entity_type: str,
+        entity_uuids: list[str],
+        featured: bool,
+    ) -> dict[str, Any]:
+        """POST /v1/me/featured/batch/ — batch feature/unfeature entities."""
+        response: httpx.Response = self._request(
+            "POST",
+            f"{self.api_url}/v1/me/featured/batch/",
+            json={
+                "entity_type": entity_type,
+                "entity_uuids": entity_uuids,
+                "featured": featured,
+            },
+        )
+        return self._handle_response(response)
+
     # --- Agent registration endpoints ---
 
     def get_registration_challenge(self) -> dict[str, Any]:
