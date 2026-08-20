@@ -106,6 +106,23 @@ def _merge_list_query(
     return params
 
 
+def _merge_dashboard_enrichment_query(
+    params: dict[str, Any],
+    *,
+    labels: list[str] | None = None,
+    featured: bool | None = None,
+    prioritize_featured: bool | None = None,
+) -> dict[str, Any]:
+    """Merge Labels / Featured dashboard enrichment query params."""
+    if labels:
+        params["labels"] = ",".join(labels)
+    if featured is not None:
+        params["featured"] = "true" if featured else "false"
+    if prioritize_featured is not None:
+        params["prioritize_featured"] = "true" if prioritize_featured else "false"
+    return params
+
+
 def _fill_meta(meta: dict[str, Any] | None, result: "PaginatedResult") -> None:
     """Populate a caller-provided meta dict with pagination totals, if given."""
     if meta is not None:
@@ -640,6 +657,9 @@ class DailyBotClient:
         fetch_all: bool = True,
         limit: int | None = None,
         meta: dict[str, Any] | None = None,
+        labels: list[str] | None = None,
+        featured: bool | None = None,
+        prioritize_featured: bool | None = None,
     ) -> list[dict[str, Any]]:
         """GET /v1/checkins/ — fetch visible check-ins with optional search/paging."""
         params: dict[str, Any] = {}
@@ -652,6 +672,12 @@ class DailyBotClient:
         if include_archived:
             params["include_archived"] = "true"
         _merge_list_query(params, search=search, start_date=start_date, end_date=end_date)
+        _merge_dashboard_enrichment_query(
+            params,
+            labels=labels,
+            featured=featured,
+            prioritize_featured=prioritize_featured,
+        )
         result: PaginatedResult = self._paginated_get(
             f"{self.api_url}/v1/checkins/",
             params=params,
@@ -963,6 +989,9 @@ class DailyBotClient:
         fetch_all: bool = True,
         limit: int | None = None,
         meta: dict[str, Any] | None = None,
+        labels: list[str] | None = None,
+        featured: bool | None = None,
+        prioritize_featured: bool | None = None,
     ) -> list[dict[str, Any]]:
         """GET /v1/forms/ — optionally expand questions, search, and page.
 
@@ -990,6 +1019,12 @@ class DailyBotClient:
         if is_ascend:
             params["is_ascend"] = "true"
         _merge_list_query(params, search=search, start_date=start_date, end_date=end_date)
+        _merge_dashboard_enrichment_query(
+            params,
+            labels=labels,
+            featured=featured,
+            prioritize_featured=prioritize_featured,
+        )
         result: PaginatedResult = self._paginated_get(
             f"{self.api_url}/v1/forms/",
             params=params,
@@ -1442,10 +1477,19 @@ class DailyBotClient:
         fetch_all: bool = True,
         limit: int | None = None,
         meta: dict[str, Any] | None = None,
+        labels: list[str] | None = None,
+        featured: bool | None = None,
+        prioritize_featured: bool | None = None,
     ) -> list[dict[str, Any]]:
         """GET /v1/workflows/ — list workflows (plan-gated feature)."""
         params: dict[str, Any] = {}
         _merge_list_query(params, search=search, start_date=start_date, end_date=end_date)
+        _merge_dashboard_enrichment_query(
+            params,
+            labels=labels,
+            featured=featured,
+            prioritize_featured=prioritize_featured,
+        )
         result: PaginatedResult = self._paginated_get(
             f"{self.api_url}/v1/workflows/",
             params=params,
