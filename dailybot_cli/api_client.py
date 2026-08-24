@@ -1856,16 +1856,12 @@ class DailyBotClient:
         }
         if search:
             params["search"] = search
-        response: httpx.Response = self._request(
-            "GET", f"{self.api_url}/v1/labels/", params=params
-        )
+        response: httpx.Response = self._request("GET", f"{self.api_url}/v1/labels/", params=params)
         return self._handle_response(response)
 
     def get_label(self, label_uuid: str) -> dict[str, Any]:
         """GET /v1/labels/<uuid>/ — one organization Label."""
-        response: httpx.Response = self._request(
-            "GET", f"{self.api_url}/v1/labels/{label_uuid}/"
-        )
+        response: httpx.Response = self._request("GET", f"{self.api_url}/v1/labels/{label_uuid}/")
         return self._handle_response(response)
 
     def create_label(
@@ -1881,9 +1877,7 @@ class DailyBotClient:
             body["color"] = color
         if description is not None:
             body["description"] = description
-        response: httpx.Response = self._request(
-            "POST", f"{self.api_url}/v1/labels/", json=body
-        )
+        response: httpx.Response = self._request("POST", f"{self.api_url}/v1/labels/", json=body)
         return self._handle_response(response)
 
     def update_label(self, label_uuid: str, body: dict[str, Any]) -> dict[str, Any]:

@@ -18,9 +18,7 @@ FEATURED_ENTITY_TYPES: tuple[str, ...] = ("forms", "automations", "checkins")
 def _parse_entity_type(ctx: click.Context, param: click.Parameter, value: str) -> str:
     normalized: str = value.strip().lower()
     if normalized not in FEATURED_ENTITY_TYPES:
-        raise click.BadParameter(
-            f"entity_type must be one of: {', '.join(FEATURED_ENTITY_TYPES)}"
-        )
+        raise click.BadParameter(f"entity_type must be one of: {', '.join(FEATURED_ENTITY_TYPES)}")
     return normalized
 
 

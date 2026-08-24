@@ -231,9 +231,13 @@ def label_delete(label_uuid: str, yes: bool, json_mode: bool) -> None:
     enforce_plan_access("label_delete", json_mode=json_mode)
     client: DailyBotClient = require_auth()
 
-    if not yes and not json_mode and not click.confirm(
-        f"Permanently delete label {label_uuid}? This cannot be undone.",
-        default=False,
+    if (
+        not yes
+        and not json_mode
+        and not click.confirm(
+            f"Permanently delete label {label_uuid}? This cannot be undone.",
+            default=False,
+        )
     ):
         raise SystemExit(0)
 
