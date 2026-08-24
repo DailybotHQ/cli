@@ -2,8 +2,6 @@
 
 from unittest.mock import MagicMock, patch
 
-import pytest
-
 from dailybot_cli.api_client import DailyBotClient, _merge_dashboard_enrichment_query
 
 
