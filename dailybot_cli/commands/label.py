@@ -23,9 +23,7 @@ _LABEL_ENTITY_TYPES: tuple[str, ...] = ("forms", "checkins", "workflows", "autom
 _BATCH_MODES: tuple[str, ...] = ("add", "remove", "replace")
 
 
-def _parse_label_entity_type(
-    _ctx: click.Context, _param: click.Parameter, value: str
-) -> str:
+def _parse_label_entity_type(_ctx: click.Context, _param: click.Parameter, value: str) -> str:
     normalized: str = value.strip().lower()
     if normalized not in _LABEL_ENTITY_TYPES:
         raise click.BadParameter(
@@ -403,6 +401,4 @@ def label_batch(
         return
 
     updated: int = int(data.get("updated_count") or len(entity_uuids))
-    print_success(
-        f"{mode.lower()} {len(label_uuids)} label(s) on {updated} {entity_type} item(s)."
-    )
+    print_success(f"{mode.lower()} {len(label_uuids)} label(s) on {updated} {entity_type} item(s).")
