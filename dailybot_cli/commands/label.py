@@ -14,9 +14,38 @@ from dailybot_cli.commands.public_api_helpers import (
 from dailybot_cli.display import (
     console,
     print_detail_panel,
+    print_label_assignment,
     print_labels_table,
     print_success,
 )
+
+_LABEL_ENTITY_TYPES: tuple[str, ...] = ("forms", "checkins", "workflows", "automations")
+_BATCH_MODES: tuple[str, ...] = ("add", "remove", "replace")
+
+
+def _parse_label_entity_type(
+    _ctx: click.Context, _param: click.Parameter, value: str
+) -> str:
+    normalized: str = value.strip().lower()
+    if normalized not in _LABEL_ENTITY_TYPES:
+        raise click.BadParameter(
+            "must be one of: forms, checkins, workflows (automations is an alias)"
+        )
+    if normalized == "automations":
+        return "workflows"
+    return normalized
+
+
+def _parse_label_uuid_list(values: tuple[str, ...]) -> list[str]:
+    uuids: list[str] = []
+    for raw in values:
+        for part in raw.split(","):
+            token: str = part.strip()
+            if token:
+                uuids.append(token)
+    # Preserve order, drop duplicates.
+    return list(dict.fromkeys(uuids))
+
 
 _LABEL_FIELDS: list[tuple[str, str]] = [
     ("Name", "name"),
@@ -252,3 +281,128 @@ def label_delete(label_uuid: str, yes: bool, json_mode: bool) -> None:
         return
 
     print_success(f"Deleted label {label_uuid}.")
+
+
+@label.command("assign")
+@click.argument("entity_uuid")
+@click.option(
+    "--type",
+    "entity_type",
+    required=True,
+    callback=_parse_label_entity_type,
+    help="Entity type: forms, checkins, or workflows (automations alias).",
+)
+@click.option(
+    "--label",
+    "label_refs",
+    multiple=True,
+    help="Label UUID to attach (repeatable, or comma-separated). Replace-set.",
+)
+@click.option(
+    "--clear",
+    is_flag=True,
+    help="Remove every Label from this entity (replace with an empty set).",
+)
+@click.option("--json", "json_mode", is_flag=True, help="Emit machine-readable JSON to stdout.")
+def label_assign(
+    entity_uuid: str,
+    entity_type: str,
+    label_refs: tuple[str, ...],
+    clear: bool,
+    json_mode: bool,
+) -> None:
+    """Replace the Labels on one form, check-in, or workflow (web picker parity).
+
+    \b
+    Same as the chip picker in the Dailybot web app: the list you pass becomes
+    the full set. Use --clear to detach every Label. Add or remove on many
+    items at once with `label batch`.
+    """
+    label_uuids: list[str] = _parse_label_uuid_list(label_refs)
+    if clear and label_uuids:
+        raise click.UsageError("Pass either --label or --clear, not both.")
+    if not clear and not label_uuids:
+        raise click.UsageError("Pass at least one --label, or --clear to detach all.")
+
+    client = require_auth()
+    try:
+        with console.status("Updating labels..."):
+            data: dict[str, Any] = client.assign_entity_labels(
+                entity_type,
+                entity_uuid,
+                label_uuids,
+            )
+    except APIError as exc:
+        exit_for_api_error(exc, json_mode)
+
+    if json_mode:
+        emit_json(data)
+        return
+
+    attached: list[dict[str, Any]] = data.get("labels") or []
+    print_success(f"Updated labels on {entity_type} {data.get('uuid', entity_uuid)}.")
+    print_label_assignment(str(data.get("uuid", entity_uuid)), attached)
+
+
+@label.command("batch")
+@click.option(
+    "--type",
+    "entity_type",
+    required=True,
+    callback=_parse_label_entity_type,
+    help="Entity type: forms, checkins, or workflows (automations alias).",
+)
+@click.option(
+    "--uuids",
+    required=True,
+    help="Comma-separated form, check-in, or workflow UUIDs.",
+)
+@click.option(
+    "--label",
+    "label_refs",
+    multiple=True,
+    help="Label UUID (repeatable, or comma-separated).",
+)
+@click.option(
+    "--mode",
+    type=click.Choice(_BATCH_MODES, case_sensitive=False),
+    default="add",
+    show_default=True,
+    help="add / remove / replace Labels on every listed entity.",
+)
+@click.option("--json", "json_mode", is_flag=True, help="Emit machine-readable JSON to stdout.")
+def label_batch(
+    entity_type: str,
+    uuids: str,
+    label_refs: tuple[str, ...],
+    mode: str,
+    json_mode: bool,
+) -> None:
+    """Add, remove, or replace Labels on many forms, check-ins, or workflows."""
+    entity_uuids: list[str] = [part.strip() for part in uuids.split(",") if part.strip()]
+    if not entity_uuids:
+        raise click.UsageError("--uuids must contain at least one UUID.")
+    label_uuids: list[str] = _parse_label_uuid_list(label_refs)
+    if not label_uuids:
+        raise click.UsageError("Pass at least one --label.")
+
+    client = require_auth()
+    try:
+        with console.status("Updating labels..."):
+            data: dict[str, Any] = client.batch_entity_labels(
+                entity_type=entity_type,
+                entity_uuids=entity_uuids,
+                label_uuids=label_uuids,
+                mode=mode.lower(),
+            )
+    except APIError as exc:
+        exit_for_api_error(exc, json_mode)
+
+    if json_mode:
+        emit_json(data)
+        return
+
+    updated: int = int(data.get("updated_count") or len(entity_uuids))
+    print_success(
+        f"{mode.lower()} {len(label_uuids)} label(s) on {updated} {entity_type} item(s)."
+    )

@@ -170,6 +170,13 @@ def print_kudos_wall_of_fame(data: dict[str, Any]) -> None:
     )
 
 
+def print_label_assignment(entity_uuid: str, labels: list[dict[str, Any]]) -> None:
+    """Render the Labels currently attached to one form, check-in, or workflow."""
+    names: list[str] = [str(item.get("name") or item.get("uuid") or "—") for item in labels]
+    attached: str = ", ".join(names) if names else "(none)"
+    console.print(f"[bold]{entity_uuid}[/bold] → {attached}")
+
+
 def print_labels_table(labels: list[dict[str, Any]]) -> None:
     """Render a compact table of organization Labels."""
     if not labels:

@@ -123,6 +123,20 @@ def _merge_dashboard_enrichment_query(
     return params
 
 
+def _label_entity_collection(entity_type: str) -> str:
+    """Map CLI entity type (including web 'automations') to the public API path."""
+    normalized: str = entity_type.strip().lower()
+    if normalized in {"automations", "workflows", "workflow"}:
+        return "workflows"
+    if normalized in {"forms", "form"}:
+        return "forms"
+    if normalized in {"checkins", "checkin", "check-ins"}:
+        return "checkins"
+    raise ValueError(
+        f"entity type must be one of: forms, checkins, workflows (got {entity_type!r})"
+    )
+
+
 def _fill_meta(meta: dict[str, Any] | None, result: "PaginatedResult") -> None:
     """Populate a caller-provided meta dict with pagination totals, if given."""
     if meta is not None:
@@ -1900,6 +1914,42 @@ class DailyBotClient:
         """POST /v1/labels/<uuid>/archive/ — archive a Label."""
         response: httpx.Response = self._request(
             "POST", f"{self.api_url}/v1/labels/{label_uuid}/archive/"
+        )
+        return self._handle_response(response)
+
+    def assign_entity_labels(
+        self,
+        entity_type: str,
+        entity_uuid: str,
+        label_uuids: list[str],
+    ) -> dict[str, Any]:
+        """POST /v1/{forms|checkins|workflows}/{uuid}/labels/ — replace-set Labels."""
+        collection: str = _label_entity_collection(entity_type)
+        response: httpx.Response = self._request(
+            "POST",
+            f"{self.api_url}/v1/{collection}/{entity_uuid}/labels/",
+            json={"label_uuids": label_uuids},
+        )
+        return self._handle_response(response)
+
+    def batch_entity_labels(
+        self,
+        *,
+        entity_type: str,
+        entity_uuids: list[str],
+        label_uuids: list[str],
+        mode: str,
+    ) -> dict[str, Any]:
+        """POST /v1/{forms|checkins|workflows}/labels/batch/ — add/remove/replace."""
+        collection: str = _label_entity_collection(entity_type)
+        response: httpx.Response = self._request(
+            "POST",
+            f"{self.api_url}/v1/{collection}/labels/batch/",
+            json={
+                "entity_uuids": entity_uuids,
+                "label_uuids": label_uuids,
+                "mode": mode,
+            },
         )
         return self._handle_response(response)
 
