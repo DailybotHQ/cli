@@ -299,7 +299,7 @@ class TestLoadRepoEnv:
         assert result["disabled"] is False
         active: dict[str, Any] | None = get_active_env_profile(chdir_tmp)
         assert active is not None and active["name"] == "x"
-        captured: str = capsys.readouterr().out
+        captured: str = " ".join(capsys.readouterr().out.split())
         assert "must be a JSON boolean" in captured
         assert "ACTIVE" in captured
 
