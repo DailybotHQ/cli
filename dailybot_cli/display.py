@@ -170,6 +170,49 @@ def print_kudos_wall_of_fame(data: dict[str, Any]) -> None:
     )
 
 
+def print_label_assignment(entity_uuid: str, labels: list[dict[str, Any]]) -> None:
+    """Render the Labels currently attached to one form, check-in, or workflow."""
+    names: list[str] = [str(item.get("name") or item.get("uuid") or "—") for item in labels]
+    attached: str = ", ".join(names) if names else "(none)"
+    console.print(f"[bold]{entity_uuid}[/bold] → {attached}")
+
+
+def print_labels_table(labels: list[dict[str, Any]]) -> None:
+    """Render a compact table of organization Labels."""
+    if not labels:
+        console.print("[dim]No labels found.[/dim]")
+        return
+    table: Table = Table(title="Labels")
+    table.add_column("Name", style="cyan")
+    table.add_column("UUID", style="dim", no_wrap=True)
+    table.add_column("Color")
+    table.add_column("Usage", justify="right")
+    table.add_column("Archived", justify="center")
+    for label in labels:
+        usage: dict[str, Any] = label.get("usage") or {}
+        archived: str = "[green]yes[/green]" if label.get("is_archived") else "[dim]no[/dim]"
+        table.add_row(
+            str(label.get("name", "—")),
+            str(label.get("uuid", "—")),
+            str(label.get("color", "—")),
+            str(usage.get("total", 0)),
+            archived,
+        )
+    console.print(table)
+
+
+def print_featured_summary(data: dict[str, Any]) -> None:
+    """Render Featured UUID list for one entity type."""
+    entity_type: str = str(data.get("entity_type", "—"))
+    uuids: list[str] = [str(value) for value in data.get("entity_uuids", [])]
+    console.print(f"[bold]Featured {entity_type}[/bold] ({len(uuids)})")
+    if not uuids:
+        console.print("[dim]None starred yet.[/dim]")
+        return
+    for uuid in uuids:
+        console.print(f"  • {uuid}")
+
+
 def print_workflows_table(workflows: list[dict[str, Any]]) -> None:
     """Render a compact table of workflows (name, trigger, active, runs)."""
     if not workflows:

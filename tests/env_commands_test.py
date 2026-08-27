@@ -260,7 +260,8 @@ class TestEnvShow:
 
         result = runner.invoke(cli, ["env", "show"])
         assert result.exit_code == 0
-        assert "no active profile" in result.output.lower()
+        # Rich wraps long tmp paths, so join whitespace before matching.
+        assert "no active profile" in " ".join(result.output.split()).lower()
 
         result = runner.invoke(cli, ["env", "list"])
         assert result.exit_code == 0

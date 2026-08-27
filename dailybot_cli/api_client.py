@@ -106,6 +106,37 @@ def _merge_list_query(
     return params
 
 
+def _merge_dashboard_enrichment_query(
+    params: dict[str, Any],
+    *,
+    labels: list[str] | None = None,
+    featured: bool | None = None,
+    prioritize_featured: bool | None = None,
+) -> dict[str, Any]:
+    """Merge Labels / Featured dashboard enrichment query params."""
+    if labels:
+        params["labels"] = ",".join(labels)
+    if featured is not None:
+        params["featured"] = "true" if featured else "false"
+    if prioritize_featured is not None:
+        params["prioritize_featured"] = "true" if prioritize_featured else "false"
+    return params
+
+
+def _label_entity_collection(entity_type: str) -> str:
+    """Map CLI entity type (including web 'automations') to the public API path."""
+    normalized: str = entity_type.strip().lower()
+    if normalized in {"automations", "workflows", "workflow"}:
+        return "workflows"
+    if normalized in {"forms", "form"}:
+        return "forms"
+    if normalized in {"checkins", "checkin", "check-ins"}:
+        return "checkins"
+    raise ValueError(
+        f"entity type must be one of: forms, checkins, workflows (got {entity_type!r})"
+    )
+
+
 def _fill_meta(meta: dict[str, Any] | None, result: "PaginatedResult") -> None:
     """Populate a caller-provided meta dict with pagination totals, if given."""
     if meta is not None:
@@ -640,6 +671,9 @@ class DailyBotClient:
         fetch_all: bool = True,
         limit: int | None = None,
         meta: dict[str, Any] | None = None,
+        labels: list[str] | None = None,
+        featured: bool | None = None,
+        prioritize_featured: bool | None = None,
     ) -> list[dict[str, Any]]:
         """GET /v1/checkins/ — fetch visible check-ins with optional search/paging."""
         params: dict[str, Any] = {}
@@ -652,6 +686,12 @@ class DailyBotClient:
         if include_archived:
             params["include_archived"] = "true"
         _merge_list_query(params, search=search, start_date=start_date, end_date=end_date)
+        _merge_dashboard_enrichment_query(
+            params,
+            labels=labels,
+            featured=featured,
+            prioritize_featured=prioritize_featured,
+        )
         result: PaginatedResult = self._paginated_get(
             f"{self.api_url}/v1/checkins/",
             params=params,
@@ -963,6 +1003,9 @@ class DailyBotClient:
         fetch_all: bool = True,
         limit: int | None = None,
         meta: dict[str, Any] | None = None,
+        labels: list[str] | None = None,
+        featured: bool | None = None,
+        prioritize_featured: bool | None = None,
     ) -> list[dict[str, Any]]:
         """GET /v1/forms/ — optionally expand questions, search, and page.
 
@@ -990,6 +1033,12 @@ class DailyBotClient:
         if is_ascend:
             params["is_ascend"] = "true"
         _merge_list_query(params, search=search, start_date=start_date, end_date=end_date)
+        _merge_dashboard_enrichment_query(
+            params,
+            labels=labels,
+            featured=featured,
+            prioritize_featured=prioritize_featured,
+        )
         result: PaginatedResult = self._paginated_get(
             f"{self.api_url}/v1/forms/",
             params=params,
@@ -1442,10 +1491,19 @@ class DailyBotClient:
         fetch_all: bool = True,
         limit: int | None = None,
         meta: dict[str, Any] | None = None,
+        labels: list[str] | None = None,
+        featured: bool | None = None,
+        prioritize_featured: bool | None = None,
     ) -> list[dict[str, Any]]:
         """GET /v1/workflows/ — list workflows (plan-gated feature)."""
         params: dict[str, Any] = {}
         _merge_list_query(params, search=search, start_date=start_date, end_date=end_date)
+        _merge_dashboard_enrichment_query(
+            params,
+            labels=labels,
+            featured=featured,
+            prioritize_featured=prioritize_featured,
+        )
         result: PaginatedResult = self._paginated_get(
             f"{self.api_url}/v1/workflows/",
             params=params,
@@ -1786,6 +1844,157 @@ class DailyBotClient:
             "PATCH",
             f"{self.api_url}/v1/agent-messages/read/",
             json={"message_ids": message_ids},
+        )
+        return self._handle_response(response)
+
+    # --- Organization Labels (/v1/labels/) ---
+
+    def get_labels_entitlement(self) -> dict[str, Any]:
+        """GET /v1/labels/entitlement/ — org Labels feature flags for the caller."""
+        response: httpx.Response = self._request("GET", f"{self.api_url}/v1/labels/entitlement/")
+        return self._handle_response(response)
+
+    def list_labels(
+        self,
+        *,
+        search: str | None = None,
+        is_archived: bool = False,
+        limit: int = 20,
+        offset: int = 0,
+    ) -> dict[str, Any]:
+        """GET /v1/labels/ — paginated org Labels (limit/offset)."""
+        params: dict[str, Any] = {
+            "limit": max(1, min(limit, 100)),
+            "offset": max(0, offset),
+            "is_archived": is_archived,
+        }
+        if search:
+            params["search"] = search
+        response: httpx.Response = self._request("GET", f"{self.api_url}/v1/labels/", params=params)
+        return self._handle_response(response)
+
+    def get_label(self, label_uuid: str) -> dict[str, Any]:
+        """GET /v1/labels/<uuid>/ — one organization Label."""
+        response: httpx.Response = self._request("GET", f"{self.api_url}/v1/labels/{label_uuid}/")
+        return self._handle_response(response)
+
+    def create_label(
+        self,
+        *,
+        name: str,
+        color: str | None = None,
+        description: str | None = None,
+    ) -> dict[str, Any]:
+        """POST /v1/labels/ — create an organization Label."""
+        body: dict[str, Any] = {"name": name}
+        if color is not None:
+            body["color"] = color
+        if description is not None:
+            body["description"] = description
+        response: httpx.Response = self._request("POST", f"{self.api_url}/v1/labels/", json=body)
+        return self._handle_response(response)
+
+    def update_label(self, label_uuid: str, body: dict[str, Any]) -> dict[str, Any]:
+        """PATCH /v1/labels/<uuid>/ — update an organization Label."""
+        response: httpx.Response = self._request(
+            "PATCH", f"{self.api_url}/v1/labels/{label_uuid}/", json=body
+        )
+        return self._handle_response(response)
+
+    def delete_label(self, label_uuid: str) -> None:
+        """DELETE /v1/labels/<uuid>/ — hard-delete (elevated only)."""
+        response: httpx.Response = self._request(
+            "DELETE", f"{self.api_url}/v1/labels/{label_uuid}/"
+        )
+        if response.status_code == 204:
+            return
+        self._handle_response(response)
+
+    def archive_label(self, label_uuid: str) -> dict[str, Any]:
+        """POST /v1/labels/<uuid>/archive/ — archive a Label."""
+        response: httpx.Response = self._request(
+            "POST", f"{self.api_url}/v1/labels/{label_uuid}/archive/"
+        )
+        return self._handle_response(response)
+
+    def assign_entity_labels(
+        self,
+        entity_type: str,
+        entity_uuid: str,
+        label_uuids: list[str],
+    ) -> dict[str, Any]:
+        """POST /v1/{forms|checkins|workflows}/{uuid}/labels/ — replace-set Labels."""
+        collection: str = _label_entity_collection(entity_type)
+        response: httpx.Response = self._request(
+            "POST",
+            f"{self.api_url}/v1/{collection}/{entity_uuid}/labels/",
+            json={"label_uuids": label_uuids},
+        )
+        return self._handle_response(response)
+
+    def batch_entity_labels(
+        self,
+        *,
+        entity_type: str,
+        entity_uuids: list[str],
+        label_uuids: list[str],
+        mode: str,
+    ) -> dict[str, Any]:
+        """POST /v1/{forms|checkins|workflows}/labels/batch/ — add/remove/replace."""
+        collection: str = _label_entity_collection(entity_type)
+        response: httpx.Response = self._request(
+            "POST",
+            f"{self.api_url}/v1/{collection}/labels/batch/",
+            json={
+                "entity_uuids": entity_uuids,
+                "label_uuids": label_uuids,
+                "mode": mode,
+            },
+        )
+        return self._handle_response(response)
+
+    # --- Private Featured stars (/v1/me/featured/) ---
+
+    def list_featured(self, *, entity_type: str) -> dict[str, Any]:
+        """GET /v1/me/featured/?entity_type= — list Featured entity UUIDs for the caller."""
+        response: httpx.Response = self._request(
+            "GET",
+            f"{self.api_url}/v1/me/featured/",
+            params={"entity_type": entity_type},
+        )
+        return self._handle_response(response)
+
+    def set_featured(
+        self,
+        entity_type: str,
+        entity_uuid: str,
+        *,
+        featured: bool,
+    ) -> dict[str, Any]:
+        """PUT /v1/me/featured/{entity_type}/{uuid}/ — toggle Featured for one entity."""
+        response: httpx.Response = self._request(
+            "PUT",
+            f"{self.api_url}/v1/me/featured/{entity_type}/{entity_uuid}/",
+            json={"featured": featured},
+        )
+        return self._handle_response(response)
+
+    def batch_featured(
+        self,
+        *,
+        entity_type: str,
+        entity_uuids: list[str],
+        featured: bool,
+    ) -> dict[str, Any]:
+        """POST /v1/me/featured/batch/ — batch feature/unfeature entities."""
+        response: httpx.Response = self._request(
+            "POST",
+            f"{self.api_url}/v1/me/featured/batch/",
+            json={
+                "entity_type": entity_type,
+                "entity_uuids": entity_uuids,
+                "featured": featured,
+            },
         )
         return self._handle_response(response)
 
