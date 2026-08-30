@@ -148,6 +148,22 @@ If `auto-release.yml` was skipped (e.g. CI was down at merge time), you can re-r
 
 If you need a release for commits that don't qualify (e.g. an emergency `chore`-only release), fall back to the tag-triggered flow below.
 
+#### Stuck release: `Actor.name_email_regex` / GitPython 3.1.60
+
+On 2026-08-27 the labels merge (PR #78) failed Auto Release with:
+
+```text
+AttributeError: type object 'Actor' has no attribute 'name_email_regex'
+```
+
+GitPython **3.1.60** removed that attribute; `python-semantic-release` ≤10.6.1 read it on every config load ([python-semantic-release#1476](https://github.com/python-semantic-release/python-semantic-release/issues/1476)). No `v*` tag was cut, so PyPI stayed on `v3.8.0`.
+
+`auto-release.yml` now pins `python-semantic-release>=10.6.2,<11` (validates `commit_author` without that attribute) and `GitPython!=3.1.60`. To cut the missed release after the pin is on `main`:
+
+```bash
+gh workflow run auto-release.yml --ref main
+```
+
 ### Opt-in release skip — the `[skip release]` marker
 
 > Every PR releases by default. This is the **only** way to suppress it.

@@ -16,6 +16,7 @@ from dailybot_cli.commands.public_api_helpers import (
     exit_for_api_error,
     find_pending_checkin,
     get_current_user_uuid,
+    normalize_checkin_entity_json,
     normalize_checkin_list_json,
     parse_answer_flags,
 )
@@ -671,7 +672,7 @@ def execute_checkin_show(
         exit_for_api_error(exc, json_mode)
 
     if json_mode:
-        emit_json(detail)
+        emit_json(normalize_checkin_entity_json(detail))
         return
     print_checkin_detail(detail)
 

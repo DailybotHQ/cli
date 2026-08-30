@@ -155,7 +155,15 @@ jobs:
 
       - name: Install python-semantic-release
         if: steps.skip_check.outputs.skip != 'true'
-        run: pip install "python-semantic-release>=10,<11"
+        # Pin PSR >=10.6.2: GitPython 3.1.60 removed Actor.name_email_regex and
+        # every `semantic-release` config load crashed with
+        #   AttributeError: type object 'Actor' has no attribute 'name_email_regex'
+        # (see python-semantic-release#1476). That broke the labels PR auto-release
+        # on 2026-08-27 (run 33115288463) so v3.8.0 never advanced and PyPI was
+        # never published. 10.6.2 validates commit_author internally. Also exclude
+        # the broken GitPython wheel as belt-and-suspenders in case a future PSR
+        # pin regresses.
+        run: pip install "python-semantic-release>=10.6.2,<11" "GitPython!=3.1.60"
 
       - name: Capture latest tag (before)
         if: steps.skip_check.outputs.skip != 'true'

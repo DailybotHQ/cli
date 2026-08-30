@@ -520,6 +520,23 @@ def normalize_checkin_list_json(data: dict[str, Any]) -> dict[str, Any]:
     return {"pending_checkins": pending, "count": data.get("count", len(pending))}
 
 
+def normalize_checkin_entity_json(checkin: dict[str, Any]) -> dict[str, Any]:
+    """Ensure authoring check-in payloads expose a stable ``uuid`` field.
+
+    Create/config responses from ``/v1/checkins/`` historically return the
+    follow-up id under ``id`` (not ``uuid``). Forms and Labels use ``uuid``
+    everywhere, so scripting ``checkin create --json`` → ``label assign``
+    was awkward. Copy ``id`` into ``uuid`` when missing; never overwrite an
+    explicit ``uuid``.
+    """
+    enriched: dict[str, Any] = dict(checkin)
+    if not enriched.get("uuid"):
+        legacy_id: Any = enriched.get("id") or enriched.get("followup_uuid")
+        if legacy_id:
+            enriched["uuid"] = str(legacy_id)
+    return enriched
+
+
 def find_pending_checkin(
     pending_checkins: list[dict[str, Any]],
     followup_uuid: str,

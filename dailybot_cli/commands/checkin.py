@@ -30,6 +30,7 @@ from dailybot_cli.commands.public_api_helpers import (
     emit_json,
     enforce_plan_access,
     exit_for_api_error,
+    normalize_checkin_entity_json,
     require_auth,
     validate_user_filter,
 )
@@ -524,7 +525,7 @@ def checkin_create(
         exit_for_api_error(exc, json_mode)
 
     if json_mode:
-        emit_json(result)
+        emit_json(normalize_checkin_entity_json(result))
         return
     print_checkin_created(result)
 
@@ -610,7 +611,7 @@ def checkin_config(
         exit_for_api_error(exc, json_mode)
 
     if json_mode:
-        emit_json(result)
+        emit_json(normalize_checkin_entity_json(result))
         return
     print_success(f"Check-in {followup_uuid} updated.")
     print_checkin_created(result, updated=True)
