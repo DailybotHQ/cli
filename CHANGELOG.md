@@ -9,6 +9,46 @@ Do not edit it by hand — your edits will be overwritten on the next release.
 
 <!-- version list -->
 
+## v3.9.0 (2026-08-30)
+
+### Bug Fixes
+
+- **cli**: Format label assign commands for ruff
+  ([`0dc1e64`](https://github.com/DailybotHQ/cli/commit/0dc1e646d9e6493ce1b5a141abeb6b35bd8313eb))
+
+- **cli**: Satisfy ruff on label delete confirm and unused pytest import
+  ([`b444cd3`](https://github.com/DailybotHQ/cli/commit/b444cd325c13d4762b169a4c15a5b86924320fdb))
+
+- **release**: Pin PSR past GitPython 3.1.60 Actor.name_email_regex break
+  ([#79](https://github.com/DailybotHQ/cli/pull/79),
+  [`50bc734`](https://github.com/DailybotHQ/cli/commit/50bc734bed578eaada15b7454097b43bf5d1fcab))
+
+- **tests**: Normalize output for profile checks in env commands tests
+  ([`8eae337`](https://github.com/DailybotHQ/cli/commit/8eae33744ab3b391e6be93b1dcbc8c5dc7c6b315))
+
+### Chores
+
+- **skills**: Sync vendored dailybot skill pack to v3.11.0
+  ([#77](https://github.com/DailybotHQ/cli/pull/77),
+  [`e18e8cb`](https://github.com/DailybotHQ/cli/commit/e18e8cb20a217a006e3bc6c16cfaa0b0d2b1b2b3))
+
+### Features
+
+- **cli**: Add label and featured commands for CORE-2362
+  ([`d9dd99c`](https://github.com/DailybotHQ/cli/commit/d9dd99c4055fea1614b0a42f43888e4f53834b0a))
+
+- **cli**: Assign organization Labels on forms, check-ins, and workflows
+  ([`44e7f8f`](https://github.com/DailybotHQ/cli/commit/44e7f8f08ffc97c5080fc2abec5d829871bf8701))
+
+- **cli**: Forward Labels/Featured enrichment on list APIs
+  ([`398257e`](https://github.com/DailybotHQ/cli/commit/398257e63057f6004e9d156c131f60cd2ad2a3e4))
+
+### Refactoring
+
+- **cli**: Streamline API request formatting and improve error handling in label commands
+  ([`ea9fc9c`](https://github.com/DailybotHQ/cli/commit/ea9fc9c52a387b5bdaec0b2fc0fd93891426a3a2))
+
+
 ## v3.8.0 (2026-07-24)
 
 ### Bug Fixes
