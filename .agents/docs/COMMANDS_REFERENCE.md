@@ -58,7 +58,7 @@ Project-scoped slash commands curated for `dailybot-cli` work. Each routes to a 
 
 ## Dailybot agent skill pack (vendored)
 
-The full pack lives under [`../skills/dailybot/`](../skills/dailybot/) (router + 9 sub-skills). The router auto-routes by intent — read [`../skills/dailybot/SKILL.md`](../skills/dailybot/SKILL.md) and let it pick the right sub-skill. Each sub-skill is independently invocable; the full list lives in [`skills_agents_catalog.md`](skills_agents_catalog.md).
+The full pack lives under [`../skills/dailybot/`](../skills/dailybot/) (router + sixteen sub-skills, including labels + featured). The router auto-routes by intent — read [`../skills/dailybot/SKILL.md`](../skills/dailybot/SKILL.md) and let it pick the right sub-skill. Each sub-skill is independently invocable; the full list lives in [`skills_agents_catalog.md`](skills_agents_catalog.md).
 
 ---
 
