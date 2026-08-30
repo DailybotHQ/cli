@@ -43,6 +43,35 @@ def _client() -> Any:
 
 
 class TestCheckinCreate:
+    def test_create_json_exposes_uuid_alias(self, runner: CliRunner, qfile: str) -> None:
+        """API returns ``id``; --json must also expose ``uuid`` for label assign scripts."""
+        with _auth(), _client() as cls:
+            client: MagicMock = cls.return_value
+            client.create_checkin.return_value = CHECKIN_PAYLOAD
+            client.list_teams.return_value = [{"uuid": "t-1", "name": "Eng"}]
+            result = runner.invoke(
+                cli,
+                [
+                    "checkin",
+                    "create",
+                    "-n",
+                    "Standup",
+                    "--time",
+                    "09:00",
+                    "--days",
+                    "1,2,3,4,5",
+                    "--team",
+                    "Eng",
+                    "--questions-file",
+                    qfile,
+                    "--json",
+                ],
+            )
+        assert result.exit_code == 0, result.output
+        payload: dict[str, Any] = json.loads(result.output)
+        assert payload["id"] == "fu-1"
+        assert payload["uuid"] == "fu-1"
+
     def test_create_with_schedule(self, runner: CliRunner, qfile: str) -> None:
         with _auth(), _client() as cls:
             client: MagicMock = cls.return_value

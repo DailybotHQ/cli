@@ -697,6 +697,7 @@ class TestAuthoringDisplay:
         output: str = capture.get()
         assert "Standup" in output
         assert "09:00" in output
+        assert "UUID: fu-1" in output
 
     def test_questions_table_empty(self) -> None:
         with display.console.capture() as capture:

@@ -1462,8 +1462,10 @@ def print_form_created(form: dict[str, Any], *, updated: bool = False) -> None:
 def print_checkin_created(checkin: dict[str, Any], *, updated: bool = False) -> None:
     """Display a created (or, with ``updated=True``, edited) check-in + summary."""
     name: str = str(checkin.get("name") or "")
-    checkin_id: str = str(checkin.get("id") or checkin.get("uuid") or "")
-    lines: list[str] = [f"[bold]{name}[/bold]", f"ID: {checkin_id}"]
+    checkin_uuid: str = str(
+        checkin.get("uuid") or checkin.get("id") or checkin.get("followup_uuid") or ""
+    )
+    lines: list[str] = [f"[bold]{name}[/bold]", f"UUID: {checkin_uuid}"]
     schedule: dict[str, Any] = checkin.get("schedule") or {}
     if schedule:
         days: Any = schedule.get("days")
