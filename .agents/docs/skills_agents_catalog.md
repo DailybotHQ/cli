@@ -18,7 +18,7 @@ Slash commands. Invoked as `/<name>` (Claude Code) or `#<name>` (Codex/Cursor/Ge
 
 ### Dailybot agent skill pack (vendored from [`DailybotHQ/agent-skill`](https://github.com/DailybotHQ/agent-skill))
 
-The full pack lives under [`.agents/skills/dailybot/`](../skills/dailybot/) (router + fourteen sub-skills; vendored at **v3.11.0**). Every sub-skill requires `dailybot-cli >= 3.8.0` — the pack baseline. The router auto-routes by intent — read [`skills/dailybot/SKILL.md`](../skills/dailybot/SKILL.md) and let it pick the right sub-skill. Direct sub-skill entry points:
+The full pack lives under [`.agents/skills/dailybot/`](../skills/dailybot/) (router + sixteen sub-skills; vendored at **v3.13.0**). Every sub-skill requires `dailybot-cli >= 3.9.0` — the pack baseline. The router auto-routes by intent — read [`skills/dailybot/SKILL.md`](../skills/dailybot/SKILL.md) and let it pick the right sub-skill. Direct sub-skill entry points:
 
 | Slug | Procedure | Use when |
 |------|-----------|----------|
@@ -35,6 +35,8 @@ The full pack lives under [`.agents/skills/dailybot/`](../skills/dailybot/) (rou
 | `dailybot-conversation` | [`skills/dailybot/conversation/SKILL.md`](../skills/dailybot/conversation/SKILL.md) | Opening (or idempotently reusing) a Slack group DM with the bot + named teammates, then optionally posting a report (`conversation open -u … -m …`; Slack only, org-admin only) |
 | `dailybot-ask` | [`skills/dailybot/ask/SKILL.md`](../skills/dailybot/ask/SKILL.md) | Asking the Dailybot AI a one-shot, headless question |
 | `dailybot-workflow` | [`skills/dailybot/workflow/SKILL.md`](../skills/dailybot/workflow/SKILL.md) | Listing / reading / triggering org workflows — `workflow list` (incl. `--filter api_trigger`) / `workflow get` / `workflow trigger` (plan-gated) |
+| `dailybot-labels` | [`skills/dailybot/labels/SKILL.md`](../skills/dailybot/labels/SKILL.md) | Organization Labels — create/list/update/archive/delete and assign (or batch) to forms, check-ins, and workflows/automations (web chip-picker parity; `dailybot-cli >= 3.9.0`) |
+| `dailybot-featured` | [`skills/dailybot/featured/SKILL.md`](../skills/dailybot/featured/SKILL.md) | Private per-user Featured stars on forms, automations, and check-ins (not org Labels; `dailybot-cli >= 3.9.0`) |
 | `dailybot-env` | [`skills/dailybot/env/SKILL.md`](../skills/dailybot/env/SKILL.md) | Managing per-repo API keys in the opt-in, gitignored `.dailybot/env.json` (`env add/use/show/list/remove/off/on`) — be "logged into different orgs in different repos" |
 
 ### Deep Work Plan skill pack (vendored from [`DailybotHQ/deepworkplan-skill`](https://github.com/DailybotHQ/deepworkplan-skill))
