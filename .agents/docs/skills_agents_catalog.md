@@ -41,7 +41,7 @@ The full pack lives under [`.agents/skills/dailybot/`](../skills/dailybot/) (rou
 
 ### Deep Work Plan skill pack (vendored from [`DailybotHQ/deepworkplan-skill`](https://github.com/DailybotHQ/deepworkplan-skill))
 
-The full pack lives under [`.agents/skills/deepworkplan/`](../skills/deepworkplan/) (router + 8 sub-skills + addons). Vendored at **v2.17.0**. The router auto-routes by intent — read [`skills/deepworkplan/SKILL.md`](../skills/deepworkplan/SKILL.md) and let it pick the right sub-skill. Each sub-skill is independently invocable, and each has a short `dwp-*` alias in [`.agents/commands/`](../commands/) for ergonomic typing.
+The full pack lives under [`.agents/skills/deepworkplan/`](../skills/deepworkplan/) (router + 9 sub-skills + addons). Vendored at **v5.3.0**. The router auto-routes by intent — read [`skills/deepworkplan/SKILL.md`](../skills/deepworkplan/SKILL.md) and let it pick the right sub-skill. Each sub-skill is independently invocable, and each has a short `dwp-*` alias in [`.agents/commands/`](../commands/) for ergonomic typing.
 
 | Slug | Procedure | Use when |
 |------|-----------|----------|
@@ -51,7 +51,8 @@ The full pack lives under [`.agents/skills/deepworkplan/`](../skills/deepworkpla
 | `deepworkplan-resume` (`/dwp-resume`) | [`skills/deepworkplan/resume/SKILL.md`](../skills/deepworkplan/resume/SKILL.md) | Picking up an interrupted plan from `.dwp/` state |
 | `deepworkplan-status` (`/dwp-status`) | [`skills/deepworkplan/status/SKILL.md`](../skills/deepworkplan/status/SKILL.md) | Reporting plan progress at any time without making changes |
 | `deepworkplan-verify` (`/dwp-verify`) | [`skills/deepworkplan/verify/SKILL.md`](../skills/deepworkplan/verify/SKILL.md) | Objective CONFORMANT / NOT CONFORMANT check against the [DWP spec](https://deepworkplan.com/spec) |
-| `deepworkplan-onboard` | [`skills/deepworkplan/onboard/SKILL.md`](../skills/deepworkplan/onboard/SKILL.md) | Re-running the onboard flow as a reconciliation pass (non-destructive) |
+| `deepworkplan-upgrade` (`/dwp-upgrade`) | [`skills/deepworkplan/upgrade/SKILL.md`](../skills/deepworkplan/upgrade/SKILL.md) | Checking for a newer `deepworkplan-skill` release and upgrading only with explicit consent |
+| `deepworkplan-onboard` | [`skills/deepworkplan/onboard/SKILL.md`](../skills/deepworkplan/onboard/SKILL.md) | Re-running the onboard flow as a reconciliation pass against the currently-installed skill's standard (non-destructive) |
 | `skill-create` | [`skills/deepworkplan/author/SKILL.md`](../skills/deepworkplan/author/SKILL.md) | Creating a new skill in `.agents/skills/<slug>/` |
 | `agent-create` | [`skills/deepworkplan/author/SKILL.md`](../skills/deepworkplan/author/SKILL.md) | Creating a new agent persona in `.agents/agents/<slug>.md` |
 | `design-system` | [`skills/deepworkplan/addons/design-system/SKILL.md`](../skills/deepworkplan/addons/design-system/SKILL.md) | Refreshing [`docs/DESIGN.md`](../../docs/DESIGN.md) from the real design source (`display.py` + `DISPLAY_OUTPUT_BEST_PRACTICES.md`) — the `cli-output` profile of the DWP design-system addon |
@@ -59,7 +60,7 @@ The full pack lives under [`.agents/skills/deepworkplan/`](../skills/deepworkpla
 
 ### AI Diff Reviewer (vendored from [`DailybotHQ/ai-diff-reviewer`](https://github.com/DailybotHQ/ai-diff-reviewer))
 
-Vendored at **v2.0.0** under [`.agents/skills/ai-diff-reviewer/`](../skills/ai-diff-reviewer/). Flow B is enabled: local Security Review augmentation + CI gate via [`.github/workflows/pr-review.yml`](../../.github/workflows/pr-review.yml) (trigger label **`Ready`**; secret `CURSOR_API_KEY`; extension [`.review/extension.md`](../../.review/extension.md)).
+Vendored at **v2.0.1** under [`.agents/skills/ai-diff-reviewer/`](../skills/ai-diff-reviewer/). Flow B is enabled: local Security Review augmentation + CI gate via [`.github/workflows/pr-review.yml`](../../.github/workflows/pr-review.yml) (trigger label **`Ready`**; secret `CURSOR_API_KEY`; extension [`.review/extension.md`](../../.review/extension.md)).
 
 | Slug | Procedure | Use when |
 |------|-----------|----------|
@@ -69,7 +70,7 @@ Vendored at **v2.0.0** under [`.agents/skills/ai-diff-reviewer/`](../skills/ai-d
 | `ai-diff-reviewer-open-pr` | [`skills/ai-diff-reviewer/open-pr/SKILL.md`](../skills/ai-diff-reviewer/open-pr/SKILL.md) | Drafting a PR title/body from the branch diff |
 | `ai-diff-reviewer-apply-review` | [`skills/ai-diff-reviewer/apply-review/SKILL.md`](../skills/ai-diff-reviewer/apply-review/SKILL.md) | Walking CI-posted findings per-finding (apply / defer / skip) |
 
-Plans and drafts persist under [`.dwp/`](../../.dwp/) which is gitignored — only the `plans/.gitkeep` and `drafts/.gitkeep` placeholders are tracked. Full command catalog in [`COMMANDS_REFERENCE.md`](COMMANDS_REFERENCE.md), and the rationale in [`../../AGENTS.md`](../../AGENTS.md) "Working with Deep Work Plans".
+Plans persist under [`.dwp/plans/`](../../.dwp/) — the whole `.dwp/` tree is gitignored, nothing under it is tracked; the skill re-creates it on demand. There is no `.dwp/drafts/` (removed in DWP 2.4.0) — a Lite plan's `README.md` is the reviewable artifact. Full command catalog in [`COMMANDS_REFERENCE.md`](COMMANDS_REFERENCE.md), and the rationale in [`../../AGENTS.md`](../../AGENTS.md) "Working with Deep Work Plans".
 
 ## Agents
 

@@ -74,7 +74,7 @@ tmp/*
 !tmp/.gitkeep
 
 # Deep Work Plan output area — fully gitignored per the DWP spec
-# (`.agents/skills/deepworkplan/shared/dwp-paths.md`). Plans and drafts are
-# runtime artifacts, not source: the create-flow re-creates `.dwp/` on
-# demand. See also `AGENTS.md` "Working with Deep Work Plans".
+# (`.agents/skills/deepworkplan/shared/dwp-paths.md`). Plans are runtime
+# artifacts, not source: the create-flow re-creates `.dwp/` on demand.
+# See also `AGENTS.md` "Working with Deep Work Plans".
 .dwp/

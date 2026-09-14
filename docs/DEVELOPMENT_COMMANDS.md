@@ -44,16 +44,16 @@ DAILYBOT_API_URL=http://localhost:8000 dailybot status
 ## Testing
 
 ```bash
-pytest                           # full suite
+pytest                           # full suite  (full)
 pytest -x                        # stop on first failure
 pytest -v                        # verbose
-pytest -k <keyword>              # filter by name
-pytest tests/api_client_test.py  # single file
+pytest -k <keyword>              # filter by name  (scoped)
+pytest tests/api_client_test.py  # single file  (scoped — verified: 150 selected/passed)
 pytest -s                        # don't capture stdout (debug prints)
 pytest --tb=short                # shorter tracebacks
 ```
 
-See [TESTING_GUIDE.md](TESTING_GUIDE.md) for conventions.
+Run from the repo root. See [TESTING_GUIDE.md](TESTING_GUIDE.md) for the full scoped-invocation / source-to-test mapping / coverage posture reference.
 
 ## Linting & Type-checking
 
@@ -66,10 +66,14 @@ pip install ruff mypy black
 Then:
 
 ```bash
-ruff check dailybot_cli tests       # lint
+ruff check dailybot_cli tests       # lint  (full)
+ruff check dailybot_cli/api_client.py  # lint  (scoped — verified: 1 file, 0 findings)
 ruff format dailybot_cli tests      # format (or `black .` if you prefer)
-mypy dailybot_cli                   # type-check
+mypy dailybot_cli                   # type-check  (full)
+mypy dailybot_cli/api_client.py     # type-check  (scoped — verified: 1 file, 0 findings)
 ```
+
+Scoped `ruff check`/`mypy` accept any file or directory path, so pass just the module(s) a change touched. `ruff check` and `mypy` are both cheap enough project-wide that scoping is a convenience, not a requirement — prefer the full command when in doubt.
 
 > If/when these are wired into CI, the canonical commands will live here. For now, run them locally before committing.
 

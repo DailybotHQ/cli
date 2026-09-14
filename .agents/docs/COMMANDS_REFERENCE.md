@@ -1,6 +1,6 @@
 # Commands Reference
 
-> Slash commands available in this repository. Invoked as `/<name>` in Claude Code, or `#<name>` in Codex / Cursor / Gemini. The catalog of skills and agent personas these commands route to lives in [`skills_agents_catalog.md`](skills_agents_catalog.md).
+> Slash commands available in this repository, invoked one of three ways depending on host: `/<name>` in Claude Code, `#<name>` in agents that intercept slash syntax (Codex / Cursor / Gemini), or plain text ("run `<name>`") on hosts without slash-command support — discovery is local in all three cases, no network service is consulted. The catalog of skills and agent personas these commands route to lives in [`skills_agents_catalog.md`](skills_agents_catalog.md).
 
 All commands in `.agents/commands/` are **thin delegators** — they route the invocation to a sub-skill that owns the actual flow. Editing the command file changes only the routing label; the procedural content lives in the corresponding `.agents/skills/<slug>/SKILL.md`. This is the standard the [Deep Work Plan kit](https://deepworkplan.com/kit) prescribes: a single source of truth in the skill, with thin per-command aliases for discoverability.
 
@@ -12,20 +12,21 @@ The full plan-execute-verify loop, delegating to the vendored `deepworkplan` ski
 
 | Slash command | Routes to | What it does | Typical trigger |
 |---|---|---|---|
-| `/dwp-create` | `../skills/deepworkplan/create/SKILL.md` | Decompose a goal into a structured plan (numbered tasks, validation gates, success criteria) and persist it under `.dwp/plans/` (or as a draft under `.dwp/drafts/`). | "Plan the migration to httpx-retries" |
+| `/dwp-create` | `../skills/deepworkplan/create/SKILL.md` | Decompose a goal into an executable plan — a Lite plan (task records inline in `README.md`) by default, promoted to Full (one file per task) only for long-horizon work — persisted under `.dwp/plans/`. | "Plan the migration to httpx-retries" |
 | `/dwp-execute` | `../skills/deepworkplan/execute/SKILL.md` | Execute the current plan task-by-task, updating state in `.dwp/`, validating each task's gate before advancing. | "Execute the plan" |
-| `/dwp-refine` | `../skills/deepworkplan/refine/SKILL.md` | Add, remove, or reorder tasks while preserving completed work and existing validation gates. | "Add a task to also update the Homebrew formula" |
+| `/dwp-refine` | `../skills/deepworkplan/refine/SKILL.md` | Add, remove, or reorder tasks, or promote a Lite plan to Full, while preserving completed work and existing validation gates. | "Add a task to also update the Homebrew formula" |
 | `/dwp-resume` | `../skills/deepworkplan/resume/SKILL.md` | Reconstruct state from `.dwp/` after an interrupted session and continue execution. | "Pick up where we left off" |
 | `/dwp-status` | `../skills/deepworkplan/status/SKILL.md` | Report plan progress without making any changes. | "Where are we in the plan?" |
-| `/dwp-verify` | `../skills/deepworkplan/verify/SKILL.md` | Run an objective DWP conformance check on the repository against the [DWP specification](https://deepworkplan.com/spec). Emits a binary CONFORMANT / NOT CONFORMANT verdict. | "Is this repo DWP-conformant?" |
-| `/deepworkplan-onboard` | `../skills/deepworkplan/onboard/SKILL.md` | Re-run the 9-phase onboard flow as a reconciliation pass — non-destructive by design. | "Re-onboard against the latest DWP spec" |
+| `/dwp-verify` | `../skills/deepworkplan/verify/SKILL.md` | Run an objective DWP conformance check on the repository against the [DWP specification](https://deepworkplan.com/spec). Emits a binary CONFORMANT / NOT CONFORMANT verdict. Read-only. | "Is this repo DWP-conformant?" |
+| `/dwp-upgrade` | `../skills/deepworkplan/upgrade/SKILL.md` | Check the latest published `deepworkplan-skill` tag against what's installed and upgrade only with explicit consent. Check phase is read-only; never migrates `.dwp/` plan history. | "Is there a newer DWP skill available?" |
+| `/deepworkplan-onboard` | `../skills/deepworkplan/onboard/SKILL.md` | Re-run the 9-phase onboard flow as a reconciliation pass against the currently-installed skill's standard — non-destructive by design. | "Re-onboard against the latest DWP spec" |
 | `/skill-create` | `../skills/deepworkplan/author/SKILL.md` | Create a new skill in `.agents/skills/<slug>/`. | "Create a skill for the cherry-pick release workflow" |
 | `/agent-create` | `../skills/deepworkplan/author/SKILL.md` | Create a new agent persona in `.agents/agents/<slug>.md`. | "Create an agent persona for the CI investigator role" |
 | `/design-system` | `../skills/deepworkplan/addons/design-system/SKILL.md` | Refresh `docs/DESIGN.md` from the real design source (`display.py` + `DISPLAY_OUTPUT_BEST_PRACTICES.md`) via the DWP design-system addon. | "Re-sync DESIGN.md after refactoring `display.py`" |
 
 ## AI Diff Reviewer (Flow B)
 
-Vendored skill at [`../skills/ai-diff-reviewer/`](../skills/ai-diff-reviewer/) (**v2.0.0**). CI gate: apply the **`Ready`** label on a PR to `main` (see [`.github/workflows/pr-review.yml`](../../.github/workflows/pr-review.yml); requires `CURSOR_API_KEY`). Extension: [`.review/extension.md`](../../.review/extension.md).
+Vendored skill at [`../skills/ai-diff-reviewer/`](../skills/ai-diff-reviewer/) (**v2.0.1**). CI gate: apply the **`Ready`** label on a PR to `main` (see [`.github/workflows/pr-review.yml`](../../.github/workflows/pr-review.yml); requires `CURSOR_API_KEY`). Extension: [`.review/extension.md`](../../.review/extension.md).
 
 | Command / phrase | Routes to | What it does | Example trigger |
 |------------------|-----------|--------------|-----------------|
@@ -35,9 +36,9 @@ Vendored skill at [`../skills/ai-diff-reviewer/`](../skills/ai-diff-reviewer/) (
 | `/ai-diff-reviewer-open-pr` | `../skills/ai-diff-reviewer/open-pr/SKILL.md` | Draft PR title/body from the branch diff | "Open a PR for this branch" |
 | `/ai-diff-reviewer-apply-review` | `../skills/ai-diff-reviewer/apply-review/SKILL.md` | Walk CI findings per-finding (apply / defer / skip); never commits | "Apply the CI review findings" |
 
-Every plan ends with three mandatory final tasks (per the DWP spec): a **Security Review** of the plan's own changes (a critical finding blocks completion), a **Skills & Agents Discovery** pass, and an **Executive Report**.
+Every new plan ends with one mandatory **Final Review** task (per the DWP spec): the security pass over the plan's own changes (a critical finding blocks completion), final-state validation, and skills/agents reconciliation. The Executive Report is now optional/on-request. Plans authored under an earlier skill version that still end with the legacy three tasks (Security Review, Skills & Agents Discovery, Executive Report) remain conformant.
 
-State persists in [`.dwp/`](../../.dwp/) which is gitignored — only the placeholders `.dwp/plans/.gitkeep` and `.dwp/drafts/.gitkeep` are tracked.
+State persists in [`.dwp/`](../../.dwp/) which is gitignored — there is no separate draft artifact and no `.dwp/drafts/` directory (removed in DWP 2.4.0); a Lite plan's `README.md` is the reviewable artifact.
 
 ---
 
