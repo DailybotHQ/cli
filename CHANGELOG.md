@@ -9,6 +9,19 @@ Do not edit it by hand — your edits will be overwritten on the next release.
 
 <!-- version list -->
 
+## v3.9.1 (2026-09-14)
+
+### Chores
+
+- **agents**: Upgrade vendored DWP skill pack to v5.3.0
+  ([#81](https://github.com/DailybotHQ/cli/pull/81),
+  [`bb15345`](https://github.com/DailybotHQ/cli/commit/bb1534596ee5160e1a03247a4060a9d3344cd002))
+
+- **skills**: Sync vendored dailybot skill pack to v3.13.0
+  ([#80](https://github.com/DailybotHQ/cli/pull/80),
+  [`f6fd985`](https://github.com/DailybotHQ/cli/commit/f6fd985638c6595ffe0c9bc74b3401a8e40dbb1b))
+
+
 ## v3.9.0 (2026-08-30)
 
 ### Bug Fixes
