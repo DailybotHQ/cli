@@ -541,40 +541,50 @@ When invoked: look up in `.agents/docs/skills_agents_catalog.md`, READ the proce
 
 ## Working with Deep Work Plans (DWP)
 
-For any non-trivial change (more than ~3 files, more than one logical step, anything spanning auth + API client + commands + docs, anything you'd otherwise want a TodoList for), **drive the work through a Deep Work Plan** instead of free-form coding. The repo ships the [DWP skill pack](.agents/skills/deepworkplan/) (vendored at **v2.17.0**) and the matching `dwp-*` slash commands.
+For any non-trivial change (more than ~3 files, more than one logical step, anything spanning auth + API client + commands + docs, anything you'd otherwise want a TodoList for), **drive the work through a Deep Work Plan** instead of free-form coding. The repo ships the [DWP skill pack](.agents/skills/deepworkplan/) (vendored at **v5.3.0**) and the matching `dwp-*` slash commands. A plan is either **Lite** (task records inline in the plan's `README.md`, the default for most work) or **Full** (one file per task, for long-horizon work) — both carry the same contract: stable task ids, a Touched Surface, acceptance criteria, validation gates, completion evidence, and one Final Review.
 
 ### The loop
 
 | Step | Slash command | What it does |
 |---|---|---|
-| 1. Plan | `/dwp-create` | Decompose the goal into a structured plan (numbered tasks, per-task validation gate, success criteria). Output lands in [`.dwp/plans/`](.dwp/plans/). |
+| 1. Plan | `/dwp-create` | Decompose the goal into an executable plan (Lite by default; `full`/`lite`/`trust` override the recommendation). Output lands in [`.dwp/plans/`](.dwp/plans/). |
 | 2. Execute | `/dwp-execute` | Task-by-task execution with the per-task gate enforced before advancing. State persists in `.dwp/`. |
-| 3. Verify | `/dwp-verify` | Objective CONFORMANT / NOT CONFORMANT check against the [DWP specification](https://deepworkplan.com/spec). |
+| 3. Verify | `/dwp-verify` | Objective CONFORMANT / NOT CONFORMANT check against the [DWP specification](https://deepworkplan.com/spec). Read-only. |
 
-Mid-flight aids: `/dwp-status` (progress at any point, no writes), `/dwp-resume` (pick up after an interrupted session), `/dwp-refine` (add/remove/reorder tasks without losing completed work). Re-onboarding (after a methodology upgrade) is `/deepworkplan-onboard` — non-destructive by design.
+Mid-flight aids: `/dwp-status` (progress at any point, no writes), `/dwp-resume` (pick up after an interrupted session), `/dwp-refine` (add/remove/reorder tasks, or promote a Lite plan to Full, without losing completed work), `/dwp-upgrade` (check for a newer DWP skill release and upgrade only with explicit consent — read-only check phase). Re-onboarding the harness (`AGENTS.md`/`docs/`/`.agents/` content, after a methodology upgrade) is `/deepworkplan-onboard` — non-destructive by design.
 
 The full command catalog (including `/skill-create` and `/agent-create` for extending the kit itself) is in [`.agents/docs/COMMANDS_REFERENCE.md`](.agents/docs/COMMANDS_REFERENCE.md).
+
+## Deep Work Plans — invocation
+
+Structured work runs through the local DWP flows (`.agents/commands/dwp-*` delegators; the flows live in `.agents/skills/deepworkplan/` — discovery is local, no network service is consulted):
+
+| Intent | Route |
+|---|---|
+| "plan this work", "create a plan" | `/dwp-create` |
+| "execute / run the plan" | `/dwp-execute` |
+| "continue / resume the interrupted plan" | `/dwp-resume` |
+| "plan status", "what's left" | `/dwp-status` (read-only) |
+| "verify the repo / the plan" | `/dwp-verify` (read-only) |
+| "upgrade DWP", "is there a newer DWP skill" | `/dwp-upgrade` (read-only check; installs only with explicit consent) |
+| ordinary direct edit ("fix this", "rename that") | done directly — never silently becomes a plan |
+
+Hosts without slash commands invoke the same flows by name (`#deepworkplan-create` or plain text). `trust`/`auto` authorizes unattended continuation within the requested flow; it is not a flow selector, and read-only routes stay read-only.
 
 ### Where plans live
 
 ```
 .dwp/
-├── plans/        # finalized plans (one per goal, as PLAN_{name}/ directories)
-├── drafts/       # the create flow's single reviewable refined draft
-└── …             # execution state files (managed by the skill)
+└── plans/        # PLAN_{name}/ directories — Lite (inline README) or Full (one file per task)
 ```
 
-The entire `.dwp/` tree is **fully gitignored** — plans and drafts are runtime artifacts, not source. The skill recreates `.dwp/` on demand the first time `/dwp-create` or `/dwp-execute` runs in a fresh clone. Do not commit a plan unless the user explicitly asks. (Contrast with `tmp/` which is for *unstructured* scratch and has a tracked `.gitkeep`; `.dwp/` is the *structured* plan output area governed by the spec — see [`.agents/skills/deepworkplan/shared/dwp-paths.md`](.agents/skills/deepworkplan/shared/dwp-paths.md).)
+The entire `.dwp/` tree is **fully gitignored** — plans are runtime artifacts, not source. There is no separate draft artifact and no `.dwp/drafts/` directory: the Lite plan **is** the reviewable artifact (removed in DWP 2.4.0; a leftover `.dwp/drafts/` from an older install is inert). The skill recreates `.dwp/` on demand the first time `/dwp-create` or `/dwp-execute` runs in a fresh clone. Do not commit a plan unless the user explicitly asks. (Contrast with `tmp/` which is for *unstructured* scratch and has a tracked `.gitkeep`; `.dwp/` is the *structured* plan output area governed by the spec — see [`.agents/skills/deepworkplan/shared/dwp-paths.md`](.agents/skills/deepworkplan/shared/dwp-paths.md).)
 
 ### Mandatory plan tail
 
-Every Deep Work Plan ends with three mandatory final tasks (per the DWP spec):
+Every new Deep Work Plan ends with **one** mandatory final task, the **Final Review** (per the DWP spec): it runs the security pass over the plan's accumulated changes (a critical finding blocks completion), validates the final repository state, and reconciles the skills/agents used by the plan's tasks — no rediscovery, no separate pass. The Executive Report is now an **optional, on-request** artifact (not a mandatory task) — ask for it when a one-page stakeholder summary is useful; it still lands at `.dwp/<plan>/REPORT.md`. Plans authored under an earlier skill version that still end with the legacy three separate tasks (Security Review, Skills & Agents Discovery, Executive Report) remain conformant and are never force-migrated to the new shape.
 
-1. **Security Review** of the plan's own changes — a critical finding blocks completion.
-2. **Skills & Agents Discovery** pass — surface any reusable skill/agent the work suggests.
-3. **Executive Report** — a one-page summary written to `.dwp/<plan>/REPORT.md`.
-
-You do not need to author these manually; `/dwp-create` adds them to every plan.
+You do not need to author the Final Review manually; `/dwp-create` adds it to every plan.
 
 ### AI Diff Reviewer (Flow B — dual-surface)
 
@@ -593,7 +603,9 @@ How to read review comments without acting on stale feedback: [`docs/PR_REVIEW_W
 
 ### Updating the kit
 
-To upgrade the vendored DWP skill pack: re-run `/deepworkplan-onboard` (reconciles non-destructively against the latest spec). To author a new repo-specific skill/agent: `/skill-create` or `/agent-create` (both delegate to the DWP `author` sub-skill, which keeps `.agents/docs/skills_agents_catalog.md` and `COMMANDS_REFERENCE.md` in sync).
+There are two independent things to keep current: the **skill package** (the code under `.agents/skills/deepworkplan/`) and the **harness content** it generated (`AGENTS.md`, `docs/`, `.agents/`). Use `/dwp-upgrade` to check for and install a newer skill package (read-only check; installs only with explicit consent). Use `/deepworkplan-onboard` to reconcile the harness content against the currently-installed skill's standard (non-destructive; a no-op if already current — see the `DWP standard:` line below). To author a new repo-specific skill/agent: `/skill-create` or `/agent-create` (both delegate to the DWP `author` sub-skill, which keeps `.agents/docs/skills_agents_catalog.md` and `COMMANDS_REFERENCE.md` in sync).
+
+DWP standard: 5.0.0 (onboarded 2026-06-12; upgraded 2026-09-14; skill 5.3.0)
 
 ## Documentation Maintenance
 

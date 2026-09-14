@@ -11,15 +11,38 @@
 ## Running Tests
 
 ```bash
-pytest                                   # full suite
+pytest                                   # full suite  (full)
 pytest -x                                # stop on first failure
 pytest -v                                # verbose
-pytest -k <keyword>                      # filter by name
-pytest tests/api_client_test.py          # one file
-pytest tests/api_client_test.py::TestDailyBotClientAuth::test_request_code   # one test
+pytest -k <keyword>                      # filter by name  (scoped)
+pytest tests/api_client_test.py          # one file  (scoped)
+pytest tests/api_client_test.py::TestDailyBotClientAuth::test_request_code   # one test  (scoped)
 pytest --tb=short                        # shorter tracebacks
 pytest -s                                # don't capture stdout (debugging)
 ```
+
+Run from the repo root; there is a single `tests/` package (no workspace/monorepo boundaries to cross).
+
+## Scoped Validation & Change-Impact Mapping
+
+**Scoped invocation — verified.** `pytest <path>` selects by file or directory; `pytest -k <keyword>` selects by name substring; both compose (`pytest tests/api_client_test.py -k auth`). Verified against this repo: `pytest tests/api_client_test.py -q` → 150 selected, 150 passed, exit 0 (pytest 9.0.3). Lint and type-check also accept a path: `ruff check dailybot_cli/api_client.py` and `mypy dailybot_cli/api_client.py` — verified, 0 findings each (ruff 0.15.12, mypy 1.20.2). Both tools are cheap enough project-wide that scoping is a convenience, not a load-bearing optimization.
+
+**Source-to-test mapping.** Test files mirror source modules 1:1 by name: `dailybot_cli/api_client.py` → `tests/api_client_test.py`, `dailybot_cli/config.py` → `tests/config_test.py`, `dailybot_cli/commands/<name>.py` → either its own `tests/<name>_test.py` (e.g. `hook.py` → `hook_commands_test.py`, `chat.py` → `chat_commands_test.py`) or a shared file grouping related user-scoped commands (`checkin.py`/`form.py`/`team.py`/`kudos.py`/`user.py` → `public_api_commands_test.py`; `auth.py`/`agent.py`/`interactive.py` → `commands_test.py`). When a source file has no obvious 1:1 test file, check `public_api_commands_test.py` and `commands_test.py` before assuming there is no coverage.
+
+**Dependent-consumer policy.** There is no `--changed`/affected-tests tool wired into this repo (no monorepo task graph, no `pytest-testmon`); the mapping above **is** the affected-tests policy — run the mapped file(s) for the module(s) you touched. `api_client.py` and `display.py` are the two shared/core modules (see escalation below); every other module maps to exactly one test file.
+
+**Known blind spots.** The scoped mapping does not catch: a change to a shared helper in `public_api_helpers.py` (`require_auth`, `resolve_user_/team_by_name_or_uuid`, `ERROR_CODE_MESSAGES`) that is consumed by several command modules but only exercised directly in `public_api_commands_test.py`; a change to `display.py` rendering helpers, which are asserted indirectly through command tests rather than a dedicated `display_test.py`; and Click option/flag wiring that only a full `--help` render or an actual `CliRunner.invoke()` catches (a scoped unit test of a helper function will not catch a broken `--flag/-f` alias).
+
+**Escalation paths — when to widen beyond the mapped file(s):**
+
+- A change to `dailybot_cli/api_client.py` (shared HTTP client) or `dailybot_cli/config.py` (shared credential/config I/O) — run the full suite; both are imported by nearly every command module.
+- A change to `dailybot_cli/commands/public_api_helpers.py` — run `pytest tests/public_api_commands_test.py` plus the full suite before committing (it backs `checkin`, `form`, `team`, `kudos`, `user`).
+- A change to `pytest.ini`, `pyproject.toml` (deps, `[tool.*]` config), or any `tests/__init__.py` — run the full suite; these affect test discovery/collection itself.
+- A change to the auth resolution order (`config.py::get_api_key`/`get_active_env_profile`/`_resolve_agent_context` in `commands/agent.py`) — run the full suite; multiple test files assert this order independently (rule 14, "Auth Resolution Order," in `AGENTS.md`).
+
+**Fallback.** When a change's blast radius is unclear, or it touches more than one of the escalation triggers above, run `pytest` (the full suite) — at 150+ tests completing in under a second, there is little cost to defaulting to it.
+
+**Coverage posture.** Unit-first: fast, deterministic `CliRunner`/mocked-`httpx` tests are the base layer (see Coverage Expectations below) — every new `api_client.py` method gets a request-shape + response-handling test, every new Click command gets a success path and at least one error path, with **no** assertions on internal call sequences beyond what's needed to prove the request payload is correct. There is no live-API integration or e2e layer in this repo (rule 7 in `AGENTS.md`: tests MUST NEVER hit the real Dailybot API) — the mocked-`httpx` unit tests **are** the contract tests for every endpoint, which is why the request-shape assertion (not just the response handling) is mandatory for each one. No test-count or ratio target is enforced; add tests proportional to the surface a change touches.
 
 ## File Layout
 
