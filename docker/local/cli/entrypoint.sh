@@ -209,6 +209,38 @@ setup_dailybot_persistence_for_user() {
 setup_dailybot_persistence_for_user "/home/dev-user"
 chown -R dev-user:dev-user /home/dev-user/.dailybot_data /home/dev-user/.config/dailybot 2>/dev/null || true
 
+# Setup Herdr persistence with symlinks for a given user
+# Herdr keeps its session layout -- workspaces, tabs, panes and each pane's
+# directory -- in ~/.config/herdr. That path lives in the container's writable
+# layer, so stopping the container discarded it and every console had to be
+# rebuilt by hand. Symlinking it into the mounted volume makes the layout
+# survive a recreate. Running processes cannot survive: removing the container
+# kills the shells. What comes back is the arrangement of consoles.
+setup_herdr_persistence_for_user() {
+    USER_HOME="$1"
+    HERDR_DATA_DIR="${USER_HOME}/.herdr_data/config"
+    HERDR_CONFIG_DIR="${USER_HOME}/.config/herdr"
+
+    mkdir -p "${USER_HOME}/.config"
+
+    if [ ! -L "${HERDR_CONFIG_DIR}" ]; then
+        if [ -e "${HERDR_CONFIG_DIR}" ]; then
+            if [ ! -e "${HERDR_DATA_DIR}" ]; then
+                mkdir -p "$(dirname "${HERDR_DATA_DIR}")"
+                cp -r "${HERDR_CONFIG_DIR}" "${HERDR_DATA_DIR}"
+            fi
+            rm -rf "${HERDR_CONFIG_DIR}"
+        else
+            mkdir -p "${HERDR_DATA_DIR}"
+        fi
+        ln -sf "${HERDR_DATA_DIR}" "${HERDR_CONFIG_DIR}"
+    fi
+}
+
+# Setup Herdr persistence for dev-user only
+setup_herdr_persistence_for_user "/home/dev-user"
+chown -R dev-user:dev-user /home/dev-user/.herdr_data 2>/dev/null || true
+
 # Generate ~/.pypirc from environment variables for a given user
 # This avoids hand-maintaining a .pypirc file in the repo or home dir.
 # Tokens are read from PYPI_API_TOKEN / TESTPYPI_API_TOKEN (see cli/.env).
