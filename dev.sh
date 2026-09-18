@@ -85,13 +85,37 @@ has_devcontainer() {
 # Every repository this launcher can address: the one it lives in, plus any
 # child under repositories/ that carries a devcontainer file. In a leaf
 # repository the loop simply finds no children — there is no hub-only path.
+# Repositories the launcher deliberately does not claim, declared one name per
+# line in .devstack-ignore at the workspace root (blank lines and # comments are
+# skipped). A repository can carry a devcontainer and still not belong to the
+# stack this launcher maintains, and that is a fact about the workspace, not
+# about this file -- which is byte-identical in every repository and must not
+# know any of them by name. Sub-repository copies have no repositories/ dir, so
+# this never fires there.
+devstack_ignored() {
+  local name="$1" line
+  [ -f "$SELF_DIR/.devstack-ignore" ] || return 1
+  while IFS= read -r line || [ -n "$line" ]; do
+    line="${line%%#*}"
+    line="$(printf '%s' "$line" | tr -d '[:space:]')"
+    [ -n "$line" ] || continue
+    [ "$line" = "$name" ] && return 0
+  done < "$SELF_DIR/.devstack-ignore"
+  return 1
+}
+
+# The one definition of "a repository this launcher works with". It feeds the
+# table, the check that a target is valid, and the --all fan-out, so an ignored
+# repository is not merely hidden: --all never touches it either.
 child_repos() {
-  local d
+  local d name
   [ -d "$SELF_DIR/repositories" ] || return 0
   for d in "$SELF_DIR"/repositories/*/; do
     [ -d "$d" ] || continue
+    name="$(basename "${d%/}")"
+    devstack_ignored "$name" && continue
     has_devcontainer "${d%/}" || continue
-    basename "${d%/}"
+    printf '%s\n' "$name"
   done
 }
 
@@ -100,6 +124,13 @@ resolve_repo_root() {
   if [ -z "$want" ]; then
     printf '%s\n' "$SELF_DIR"
     return 0
+  fi
+  # An ignored repository is named before the directory check, so the answer is
+  # "on purpose, here is where that is declared" rather than the generic unknown
+  # target error -- which would read like the repository is missing.
+  if devstack_ignored "$want"; then
+    die "'$want' is listed in .devstack-ignore, so this launcher does not manage it.
+       Remove the line there to bring it back, or open the repository directly."
   fi
   local cand="$SELF_DIR/repositories/$want"
   if [ -d "$cand" ] && has_devcontainer "$cand"; then
@@ -833,4 +864,11 @@ if [ "$ALL" -eq 1 ]; then
   exit 0
 fi
 
-run_one "$(resolve_repo_root "$TARGET_REPO")"
+# Resolved into a variable first, and the status checked. A failure inside
+# `$(...)` only exits the SUBSHELL: written as run_one "$(resolve_repo_root …)"
+# an unknown or ignored target printed its error and then ran the verb against
+# an empty root, which falls back to this repository -- so `dev.sh typo down`
+# reported the typo and took the hub's containers down anyway, exiting 0.
+_resolved_root="$(resolve_repo_root "$TARGET_REPO")" || exit 1
+[ -n "$_resolved_root" ] || die "could not resolve a target for '${TARGET_REPO:-.}'"
+run_one "$_resolved_root"
