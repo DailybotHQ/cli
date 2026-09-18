@@ -247,16 +247,51 @@ chown -R dev-user:dev-user /home/dev-user/.herdr_data 2>/dev/null || true
 # same path devcontainer.json calls workspaceFolder -- so it is read from there
 # rather than written down a third time and left to drift out of step.
 #
-# Appended only when absent: a developer who set their own new_cwd keeps it.
+# The table is rewritten in place, never appended: a second [terminal] is invalid
+# TOML and makes Herdr reject the WHOLE file, silently, taking allow_nested and
+# the shell with it. Reading the file twice also repairs one already in that
+# state. Keys already present win, so a developer's own new_cwd is kept.
 ensure_herdr_terminal_defaults() {
     HERDR_CONFIG="/home/dev-user/.config/herdr/config.toml"
     HERDR_CWD="$(pwd)"
     mkdir -p "$(dirname "${HERDR_CONFIG}")"
     [ -f "${HERDR_CONFIG}" ] || : > "${HERDR_CONFIG}"
-    if ! grep -qE '^[[:space:]]*new_cwd[[:space:]]*=' "${HERDR_CONFIG}"; then
-        printf '\n%s\n%s\n%s\n%s\n' '[terminal]' 'default_shell = "/bin/bash"' \
-            'shell_mode = "non_login"' "new_cwd = \"${HERDR_CWD}\"" >> "${HERDR_CONFIG}"
-    fi
+    awk -v cwd="${HERDR_CWD}" '
+        function keyname(l,  k) { k = l; sub(/[[:space:]]*=.*/, "", k); gsub(/[[:space:]]/, "", k); return k }
+        FNR == NR {
+            if ($0 ~ /^\[terminal\]/) { insec = 1; next }
+            if ($0 ~ /^\[/)            { insec = 0 }
+            if (insec && $0 ~ /^[[:space:]]*[A-Za-z_]+[[:space:]]*=/) {
+                k = keyname($0); if (!(k in seen)) { seen[k] = 1; order[++n] = $0 }
+            }
+            next
+        }
+        {
+            if ($0 ~ /^\[terminal\]/) {
+                skip = 1
+                if (!done) {
+                    print "[terminal]"
+                    if (!("new_cwd" in seen))    printf "new_cwd = \"%s\"\n", cwd
+                    if (!("shell_mode" in seen)) print "shell_mode = \"non_login\""
+                    for (i = 1; i <= n; i++) print order[i]
+                    print ""
+                    done = 1
+                }
+                next
+            }
+            if ($0 ~ /^\[/) { skip = 0 }
+            if (skip) next
+            print
+        }
+        END {
+            if (!done) {
+                print ""
+                print "[terminal]"
+                printf "new_cwd = \"%s\"\n", cwd
+                print "shell_mode = \"non_login\""
+            }
+        }
+    ' "${HERDR_CONFIG}" "${HERDR_CONFIG}" > "${HERDR_CONFIG}.tmp" && mv "${HERDR_CONFIG}.tmp" "${HERDR_CONFIG}"
 }
 ensure_herdr_terminal_defaults
 
