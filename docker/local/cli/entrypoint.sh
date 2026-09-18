@@ -338,11 +338,11 @@ chown -R dev-user:dev-user "/home/dev-user/.herdr_data" 2>/dev/null || true
 # same command works in Cursor and fails in a Herdr pane ("API key is not set").
 # Put the container's own environment back, for the login shell.
 #
-# It goes in the user's home rather than /etc/profile.d because not every
-# entrypoint here runs as root (web-app's runs as node). The file is rewritten
-# from the live environment on every start, so it cannot go stale, and it is
-# 0600: it holds whatever secrets compose was given, for the one user whose
-# shell is meant to have them.
+# It goes in the user's home rather than /etc/profile.d because an entrypoint
+# does not always run as root, and writing under /etc then fails outright. The
+# file is rewritten from the live environment on every start, so it cannot go
+# stale, and it is 0600: it holds whatever secrets compose was given, for the
+# one user whose shell is meant to have them.
 write_container_env_profile() {
     python3 - "$1" "$2" <<'PY'
 import os, pwd, shlex, sys
