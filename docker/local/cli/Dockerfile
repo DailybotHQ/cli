@@ -20,11 +20,14 @@ RUN apt-get update && apt-get install --no-install-recommends -y \
     build-essential \
     # Clean up
     && apt-get clean && rm -rf /var/lib/apt/lists/* \
-    # SSH into this container: runtime dir + host keys. Without host keys sshd
-    # accepts the TCP connection and then closes it, which looks like a network
-    # problem rather than a missing key.
+    # SSH into this container: runtime dir only. Host keys are NOT generated
+    # here: baking them puts the PRIVATE key in an image layer, and mints new
+    # ones on every rebuild, so every client that pinned the old one refuses to
+    # connect until the developer clears it by hand. The entrypoint generates
+    # them into the persisted volume instead. Anything openssh-server's own
+    # postinst left behind is removed for the same reason.
     && mkdir -p /var/run/sshd \
-    && ssh-keygen -A \
+    && rm -f /etc/ssh/ssh_host_* \
     # Drop-in only — do not redefine Subsystem sftp (already in Debian sshd_config)
     && printf '%s\n' \
         'PasswordAuthentication no' \

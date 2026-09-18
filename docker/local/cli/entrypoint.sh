@@ -332,6 +332,47 @@ ensure_herdr_terminal_defaults
 # own config (onboarding flag, settings changed from the UI).
 chown -R dev-user:dev-user "/home/dev-user/.herdr_data" 2>/dev/null || true
 
+# OpenCode, Pi, Cline and Grok each got a named volume, but nothing linked the
+# paths those CLIs actually write to it. The volume stayed empty while the real
+# state sat in the container layer, so `docker volume ls` looked reassuring and
+# the developer still lost their sign-in on the next recreate. Same shape as the
+# Claude/Codex/Cursor helpers above: seed on first run, preserve after that.
+setup_agent_state_persistence() {
+    USER_HOME="$1"; AGENT_DATA_DIR="${USER_HOME}/$2"; AGENT_LIVE_DIR="${USER_HOME}/$3"; AGENT_SLOT="$4"
+    # Only ever relink into a directory that is actually a mounted volume. A
+    # repository that keeps this state somewhere else entirely would otherwise
+    # have its working arrangement replaced by one pointing at the container
+    # layer -- persistence that looks right and is silently thrown away on the
+    # next recreate, which is the very bug this function exists to prevent.
+    # A volume is a different device from the layer it is mounted into.
+    if [ "$(stat -c %d "${AGENT_DATA_DIR}" 2>/dev/null)" = "$(stat -c %d "$(dirname "${AGENT_DATA_DIR}")" 2>/dev/null)" ]; then
+        return 0
+    fi
+    mkdir -p "${AGENT_DATA_DIR}"
+    # A link left pointing at nothing is worse than no link: the CLI recreates
+    # the path as a real directory beside it and the volume stays empty.
+    if [ -L "${AGENT_LIVE_DIR}" ] && [ ! -e "${AGENT_LIVE_DIR}" ]; then
+        mkdir -p "${AGENT_DATA_DIR}/${AGENT_SLOT}"
+    fi
+    if [ ! -L "${AGENT_LIVE_DIR}" ]; then
+        if [ -d "${AGENT_LIVE_DIR}" ]; then
+            if [ ! -d "${AGENT_DATA_DIR}/${AGENT_SLOT}" ] || [ -z "$(ls -A "${AGENT_DATA_DIR}/${AGENT_SLOT}" 2>/dev/null)" ]; then
+                cp -r "${AGENT_LIVE_DIR}" "${AGENT_DATA_DIR}/${AGENT_SLOT}"
+            fi
+            rm -rf "${AGENT_LIVE_DIR}"
+        else
+            mkdir -p "${AGENT_DATA_DIR}/${AGENT_SLOT}"
+        fi
+        mkdir -p "$(dirname "${AGENT_LIVE_DIR}")"
+        ln -sf "${AGENT_DATA_DIR}/${AGENT_SLOT}" "${AGENT_LIVE_DIR}"
+    fi
+}
+setup_agent_state_persistence "/home/dev-user" ".opencode_data" ".opencode" "opencode_dir"
+setup_agent_state_persistence "/home/dev-user" ".opencode_data" ".local/share/opencode" "opencode_share"
+setup_agent_state_persistence "/home/dev-user" ".pi_data" ".pi" "pi_dir"
+setup_agent_state_persistence "/home/dev-user" ".grok_data" ".grok" "grok_dir"
+chown -R dev-user:dev-user "/home/dev-user/.opencode_data" "/home/dev-user/.pi_data" "/home/dev-user/.grok_data" 2>/dev/null || true
+
 # Herdr reaches this container over SSH, and sshd starts every session with a
 # clean environment: nothing compose passed in through env_file or environment
 # survives. Cursor uses docker exec, which does inherit it -- which is why the
@@ -365,7 +406,14 @@ tmp = env_path + ".tmp"
 # Opened 0600 rather than written and chmod'd afterwards: this file holds every
 # value compose was given, so a umask-default 0644 window between the two calls
 # is a window where anyone on the box can read live credentials.
-fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+# O_EXCL and O_NOFOLLOW as well as the mode: this path is predictable and the
+# file holds every value compose was given, so refuse to write through a
+# symlink or into something already sitting there rather than following it.
+try:
+    os.unlink(tmp)
+except FileNotFoundError:
+    pass
+fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600)
 with os.fdopen(fd, "w") as f:
     f.write("\n".join(lines) + "\n")
 os.replace(tmp, env_path)
@@ -545,10 +593,33 @@ setup_sshd_for_herdr() {
     chown -R dev-user:dev-user "${SSH_DIR}"
 
     mkdir -p /var/run/sshd
-    if ! ls /etc/ssh/ssh_host_*_key >/dev/null 2>&1; then
-        echo "Generating SSH host keys..."
-        ssh-keygen -A
-    fi
+
+    # Host keys live in the volume that already persists this container's state,
+    # never in the image and never in /etc/ssh. Baking them shipped the PRIVATE
+    # key inside the image layer; generating them into /etc/ssh at start would
+    # mint a new identity on every recreate. Either way the client's pinned key
+    # stops matching and the developer has to clear it by hand before Herdr can
+    # attach. Generated once, they outlive both rebuilds and recreates.
+    if [ "$(id -u)" = "0" ]; then SSH_SUDO=""; else SSH_SUDO="sudo"; fi
+    HOST_KEY_DIR="${USER_HOME}/.herdr_data/ssh_host_keys"
+    ${SSH_SUDO} mkdir -p "${HOST_KEY_DIR}"
+    for key_type in rsa ecdsa ed25519; do
+        # Tested through the same privilege the directory was created with: it is
+        # 0700 root, so a plain [ -f ] from a non-root entrypoint always reads
+        # false and the key gets regenerated on every start.
+        if ! ${SSH_SUDO} test -f "${HOST_KEY_DIR}/ssh_host_${key_type}_key"; then
+            echo "Generating a persistent SSH host key (${key_type})..."
+            ${SSH_SUDO} ssh-keygen -q -t "${key_type}" -N '' -f "${HOST_KEY_DIR}/ssh_host_${key_type}_key"
+        fi
+    done
+    # sshd refuses a host key that is group- or world-readable, or not its own.
+    ${SSH_SUDO} chown root:root "${HOST_KEY_DIR}" "${HOST_KEY_DIR}"/ssh_host_*
+    ${SSH_SUDO} chmod 700 "${HOST_KEY_DIR}"
+    ${SSH_SUDO} chmod 600 "${HOST_KEY_DIR}"/ssh_host_*_key
+    ${SSH_SUDO} chmod 644 "${HOST_KEY_DIR}"/ssh_host_*_key.pub
+    printf 'HostKey %s/ssh_host_rsa_key\nHostKey %s/ssh_host_ecdsa_key\nHostKey %s/ssh_host_ed25519_key\n' \
+        "${HOST_KEY_DIR}" "${HOST_KEY_DIR}" "${HOST_KEY_DIR}" \
+        | ${SSH_SUDO} tee /etc/ssh/sshd_config.d/00-persistent-host-keys.conf >/dev/null
 
     # The drop-in must not redefine Subsystem sftp; the base config already has it.
     if [ -f /etc/ssh/sshd_config.d/herdr.conf ]; then

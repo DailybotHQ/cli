@@ -498,7 +498,9 @@ cmd_setup() {
       # in. cp leaves them at the umask default, typically 0644 — readable by
       # every account on the machine. Narrow them at creation, while they are
       # still empty, rather than after a secret is already in them.
-      chmod 600 "$target" 2>/dev/null || true
+      if ! chmod 600 "$target" 2>/dev/null; then
+        printf 'dev.sh: could not restrict %s to 0600 — it may be readable by other accounts on this machine\n' "${target#"$REPO_ROOT"/}" >&2
+      fi
       note "created ${target#"$REPO_ROOT"/}"
       created=$((created + 1))
     fi
