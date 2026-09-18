@@ -260,7 +260,16 @@ resolve_compose_bin() {
 }
 
 override_path() {
-  printf '%s/dev-sh-%s-override.yml' "${TMPDIR:-/tmp}" "$(basename "$REPO_ROOT")"
+  # A per-user directory created 0700, not the temp root directly: TMPDIR is
+  # private per user on macOS, but the /tmp fallback is world-writable and a
+  # predictable name there is a symlink target another local user can plant.
+  local d
+  d="${TMPDIR:-/tmp}/dev-sh-$(id -u)"
+  if [ ! -d "$d" ]; then
+    mkdir -p "$d"
+    chmod 700 "$d"
+  fi
+  printf '%s/%s-override.yml' "$d" "$(basename "$REPO_ROOT")"
 }
 
 # Reproduce the devcontainer's own `mounts` and `containerEnv`, which the Dev
@@ -406,6 +415,32 @@ fast_check() {
 # Verbs
 # --------------------------------------------------------------------------
 
+# Rewrite one SERVICE_PERMISSIONS line atomically, leaving no backup behind.
+stamp_permissions() {
+  python3 -c '
+import os, sys, tempfile
+path, perms = sys.argv[1], sys.argv[2]
+out = []
+for line in open(path).read().splitlines(True):
+    if line.lstrip().startswith("SERVICE_PERMISSIONS="):
+        out.append("SERVICE_PERMISSIONS=%s\n" % perms)
+    else:
+        out.append(line)
+d = os.path.dirname(path) or "."
+mode = os.stat(path).st_mode & 0o7777
+fd, tmp = tempfile.mkstemp(dir=d, prefix=".dev-sh-", suffix=".tmp")
+try:
+    os.fchmod(fd, mode)
+    with os.fdopen(fd, "w") as fh:
+        fh.write("".join(out))
+    os.replace(tmp, path)
+except BaseException:
+    try: os.unlink(tmp)
+    except OSError: pass
+    raise
+' "$1" "$2"
+}
+
 cmd_setup() {
   local created=0 f target net
   while IFS= read -r f; do
@@ -426,10 +461,13 @@ cmd_setup() {
     [ -n "$f" ] || continue
     target="${f%.example}"
     [ -f "$target" ] || continue
-    if grep -q '^[[:space:]]*SERVICE_PERMISSIONS=' "$target" 2>/dev/null; then
-      sed -i.dev-bak "s|^[[:space:]]*SERVICE_PERMISSIONS=.*|SERVICE_PERMISSIONS=$perms|" "$target"
-      rm -f "$target.dev-bak"
-    fi
+    grep -q '^[[:space:]]*SERVICE_PERMISSIONS=' "$target" 2>/dev/null || continue
+    # Rewritten through a temp file in the same directory, never with
+    # `sed -i.bak`: that leaves a backup of a .env — real values and all — next
+    # to it, and `.env.<suffix>` is covered by none of these repositories'
+    # gitignore rules. A failed run must not be able to strand secrets in a
+    # trackable file.
+    stamp_permissions "$target" "$perms" || die "could not update SERVICE_PERMISSIONS in $target"
   done < <(env_examples)
 
   while IFS= read -r net; do
