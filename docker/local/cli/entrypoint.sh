@@ -324,5 +324,59 @@ setup_ssh_keys_for_user() {
 setup_ssh_keys_for_user "/home/dev-user"
 chown -R dev-user:dev-user /home/dev-user/.ssh 2>/dev/null || true
 
+# Start sshd so a Herdr client on the host can attach to this container as a
+# saved machine. The compose file publishes container port 22 on
+# 127.0.0.1:${HERDR_SSH_HOST_PORT} — loopback only, never every interface.
+#
+# Authentication is public-key only: every *.pub found in the read-only mount of
+# the host's ~/.ssh is appended to authorized_keys. No password is ever accepted,
+# and no private key is read for this purpose.
+setup_sshd_for_herdr() {
+    USER_HOME="$1"
+    SSH_HOST_DIR="${USER_HOME}/.ssh_host"
+    SSH_DIR="${USER_HOME}/.ssh"
+    AUTHORIZED_KEYS="${SSH_DIR}/authorized_keys"
+
+    if [ ! -x /usr/sbin/sshd ]; then
+        echo "Warning: openssh-server is not installed; SSH into this container is unavailable."
+        return 0
+    fi
+
+    mkdir -p "${SSH_DIR}"
+    touch "${AUTHORIZED_KEYS}"
+    if [ -d "${SSH_HOST_DIR}" ]; then
+        for public_key in "${SSH_HOST_DIR}"/*.pub; do
+            if [ -f "${public_key}" ] && ! grep -Fqx -f "${public_key}" "${AUTHORIZED_KEYS}" 2>/dev/null; then
+                cat "${public_key}" >> "${AUTHORIZED_KEYS}"
+                printf '\n' >> "${AUTHORIZED_KEYS}"
+            fi
+        done
+    fi
+    chmod 700 "${SSH_DIR}"
+    chmod 600 "${AUTHORIZED_KEYS}"
+    chown -R dev-user:dev-user "${SSH_DIR}"
+
+    mkdir -p /var/run/sshd
+    if ! ls /etc/ssh/ssh_host_*_key >/dev/null 2>&1; then
+        echo "Generating SSH host keys..."
+        ssh-keygen -A
+    fi
+
+    # The drop-in must not redefine Subsystem sftp; the base config already has it.
+    if [ -f /etc/ssh/sshd_config.d/herdr.conf ]; then
+        sed -i '/^Subsystem[[:space:]]\+sftp/d' /etc/ssh/sshd_config.d/herdr.conf 2>/dev/null || true
+    fi
+
+    if /usr/sbin/sshd -t 2>/tmp/sshd-test.err; then
+        /usr/sbin/sshd
+        echo "SSH listening on container port 22 (published on the host as HERDR_SSH_HOST_PORT)"
+    else
+        echo "Warning: SSH server config invalid — attaching a Herdr machine will fail:"
+        cat /tmp/sshd-test.err >&2 || true
+    fi
+}
+
+setup_sshd_for_herdr "/home/dev-user"
+
 # Execute the main command
 exec "$@"

@@ -12,31 +12,31 @@ attach to it from the Mac. Day-to-day container commands are in
 | This repository | Value |
 |---|---|
 | Container | `dailybot-cli` |
-| Host SSH port | `not assigned` |
+| Host SSH port | `22031` |
 | Container user | `dev-user` |
 | SSH alias / Herdr machine | `dailybot-cli` |
 
-## SSH support is not in place yet
+## How it works
 
-**This container does not run an SSH server today.** The rest of this guide is
-the recipe that will apply once it does; it is written now so the setup is
-documented in one place rather than rediscovered later.
-
-What is still needed:
+The container runs `sshd` and publishes it on the host as
+`127.0.0.1:22031` — loopback only, never every interface. Authentication is
+**public key only**: on start the entrypoint appends every `*.pub` it finds in
+the read-only mount of your `~/.ssh` to the container's `authorized_keys`. No
+password is ever accepted, and no private key is read for this purpose.
 
 | Piece | Where |
 |---|---|
-| `openssh-server`, generated host keys and an sshd drop-in | `docker/local/cli/Dockerfile` |
-| Importing the host's public keys into `authorized_keys`, and starting sshd | `docker/local/cli/entrypoint.sh` |
-| A published host port mapped to container `22`, bound to loopback | `docker/local/docker-compose.yaml` |
+| `openssh-server`, generated host keys, sshd drop-in | `docker/local/cli/Dockerfile` |
+| Importing your public keys and starting sshd | `docker/local/cli/entrypoint.sh` |
+| The published host port, bound to loopback | `docker/local/docker-compose.yaml` |
 
-Until those land, use `bash dev.sh shell` from the repository root, which opens a
-shell in the container through Docker and needs no SSH at all.
+If you would rather not use SSH at all, `bash dev.sh shell` from the repository
+root opens a shell through Docker and needs none of this.
 
 Do **not** publish `2222:22`. Cursor listens on `127.0.0.1:2222` and `[::1]:2222`
 and steals `localhost` connections before they reach Docker.
 
-## Quick start (after rebuild)
+## Quick start
 
 ```bash
 # From the Mac host, at this repository's root
@@ -52,20 +52,20 @@ bash dev.sh up
 ```sshconfig
 Host dailybot-cli
   HostName 127.0.0.1
-  Port not assigned
+  Port 22031
   User dev-user
   StrictHostKeyChecking accept-new
 ```
 
 ```bash
-ssh-keyscan -p not assigned 127.0.0.1 >> ~/.ssh/known_hosts
+ssh-keyscan -p 22031 127.0.0.1 >> ~/.ssh/known_hosts
 ssh -o BatchMode=yes dailybot-cli 'echo OK && herdr --version && herdr status server --json'
 ```
 
-Override the host port if not assigned is also busy:
+Override the host port if 22031 is already taken on your machine:
 
 ```bash
-# docker/local/.env (compose interpolation)
+# docker/local/cli/.env (compose interpolation)
 HERDR_SSH_HOST_PORT=<a free port on your Mac>
 ```
 
@@ -140,16 +140,16 @@ existing `herdr_data` volumes).
 | `herdr --remote dailybot-cli` | Full-screen remote only |
 | Nest `--remote` inside a local Herdr pane | Avoid — two sidebars |
 
-Phone / Tailscale / Moshi should SSH to the **Mac**, not to `not assigned`. Herdr
+Phone / Tailscale / Moshi should SSH to the **Mac**, not to `22031`. Herdr
 on the Mac reaches this container.
 
 ## Diagnostics
 
 ```bash
-lsof -nP -iTCP:not assigned -sTCP:LISTEN
+lsof -nP -iTCP:22031 -sTCP:LISTEN
 lsof -nP -iTCP:2222 -sTCP:LISTEN
 
-ssh -vvv -p not assigned dev-user@127.0.0.1 true
+ssh -vvv -p 22031 dev-user@127.0.0.1 true
 ssh -o BatchMode=yes dailybot-cli 'herdr status server --json'
 # need: surface_interest, health_check (typically detached_server_daemon)
 
