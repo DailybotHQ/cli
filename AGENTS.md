@@ -101,6 +101,14 @@ pytest.ini                     # `python_files = *_test.py`, testpaths = tests
 
 **This project does NOT require Docker.** It is a plain Python package. All commands run on the host.
 
+Contributors who prefer working inside the project's optional container can start
+it from the repository root with `bash dev.sh setup` then `bash dev.sh up`, and
+open a shell with `bash dev.sh shell`. It reads the service list from
+`.devcontainer/devcontainer.json`, so that one file is the only place it is
+declared. This is contributor tooling only: it ships nothing to users of the
+CLI, and every command above still runs on the host without it. See
+[`docs/LOCAL_ENVIRONMENT.md`](docs/LOCAL_ENVIRONMENT.md).
+
 Verify your environment before working:
 
 ```bash
