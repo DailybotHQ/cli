@@ -9,6 +9,93 @@ Do not edit it by hand — your edits will be overwritten on the next release.
 
 <!-- version list -->
 
+## v3.10.0 (2026-09-18)
+
+### Bug Fixes
+
+- Set shutdownAction in the tracked devcontainer example - Task 10 of PLAN_dev_stack_launcher
+  ([#82](https://github.com/DailybotHQ/cli/pull/82),
+  [`5cd2408`](https://github.com/DailybotHQ/cli/commit/5cd2408e7097521670c46004a4eaef669b49e9be))
+
+- **dev.sh**: Create env files private, not world-readable
+  ([#82](https://github.com/DailybotHQ/cli/pull/82),
+  [`5cd2408`](https://github.com/DailybotHQ/cli/commit/5cd2408e7097521670c46004a4eaef669b49e9be))
+
+- **dev.sh**: Do not double-prefix a mount source that is already qualified
+  ([#82](https://github.com/DailybotHQ/cli/pull/82),
+  [`5cd2408`](https://github.com/DailybotHQ/cli/commit/5cd2408e7097521670c46004a4eaef669b49e9be))
+
+- **dev.sh**: Refuse a temp override directory we do not own
+  ([#82](https://github.com/DailybotHQ/cli/pull/82),
+  [`5cd2408`](https://github.com/DailybotHQ/cli/commit/5cd2408e7097521670c46004a4eaef669b49e9be))
+
+- **dev.sh**: Resolve the compose project per repository in ls
+  ([#82](https://github.com/DailybotHQ/cli/pull/82),
+  [`5cd2408`](https://github.com/DailybotHQ/cli/commit/5cd2408e7097521670c46004a4eaef669b49e9be))
+
+- **docker**: Create the container env file 0600 from the first byte
+  ([#82](https://github.com/DailybotHQ/cli/pull/82),
+  [`5cd2408`](https://github.com/DailybotHQ/cli/commit/5cd2408e7097521670c46004a4eaef669b49e9be))
+
+- **docker**: Give Herdr shells the PATH and the environment they were missing
+  ([#82](https://github.com/DailybotHQ/cli/pull/82),
+  [`5cd2408`](https://github.com/DailybotHQ/cli/commit/5cd2408e7097521670c46004a4eaef669b49e9be))
+
+- **docker**: Open Herdr panes in the project, not $HOME
+  ([#82](https://github.com/DailybotHQ/cli/pull/82),
+  [`5cd2408`](https://github.com/DailybotHQ/cli/commit/5cd2408e7097521670c46004a4eaef669b49e9be))
+
+- **docker**: Persist the Herdr session and give it its own volume
+  ([#82](https://github.com/DailybotHQ/cli/pull/82),
+  [`5cd2408`](https://github.com/DailybotHQ/cli/commit/5cd2408e7097521670c46004a4eaef669b49e9be))
+
+- **docker**: Rewrite the Herdr [terminal] table instead of appending a second one
+  ([#82](https://github.com/DailybotHQ/cli/pull/82),
+  [`5cd2408`](https://github.com/DailybotHQ/cli/commit/5cd2408e7097521670c46004a4eaef669b49e9be))
+
+- **docker**: Seed shell_mode = login, the value the entrypoint repairs to
+  ([#82](https://github.com/DailybotHQ/cli/pull/82),
+  [`5cd2408`](https://github.com/DailybotHQ/cli/commit/5cd2408e7097521670c46004a4eaef669b49e9be))
+
+- **docker**: Stop leaving the Herdr config root-owned, and repair its bootstrap
+  ([#82](https://github.com/DailybotHQ/cli/pull/82),
+  [`5cd2408`](https://github.com/DailybotHQ/cli/commit/5cd2408e7097521670c46004a4eaef669b49e9be))
+
+### Chores
+
+- Add root dev stack launcher for contributors - Task 9 of PLAN_dev_stack_launcher
+  ([#82](https://github.com/DailybotHQ/cli/pull/82),
+  [`5cd2408`](https://github.com/DailybotHQ/cli/commit/5cd2408e7097521670c46004a4eaef669b49e9be))
+
+- Re-sync dev.sh with the .env backup fix - Task 12 of PLAN_dev_stack_launcher
+  ([#82](https://github.com/DailybotHQ/cli/pull/82),
+  [`5cd2408`](https://github.com/DailybotHQ/cli/commit/5cd2408e7097521670c46004a4eaef669b49e9be))
+
+- Re-sync dev.sh with the ignore mechanism and the target fix
+  ([#82](https://github.com/DailybotHQ/cli/pull/82),
+  [`5cd2408`](https://github.com/DailybotHQ/cli/commit/5cd2408e7097521670c46004a4eaef669b49e9be))
+
+### Documentation
+
+- Correct what this branch actually publishes, and de-duplicate the welcome
+  ([#82](https://github.com/DailybotHQ/cli/pull/82),
+  [`5cd2408`](https://github.com/DailybotHQ/cli/commit/5cd2408e7097521670c46004a4eaef669b49e9be))
+
+- Do not name an internal compose project in a public repo
+  ([#82](https://github.com/DailybotHQ/cli/pull/82),
+  [`5cd2408`](https://github.com/DailybotHQ/cli/commit/5cd2408e7097521670c46004a4eaef669b49e9be))
+
+- **docker**: Do not name a private sibling repository in a public one
+  ([#82](https://github.com/DailybotHQ/cli/pull/82),
+  [`5cd2408`](https://github.com/DailybotHQ/cli/commit/5cd2408e7097521670c46004a4eaef669b49e9be))
+
+### Features
+
+- **docker**: Run every coding agent, Herdr and sshd in the dev container
+  ([#82](https://github.com/DailybotHQ/cli/pull/82),
+  [`5cd2408`](https://github.com/DailybotHQ/cli/commit/5cd2408e7097521670c46004a4eaef669b49e9be))
+
+
 ## v3.9.1 (2026-09-14)
 
 ### Chores
