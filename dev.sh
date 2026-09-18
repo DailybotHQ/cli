@@ -296,10 +296,19 @@ override_path() {
   # predictable name there is a symlink target another local user can plant.
   local d
   d="${TMPDIR:-/tmp}/dev-sh-$(id -u)"
-  if [ ! -d "$d" ]; then
-    mkdir -p "$d"
-    chmod 700 "$d"
+  # Created with the mode already set, never created-then-chmod'd, and never
+  # reused unless we own it: the name is predictable, so on a world-writable
+  # /tmp another local account can plant the directory first. Testing -d and
+  # skipping the chmod would then hand them the compose override, which names
+  # mounts and environment, plus a symlink race on the file inside.
+  if ! (umask 077 && mkdir -p "$d") 2>/dev/null; then
+    die "could not create $d"
   fi
+  if [ -L "$d" ] || [ ! -d "$d" ] || [ ! -O "$d" ]; then
+    die "$d is not a directory you own — refusing to write the compose override there.
+       Remove it, or point TMPDIR somewhere private."
+  fi
+  chmod 700 "$d"
   printf '%s/%s-override.yml' "$d" "$(basename "$REPO_ROOT")"
 }
 
