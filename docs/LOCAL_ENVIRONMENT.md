@@ -138,11 +138,10 @@ That check only runs for verbs that start containers, and costs about thirty
 milliseconds.
 
 **`cannot resolve the compose project name`**
-Every repository here shares the compose project `dailybotplatformlocal`. The
-launcher refuses to guess it from the directory name, because guessing would
-create a second, parallel set of containers that look correct and are not the
-ones your Dev Container manages. Set `COMPOSE_PROJECT_NAME` in
-`docker/local/.env`, or pass `--project`.
+The launcher refuses to guess the Compose project name from the directory name,
+because guessing would create a second, parallel set of containers that look
+correct and are not the ones your Dev Container manages. Set
+`COMPOSE_PROJECT_NAME` in `docker/local/.env`, or pass `--project`.
 
 **A container came back different, or an editor feature disappeared**
 `up` defaults to `--no-recreate` precisely so it never silently replaces a
