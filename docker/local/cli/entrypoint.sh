@@ -349,28 +349,33 @@ setup_agent_state_persistence() {
         return 0
     fi
     mkdir -p "${AGENT_DATA_DIR}"
-    # A link left pointing at nothing is worse than no link: the CLI recreates
-    # the path as a real directory beside it and the volume stays empty.
+    # A link pointing at nothing is worse than no link: the CLI recreates the path
+    # as a real directory beside it and the volume stays empty. Drop it wherever
+    # it pointed and let the normal path below rebuild it — only checking the
+    # expected slot would leave a link aimed somewhere else still broken.
     if [ -L "${AGENT_LIVE_DIR}" ] && [ ! -e "${AGENT_LIVE_DIR}" ]; then
-        mkdir -p "${AGENT_DATA_DIR}/${AGENT_SLOT}"
+        rm -f "${AGENT_LIVE_DIR}"
     fi
     if [ ! -L "${AGENT_LIVE_DIR}" ]; then
+        mkdir -p "${AGENT_DATA_DIR}/${AGENT_SLOT}"
         if [ -d "${AGENT_LIVE_DIR}" ]; then
-            if [ ! -d "${AGENT_DATA_DIR}/${AGENT_SLOT}" ] || [ -z "$(ls -A "${AGENT_DATA_DIR}/${AGENT_SLOT}" 2>/dev/null)" ]; then
-                cp -r "${AGENT_LIVE_DIR}" "${AGENT_DATA_DIR}/${AGENT_SLOT}"
+            if [ -z "$(ls -A "${AGENT_DATA_DIR}/${AGENT_SLOT}" 2>/dev/null)" ]; then
+                # Contents, not the directory itself: `cp -r dir slot` when slot
+                # already exists nests it as slot/dir and the CLI finds nothing.
+                cp -a "${AGENT_LIVE_DIR}/." "${AGENT_DATA_DIR}/${AGENT_SLOT}/" 2>/dev/null || true
             fi
             rm -rf "${AGENT_LIVE_DIR}"
-        else
-            mkdir -p "${AGENT_DATA_DIR}/${AGENT_SLOT}"
         fi
         mkdir -p "$(dirname "${AGENT_LIVE_DIR}")"
         ln -sf "${AGENT_DATA_DIR}/${AGENT_SLOT}" "${AGENT_LIVE_DIR}"
     fi
 }
-setup_agent_state_persistence "/home/dev-user" ".opencode_data" ".opencode" "opencode_dir"
-setup_agent_state_persistence "/home/dev-user" ".opencode_data" ".local/share/opencode" "opencode_share"
-setup_agent_state_persistence "/home/dev-user" ".pi_data" ".pi" "pi_dir"
-setup_agent_state_persistence "/home/dev-user" ".grok_data" ".grok" "grok_dir"
+# The paths the other repositories in this family persist, so a developer moving
+# between them finds their sign-ins in the same place.
+setup_agent_state_persistence "/home/dev-user" ".opencode_data" ".config/opencode" "config"
+setup_agent_state_persistence "/home/dev-user" ".opencode_data" ".local/share/opencode" "share"
+setup_agent_state_persistence "/home/dev-user" ".pi_data" ".pi" "pi"
+setup_agent_state_persistence "/home/dev-user" ".grok_data" ".grok" "grok"
 chown -R dev-user:dev-user "/home/dev-user/.opencode_data" "/home/dev-user/.pi_data" "/home/dev-user/.grok_data" 2>/dev/null || true
 
 # Herdr reaches this container over SSH, and sshd starts every session with a
