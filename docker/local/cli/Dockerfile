@@ -167,12 +167,13 @@ RUN git config --global init.defaultBranch main \
     && mkdir -p /home/dev-user/.config/herdr \
     && printf '%s\n' \
         '# Seeded by the Dockerfile.' \
-        '# Ensures Herdr panes source ~/.bashrc and load every wrapper.' \
+        '# A login shell: it reads /etc/profile.d and ~/.profile, which is where PATH' \
+        '# picks up the agent CLIs. A non-login shell reads neither and they vanish.' \
         'onboarding = false' \
         '' \
         '[terminal]' \
         'default_shell = "/bin/bash"' \
-        'shell_mode = "non_login"' \
+        'shell_mode = "login"' \
         'new_cwd = "/workspace"' \
         '' \
         '[ui]' \
