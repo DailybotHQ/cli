@@ -2,6 +2,7 @@
   "name": "Core CLI",
   "dockerComposeFile": "../docker/local/docker-compose.yaml",
   "service": "clivscode",
+  "shutdownAction": "none",
   "workspaceFolder": "/workspace",
   "runServices": ["clivscode"],
   "remoteUser": "dev-user",
