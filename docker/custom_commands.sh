@@ -175,6 +175,13 @@ function cursorx() {
     esac
 }
 
+# Provider-aware wrappers live separately so this file's command and prompt
+# helpers stay easy to maintain. Sourced only when available, and last, so its
+# definitions of codexx / claudex / cursorx win over the ones above.
+if [[ -f /workspace/docker/ai_wrappers.sh ]]; then
+    source /workspace/docker/ai_wrappers.sh
+fi
+
 # Quality gates for the Dailybot CLI. Each function is a thin wrapper around
 # a single underlying tool — you can run the tool directly (e.g. `pytest -x`)
 # without sourcing this file. `codecheck` just calls them in sequence.
@@ -1184,20 +1191,32 @@ function show_welcome() {
     echo "  • clitest help             - detailed help"
     echo ""
     echo "AI Assistant commands:"
-    echo "  • claude            - Claude Code CLI"
-    echo "  • codex             - Codex CLI"
-    echo "  • agent             - Cursor CLI agent"
+    echo "  • claude / claudex       - Claude Code / full permissions"
+    echo "      claudex -c, --continue / -r, --resume"
+    echo "  • codex / codexx         - Codex / full permissions"
+    echo "      codexx -c, --continue / -l, --last / -r, --resume"
+    echo "  • codex-azure / codex-xai - Codex via Azure / xAI"
+    echo "  • opencode / opencodex   - OpenCode / full permissions"
+    echo "  • opencode-azure / opencode-xai - OpenCode via Azure / xAI"
+    echo "  • pix                    - Pi with full permissions"
+    echo "  • pi-azure / pi-xai      - Pi via Azure / xAI with explicit models"
+    echo "  • cline / clinex         - Cline / full permissions"
+    echo "  • cline-azure / clinex-azure / cline-xai - Cline via Azure / xAI"
+    echo "  • grokx                  - Official Grok CLI via xAI"
+    echo "  • agent / cursorx        - Cursor CLI agent"
+    echo "      cursorx -l, --list / -r, --resume"
     echo ""
-    echo "  Enhanced wrappers (with full permissions):"
-    echo "  • codexx            - Codex with full permissions"
-    echo "      -l, --last      Resume last session"
-    echo "      -r, --resume    Interactive session selection (or -r <id> for specific)"
-    echo "  • claudex           - Claude Code with full permissions"
-    echo "      -c, --continue  Continue most recent session"
-    echo "      -r, --resume    Interactive session selection (or -r <id> for specific)"
-    echo "  • cursorx           - Cursor CLI agent"
-    echo "      -l, --list      List available sessions"
-    echo "      -r, --resume    Resume last session (or -r <id> for specific)"
+    echo "  Provider keys go in docker/local/cli/.env (git-ignored). The wrappers"
+    echo "  write an env REFERENCE into each CLI's config rather than a key value."
+    echo "  Cline is the exception: its CLI takes the key as an argument, so for"
+    echo "  cline-azure / cline-xai the value does reach argv and Cline's own store."
+    echo ""
+    echo "Terminal workspace:"
+    echo "  • herdr                  - Herdr terminal workspace manager"
+    echo "  • herdr --version        - Confirm the client is installed"
+    echo ""
+    echo "  This container also runs sshd, so a Herdr client on your Mac can"
+    echo "  attach to it as a saved machine. See docs/HERDR_SSH_SETUP.md."
     echo ""
     echo "Git shortcuts:"
     echo "  • gs   - git status"

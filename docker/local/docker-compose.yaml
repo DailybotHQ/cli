@@ -16,6 +16,12 @@ services:
       - DOCKER_DEV_ENV=vscode
     networks:
       - dailybot
+    ports:
+      # SSH into this container, so a Herdr client on the host can attach to it
+      # as a saved machine. Bound to loopback, never every interface. Do not use
+      # 2222 — Cursor owns 127.0.0.1:2222 on macOS. Override the host side with
+      # HERDR_SSH_HOST_PORT in cli/.env when the default is taken on your machine.
+      - '127.0.0.1:${HERDR_SSH_HOST_PORT:-22031}:22'
     env_file:
       - cli/.env
     volumes:
@@ -24,6 +30,11 @@ services:
       - claude_data:/home/dev-user/.claude_data
       - codex_data:/home/dev-user/.codex_data
       - cursor_data:/home/dev-user/.cursor_data
+      - cline_data:/home/dev-user/.cline_data
+      - opencode_data:/home/dev-user/.opencode_data
+      - pi_data:/home/dev-user/.pi_data
+      - grok_data:/home/dev-user/.grok_data
+      - cli_herdr_data:/home/dev-user/.herdr_data
       - dailybot_data:/home/dev-user/.dailybot_data
       - gh_data:/home/dev-user/.gh_data
       # Mount the whole host ~/.ssh as read-only; the entrypoint then copies
@@ -37,6 +48,11 @@ volumes:
   claude_data: {}
   codex_data: {}
   cursor_data: {}        # Cursor CLI session/auth (symlinked to ~/.cursor)
+  cline_data: {}         # Cline CLI auth/state
+  opencode_data: {}      # OpenCode provider config and sessions
+  pi_data: {}            # Pi provider config and sessions
+  grok_data: {}          # Grok CLI auth/state
+  cli_herdr_data: {}         # Herdr sessions and layout
   dailybot_data: {}      # Dailybot CLI config/auth (~/.config/dailybot, config_local, config_custom)
   gh_data: {}
 

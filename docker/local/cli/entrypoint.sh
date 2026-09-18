@@ -209,6 +209,194 @@ setup_dailybot_persistence_for_user() {
 setup_dailybot_persistence_for_user "/home/dev-user"
 chown -R dev-user:dev-user /home/dev-user/.dailybot_data /home/dev-user/.config/dailybot 2>/dev/null || true
 
+# Setup Herdr persistence with symlinks for a given user
+# Herdr keeps its session layout -- workspaces, tabs, panes and each pane's
+# directory -- in ~/.config/herdr. That path lives in the container's writable
+# layer, so stopping the container discarded it and every console had to be
+# rebuilt by hand. Symlinking it into the mounted volume makes the layout
+# survive a recreate. Running processes cannot survive: removing the container
+# kills the shells. What comes back is the arrangement of consoles.
+setup_herdr_persistence_for_user() {
+    USER_HOME="$1"
+    HERDR_DATA_DIR="${USER_HOME}/.herdr_data/config"
+    HERDR_CONFIG_DIR="${USER_HOME}/.config/herdr"
+
+    mkdir -p "${USER_HOME}/.config"
+
+    if [ ! -L "${HERDR_CONFIG_DIR}" ]; then
+        if [ -e "${HERDR_CONFIG_DIR}" ]; then
+            if [ ! -e "${HERDR_DATA_DIR}" ]; then
+                mkdir -p "$(dirname "${HERDR_DATA_DIR}")"
+                cp -r "${HERDR_CONFIG_DIR}" "${HERDR_DATA_DIR}"
+            fi
+            rm -rf "${HERDR_CONFIG_DIR}"
+        else
+            mkdir -p "${HERDR_DATA_DIR}"
+        fi
+        ln -sf "${HERDR_DATA_DIR}" "${HERDR_CONFIG_DIR}"
+    fi
+}
+
+# Setup Herdr persistence for dev-user only
+setup_herdr_persistence_for_user "/home/dev-user"
+chown -R dev-user:dev-user /home/dev-user/.herdr_data 2>/dev/null || true
+
+# Nested Herdr -- needed when a Herdr client attaches to this container. The image
+# may seed it, but that seed only reaches an EMPTY volume: a volume created
+# before the seed keeps the old file forever, so ensure it at runtime too.
+# Inserted into [experimental] when that table already exists, never duplicated.
+ensure_herdr_allow_nested() {
+    HERDR_CONFIG="/home/dev-user/.config/herdr/config.toml"
+    mkdir -p "$(dirname "${HERDR_CONFIG}")"
+    if [ ! -f "${HERDR_CONFIG}" ]; then
+        printf '%s\n' '[experimental]' 'allow_nested = true' > "${HERDR_CONFIG}"
+    elif ! grep -qE '^[[:space:]]*allow_nested[[:space:]]*=' "${HERDR_CONFIG}"; then
+        if grep -qE '^[[:space:]]*\[experimental\]' "${HERDR_CONFIG}"; then
+            awk '
+                BEGIN { done = 0 }
+                /^[[:space:]]*\[experimental\]/ { print; if (!done) { print "allow_nested = true"; done = 1; next } }
+                { print }
+            ' "${HERDR_CONFIG}" > "${HERDR_CONFIG}.tmp" && mv "${HERDR_CONFIG}.tmp" "${HERDR_CONFIG}"
+        else
+            printf '\n%s\n%s\n' '[experimental]' 'allow_nested = true' >> "${HERDR_CONFIG}"
+        fi
+    fi
+}
+ensure_herdr_allow_nested
+
+# Herdr opens new panes, tabs and workspaces in $HOME unless told otherwise, so a
+# console opened in a fresh container landed nowhere useful and every new pane had
+# to be cd'd by hand. The project directory is the container's own WORKDIR -- the
+# same path devcontainer.json calls workspaceFolder -- so it is read from there
+# rather than written down a third time and left to drift out of step.
+#
+# The table is rewritten in place, never appended: a second [terminal] is invalid
+# TOML and makes Herdr reject the WHOLE file, silently, taking allow_nested and
+# the shell with it. Reading the file twice also repairs one already in that
+# state. Keys already present win, so a developer's own new_cwd is kept.
+ensure_herdr_terminal_defaults() {
+    HERDR_CONFIG="/home/dev-user/.config/herdr/config.toml"
+    HERDR_CWD="$(pwd)"
+    mkdir -p "$(dirname "${HERDR_CONFIG}")"
+    [ -f "${HERDR_CONFIG}" ] || : > "${HERDR_CONFIG}"
+    # shell_mode was pinned to "non_login" here on 2026-09-18. That was wrong: a
+    # non-login shell reads neither /etc/profile.d nor ~/.profile, and that is
+    # where PATH picks up the agent CLIs -- `claude` became "command not found"
+    # in a Herdr pane while the same command worked in Cursor, which uses docker
+    # exec and inherits the container's PATH. Repair that exact value; a value a
+    # developer chose themselves is left alone.
+    sed -i 's/^shell_mode = "non_login"$/shell_mode = "login"/' "${HERDR_CONFIG}"
+    awk -v cwd="${HERDR_CWD}" '
+    function keyname(l,  k) { k = l; sub(/[[:space:]]*=.*/, "", k); gsub(/[[:space:]]/, "", k); return k }
+    # Blank lines are held back and only flushed before real content, so a table
+    # appended at EOF does not leave a trailing blank that the next start would
+    # append to again -- the file would grow a line on every container start.
+    function emit(l) {
+        if (l == "") { if (any) pend++; return }
+        while (pend > 0) { print ""; pend-- }
+        print l; any = 1
+    }
+    function table(  i) {
+        emit("[terminal]")
+        if (!("new_cwd" in seen))    emit(sprintf("new_cwd = \"%s\"", cwd))
+        if (!("shell_mode" in seen)) emit("shell_mode = \"login\"")
+        for (i = 1; i <= n; i++) emit(order[i])
+        emit("")
+    }
+    FNR == NR {
+        if ($0 ~ /^\[terminal\]/) { insec = 1; next }
+        if ($0 ~ /^\[/)            { insec = 0 }
+        if (insec && $0 ~ /^[[:space:]]*[A-Za-z_]+[[:space:]]*=/) {
+            k = keyname($0); if (!(k in seen)) { seen[k] = 1; order[++n] = $0 }
+        }
+        next
+    }
+    {
+        if ($0 ~ /^\[terminal\]/) {
+            skip = 1
+            if (!done) { table(); done = 1 }
+            next
+        }
+        if ($0 ~ /^\[/) { skip = 0 }
+        if (skip) next
+        emit($0)
+    }
+    END { if (!done) { emit(""); table() } }
+' "${HERDR_CONFIG}" "${HERDR_CONFIG}" > "${HERDR_CONFIG}.tmp" && mv "${HERDR_CONFIG}.tmp" "${HERDR_CONFIG}"
+}
+ensure_herdr_terminal_defaults
+
+# Herdr itself runs as dev-user, but everything above wrote as root, and
+# .config/herdr is a symlink -- chowning that path would only touch the link.
+# Take the real directory, after the last write, or Herdr cannot rewrite its
+# own config (onboarding flag, settings changed from the UI).
+chown -R dev-user:dev-user "/home/dev-user/.herdr_data" 2>/dev/null || true
+
+# Herdr reaches this container over SSH, and sshd starts every session with a
+# clean environment: nothing compose passed in through env_file or environment
+# survives. Cursor uses docker exec, which does inherit it -- which is why the
+# same command works in Cursor and fails in a Herdr pane ("API key is not set").
+# Put the container's own environment back, for the login shell.
+#
+# It goes in the user's home rather than /etc/profile.d because an entrypoint
+# does not always run as root, and writing under /etc then fails outright. The
+# file is rewritten from the live environment on every start, so it cannot go
+# stale, and it is 0600: it holds whatever secrets compose was given, for the
+# one user whose shell is meant to have them.
+write_container_env_profile() {
+    python3 - "$1" "$2" <<'PY'
+import os, pwd, shlex, sys
+
+home, user = sys.argv[1], sys.argv[2]
+# Shell- and container-managed names: re-exporting them would fight the login
+# shell that is in the middle of building them.
+SKIP = {"PATH", "HOME", "HOSTNAME", "PWD", "OLDPWD", "SHLVL", "SHELL",
+        "USER", "LOGNAME", "TERM", "_"}
+MARK = "# >>> dailybot container env >>>"
+
+env_path = os.path.join(home, ".container-env.sh")
+lines = ["# Generated by the entrypoint from the container's own environment.",
+         "# Do not edit: rewritten on every container start.", ""]
+for k, v in sorted(os.environ.items()):
+    if k in SKIP or not k or k[0].isdigit() or not k.replace("_", "").isalnum():
+        continue
+    lines.append("export %s=%s" % (k, shlex.quote(v)))
+tmp = env_path + ".tmp"
+# Opened 0600 rather than written and chmod'd afterwards: this file holds every
+# value compose was given, so a umask-default 0644 window between the two calls
+# is a window where anyone on the box can read live credentials.
+fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+with os.fdopen(fd, "w") as f:
+    f.write("\n".join(lines) + "\n")
+os.replace(tmp, env_path)
+
+# bash reads the FIRST of these that exists, and ignores the rest, so the
+# source line has to go in that one -- not always ~/.profile.
+rc = None
+for cand in (".bash_profile", ".bash_login", ".profile"):
+    p = os.path.join(home, cand)
+    if os.path.exists(p):
+        rc = p
+        break
+if rc is None:
+    rc = os.path.join(home, ".profile")
+    open(rc, "a").close()
+if MARK not in open(rc).read():
+    with open(rc, "a") as f:
+        f.write('\n%s\n[ -f "$HOME/.container-env.sh" ] && . "$HOME/.container-env.sh"\n'
+                '# <<< dailybot container env <<<\n' % MARK)
+
+if os.geteuid() == 0:
+    try:
+        pw = pwd.getpwnam(user)
+        for p in (env_path, rc):
+            os.chown(p, pw.pw_uid, pw.pw_gid)
+    except KeyError:
+        pass
+PY
+}
+write_container_env_profile "/home/dev-user" "dev-user"
+
 # Generate ~/.pypirc from environment variables for a given user
 # This avoids hand-maintaining a .pypirc file in the repo or home dir.
 # Tokens are read from PYPI_API_TOKEN / TESTPYPI_API_TOKEN (see cli/.env).
@@ -323,6 +511,60 @@ setup_ssh_keys_for_user() {
 # Setup SSH keys for dev-user only
 setup_ssh_keys_for_user "/home/dev-user"
 chown -R dev-user:dev-user /home/dev-user/.ssh 2>/dev/null || true
+
+# Start sshd so a Herdr client on the host can attach to this container as a
+# saved machine. The compose file publishes container port 22 on
+# 127.0.0.1:${HERDR_SSH_HOST_PORT} — loopback only, never every interface.
+#
+# Authentication is public-key only: every *.pub found in the read-only mount of
+# the host's ~/.ssh is appended to authorized_keys. No password is ever accepted,
+# and no private key is read for this purpose.
+setup_sshd_for_herdr() {
+    USER_HOME="$1"
+    SSH_HOST_DIR="${USER_HOME}/.ssh_host"
+    SSH_DIR="${USER_HOME}/.ssh"
+    AUTHORIZED_KEYS="${SSH_DIR}/authorized_keys"
+
+    if [ ! -x /usr/sbin/sshd ]; then
+        echo "Warning: openssh-server is not installed; SSH into this container is unavailable."
+        return 0
+    fi
+
+    mkdir -p "${SSH_DIR}"
+    touch "${AUTHORIZED_KEYS}"
+    if [ -d "${SSH_HOST_DIR}" ]; then
+        for public_key in "${SSH_HOST_DIR}"/*.pub; do
+            if [ -f "${public_key}" ] && ! grep -Fqx -f "${public_key}" "${AUTHORIZED_KEYS}" 2>/dev/null; then
+                cat "${public_key}" >> "${AUTHORIZED_KEYS}"
+                printf '\n' >> "${AUTHORIZED_KEYS}"
+            fi
+        done
+    fi
+    chmod 700 "${SSH_DIR}"
+    chmod 600 "${AUTHORIZED_KEYS}"
+    chown -R dev-user:dev-user "${SSH_DIR}"
+
+    mkdir -p /var/run/sshd
+    if ! ls /etc/ssh/ssh_host_*_key >/dev/null 2>&1; then
+        echo "Generating SSH host keys..."
+        ssh-keygen -A
+    fi
+
+    # The drop-in must not redefine Subsystem sftp; the base config already has it.
+    if [ -f /etc/ssh/sshd_config.d/herdr.conf ]; then
+        sed -i '/^Subsystem[[:space:]]\+sftp/d' /etc/ssh/sshd_config.d/herdr.conf 2>/dev/null || true
+    fi
+
+    if /usr/sbin/sshd -t 2>/tmp/sshd-test.err; then
+        /usr/sbin/sshd
+        echo "SSH listening on container port 22 (published on the host as HERDR_SSH_HOST_PORT)"
+    else
+        echo "Warning: SSH server config invalid — attaching a Herdr machine will fail:"
+        cat /tmp/sshd-test.err >&2 || true
+    fi
+}
+
+setup_sshd_for_herdr "/home/dev-user"
 
 # Execute the main command
 exec "$@"

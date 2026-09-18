@@ -15,11 +15,32 @@ SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 # Install base system dependencies
 RUN apt-get update && apt-get install --no-install-recommends -y \
     # Essential tools
-    sudo git bash-completion nano ssh curl gnupg ca-certificates \
+    sudo git bash-completion nano ssh openssh-server curl gnupg ca-certificates \
     # Build tools (for native npm packages)
     build-essential \
     # Clean up
-    && apt-get clean && rm -rf /var/lib/apt/lists/*
+    && apt-get clean && rm -rf /var/lib/apt/lists/* \
+    # SSH into this container: runtime dir + host keys. Without host keys sshd
+    # accepts the TCP connection and then closes it, which looks like a network
+    # problem rather than a missing key.
+    && mkdir -p /var/run/sshd \
+    && ssh-keygen -A \
+    # Drop-in only — do not redefine Subsystem sftp (already in Debian sshd_config)
+    && printf '%s\n' \
+        'PasswordAuthentication no' \
+        'PubkeyAuthentication yes' \
+        'PermitRootLogin no' \
+        'UsePAM yes' \
+        'AllowTcpForwarding yes' \
+        'AllowStreamLocalForwarding yes' \
+        # A non-interactive `ssh host command` gets sshd's own minimal PATH: no
+        # /etc/profile, no ~/.bashrc. Without this, `ssh <machine> herdr ...` —
+        # which is how a Herdr client prepares and checks a remote — fails with
+        # "command not found". SetEnv states the PATH explicitly, and states
+        # ONLY the PATH: nothing here may carry a credential.
+        'SetEnv PATH=/home/dev-user/.local/bin:/home/dev-user/.cursor/bin:/home/dev-user/.opencode/bin:/home/dev-user/.grok/bin:/usr/local/bin:/usr/bin:/bin:/usr/local/sbin:/usr/sbin:/sbin' \
+        > /etc/ssh/sshd_config.d/herdr.conf \
+    && chmod 644 /etc/ssh/sshd_config.d/herdr.conf
 
 # Create devcontainer user and add it to sudoers
 RUN groupadd --gid 1000 dev-user \
@@ -32,6 +53,28 @@ RUN curl -fsSL https://deb.nodesource.com/setup_24.x | bash - \
     && apt-get install --no-install-recommends -y nodejs \
     && node --version && npm --version && npx --version \
     && apt-get clean && rm -rf /var/lib/apt/lists/*
+
+# The CLIs installed by their own installers below land in these directories.
+# PATH must name them before those RUN steps verify the binaries.
+ENV PATH="/home/dev-user/.local/bin:/home/dev-user/.cursor/bin:/home/dev-user/.opencode/bin:/home/dev-user/.grok/bin:${PATH}"
+
+# ENV alone is not enough. A LOGIN shell (`bash -l`, which is what `docker exec`
+# and most editors use) sources /etc/profile, and Debian's /etc/profile REPLACES
+# PATH outright — the ENV above is silently discarded and OpenCode disappears.
+# A profile.d drop-in re-adds the directories after that reset, so both login
+# and non-login shells see the same set.
+RUN printf '%s\n' \
+        '# Added by the Dockerfile: /etc/profile resets PATH, so re-add the' \
+        '# directories the AI CLI installers write into.' \
+        'for d in "$HOME/.local/bin" "$HOME/.cursor/bin" "$HOME/.opencode/bin" "$HOME/.grok/bin"; do' \
+        '    case ":$PATH:" in' \
+        '        *":$d:"*) ;;' \
+        '        *) [ -d "$d" ] && PATH="$d:$PATH" ;;' \
+        '    esac' \
+        'done' \
+        'export PATH' \
+        > /etc/profile.d/10-dailybot-ai-clis.sh \
+    && chmod 644 /etc/profile.d/10-dailybot-ai-clis.sh
 
 # Install GitHub CLI (system-wide via apt; usable by all users)
 RUN curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg | dd of=/usr/share/keyrings/githubcli-archive-keyring.gpg \
@@ -72,8 +115,12 @@ RUN pip install --no-cache-dir -r /tmp/requirements-dev.txt \
 RUN pip install --no-cache-dir pipx \
     && pipx install --global "python-semantic-release>=10,<11"
 
-# Install Codex CLI (system-wide via npm -g, available to dev-user)
-RUN npm install -g @openai/codex
+# AI coding-agent CLIs that ship as npm globals (system-wide, usable by dev-user).
+# Pi is installed with --ignore-scripts: its postinstall fetches a platform
+# binary that is not needed here and fails the build on some architectures.
+RUN npm install -g @openai/codex \
+    && npm install -g cline \
+    && npm install -g --ignore-scripts @earendil-works/pi-coding-agent
 
 # Default terminal editor (used by Git for merge/commit messages in minimal environments)
 ENV EDITOR=nano
@@ -93,6 +140,11 @@ RUN sed -i 's/\r//' /entrypoint.sh \
 RUN mkdir -p /home/dev-user/.claude_data \
              /home/dev-user/.codex_data \
              /home/dev-user/.cursor_data \
+             /home/dev-user/.cline_data \
+             /home/dev-user/.opencode_data \
+             /home/dev-user/.pi_data \
+             /home/dev-user/.grok_data \
+             /home/dev-user/.herdr_data \
              /home/dev-user/.gh_data \
              /home/dev-user/.dailybot_data \
              /home/dev-user/.ssh \
@@ -109,6 +161,28 @@ RUN git config --global init.defaultBranch main \
     && echo 'source /workspace/docker/custom_commands.sh' >> /home/dev-user/.bashrc \
     && curl -fsSL https://claude.ai/install.sh | bash \
     && curl -fsSL https://cursor.com/install | bash \
+    && curl -fsSL https://opencode.ai/install | bash -s -- --no-modify-path \
+    && curl -fsSL https://x.ai/cli/install.sh | GROK_BIN_DIR=/home/dev-user/.local/bin GROK_CHANNEL=stable bash \
+    && curl -fsSL https://herdr.dev/install.sh | bash \
+    && mkdir -p /home/dev-user/.config/herdr \
+    && printf '%s\n' \
+        '# Seeded by the Dockerfile.' \
+        '# A login shell: it reads /etc/profile.d and ~/.profile, which is where PATH' \
+        '# picks up the agent CLIs. A non-login shell reads neither and they vanish.' \
+        'onboarding = false' \
+        '' \
+        '[terminal]' \
+        'default_shell = "/bin/bash"' \
+        'shell_mode = "login"' \
+        'new_cwd = "/workspace"' \
+        '' \
+        '[ui]' \
+        'mouse_capture = true' \
+        '' \
+        '[experimental]' \
+        'allow_nested = true' \
+        > /home/dev-user/.config/herdr/config.toml \
+    && herdr --version \
     && rm -rf /home/dev-user/.claude /home/dev-user/.claude.json
 USER root
 
