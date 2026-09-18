@@ -241,6 +241,25 @@ setup_herdr_persistence_for_user() {
 setup_herdr_persistence_for_user "/home/dev-user"
 chown -R dev-user:dev-user /home/dev-user/.herdr_data 2>/dev/null || true
 
+# Herdr opens new panes, tabs and workspaces in $HOME unless told otherwise, so a
+# console opened in a fresh container landed nowhere useful and every new pane had
+# to be cd'd by hand. The project directory is the container's own WORKDIR -- the
+# same path devcontainer.json calls workspaceFolder -- so it is read from there
+# rather than written down a third time and left to drift out of step.
+#
+# Appended only when absent: a developer who set their own new_cwd keeps it.
+ensure_herdr_terminal_defaults() {
+    HERDR_CONFIG="/home/dev-user/.config/herdr/config.toml"
+    HERDR_CWD="$(pwd)"
+    mkdir -p "$(dirname "${HERDR_CONFIG}")"
+    [ -f "${HERDR_CONFIG}" ] || : > "${HERDR_CONFIG}"
+    if ! grep -qE '^[[:space:]]*new_cwd[[:space:]]*=' "${HERDR_CONFIG}"; then
+        printf '\n%s\n%s\n%s\n%s\n' '[terminal]' 'default_shell = "/bin/bash"' \
+            'shell_mode = "non_login"' "new_cwd = \"${HERDR_CWD}\"" >> "${HERDR_CONFIG}"
+    fi
+}
+ensure_herdr_terminal_defaults
+
 # Generate ~/.pypirc from environment variables for a given user
 # This avoids hand-maintaining a .pypirc file in the repo or home dir.
 # Tokens are read from PYPI_API_TOKEN / TESTPYPI_API_TOKEN (see cli/.env).
