@@ -339,7 +339,21 @@ chown -R dev-user:dev-user "/home/dev-user/.herdr_data" 2>/dev/null || true
 # Claude/Codex/Cursor helpers above: seed on first run, preserve after that.
 setup_agent_state_persistence() {
     USER_HOME="$1"; AGENT_DATA_DIR="${USER_HOME}/$2"; AGENT_LIVE_DIR="${USER_HOME}/$3"; AGENT_SLOT="$4"
+    # Only ever relink into a directory that is actually a mounted volume. A
+    # repository that keeps this state somewhere else entirely would otherwise
+    # have its working arrangement replaced by one pointing at the container
+    # layer -- persistence that looks right and is silently thrown away on the
+    # next recreate, which is the very bug this function exists to prevent.
+    # A volume is a different device from the layer it is mounted into.
+    if [ "$(stat -c %d "${AGENT_DATA_DIR}" 2>/dev/null)" = "$(stat -c %d "$(dirname "${AGENT_DATA_DIR}")" 2>/dev/null)" ]; then
+        return 0
+    fi
     mkdir -p "${AGENT_DATA_DIR}"
+    # A link left pointing at nothing is worse than no link: the CLI recreates
+    # the path as a real directory beside it and the volume stays empty.
+    if [ -L "${AGENT_LIVE_DIR}" ] && [ ! -e "${AGENT_LIVE_DIR}" ]; then
+        mkdir -p "${AGENT_DATA_DIR}/${AGENT_SLOT}"
+    fi
     if [ ! -L "${AGENT_LIVE_DIR}" ]; then
         if [ -d "${AGENT_LIVE_DIR}" ]; then
             if [ ! -d "${AGENT_DATA_DIR}/${AGENT_SLOT}" ] || [ -z "$(ls -A "${AGENT_DATA_DIR}/${AGENT_SLOT}" 2>/dev/null)" ]; then
@@ -392,7 +406,14 @@ tmp = env_path + ".tmp"
 # Opened 0600 rather than written and chmod'd afterwards: this file holds every
 # value compose was given, so a umask-default 0644 window between the two calls
 # is a window where anyone on the box can read live credentials.
-fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+# O_EXCL and O_NOFOLLOW as well as the mode: this path is predictable and the
+# file holds every value compose was given, so refuse to write through a
+# symlink or into something already sitting there rather than following it.
+try:
+    os.unlink(tmp)
+except FileNotFoundError:
+    pass
+fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600)
 with os.fdopen(fd, "w") as f:
     f.write("\n".join(lines) + "\n")
 os.replace(tmp, env_path)
@@ -583,7 +604,10 @@ setup_sshd_for_herdr() {
     HOST_KEY_DIR="${USER_HOME}/.herdr_data/ssh_host_keys"
     ${SSH_SUDO} mkdir -p "${HOST_KEY_DIR}"
     for key_type in rsa ecdsa ed25519; do
-        if [ ! -f "${HOST_KEY_DIR}/ssh_host_${key_type}_key" ]; then
+        # Tested through the same privilege the directory was created with: it is
+        # 0700 root, so a plain [ -f ] from a non-root entrypoint always reads
+        # false and the key gets regenerated on every start.
+        if ! ${SSH_SUDO} test -f "${HOST_KEY_DIR}/ssh_host_${key_type}_key"; then
             echo "Generating a persistent SSH host key (${key_type})..."
             ${SSH_SUDO} ssh-keygen -q -t "${key_type}" -N '' -f "${HOST_KEY_DIR}/ssh_host_${key_type}_key"
         fi
