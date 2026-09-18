@@ -362,8 +362,12 @@ for k, v in sorted(os.environ.items()):
         continue
     lines.append("export %s=%s" % (k, shlex.quote(v)))
 tmp = env_path + ".tmp"
-open(tmp, "w").write("\n".join(lines) + "\n")
-os.chmod(tmp, 0o600)
+# Opened 0600 rather than written and chmod'd afterwards: this file holds every
+# value compose was given, so a umask-default 0644 window between the two calls
+# is a window where anyone on the box can read live credentials.
+fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+with os.fdopen(fd, "w") as f:
+    f.write("\n".join(lines) + "\n")
 os.replace(tmp, env_path)
 
 # bash reads the FIRST of these that exists, and ignores the rest, so the
