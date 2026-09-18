@@ -332,6 +332,33 @@ ensure_herdr_terminal_defaults
 # own config (onboarding flag, settings changed from the UI).
 chown -R dev-user:dev-user "/home/dev-user/.herdr_data" 2>/dev/null || true
 
+# OpenCode, Pi, Cline and Grok each got a named volume, but nothing linked the
+# paths those CLIs actually write to it. The volume stayed empty while the real
+# state sat in the container layer, so `docker volume ls` looked reassuring and
+# the developer still lost their sign-in on the next recreate. Same shape as the
+# Claude/Codex/Cursor helpers above: seed on first run, preserve after that.
+setup_agent_state_persistence() {
+    USER_HOME="$1"; AGENT_DATA_DIR="${USER_HOME}/$2"; AGENT_LIVE_DIR="${USER_HOME}/$3"; AGENT_SLOT="$4"
+    mkdir -p "${AGENT_DATA_DIR}"
+    if [ ! -L "${AGENT_LIVE_DIR}" ]; then
+        if [ -d "${AGENT_LIVE_DIR}" ]; then
+            if [ ! -d "${AGENT_DATA_DIR}/${AGENT_SLOT}" ] || [ -z "$(ls -A "${AGENT_DATA_DIR}/${AGENT_SLOT}" 2>/dev/null)" ]; then
+                cp -r "${AGENT_LIVE_DIR}" "${AGENT_DATA_DIR}/${AGENT_SLOT}"
+            fi
+            rm -rf "${AGENT_LIVE_DIR}"
+        else
+            mkdir -p "${AGENT_DATA_DIR}/${AGENT_SLOT}"
+        fi
+        mkdir -p "$(dirname "${AGENT_LIVE_DIR}")"
+        ln -sf "${AGENT_DATA_DIR}/${AGENT_SLOT}" "${AGENT_LIVE_DIR}"
+    fi
+}
+setup_agent_state_persistence "/home/dev-user" ".opencode_data" ".opencode" "opencode_dir"
+setup_agent_state_persistence "/home/dev-user" ".opencode_data" ".local/share/opencode" "opencode_share"
+setup_agent_state_persistence "/home/dev-user" ".pi_data" ".pi" "pi_dir"
+setup_agent_state_persistence "/home/dev-user" ".grok_data" ".grok" "grok_dir"
+chown -R dev-user:dev-user "/home/dev-user/.opencode_data" "/home/dev-user/.pi_data" "/home/dev-user/.grok_data" 2>/dev/null || true
+
 # Herdr reaches this container over SSH, and sshd starts every session with a
 # clean environment: nothing compose passed in through env_file or environment
 # survives. Cursor uses docker exec, which does inherit it -- which is why the
