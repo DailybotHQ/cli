@@ -241,6 +241,29 @@ setup_herdr_persistence_for_user() {
 setup_herdr_persistence_for_user "/home/dev-user"
 chown -R dev-user:dev-user /home/dev-user/.herdr_data 2>/dev/null || true
 
+# Nested Herdr -- needed when a Herdr client attaches to this container. The image
+# may seed it, but that seed only reaches an EMPTY volume: a volume created
+# before the seed keeps the old file forever, so ensure it at runtime too.
+# Inserted into [experimental] when that table already exists, never duplicated.
+ensure_herdr_allow_nested() {
+    HERDR_CONFIG="/home/dev-user/.config/herdr/config.toml"
+    mkdir -p "$(dirname "${HERDR_CONFIG}")"
+    if [ ! -f "${HERDR_CONFIG}" ]; then
+        printf '%s\n' '[experimental]' 'allow_nested = true' > "${HERDR_CONFIG}"
+    elif ! grep -qE '^[[:space:]]*allow_nested[[:space:]]*=' "${HERDR_CONFIG}"; then
+        if grep -qE '^[[:space:]]*\[experimental\]' "${HERDR_CONFIG}"; then
+            awk '
+                BEGIN { done = 0 }
+                /^[[:space:]]*\[experimental\]/ { print; if (!done) { print "allow_nested = true"; done = 1; next } }
+                { print }
+            ' "${HERDR_CONFIG}" > "${HERDR_CONFIG}.tmp" && mv "${HERDR_CONFIG}.tmp" "${HERDR_CONFIG}"
+        else
+            printf '\n%s\n%s\n' '[experimental]' 'allow_nested = true' >> "${HERDR_CONFIG}"
+        fi
+    fi
+}
+ensure_herdr_allow_nested
+
 # Herdr opens new panes, tabs and workspaces in $HOME unless told otherwise, so a
 # console opened in a fresh container landed nowhere useful and every new pane had
 # to be cd'd by hand. The project directory is the container's own WORKDIR -- the
@@ -257,43 +280,50 @@ ensure_herdr_terminal_defaults() {
     mkdir -p "$(dirname "${HERDR_CONFIG}")"
     [ -f "${HERDR_CONFIG}" ] || : > "${HERDR_CONFIG}"
     awk -v cwd="${HERDR_CWD}" '
-        function keyname(l,  k) { k = l; sub(/[[:space:]]*=.*/, "", k); gsub(/[[:space:]]/, "", k); return k }
-        FNR == NR {
-            if ($0 ~ /^\[terminal\]/) { insec = 1; next }
-            if ($0 ~ /^\[/)            { insec = 0 }
-            if (insec && $0 ~ /^[[:space:]]*[A-Za-z_]+[[:space:]]*=/) {
-                k = keyname($0); if (!(k in seen)) { seen[k] = 1; order[++n] = $0 }
-            }
+    function keyname(l,  k) { k = l; sub(/[[:space:]]*=.*/, "", k); gsub(/[[:space:]]/, "", k); return k }
+    # Blank lines are held back and only flushed before real content, so a table
+    # appended at EOF does not leave a trailing blank that the next start would
+    # append to again -- the file would grow a line on every container start.
+    function emit(l) {
+        if (l == "") { if (any) pend++; return }
+        while (pend > 0) { print ""; pend-- }
+        print l; any = 1
+    }
+    function table(  i) {
+        emit("[terminal]")
+        if (!("new_cwd" in seen))    emit(sprintf("new_cwd = \"%s\"", cwd))
+        if (!("shell_mode" in seen)) emit("shell_mode = \"non_login\"")
+        for (i = 1; i <= n; i++) emit(order[i])
+        emit("")
+    }
+    FNR == NR {
+        if ($0 ~ /^\[terminal\]/) { insec = 1; next }
+        if ($0 ~ /^\[/)            { insec = 0 }
+        if (insec && $0 ~ /^[[:space:]]*[A-Za-z_]+[[:space:]]*=/) {
+            k = keyname($0); if (!(k in seen)) { seen[k] = 1; order[++n] = $0 }
+        }
+        next
+    }
+    {
+        if ($0 ~ /^\[terminal\]/) {
+            skip = 1
+            if (!done) { table(); done = 1 }
             next
         }
-        {
-            if ($0 ~ /^\[terminal\]/) {
-                skip = 1
-                if (!done) {
-                    print "[terminal]"
-                    if (!("new_cwd" in seen))    printf "new_cwd = \"%s\"\n", cwd
-                    if (!("shell_mode" in seen)) print "shell_mode = \"non_login\""
-                    for (i = 1; i <= n; i++) print order[i]
-                    print ""
-                    done = 1
-                }
-                next
-            }
-            if ($0 ~ /^\[/) { skip = 0 }
-            if (skip) next
-            print
-        }
-        END {
-            if (!done) {
-                print ""
-                print "[terminal]"
-                printf "new_cwd = \"%s\"\n", cwd
-                print "shell_mode = \"non_login\""
-            }
-        }
-    ' "${HERDR_CONFIG}" "${HERDR_CONFIG}" > "${HERDR_CONFIG}.tmp" && mv "${HERDR_CONFIG}.tmp" "${HERDR_CONFIG}"
+        if ($0 ~ /^\[/) { skip = 0 }
+        if (skip) next
+        emit($0)
+    }
+    END { if (!done) { emit(""); table() } }
+' "${HERDR_CONFIG}" "${HERDR_CONFIG}" > "${HERDR_CONFIG}.tmp" && mv "${HERDR_CONFIG}.tmp" "${HERDR_CONFIG}"
 }
 ensure_herdr_terminal_defaults
+
+# Herdr itself runs as dev-user, but everything above wrote as root, and
+# .config/herdr is a symlink -- chowning that path would only touch the link.
+# Take the real directory, after the last write, or Herdr cannot rewrite its
+# own config (onboarding flag, settings changed from the UI).
+chown -R dev-user:dev-user "/home/dev-user/.herdr_data" 2>/dev/null || true
 
 # Generate ~/.pypirc from environment variables for a given user
 # This avoids hand-maintaining a .pypirc file in the repo or home dir.
