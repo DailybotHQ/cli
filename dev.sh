@@ -485,6 +485,11 @@ cmd_setup() {
     target="${f%.example}"
     if [ ! -f "$target" ]; then
       cp "$f" "$target"
+      # These files are where API tokens end up once the developer fills them
+      # in. cp leaves them at the umask default, typically 0644 — readable by
+      # every account on the machine. Narrow them at creation, while they are
+      # still empty, rather than after a secret is already in them.
+      chmod 600 "$target" 2>/dev/null || true
       note "created ${target#"$REPO_ROOT"/}"
       created=$((created + 1))
     fi
