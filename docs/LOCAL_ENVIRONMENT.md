@@ -118,9 +118,11 @@ Everything is bound to loopback. Nothing is published on all interfaces.
 
 | Host | Container | Purpose |
 |---|---|---|
-| (none) |  | This container publishes no ports today. |
+| `22031` | `22` | SSH, for reaching the container with Herdr. Loopback only. |
 
-Override a port in `docker/local/.env`, not in the compose file.
+Override the host port with `HERDR_SSH_HOST_PORT` in `docker/local/cli/.env`
+— the file the compose service reads as its `env_file`, and the one
+`.env.example` documents — not in the compose file.
 
 **This table describes what the compose file declares.** A container that is
 already running keeps the mapping it was created with until it is recreated, so

@@ -161,7 +161,7 @@ docker exec -u dev-user dailybot-cli herdr status
 
 | File | Change |
 |------|--------|
-| `docker/local/docker-compose.yaml` | no SSH port published yet |
+| `docker/local/docker-compose.yaml` | publishes `127.0.0.1:22031 -> 22` (override with `HERDR_SSH_HOST_PORT` in `docker/local/cli/.env`) |
 
 Host-only (not in git): `~/.ssh/config`, `~/.ssh/known_hosts`,
 `~/.config/herdr/config.toml`, `~/.local/state/herdr/client/endpoints.json`.
@@ -174,7 +174,7 @@ Nothing here requires Cursor. From the repository root:
 ```bash
 bash dev.sh up          # starts this repo's services
 bash dev.sh ps          # confirm the SSH port is published
-herdr --remote dailybot-cli   # once SSH support lands
+herdr --remote dailybot-cli   # after `bash dev.sh up`
 ```
 
 If Herdr shows `reconnecting`, the container is almost always stopped rather
