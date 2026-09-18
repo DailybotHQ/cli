@@ -540,7 +540,6 @@ cmd_setup() {
   if [ -f "$COMPOSE_DIR/dev-setup-hook.sh" ]; then
     note "running docker/local/dev-setup-hook.sh"
     ( cd "$COMPOSE_DIR" && bash dev-setup-hook.sh )
-    created=$((created + 1))
   fi
 
   if [ "$created" -eq 0 ]; then
@@ -686,7 +685,7 @@ cmd_shell() {
     fi
     [ -n "$DC_WORKSPACE" ] && opts+=(-w "$DC_WORKSPACE")
   fi
-  dc exec ${opts[@]+"${opts[@]}"} "$service" bash -l 2>/dev/null || dc exec ${opts[@]+"${opts[@]}"} "$service" sh -l
+  dc exec ${opts[@]+"${opts[@]}"} "$service" bash -l || dc exec ${opts[@]+"${opts[@]}"} "$service" sh -l
 }
 
 cmd_exec() {
@@ -782,9 +781,12 @@ cmd_ls() {
     has_devcontainer "$root" || continue
     (
       load_context "$root" 2>/dev/null || exit 0
+      # Each repository resolves its own compose project; the filter below reads
+      # PROJECT, which only the main dispatch sets, and set -u would abort here.
+      resolve_project 2>/dev/null || exit 0
       running=0
       for s in $DC_RUNSERVICES; do
-        if docker ps --filter "label=com.docker.compose.service=$s" --format '{{.Names}}' 2>/dev/null | grep -q .; then
+        if docker ps --filter "label=com.docker.compose.project=$PROJECT" --filter "label=com.docker.compose.service=$s" --format '{{.Names}}' 2>/dev/null | grep -q .; then
           running=$((running + 1))
         fi
       done
