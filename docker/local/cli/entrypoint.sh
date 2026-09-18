@@ -545,10 +545,30 @@ setup_sshd_for_herdr() {
     chown -R dev-user:dev-user "${SSH_DIR}"
 
     mkdir -p /var/run/sshd
-    if ! ls /etc/ssh/ssh_host_*_key >/dev/null 2>&1; then
-        echo "Generating SSH host keys..."
-        ssh-keygen -A
-    fi
+
+    # Host keys live in the volume that already persists this container's state,
+    # never in the image and never in /etc/ssh. Baking them shipped the PRIVATE
+    # key inside the image layer; generating them into /etc/ssh at start would
+    # mint a new identity on every recreate. Either way the client's pinned key
+    # stops matching and the developer has to clear it by hand before Herdr can
+    # attach. Generated once, they outlive both rebuilds and recreates.
+    if [ "$(id -u)" = "0" ]; then SSH_SUDO=""; else SSH_SUDO="sudo"; fi
+    HOST_KEY_DIR="${USER_HOME}/.herdr_data/ssh_host_keys"
+    ${SSH_SUDO} mkdir -p "${HOST_KEY_DIR}"
+    for key_type in rsa ecdsa ed25519; do
+        if [ ! -f "${HOST_KEY_DIR}/ssh_host_${key_type}_key" ]; then
+            echo "Generating a persistent SSH host key (${key_type})..."
+            ${SSH_SUDO} ssh-keygen -q -t "${key_type}" -N '' -f "${HOST_KEY_DIR}/ssh_host_${key_type}_key"
+        fi
+    done
+    # sshd refuses a host key that is group- or world-readable, or not its own.
+    ${SSH_SUDO} chown root:root "${HOST_KEY_DIR}" "${HOST_KEY_DIR}"/ssh_host_*
+    ${SSH_SUDO} chmod 700 "${HOST_KEY_DIR}"
+    ${SSH_SUDO} chmod 600 "${HOST_KEY_DIR}"/ssh_host_*_key
+    ${SSH_SUDO} chmod 644 "${HOST_KEY_DIR}"/ssh_host_*_key.pub
+    printf 'HostKey %s/ssh_host_rsa_key\nHostKey %s/ssh_host_ecdsa_key\nHostKey %s/ssh_host_ed25519_key\n' \
+        "${HOST_KEY_DIR}" "${HOST_KEY_DIR}" "${HOST_KEY_DIR}" \
+        | ${SSH_SUDO} tee /etc/ssh/sshd_config.d/00-persistent-host-keys.conf >/dev/null
 
     # The drop-in must not redefine Subsystem sftp; the base config already has it.
     if [ -f /etc/ssh/sshd_config.d/herdr.conf ]; then
