@@ -10,11 +10,12 @@ maps to a parameter the contract declares — a convenience flag that invents a
 parameter name would produce a 400.
 """
 
+import json as _json
 from typing import Any
 
 import click
 
-from dailybot_cli.api_client import APIError, PaginatedResult
+from dailybot_cli.api_client import TASKS_BULK_MAX_ITEMS, APIError, PaginatedResult
 from dailybot_cli.commands.public_api_helpers import (
     EXIT_NOT_AUTHENTICATED,
     EXIT_USER_ABORTED,
@@ -697,3 +698,85 @@ def task_restore(task_uuid: str, idempotency_key: str | None, json_mode: bool) -
         emit_json(data)
         return
     _report_write(data, "Task restored")
+
+
+@task.command("bulk")
+@click.option("--operation", required=True, help="Operation to apply to every item.")
+@click.option(
+    "-f", "--file", "batch_file", required=True,
+    type=click.File("r"),
+    help="JSON file with the item list, or `-` for stdin.",
+)
+@click.option("--idempotency-key", default=None, help="Reuse a key to make a retry safe.")
+@click.option("-y", "--yes", "assume_yes", is_flag=True, help="Skip the confirmation.")
+@click.option("--json", "json_mode", is_flag=True, help="Emit machine-readable JSON to stdout.")
+def task_bulk(
+    operation: str, batch_file: Any, idempotency_key: str | None, assume_yes: bool, json_mode: bool
+) -> None:
+    """Apply one operation to many tasks in a single call.
+
+    \b
+    This is the only door that REQUIRES an idempotency key, so one is always sent:
+    a batch that times out can be retried without applying twice. A replay returns
+    the original result and writes once.
+
+    \b
+    There is NO dry run for bulk. The blast radius is bounded instead by the
+    server's cap of 100 items per call, which this command enforces before
+    sending.
+
+    \b
+    The item shape is the contract's, not a bespoke format.
+
+    \b
+    Examples:
+      dailybot task bulk --operation archive -f batch.json --yes
+      echo '[{"uuid":"..."}]' | dailybot task bulk --operation archive -f - --json
+    """
+    try:
+        items: Any = _json.load(batch_file)
+    except ValueError as exc:
+        raise click.BadParameter(f"Could not read the batch as JSON: {exc}") from exc
+    if not isinstance(items, list) or not items:
+        raise click.BadParameter("The batch must be a non-empty JSON array of items.")
+    if len(items) > TASKS_BULK_MAX_ITEMS:
+        raise click.BadParameter(
+            f"{len(items)} items exceeds the server cap of {TASKS_BULK_MAX_ITEMS} per call. "
+            "Split the batch and send it in chunks."
+        )
+
+    if not assume_yes:
+        console.print(
+            f"About to apply [bold]{click.style(operation, bold=True)}[/bold] to "
+            f"[bold]{len(items)}[/bold] item(s). There is no dry run for bulk."
+        )
+        if not click.confirm("Proceed?", default=False):
+            print_error("Aborted. Nothing was changed.")
+            raise SystemExit(EXIT_USER_ABORTED)
+
+    client = require_auth()
+    try:
+        with console.status(f"Applying {operation} to {len(items)} item(s)..."):
+            data: dict[str, Any] = client.bulk_tasks(
+                operation=operation, items=items, idempotency_key=idempotency_key
+            )
+    except APIError as exc:
+        _write_error(exc)
+
+    if json_mode:
+        emit_json(data)
+        return
+
+    results: Any = data.get("results") or []
+    failed: list[dict[str, Any]] = [
+        row for row in results if isinstance(row, dict) and row.get("status") == "error"
+    ]
+    _report_write(data, f"Bulk {operation}: {len(results) - len(failed)} succeeded, {len(failed)} failed")
+    for row in failed:
+        console.print(
+            f"  [red]failed[/red] {row.get('uuid', '?')} "
+            f"[dim]{row.get('code', '')}[/dim]"
+        )
+    if failed:
+        # Multi-item calls tolerate partial progress; exiting 0 would hide it.
+        raise SystemExit(1)

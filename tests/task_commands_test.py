@@ -431,3 +431,103 @@ class TestRestore:
         result = _invoke(runner, client, ["task", "restore", "t-1"])
         assert result.exit_code == 0
         client.restore_task.assert_called_once()
+
+
+# ---------------------------------------------------------------------------
+# Bulk (plan task 14)
+# ---------------------------------------------------------------------------
+
+
+class TestBulkAlwaysSendsAKey:
+    def test_a_key_is_sent_on_every_invocation(self, runner: CliRunner, client: MagicMock) -> None:
+        # This is the ONE door that REQUIRES the header. There must be no code
+        # path that omits it.
+        client.bulk_tasks.return_value = {"results": [], "_idempotency_replayed": False}
+        with runner.isolated_filesystem():
+            with open("batch.json", "w") as fh:
+                json.dump([{"uuid": "t-1"}], fh)
+            _invoke(runner, client, ["task", "bulk", "--operation", "archive", "-f", "batch.json", "--yes"])
+        assert "idempotency_key" in client.bulk_tasks.call_args[1]
+
+    def test_an_explicit_key_is_forwarded(self, runner: CliRunner, client: MagicMock) -> None:
+        client.bulk_tasks.return_value = {"results": [], "_idempotency_replayed": False}
+        with runner.isolated_filesystem():
+            with open("b.json", "w") as fh:
+                json.dump([{"uuid": "t-1"}], fh)
+            _invoke(runner, client, ["task", "bulk", "--operation", "archive", "-f", "b.json",
+                                     "--idempotency-key", "batch-7", "--yes"])
+        assert client.bulk_tasks.call_args[1]["idempotency_key"] == "batch-7"
+
+
+class TestBulkCap:
+    def test_over_the_cap_is_refused_client_side(self, runner: CliRunner, client: MagicMock) -> None:
+        with runner.isolated_filesystem():
+            with open("big.json", "w") as fh:
+                json.dump([{"uuid": f"t-{i}"} for i in range(101)], fh)
+            result = _invoke(runner, client, ["task", "bulk", "--operation", "archive",
+                                              "-f", "big.json", "--yes"])
+        assert result.exit_code == 2
+        assert "100" in result.output
+        client.bulk_tasks.assert_not_called()
+
+    def test_a_server_side_cap_refusal_is_surfaced(
+        self, runner: CliRunner, client: MagicMock
+    ) -> None:
+        # Handled too, in case the server's cap ever moves below ours.
+        client.bulk_tasks.side_effect = APIError(400, "too many", code="too_many_items")
+        with runner.isolated_filesystem():
+            with open("b.json", "w") as fh:
+                json.dump([{"uuid": "t-1"}], fh)
+            result = _invoke(runner, client, ["task", "bulk", "--operation", "archive",
+                                              "-f", "b.json", "--yes"])
+        assert result.exit_code != 0
+        assert "100" in result.output
+
+
+class TestBulkReplayAndPartials:
+    def test_a_replay_is_reported(self, runner: CliRunner, client: MagicMock) -> None:
+        client.bulk_tasks.return_value = {"results": [], "_idempotency_replayed": True}
+        with runner.isolated_filesystem():
+            with open("b.json", "w") as fh:
+                json.dump([{"uuid": "t-1"}], fh)
+            result = _invoke(runner, client, ["task", "bulk", "--operation", "archive",
+                                              "-f", "b.json", "--yes"])
+        assert "already applied" in result.output.lower()
+
+    def test_a_mixed_result_renders_per_item_and_exits_nonzero(
+        self, runner: CliRunner, client: MagicMock
+    ) -> None:
+        client.bulk_tasks.return_value = {
+            "results": [
+                {"uuid": "t-1", "status": "ok"},
+                {"uuid": "t-2", "status": "error", "code": "not_found"},
+            ],
+            "_idempotency_replayed": False,
+        }
+        with runner.isolated_filesystem():
+            with open("b.json", "w") as fh:
+                json.dump([{"uuid": "t-1"}, {"uuid": "t-2"}], fh)
+            result = _invoke(runner, client, ["task", "bulk", "--operation", "archive",
+                                              "-f", "b.json", "--yes"])
+        assert result.exit_code != 0
+        assert "t-2" in result.output
+        assert "not_found" in result.output
+
+
+class TestBulkConfirmation:
+    def test_a_destructive_batch_requires_yes(self, runner: CliRunner, client: MagicMock) -> None:
+        with runner.isolated_filesystem():
+            with open("b.json", "w") as fh:
+                json.dump([{"uuid": "t-1"}], fh)
+            with patch("dailybot_cli.commands.task.require_auth", return_value=client):
+                result = runner.invoke(
+                    cli, ["task", "bulk", "--operation", "archive", "-f", "b.json"], input="n\n"
+                )
+        assert result.exit_code == 7
+        client.bulk_tasks.assert_not_called()
+
+
+class TestBulkHelp:
+    def test_it_states_there_is_no_dry_run(self, runner: CliRunner) -> None:
+        out: str = runner.invoke(cli, ["task", "bulk", "--help"]).output.lower()
+        assert "no dry run" in out or "no dry-run" in out
