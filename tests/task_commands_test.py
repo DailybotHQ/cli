@@ -322,3 +322,112 @@ class TestParticipantsArePersonOnly:
         ):
             result = runner.invoke(cli, ["task", "participants", "add", "t-1", "--user", "u-1"])
         assert result.exit_code == 0
+
+
+# ---------------------------------------------------------------------------
+# Destructive operations (plan task 13)
+# ---------------------------------------------------------------------------
+
+
+_PREVIEW: dict[str, Any] = {
+    "operation": "task.archive",
+    "dry_run": True,
+    "reversible": True,
+    "restore_path": "/v1/tasks/tasks/t-1/restore/",
+    "consequence": "Soft-archives this task. Subtasks are not auto-archived.",
+    "affects": {"tasks": 1},
+    "_idempotency_replayed": False,
+}
+
+
+class TestArchivePreviewsBeforeActing:
+    def test_interactive_calls_dry_run_first(self, runner: CliRunner, client: MagicMock) -> None:
+        client.archive_task.side_effect = [_PREVIEW, {"_idempotency_replayed": False}]
+        with patch("dailybot_cli.commands.task.require_auth", return_value=client):
+            result = runner.invoke(cli, ["task", "archive", "t-1"], input="y\n")
+        assert result.exit_code == 0
+        assert client.archive_task.call_args_list[0][1]["dry_run"] is True
+        assert client.archive_task.call_args_list[1][1].get("dry_run", False) is False
+
+    def test_the_consequence_sentence_is_shown(self, runner: CliRunner, client: MagicMock) -> None:
+        client.archive_task.side_effect = [_PREVIEW, {"_idempotency_replayed": False}]
+        with patch("dailybot_cli.commands.task.require_auth", return_value=client):
+            result = runner.invoke(cli, ["task", "archive", "t-1"], input="y\n")
+        assert "Subtasks are not auto-archived" in result.output
+
+    def test_declining_mutates_nothing(self, runner: CliRunner, client: MagicMock) -> None:
+        client.archive_task.return_value = _PREVIEW
+        with patch("dailybot_cli.commands.task.require_auth", return_value=client):
+            result = runner.invoke(cli, ["task", "archive", "t-1"], input="n\n")
+        assert result.exit_code == 7
+        assert client.archive_task.call_count == 1  # the preview only
+
+
+class TestDryRunFlag:
+    def test_it_exits_zero_and_mutates_nothing(self, runner: CliRunner, client: MagicMock) -> None:
+        client.archive_task.return_value = _PREVIEW
+        result = _invoke(runner, client, ["task", "archive", "t-1", "--dry-run"])
+        assert result.exit_code == 0
+        assert client.archive_task.call_count == 1
+        assert client.archive_task.call_args[1]["dry_run"] is True
+
+
+class TestYesStillPreviews:
+    def test_the_preview_is_fetched_and_printed(self, runner: CliRunner, client: MagicMock) -> None:
+        # --yes skips the PROMPT, not the preview: the record of what was about to
+        # happen is the point. BLAST_RADIUS.md is explicit that --yes is advisory.
+        client.archive_task.side_effect = [_PREVIEW, {"_idempotency_replayed": False}]
+        result = _invoke(runner, client, ["task", "archive", "t-1", "--yes"])
+        assert result.exit_code == 0
+        assert client.archive_task.call_count == 2
+        assert "Subtasks are not auto-archived" in result.output
+
+
+class TestAFailedPreviewBlocks:
+    def test_it_does_not_proceed_blind(self, runner: CliRunner, client: MagicMock) -> None:
+        client.archive_task.side_effect = APIError(500, "boom", code="server_error")
+        result = _invoke(runner, client, ["task", "archive", "t-1", "--yes"])
+        assert result.exit_code != 0
+        assert client.archive_task.call_count == 1
+
+
+class TestDeleteIsAnArchiveAlias:
+    def test_it_describes_an_archive_not_a_deletion(
+        self, runner: CliRunner, client: MagicMock
+    ) -> None:
+        client.archive_task.side_effect = [_PREVIEW, {"_idempotency_replayed": False}]
+        result = _invoke(runner, client, ["task", "delete", "t-1", "--yes"])
+        assert "permanently" not in result.output.lower()
+        assert "archiv" in result.output.lower()
+
+    def test_help_says_it_is_reversible(self, runner: CliRunner) -> None:
+        out: str = runner.invoke(cli, ["task", "delete", "--help"]).output.lower()
+        assert "archive" in out
+        assert "restore" in out
+
+
+class TestIrreversibleIsMarked:
+    def test_no_restore_path_is_offered(self, runner: CliRunner, client: MagicMock) -> None:
+        hard: dict[str, Any] = {
+            "operation": "task.purge", "reversible": False,
+            "consequence": "Removes it for good.", "_idempotency_replayed": False,
+        }
+        client.archive_task.return_value = hard
+        result = _invoke(runner, client, ["task", "archive", "t-1", "--dry-run"])
+        assert "irreversible" in result.output.lower()
+        assert "restore" not in result.output.lower()
+
+
+class TestStateInUse:
+    def test_it_names_migrate_to(self, runner: CliRunner, client: MagicMock) -> None:
+        client.archive_task.side_effect = APIError(409, "in use", code="state_in_use")
+        result = _invoke(runner, client, ["task", "archive", "t-1", "--yes"])
+        assert "migrate_to" in result.output
+
+
+class TestRestore:
+    def test_it_calls_the_restore_door(self, runner: CliRunner, client: MagicMock) -> None:
+        client.restore_task.return_value = {"uuid": "t-1", "_idempotency_replayed": False}
+        result = _invoke(runner, client, ["task", "restore", "t-1"])
+        assert result.exit_code == 0
+        client.restore_task.assert_called_once()
