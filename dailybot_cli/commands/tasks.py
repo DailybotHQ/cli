@@ -22,11 +22,14 @@ from dailybot_cli.api_client import (
     as_query_datetime,
 )
 from dailybot_cli.commands.public_api_helpers import (
+    EXIT_NOT_AUTHENTICATED,
     emit_json,
     exit_for_api_error,
     require_auth,
+    resolve_error_message,
 )
 from dailybot_cli.commands.query_options import build_query_params, query_options
+from dailybot_cli.config import get_agent_auth
 from dailybot_cli.display import (
     console,
     present_untrusted,
@@ -48,6 +51,12 @@ EXIT_DELTA_WINDOW_EXPIRED: int = 9
 # so a caller writing a loop knows the limit before they hit it.
 DELTA_RATE_LIMIT_PER_MIN: int = 240
 
+# Values `me/tasks/` declares for its `scope` filter. The door ignores UNKNOWN
+# parameters but still refuses a declared one whose value it cannot read
+# (MEASURED_ANSWERS.md §3), so the CLI validates client-side and spends no round
+# trip on input it can reject itself.
+MY_TASKS_SCOPES: tuple[str, ...] = ("assigned", "created", "participating", "subscribed")
+
 _PULSE_FIELDS: list[tuple[str, str]] = [
     ("Open", "open"),
     ("Overdue", "overdue"),
@@ -56,6 +65,26 @@ _PULSE_FIELDS: list[tuple[str, str]] = [
     ("Scope", "scope"),
     ("Generated at", "generated_at"),
 ]
+
+
+def _require_person(door: str) -> None:
+    """Refuse a bare API key on a person-shaped door, before spending a request.
+
+    The pre-flight is an optimisation; the contract is that the message is ours.
+    A key that reaches the server anyway is handled identically by
+    ``resolve_error_message``, which recognises both refusal shapes
+    (``400 actor_required`` and ``403 insufficient_scope`` on these doors).
+
+    The message must never blame the caller's role: the plan's live probe measured
+    an ``ADMIN_ORG`` owner refused exactly like a member, so "you need to be an
+    admin" would send an organization admin hunting for a setting that cannot exist.
+    """
+    if get_agent_auth() == "api_key":
+        print_error(
+            f"`{door}` answers for a signed-in person, and an organization API key has "
+            "nobody to be. Run `dailybot login` and retry."
+        )
+        raise SystemExit(EXIT_NOT_AUTHENTICATED)
 
 
 def _envelope(result: PaginatedResult) -> dict[str, Any]:
@@ -350,3 +379,106 @@ def tasks_changes(
         emit_json(delta)
         return
     print_delta_summary(delta)
+
+
+@tasks.command("inbox")
+@query_options
+@click.option("--json", "json_mode", is_flag=True, help="Emit machine-readable JSON to stdout.")
+def tasks_inbox(json_mode: bool, **flags: Any) -> None:
+    """Show your Tasks notifications.
+
+    \b
+    Needs a signed-in person: run `dailybot login`. An organization API key cannot
+    read this door — it has an organization but nobody to be, so "my notifications"
+    has no answer.
+
+    \b
+    Examples:
+      dailybot tasks inbox
+      dailybot tasks inbox --json
+    """
+    _require_person("tasks inbox")
+    client = require_auth()
+    try:
+        with console.status("Reading your inbox..."):
+            result: PaginatedResult = client.list_tasks_inbox(**_page_kwargs(**flags))
+    except ValueError as exc:
+        raise click.BadParameter(str(exc)) from exc
+    except APIError as exc:
+        print_error(resolve_error_message(exc, door="inbox"))
+        raise SystemExit(EXIT_NOT_AUTHENTICATED) from exc
+    if json_mode:
+        emit_json(_envelope(result))
+        return
+    for item in result.results:
+        console.print(present_untrusted(item.get("title") or item.get("summary"), limit=90))
+    print_pagination_footer(len(result.results), result.count, has_more=bool(result.next))
+
+
+@tasks.command("mine")
+@click.option(
+    "--scope",
+    type=click.Choice(MY_TASKS_SCOPES, case_sensitive=False),
+    default=None,
+    help="Narrow to one relationship you have with the task.",
+)
+@query_options
+@click.option("--json", "json_mode", is_flag=True, help="Emit machine-readable JSON to stdout.")
+def tasks_mine(scope: str | None, json_mode: bool, **flags: Any) -> None:
+    """List the tasks that are yours.
+
+    \b
+    Needs a signed-in person: run `dailybot login`. An organization API key is
+    refused here, because "my tasks" is defined relative to the calling user.
+
+    \b
+    Examples:
+      dailybot tasks mine
+      dailybot tasks mine --scope assigned --json
+    """
+    _require_person("tasks mine")
+    client = require_auth()
+    try:
+        page: dict[str, Any] = _page_kwargs(**flags)
+        params: dict[str, Any] = page.pop("params", None) or {}
+        if scope:
+            params["scope"] = scope.lower()
+        with console.status("Reading your tasks..."):
+            result: PaginatedResult = client.list_my_tasks(params=params or None, **page)
+    except ValueError as exc:
+        raise click.BadParameter(str(exc)) from exc
+    except APIError as exc:
+        print_error(resolve_error_message(exc, door="me/tasks"))
+        raise SystemExit(EXIT_NOT_AUTHENTICATED) from exc
+    if json_mode:
+        emit_json(_envelope(result))
+        return
+    print_tasks_table(result.results)
+    print_pagination_footer(len(result.results), result.count, has_more=bool(result.next))
+
+
+@tasks.command("counts")
+@click.option("--json", "json_mode", is_flag=True, help="Emit machine-readable JSON to stdout.")
+def tasks_counts(json_mode: bool) -> None:
+    """Show how many tasks are yours, by bucket.
+
+    \b
+    Needs a signed-in person: run `dailybot login`.
+
+    \b
+    Examples:
+      dailybot tasks counts --json
+    """
+    _require_person("tasks counts")
+    client = require_auth()
+    try:
+        with console.status("Counting your tasks..."):
+            data: dict[str, Any] = client.get_my_task_counts()
+    except APIError as exc:
+        print_error(resolve_error_message(exc, door="me/tasks/counts"))
+        raise SystemExit(EXIT_NOT_AUTHENTICATED) from exc
+    if json_mode:
+        emit_json(data)
+        return
+    for key, value in data.items():
+        console.print(f"[bold]{key}[/bold]  {value}")
