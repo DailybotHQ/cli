@@ -52,6 +52,18 @@ tests/
 ├── api_client_test.py             # DailyBotClient + APIError (every HTTP method)
 ├── tasks_api_client_test.py       # Tasks transport: constants, query datetimes,
 │                                  #   idempotency posture, dry-run, timeout tiering
+├── tasks_commands_test.py         # `tasks` group: status/entitlements/search/activity/timeline
+├── tasks_delta_test.py            # `tasks changes`: cursor lifecycle, window expiry
+├── tasks_person_shaped_test.py    # inbox / mine / counts: person-only refusals
+├── task_commands_test.py          # `task` group: reads, writes, collaboration, bulk, archive
+├── board_commands_test.py         # `board` group: reads + container writes
+├── project_goal_commands_test.py  # `project` + `goal`: reads, roll-ups, updates, milestones
+├── tasks_display_test.py          # Tasks renderers + the untrusted-content presenter
+├── tasks_error_taxonomy_test.py   # Tasks error codes and credential guidance
+├── tasks_security_test.py         # injection boundary, isolation, destructive paths
+├── tasks_coverage_test.py         # cross-command sweep: 19 capabilities, flag wiring,
+│                                  #   idempotency table, role matrix, sequences
+├── transport_errors_test.py       # transport failures -> messages, not tracebacks
 ├── commands_test.py               # Click commands via CliRunner (auth, agent, interactive)
 ├── config_test.py                 # ~/.config/dailybot/ file management
 ├── public_api_commands_test.py    # User-scoped commands: checkin, form (full
@@ -79,6 +91,32 @@ The user-scoped commands (`checkin`, `form`, `team`, `kudos`, `user`) are tested
 3. **JSON mode** — assert `--json` emits the `code` and `detail` fields alongside `status`, so chat-agent consumers can pattern-match without parsing prose.
 
 **Teams + team-kudos coverage:** `team list` / `team get` exercise the new resolver; `kudos give --team` and `--to + --team` must assert that the POST payload uses `user_uuid_receivers` / `team_uuid_receivers` (the legacy `receivers` key MUST NOT appear).
+
+### Tasks coverage expectations
+
+New Tasks commands must include:
+
+1. **Happy path** — assert the client method is called with the expected request shape.
+2. **Error path** for every server `code` the command can surface, dispatched on `code`
+   and never on the English `detail`.
+3. **JSON mode** — `--json` emits the documented keys; paginated commands emit the
+   `{count, next, previous, results}` envelope.
+4. **Untrusted rendering** — any user-authored field is asserted to render as quoted data.
+5. **Credential posture** — a person-only door is asserted to refuse an API key *before*
+   the request, with exit code 3.
+6. **Idempotency posture** — the header is asserted present on an accepting door and
+   **absent** on an ignoring one. `tests/tasks_coverage_test.py` keeps the table-driven
+   version, which is the cheapest guard against drift.
+7. **Destructive posture** — the preview is asserted to happen first, `--dry-run` to mutate
+   nothing, and a failed preview to abort.
+
+`tests/tasks_coverage_test.py` is the cross-command sweep: it walks the 19 phase-1
+capabilities, renders `--help` for every subcommand of every Tasks group (the flag-wiring
+blind spot), and asserts no test in the suite calls `httpx` directly.
+
+**A coupling worth knowing:** `goal create` reuses `project._require_person_for_admin`, so
+`get_agent_auth` resolves in the **project** namespace. Patching `goal.get_agent_auth` does
+nothing. The role-matrix table records the resolving module per row for exactly this reason.
 
 ## Mocking HTTP
 
