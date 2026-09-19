@@ -144,3 +144,86 @@ class TestHelp:
     )
     def test_help_renders(self, runner: CliRunner, args: list[str]) -> None:
         assert runner.invoke(cli, [*args, "--help"]).exit_code == 0
+
+
+# ---------------------------------------------------------------------------
+# Project updates and milestones (plan task 15)
+# ---------------------------------------------------------------------------
+
+
+class TestProjectUpdatePost:
+    def test_it_posts_the_body(self, runner: CliRunner, client: MagicMock) -> None:
+        client.post_project_update.return_value = {"uuid": "u-1", "_idempotency_replayed": False}
+        result = _invoke(runner, client, ["project", "update-post", "p-1", "shipped the thing"])
+        assert result.exit_code == 0
+        assert client.post_project_update.call_args[1]["body"] == "shipped the thing"
+
+    def test_the_body_can_come_from_stdin(self, runner: CliRunner, client: MagicMock) -> None:
+        client.post_project_update.return_value = {"uuid": "u-1", "_idempotency_replayed": False}
+        with patch("dailybot_cli.commands.project.require_auth", return_value=client):
+            result = runner.invoke(
+                cli, ["project", "update-post", "p-1", "-"], input="a long update\n"
+            )
+        assert result.exit_code == 0
+        assert "a long update" in client.post_project_update.call_args[1]["body"]
+
+    def test_no_idempotency_key_flag_is_offered(self, runner: CliRunner) -> None:
+        # IDEMPOTENCY.md marks this door 'ignored'. Offering the flag would
+        # advertise a guarantee the server does not honour.
+        assert "--idempotency-key" not in runner.invoke(
+            cli, ["project", "update-post", "--help"]
+        ).output
+
+    def test_no_web_url_is_printed_after_posting(
+        self, runner: CliRunner, client: MagicMock
+    ) -> None:
+        client.post_project_update.return_value = {"uuid": "u-1", "_idempotency_replayed": False}
+        result = _invoke(runner, client, ["project", "update-post", "p-1", "done"])
+        for invented in ("http://", "https://", "app.dailybot.com"):
+            assert invented not in result.output
+
+
+class TestMilestoneList:
+    def test_it_scopes_to_a_project_when_given(self, runner: CliRunner, client: MagicMock) -> None:
+        client.list_milestones.return_value = _page([{"uuid": "m-1", "name": "Beta"}])
+        result = _invoke(runner, client, ["project", "milestones", "p-1"])
+        assert result.exit_code == 0
+        assert client.list_milestones.call_args[0][0] == "p-1"
+
+
+class TestMilestoneComplete:
+    def test_dry_run_mutates_nothing(self, runner: CliRunner, client: MagicMock) -> None:
+        client.complete_milestone.return_value = {
+            "operation": "milestone.complete", "dry_run": True, "reversible": True,
+            "consequence": "Marks the milestone complete. Open tasks stay open.",
+            "_idempotency_replayed": False,
+        }
+        result = _invoke(runner, client, ["project", "milestone-complete", "p-1", "m-1", "--dry-run"])
+        assert result.exit_code == 0
+        assert client.complete_milestone.call_count == 1
+        assert client.complete_milestone.call_args[1]["dry_run"] is True
+
+    def test_the_success_message_says_open_tasks_stay_open(
+        self, runner: CliRunner, client: MagicMock
+    ) -> None:
+        # The thing a user will otherwise assume wrongly.
+        client.complete_milestone.side_effect = [
+            {"consequence": "x", "reversible": True, "operation": "milestone.complete",
+             "_idempotency_replayed": False},
+            {"uuid": "m-1", "_idempotency_replayed": False},
+        ]
+        result = _invoke(runner, client, ["project", "milestone-complete", "p-1", "m-1", "--yes"])
+        assert result.exit_code == 0
+        assert "open tasks" in result.output.lower()
+
+    def test_help_says_open_tasks_stay_open(self, runner: CliRunner) -> None:
+        out: str = runner.invoke(cli, ["project", "milestone-complete", "--help"]).output.lower()
+        assert "open tasks" in out
+
+
+class TestMilestoneReopen:
+    def test_it_calls_the_reopen_door(self, runner: CliRunner, client: MagicMock) -> None:
+        client.reopen_milestone.return_value = {"uuid": "m-1", "_idempotency_replayed": False}
+        result = _invoke(runner, client, ["project", "milestone-reopen", "p-1", "m-1"])
+        assert result.exit_code == 0
+        client.reopen_milestone.assert_called_once_with("p-1", "m-1")
