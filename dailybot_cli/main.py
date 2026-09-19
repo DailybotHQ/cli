@@ -23,6 +23,7 @@ from dailybot_cli.commands.interactive_chat import interactive
 from dailybot_cli.commands.kudos import kudos
 from dailybot_cli.commands.label import label
 from dailybot_cli.commands.status import status
+from dailybot_cli.commands.tasks import tasks
 from dailybot_cli.commands.team import team
 from dailybot_cli.commands.uninstall import uninstall
 from dailybot_cli.commands.update import update
@@ -123,6 +124,7 @@ cli.add_command(user)
 cli.add_command(me)
 cli.add_command(org)
 cli.add_command(workflow)
+cli.add_command(tasks)
 cli.add_command(label)
 cli.add_command(featured)
 cli.add_command(agent)
