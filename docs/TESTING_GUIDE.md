@@ -50,6 +50,8 @@ Run from the repo root; there is a single `tests/` package (no workspace/monorep
 tests/
 ├── __init__.py                    # empty, just makes the dir importable
 ├── api_client_test.py             # DailyBotClient + APIError (every HTTP method)
+├── tasks_api_client_test.py       # Tasks transport: constants, query datetimes,
+│                                  #   idempotency posture, dry-run, timeout tiering
 ├── commands_test.py               # Click commands via CliRunner (auth, agent, interactive)
 ├── config_test.py                 # ~/.config/dailybot/ file management
 ├── public_api_commands_test.py    # User-scoped commands: checkin, form (full

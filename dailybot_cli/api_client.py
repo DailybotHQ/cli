@@ -1,8 +1,10 @@
 """HTTP client for Dailybot CLI API endpoints."""
 
 import time
+import uuid
 from collections.abc import Callable
 from dataclasses import dataclass, field
+from datetime import datetime, timezone
 from typing import Any
 
 import httpx
@@ -36,6 +38,22 @@ FREE_PLAN_DAILY_LIMIT_CODE: str = "free_plan_daily_limit_exceeded"
 MAX_FALLBACK_DETAIL_CHARS: int = 160  # cap for a non-JSON error body echoed to the user
 MAX_SEARCH_QUERY_LENGTH: int = 256  # server rejects search queries longer than this
 MAX_OWNER_USER_IDS: int = 50  # server rejects owner_user_ids lists longer than this
+
+# --- Tasks (/v1/tasks/*) ---
+TASKS_BASE_PATH: str = "/v1/tasks/"
+# Server cap on a bulk payload; above it the server answers `too_many_items`.
+# BLAST_RADIUS.md records this as THE volume guard for unattended destructive
+# loops — the CLI adds no second ceiling of its own.
+TASKS_BULK_MAX_ITEMS: int = 100
+IDEMPOTENCY_KEY_HEADER: str = "Idempotency-Key"
+IDEMPOTENCY_REPLAYED_HEADER: str = "Idempotency-Replayed"
+# The board delta door keeps a 7-day window; an older cursor is refused forever
+# with `delta_window_expired` + `full_resync_required`. Retrying is an infinite
+# loop — the only correct response is a fresh snapshot.
+TASKS_DELTA_MAX_WINDOW_DAYS: int = 7
+# Key surfaced on a write result when the server replayed a previous identical
+# call instead of performing a new one (from IDEMPOTENCY_REPLAYED_HEADER).
+IDEMPOTENCY_REPLAYED_KEY: str = "_idempotency_replayed"
 
 
 def _fallback_detail(response: httpx.Response) -> str:
@@ -135,6 +153,26 @@ def _label_entity_collection(entity_type: str) -> str:
     raise ValueError(
         f"entity type must be one of: forms, checkins, workflows (got {entity_type!r})"
     )
+
+
+def as_query_datetime(value: datetime | str) -> str:
+    """Render a datetime for a Tasks query string, always in the ``Z`` form.
+
+    ``datetime.now(timezone.utc).isoformat()`` ends in ``+00:00``. In a query
+    string an unencoded ``+`` decodes to a space, so the server receives
+    ``...T13:13:37 00:00`` and correctly refuses it — with a message saying the
+    value must be ISO-8601, about a value that is. This is the single most
+    likely way a Python client breaks the delta door
+    (MEASURED_ANSWERS.md §4, "The trap that is not our defect").
+
+    A naive datetime is read as UTC. Microseconds are dropped so a cursor
+    round-trips stably. A string is passed through untouched: the server hands
+    back an opaque cursor and the client must not reformat it.
+    """
+    if isinstance(value, str):
+        return value
+    moment: datetime = value if value.tzinfo is not None else value.replace(tzinfo=timezone.utc)
+    return moment.astimezone(timezone.utc).replace(microsecond=0).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
 def _fill_meta(meta: dict[str, Any] | None, result: "PaginatedResult") -> None:
@@ -307,6 +345,7 @@ class DailyBotClient:
         json: dict[str, Any] | None = None,
         params: dict[str, Any] | None = None,
         timeout: float | None = None,
+        extra_headers: dict[str, str] | None = None,
     ) -> httpx.Response:
         """Execute a user-scoped authenticated request with alt-credential retry.
 
@@ -330,8 +369,11 @@ class DailyBotClient:
         both invocations (primary + retry) go through the same dispatch so
         the retry is transparent to callers and to test mocks alike.
         """
+        headers: dict[str, str] = self._headers()
+        if extra_headers:
+            headers.update(extra_headers)
         kwargs: dict[str, Any] = {
-            "headers": self._headers(),
+            "headers": headers,
             "timeout": self.timeout if timeout is None else timeout,
         }
         if params is not None:
@@ -344,7 +386,10 @@ class DailyBotClient:
         if response.status_code in _AUTH_RETRY_STATUS_CODES:
             alt: dict[str, str] | None = self._alt_auth_headers()
             if alt is not None:
-                kwargs["headers"] = alt
+                retry_headers: dict[str, str] = dict(alt)
+                if extra_headers:
+                    retry_headers.update(extra_headers)
+                kwargs["headers"] = retry_headers
                 response = self._dispatch_http(method, url, **kwargs)
 
         return response
@@ -1848,6 +1893,344 @@ class DailyBotClient:
         return self._handle_response(response)
 
     # --- Organization Labels (/v1/labels/) ---
+
+
+    # ------------------------------------------------------------------
+    # Tasks (/v1/tasks/*)
+    #
+    # Contract of record: the API handoff pack under
+    # .dwp/handoffs/PLAN_tasks_api_cli_enablement/analysis_results/.
+    # Three rules govern this whole section:
+    #   * every datetime in a query goes through `as_query_datetime` (the
+    #     `+00:00` trap — MEASURED_ANSWERS.md §4);
+    #   * `Idempotency-Key` is sent ONLY on the doors IDEMPOTENCY.md marks
+    #     `accepted` or `required` — advertising it on an `ignored` door would
+    #     promise a guarantee the server does not honour;
+    #   * every door stays in the read timeout tier (docs/PERFORMANCE.md §2
+    #     says a new endpoint is read-tier by default; none of these runs
+    #     server-side AI processing).
+    # ------------------------------------------------------------------
+
+    def _tasks_url(self, path: str) -> str:
+        """Build an absolute URL under the Tasks base path."""
+        return f"{self.api_url}{TASKS_BASE_PATH}{path.lstrip('/')}"
+
+    def _tasks_write(
+        self,
+        method: str,
+        path: str,
+        *,
+        json: dict[str, Any] | None = None,
+        params: dict[str, Any] | None = None,
+        idempotent: bool = False,
+        idempotency_key: str | None = None,
+    ) -> dict[str, Any]:
+        """Issue a Tasks write and surface the replay flag.
+
+        ``idempotent`` reflects the door's posture in IDEMPOTENCY.md, not the
+        caller's preference: when it is False no key is sent, even if one was
+        supplied, because the server ignores it there.
+
+        A generated key is a uuid4. It must be unguessable: the idempotency slot
+        is keyed on ``(organization, scope, key)``, so two different keys in the
+        same organization **share a namespace** (MEASURED_ANSWERS.md §6 Q5) and a
+        sequential default would collide between two agents.
+        """
+        extra: dict[str, str] | None = None
+        if idempotent:
+            extra = {IDEMPOTENCY_KEY_HEADER: idempotency_key or str(uuid.uuid4())}
+        response: httpx.Response = self._request(
+            method, self._tasks_url(path), json=json, params=params, extra_headers=extra
+        )
+        result: dict[str, Any] = self._handle_response(response)
+        replayed: str = str(getattr(response, "headers", {}).get(IDEMPOTENCY_REPLAYED_HEADER, ""))
+        if isinstance(result, dict):
+            result[IDEMPOTENCY_REPLAYED_KEY] = replayed.lower() == "true"
+        return result
+
+    def _tasks_read(self, path: str, *, params: dict[str, Any] | None = None) -> dict[str, Any]:
+        """Issue a Tasks read (single object or non-paginated document)."""
+        return self._handle_response(self._request("GET", self._tasks_url(path), params=params))
+
+    def _tasks_list(
+        self,
+        path: str,
+        *,
+        params: dict[str, Any] | None = None,
+        page: int | None = None,
+        page_size: int | None = None,
+        fetch_all: bool = False,
+        limit: int | None = None,
+    ) -> PaginatedResult:
+        """Issue a Tasks list read through the shared pagination helper."""
+        return self._paginated_get(
+            self._tasks_url(path),
+            params=params,
+            page=page,
+            page_size=page_size,
+            fetch_all=fetch_all,
+            limit=limit,
+        )
+
+    # --- Workspace-level reads ---
+
+    def get_tasks_pulse(self) -> dict[str, Any]:
+        """GET /v1/tasks/pulse/ — the workspace snapshot an agent reads first."""
+        return self._tasks_read("pulse/")
+
+    def get_tasks_entitlements(self) -> dict[str, Any]:
+        """GET /v1/tasks/entitlements/ — never answers 402 by contract."""
+        return self._tasks_read("entitlements/")
+
+    def search_tasks(self, query: str, **page: Any) -> PaginatedResult:
+        """GET /v1/tasks/search/?q= — full-text search across the surface."""
+        return self._tasks_list("search/", params={"q": query[:MAX_SEARCH_QUERY_LENGTH]}, **page)
+
+    def list_tasks_activity(self, **page: Any) -> PaginatedResult:
+        """GET /v1/tasks/activity/ — the catch-up feed after an absence."""
+        return self._tasks_list("activity/", **page)
+
+    def list_tasks_timeline(
+        self, *, date_from: str | None = None, date_to: str | None = None, **page: Any
+    ) -> PaginatedResult:
+        """GET /v1/tasks/timeline/ — a dated view of the workspace."""
+        params: dict[str, Any] = {}
+        if date_from:
+            params["from"] = date_from
+        if date_to:
+            params["to"] = date_to
+        return self._tasks_list("timeline/", params=params or None, **page)
+
+    # --- Boards ---
+
+    def list_boards(self, **page: Any) -> PaginatedResult:
+        """GET /v1/tasks/boards/."""
+        return self._tasks_list("boards/", **page)
+
+    def get_board(self, board_uuid: str) -> dict[str, Any]:
+        """GET /v1/tasks/boards/<uuid>/."""
+        return self._tasks_read(f"boards/{board_uuid}/")
+
+    def get_board_snapshot(self, board_uuid: str) -> dict[str, Any]:
+        """GET /v1/tasks/boards/<uuid>/board/ — the dense cold-context door.
+
+        Carries ``delta_cursor``, which is the only place a caller can obtain a
+        cursor for :meth:`get_board_delta`; the delta door's own 400 does not
+        say where to get one.
+        """
+        return self._tasks_read(f"boards/{board_uuid}/board/")
+
+    def get_board_delta(
+        self, board_uuid: str, *, updated_since: datetime | str
+    ) -> dict[str, Any]:
+        """GET /v1/tasks/boards/<uuid>/delta/ — the poll-loop door.
+
+        Refuses three different things (MEASURED_ANSWERS.md §4): a missing
+        cursor, a cursor older than the 7-day window
+        (``delta_window_expired`` + ``full_resync_required``), and a cursor it
+        cannot parse. Only the second is recoverable, and only by re-snapshotting.
+        """
+        return self._tasks_read(
+            f"boards/{board_uuid}/delta/",
+            params={"updated_since": as_query_datetime(updated_since)},
+        )
+
+    # --- Tasks ---
+
+    def list_tasks(self, *, filters: dict[str, Any] | None = None, **page: Any) -> PaginatedResult:
+        """GET /v1/tasks/tasks/ — strict about parameters; only declared ones."""
+        return self._tasks_list("tasks/", params=filters, **page)
+
+    def get_task(self, task_uuid: str) -> dict[str, Any]:
+        """GET /v1/tasks/tasks/<uuid>/ — the most frequent call of all."""
+        return self._tasks_read(f"tasks/{task_uuid}/")
+
+    def create_task(
+        self, *, title: str, board: str | None = None, idempotency_key: str | None = None,
+        **fields: Any,
+    ) -> dict[str, Any]:
+        """POST /v1/tasks/tasks/ (or the board-scoped door). Accepts a key."""
+        payload: dict[str, Any] = {"title": title, **{k: v for k, v in fields.items() if v is not None}}
+        if board:
+            payload["board"] = board
+        return self._tasks_write(
+            "POST", "tasks/", json=payload, idempotent=True, idempotency_key=idempotency_key
+        )
+
+    def update_task(
+        self, task_uuid: str, *, idempotency_key: str | None = None, **fields: Any
+    ) -> dict[str, Any]:
+        """PATCH /v1/tasks/tasks/<uuid>/ — absolute fields; accepts a key."""
+        payload: dict[str, Any] = {k: v for k, v in fields.items() if v is not None}
+        return self._tasks_write(
+            "PATCH", f"tasks/{task_uuid}/", json=payload,
+            idempotent=True, idempotency_key=idempotency_key,
+        )
+
+    def move_task(
+        self, task_uuid: str, *, idempotency_key: str | None = None, **fields: Any
+    ) -> dict[str, Any]:
+        """POST /v1/tasks/tasks/<uuid>/move/ — accepts a key."""
+        return self._tasks_write(
+            "POST", f"tasks/{task_uuid}/move/", json={k: v for k, v in fields.items() if v is not None},
+            idempotent=True, idempotency_key=idempotency_key,
+        )
+
+    def archive_task(
+        self, task_uuid: str, *, dry_run: bool = False, idempotency_key: str | None = None
+    ) -> dict[str, Any]:
+        """POST /v1/tasks/tasks/<uuid>/archive/ — reversible; accepts a key.
+
+        With ``dry_run`` the server previews the consequence and writes no rows
+        and no audit events (BLAST_RADIUS.md).
+        """
+        return self._tasks_write(
+            "POST", f"tasks/{task_uuid}/archive/",
+            params={"dry_run": "true"} if dry_run else None,
+            idempotent=True, idempotency_key=idempotency_key,
+        )
+
+    def restore_task(self, task_uuid: str, *, idempotency_key: str | None = None) -> dict[str, Any]:
+        """POST /v1/tasks/tasks/<uuid>/restore/ — accepts a key."""
+        return self._tasks_write(
+            "POST", f"tasks/{task_uuid}/restore/", idempotent=True, idempotency_key=idempotency_key
+        )
+
+    def subscribe_task(self, task_uuid: str) -> dict[str, Any]:
+        """POST /v1/tasks/tasks/<uuid>/subscription/ — key IGNORED by the server."""
+        return self._tasks_write("POST", f"tasks/{task_uuid}/subscription/", idempotent=False)
+
+    def bulk_tasks(
+        self, *, operation: str, items: list[dict[str, Any]], idempotency_key: str | None = None
+    ) -> dict[str, Any]:
+        """POST /v1/tasks/tasks/bulk/ — the ONE door that REQUIRES a key.
+
+        Without the header the server answers ``400 idempotency_key_required``,
+        so this method always sends one.
+        """
+        return self._tasks_write(
+            "POST", "tasks/bulk/", json={"operation": operation, "items": items},
+            idempotent=True, idempotency_key=idempotency_key,
+        )
+
+    # --- Collaboration ---
+
+    def comment_on_task(
+        self, task_uuid: str, *, body: str, idempotency_key: str | None = None
+    ) -> dict[str, Any]:
+        """POST /v1/tasks/tasks/<uuid>/comments/ — accepts a key."""
+        return self._tasks_write(
+            "POST", f"tasks/{task_uuid}/comments/", json={"body": body},
+            idempotent=True, idempotency_key=idempotency_key,
+        )
+
+    def list_task_comments(self, task_uuid: str, **page: Any) -> PaginatedResult:
+        """GET /v1/tasks/tasks/<uuid>/comments/."""
+        return self._tasks_list(f"tasks/{task_uuid}/comments/", **page)
+
+    def relate_tasks(
+        self, task_uuid: str, *, other: str, relation: str, idempotency_key: str | None = None
+    ) -> dict[str, Any]:
+        """POST /v1/tasks/tasks/<uuid>/relations/ — accepts a key."""
+        return self._tasks_write(
+            "POST", f"tasks/{task_uuid}/relations/",
+            json={"related_task": other, "relation_type": relation},
+            idempotent=True, idempotency_key=idempotency_key,
+        )
+
+    def batch_task_labels(
+        self, task_uuid: str, *, mode: str, labels: list[str], idempotency_key: str | None = None
+    ) -> dict[str, Any]:
+        """POST /v1/tasks/tasks/<uuid>/labels/batch/ — accepts a key."""
+        return self._tasks_write(
+            "POST", f"tasks/{task_uuid}/labels/batch/", json={"mode": mode, "labels": labels},
+            idempotent=True, idempotency_key=idempotency_key,
+        )
+
+    def add_task_participant(
+        self, task_uuid: str, *, user_uuid: str, idempotency_key: str | None = None
+    ) -> dict[str, Any]:
+        """POST /v1/tasks/tasks/<uuid>/participants/ — person-only; accepts a key."""
+        return self._tasks_write(
+            "POST", f"tasks/{task_uuid}/participants/", json={"user_uuid": user_uuid},
+            idempotent=True, idempotency_key=idempotency_key,
+        )
+
+    # --- Projects, goals, milestones ---
+
+    def list_projects(self, *, include: list[str] | None = None, **page: Any) -> PaginatedResult:
+        """GET /v1/tasks/projects/ — roll-ups only when `include` asks for them."""
+        return self._tasks_list("projects/", params={"include": ",".join(include)} if include else None, **page)
+
+    def get_project(self, project_uuid: str, *, include: list[str] | None = None) -> dict[str, Any]:
+        """GET /v1/tasks/projects/<uuid>/."""
+        return self._tasks_read(
+            f"projects/{project_uuid}/", params={"include": ",".join(include)} if include else None
+        )
+
+    def list_project_updates(self, **page: Any) -> PaginatedResult:
+        """GET /v1/tasks/projects/updates/ — the batched digest."""
+        return self._tasks_list("projects/updates/", **page)
+
+    def post_project_update(self, project_uuid: str, *, body: str) -> dict[str, Any]:
+        """POST /v1/tasks/projects/<uuid>/updates/ — key IGNORED by the server.
+
+        The loop-closing command: it is how the team sees what an agent did.
+        """
+        return self._tasks_write(
+            "POST", f"projects/{project_uuid}/updates/", json={"body": body}, idempotent=False
+        )
+
+    def list_goals(self, *, include: list[str] | None = None, **page: Any) -> PaginatedResult:
+        """GET /v1/tasks/goals/ — roll-ups are ABSENT unless requested (AD-01)."""
+        return self._tasks_list("goals/", params={"include": ",".join(include)} if include else None, **page)
+
+    def get_goal(self, goal_uuid: str, *, include: list[str] | None = None) -> dict[str, Any]:
+        """GET /v1/tasks/goals/<uuid>/."""
+        return self._tasks_read(
+            f"goals/{goal_uuid}/", params={"include": ",".join(include)} if include else None
+        )
+
+    def list_milestones(self, project_uuid: str | None = None, **page: Any) -> PaginatedResult:
+        """GET the milestone family, org-wide or scoped to one project."""
+        path: str = f"projects/{project_uuid}/milestones/" if project_uuid else "milestones/"
+        return self._tasks_list(path, **page)
+
+    def complete_milestone(
+        self, project_uuid: str, milestone_uuid: str, *, dry_run: bool = False
+    ) -> dict[str, Any]:
+        """POST .../milestones/<uuid>/complete/ — capability 19.
+
+        Completing a milestone does NOT close its open tasks.
+        """
+        return self._tasks_write(
+            "POST", f"projects/{project_uuid}/milestones/{milestone_uuid}/complete/",
+            params={"dry_run": "true"} if dry_run else None, idempotent=False,
+        )
+
+    def reopen_milestone(self, project_uuid: str, milestone_uuid: str) -> dict[str, Any]:
+        """POST .../milestones/<uuid>/reopen/ — the reverse verb."""
+        return self._tasks_write(
+            "POST", f"projects/{project_uuid}/milestones/{milestone_uuid}/reopen/", idempotent=False
+        )
+
+    # --- Person-shaped doors (a bare API key has no answer here) ---
+
+    def list_my_tasks(self, *, filters: dict[str, Any] | None = None, **page: Any) -> PaginatedResult:
+        """GET /v1/tasks/me/tasks/ — needs a signed-in person."""
+        return self._tasks_list("me/tasks/", params=filters, **page)
+
+    def get_my_task_counts(self) -> dict[str, Any]:
+        """GET /v1/tasks/me/tasks/counts/ — needs a signed-in person."""
+        return self._tasks_read("me/tasks/counts/")
+
+    def list_tasks_inbox(self, **page: Any) -> PaginatedResult:
+        """GET /v1/tasks/inbox/ — needs a signed-in person."""
+        return self._tasks_list("inbox/", **page)
+
+    def get_tasks_inbox_unread_count(self) -> dict[str, Any]:
+        """GET /v1/tasks/inbox/unread-count/ — needs a signed-in person."""
+        return self._tasks_read("inbox/unread-count/")
 
     def get_labels_entitlement(self) -> dict[str, Any]:
         """GET /v1/labels/entitlement/ — org Labels feature flags for the caller."""
