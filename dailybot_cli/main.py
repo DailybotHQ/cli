@@ -1,10 +1,12 @@
 """Dailybot CLI entry point."""
 
 import platform
+from typing import Any
 
 import click
 
 from dailybot_cli import __version__
+from dailybot_cli.api_client import EXIT_TRANSPORT_ERROR, TransportError
 from dailybot_cli.commands.agent import agent
 from dailybot_cli.commands.ask import ask
 from dailybot_cli.commands.auth import login, logout
@@ -114,6 +116,48 @@ def cli(ctx: click.Context, api_url: str | None, app_url: str | None) -> None:
     if ctx.invoked_subcommand is None:
         run_interactive()
 
+
+class _SafetyNetGroup(click.Group):
+    """Root group that refuses to let an unexpected exception reach the user.
+
+    `AGENTS.md` rule 10 and DON'T #8 forbid a naked `httpx` exception surfacing to
+    a user, and `APIError` cannot carry a transport failure (it has no status code),
+    so every `except APIError` in the command layer is structurally unable to catch
+    one. This is the last-resort net.
+
+    It is a **net, not a muffler**. `SystemExit`, Click's own `UsageError`/`Abort`
+    and `KeyboardInterrupt` pass straight through: swallowing them would break exit
+    codes, argument validation and Ctrl-C respectively. Only a genuinely unexpected
+    exception is converted into a message plus a documented exit code.
+
+    The `hook` group keeps its own contract (`docs/AGENT_HOOKS.md`: always exit 0,
+    never break the agent harness); its callbacks already degrade to silence, and
+    this net never turns a hook invocation non-zero.
+    """
+
+    def invoke(self, ctx: click.Context) -> Any:
+        try:
+            return super().invoke(ctx)
+        except (
+            click.ClickException,
+            click.Abort,
+            click.exceptions.Exit,
+            SystemExit,
+            KeyboardInterrupt,
+        ):
+            raise
+        except TransportError as exc:
+            print_error(str(exc))
+            raise SystemExit(EXIT_TRANSPORT_ERROR) from exc
+        except Exception as exc:
+            print_error(
+                f"Unexpected error: {type(exc).__name__}: {exc}. "
+                "This is a bug — please report it with the command you ran."
+            )
+            raise SystemExit(1) from exc
+
+
+cli.__class__ = _SafetyNetGroup
 
 cli.add_command(login)
 cli.add_command(logout)

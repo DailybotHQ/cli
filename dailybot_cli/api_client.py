@@ -193,6 +193,29 @@ def _fill_meta(meta: dict[str, Any] | None, result: "PaginatedResult") -> None:
         meta["previous"] = result.previous
 
 
+# Exit code for "the request never reached a server, or the answer was
+# unreadable". Deliberately distinct from every EXIT_* the command layer uses
+# (2-7) and from the delta-window code (9): an agent branching on the exit status
+# is the primary consumer, and conflating "no network" with "forbidden" would
+# send it down the wrong recovery path.
+EXIT_TRANSPORT_ERROR: int = 8
+
+
+class TransportError(Exception):
+    """Raised when a request never produced a readable HTTP response.
+
+    Deliberately **not** a subclass of :class:`APIError`. An ``APIError`` is a
+    *server verdict* — it has a status code and a machine-readable ``code`` a
+    command can branch on. A transport failure has neither, and pretending it does
+    would mean every ``except APIError`` block silently treats "the network is
+    down" as "the server said no".
+
+    The consequence is that the ~30 existing ``except APIError`` handlers do not
+    catch this — which is correct, and why the root callback in ``main.py`` carries
+    a last-resort net so nothing reaches the user as a traceback.
+    """
+
+
 class APIError(Exception):
     """Raised when the API returns a non-success response."""
 
@@ -391,7 +414,7 @@ class DailyBotClient:
         if json is not None:
             kwargs["json"] = json
 
-        response: httpx.Response = self._dispatch_http(method, url, **kwargs)
+        response: httpx.Response = self._dispatch_guarded(method, url, **kwargs)
 
         if response.status_code in _AUTH_RETRY_STATUS_CODES:
             alt: dict[str, str] | None = self._alt_auth_headers()
@@ -400,9 +423,54 @@ class DailyBotClient:
                 if extra_headers:
                     retry_headers.update(extra_headers)
                 kwargs["headers"] = retry_headers
-                response = self._dispatch_http(method, url, **kwargs)
+                response = self._dispatch_guarded(method, url, **kwargs)
 
         return response
+
+    def _transport_message(self, exc: Exception, *, method: str) -> str:
+        """Explain a transport failure in terms the reader can act on.
+
+        The failure modes are kept distinct because the fixes differ: an
+        unreachable host is a connection or a wrong URL, a timeout on a **write**
+        may already have been applied, and a malformed URL is a configuration
+        problem the user can locate.
+        """
+        host: str = self.api_url
+        if isinstance(exc, (httpx.UnsupportedProtocol, httpx.InvalidURL)):
+            return (
+                f"The configured API URL is not usable: {host!r}. Check `--api-url`, "
+                "`DAILYBOT_API_URL`, `.dailybot/env.json` (`dailybot env show`) or "
+                "`dailybot config`."
+            )
+        if isinstance(exc, httpx.TimeoutException):
+            if method.upper() in {"POST", "PATCH", "PUT", "DELETE"}:
+                return (
+                    f"The request to {host} timed out. It **may have been applied** — a "
+                    "write that times out is not known to have failed, so check the "
+                    "current state before retrying."
+                )
+            return f"The request to {host} timed out. Check your connection and retry."
+        return (
+            f"Could not reach Dailybot at {host}. Check your connection, or whether that "
+            "is the right server (`dailybot env show`, or pass `--api-url`)."
+        )
+
+    def _dispatch_guarded(self, method: str, url: str, **kwargs: Any) -> httpx.Response:
+        """`_dispatch_http` with every transport failure converted to a CLI error.
+
+        The raw dispatcher stays a ``@staticmethod`` with its long-standing
+        per-method patchable surface, because the test suite patches
+        ``httpx.get`` / ``httpx.post`` directly and asserts the routing. The
+        guard lives here so the routing contract is untouched.
+        """
+        try:
+            return self._dispatch_http(method, url, **kwargs)
+        except httpx.HTTPError as exc:
+            # No retry on purpose. The bounded 429 backoff in `_send_with_retry`
+            # is the only retry this client has; silently retrying a connection
+            # failure would hide an outage from the caller who owns that decision,
+            # and could double-post a non-idempotent write.
+            raise TransportError(self._transport_message(exc, method=method.upper())) from exc
 
     @staticmethod
     def _dispatch_http(method: str, url: str, **kwargs: Any) -> httpx.Response:
@@ -465,7 +533,15 @@ class DailyBotClient:
             )
         if response.status_code == 204:
             return {}
-        return response.json()
+        try:
+            return response.json()
+        except Exception as exc:
+            # A 2xx whose body is not JSON: a captive portal, a proxy error page,
+            # an HTML 200. The error branch above already guards its own decode;
+            # this path did not, so a bare JSONDecodeError escaped to the user.
+            raise TransportError(
+                f"The server returned an unreadable response: {_fallback_detail(response)}"
+            ) from exc
 
     def _send_with_retry(self, send: Callable[[], httpx.Response]) -> httpx.Response:
         """Issue a request via ``send`` with bounded retry on a transient 429.

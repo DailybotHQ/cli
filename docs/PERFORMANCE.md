@@ -46,6 +46,7 @@ Rules of thumb:
 
 - **Never** hand-pick a timeout inline at the call site (`httpx.post(url, timeout=120.0)`). Always use one of the two named constants.
 - A new endpoint goes in the **read tier by default**; only promote to the submit tier with an explicit comment justifying it (e.g. "endpoint runs AI summarisation server-side").
+- Transport failures (`httpx.HTTPError` and its subclasses) are converted to `TransportError` at the dispatch boundary and are **never retried** — the bounded 429 backoff in `_send_with_retry` remains the only retry. Silently retrying a connection failure hides an outage from the caller and can double-post a non-idempotent write.
 - Retries are intentionally **not** layered into `api_client.py`. The Dailybot API is idempotent only for the read tier; transparent retry of submits would risk double-posting. If a future read endpoint needs jittered retry, add it as an opt-in helper, not a default.
 
 ### 3. Terminal rendering budget — `display.py` / `rich`
