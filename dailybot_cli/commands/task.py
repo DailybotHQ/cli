@@ -16,6 +16,7 @@ from typing import Any
 import click
 
 from dailybot_cli.api_client import TASKS_BULK_MAX_ITEMS, APIError, PaginatedResult
+from dailybot_cli.commands._destructive import preview_then_confirm
 from dailybot_cli.commands.public_api_helpers import (
     EXIT_NOT_AUTHENTICATED,
     EXIT_USER_ABORTED,
@@ -29,7 +30,6 @@ from dailybot_cli.config import get_agent_auth
 from dailybot_cli.display import (
     console,
     present_untrusted,
-    print_dry_run_consequence,
     print_error,
     print_pagination_footer,
     print_success,
@@ -561,43 +561,6 @@ def participants_add(
     _report_write(data, "Participant added")
 
 
-def _preview_then_confirm(
-    client: Any, task_uuid: str, *, assume_yes: bool, preview_only: bool
-) -> bool:
-    """Fetch the server's dry-run preview, show it, and decide whether to proceed.
-
-    The preview is not decoration. It is the only place the cascade count and the
-    reversibility appear, and BLAST_RADIUS.md is explicit that the CLI must state
-    the **consequence**, not merely ask "are you sure".
-
-    `--yes` skips the *prompt*, never the preview: the record of what was about to
-    happen is the point, and the flag is advisory anyway — the server bounds blast
-    radius per call, so a client-side flag adds no ceiling.
-
-    A preview that fails means we do NOT know the blast radius. Proceeding there
-    would be acting blind, so it aborts.
-    """
-    try:
-        with console.status("Previewing the consequence..."):
-            preview: dict[str, Any] = client.archive_task(task_uuid, dry_run=True)
-    except APIError as exc:
-        print_error(
-            "Could not preview the consequence, so nothing was changed. "
-            f"{resolve_error_message(exc)}"
-        )
-        raise SystemExit(1) from exc
-
-    print_dry_run_consequence(preview)
-    if preview_only:
-        return False
-    if assume_yes:
-        return True
-    if not click.confirm("Proceed?", default=False):
-        print_error("Aborted. Nothing was changed.")
-        raise SystemExit(EXIT_USER_ABORTED)
-    return True
-
-
 @task.command("archive")
 @click.argument("task_uuid")
 @click.option("--dry-run", is_flag=True, help="Show the consequence and exit without acting.")
@@ -620,8 +583,9 @@ def task_archive(
       dailybot task archive <task-uuid> --yes
     """
     client = require_auth()
-    if not _preview_then_confirm(
-        client, task_uuid, assume_yes=assume_yes, preview_only=dry_run
+    if not preview_then_confirm(
+        lambda: client.archive_task(task_uuid, dry_run=True),
+        assume_yes=assume_yes, preview_only=dry_run,
     ):
         return
     try:
@@ -655,8 +619,9 @@ def task_delete(task_uuid: str, dry_run: bool, assume_yes: bool, json_mode: bool
       dailybot task delete <task-uuid> --dry-run
     """
     client = require_auth()
-    if not _preview_then_confirm(
-        client, task_uuid, assume_yes=assume_yes, preview_only=dry_run
+    if not preview_then_confirm(
+        lambda: client.archive_task(task_uuid, dry_run=True),
+        assume_yes=assume_yes, preview_only=dry_run,
     ):
         return
     try:

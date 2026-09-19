@@ -6,8 +6,10 @@ import click
 from rich.table import Table
 
 from dailybot_cli.api_client import APIError, PaginatedResult
+from dailybot_cli.commands._destructive import preview_then_confirm
 from dailybot_cli.commands._rollups import render_rollup
 from dailybot_cli.commands.public_api_helpers import (
+    EXIT_NOT_AUTHENTICATED,
     EXIT_USER_ABORTED,
     emit_json,
     exit_for_api_error,
@@ -15,6 +17,7 @@ from dailybot_cli.commands.public_api_helpers import (
     resolve_error_message,
 )
 from dailybot_cli.commands.query_options import build_query_params, query_options
+from dailybot_cli.config import get_agent_auth
 from dailybot_cli.display import (
     console,
     present_untrusted,
@@ -344,3 +347,79 @@ def project_milestone_reopen(
         emit_json(data)
         return
     _report_write(data, "Milestone reopened")
+
+
+def _require_person_for_admin(action: str) -> None:
+    """Refuse a key on a `tasks:admin` door — see board.py for the full reasoning."""
+    if get_agent_auth() == "api_key":
+        print_error(
+            f"`{action}` needs the `tasks:admin` scope, which an organization API key can "
+            "never hold — it cannot even be stored on one. Run `dailybot login` and retry "
+            "as a signed-in person."
+        )
+        raise SystemExit(EXIT_NOT_AUTHENTICATED)
+
+
+@project.command("create")
+@click.option("-n", "--name", required=True, help="Project name.")
+@click.option("-d", "--description", default=None, help="Project description.")
+@click.option("--idempotency-key", default=None, help="Reuse a key to make a retry safe.")
+@click.option("--json", "json_mode", is_flag=True, help="Emit machine-readable JSON to stdout.")
+def project_create(
+    name: str, description: str | None, idempotency_key: str | None, json_mode: bool
+) -> None:
+    """Create a project. Needs a signed-in person.
+
+    \b
+    Examples:
+      dailybot project create --name "Apollo"
+    """
+    _require_person_for_admin("project create")
+    client = require_auth()
+    try:
+        with console.status("Creating the project..."):
+            data: dict[str, Any] = client.create_project(
+                name=name, description=description, idempotency_key=idempotency_key
+            )
+    except APIError as exc:
+        print_error(resolve_error_message(exc))
+        raise SystemExit(4 if exc.status_code in (401, 402, 403) else 1) from exc
+    if json_mode:
+        emit_json(data)
+        return
+    _report_write(data, f"Created project {present_untrusted(data.get('name') or name)}")
+
+
+@project.command("archive")
+@click.argument("project_uuid")
+@click.option("--dry-run", is_flag=True, help="Show the consequence and exit without acting.")
+@click.option("-y", "--yes", "assume_yes", is_flag=True, help="Skip the prompt (still previews).")
+@click.option("--idempotency-key", default=None, help="Reuse a key to make a retry safe.")
+@click.option("--json", "json_mode", is_flag=True, help="Emit machine-readable JSON to stdout.")
+def project_archive(
+    project_uuid: str, dry_run: bool, assume_yes: bool, idempotency_key: str | None, json_mode: bool
+) -> None:
+    """Archive a project.
+
+    \b
+    Examples:
+      dailybot project archive <project-uuid> --dry-run
+    """
+    client = require_auth()
+    if not preview_then_confirm(
+        lambda: client.archive_project(project_uuid, dry_run=True),
+        assume_yes=assume_yes, preview_only=dry_run,
+    ):
+        return
+    try:
+        with console.status("Archiving the project..."):
+            data: dict[str, Any] = client.archive_project(
+                project_uuid, dry_run=False, idempotency_key=idempotency_key
+            )
+    except APIError as exc:
+        print_error(resolve_error_message(exc))
+        raise SystemExit(4 if exc.status_code in (401, 403) else 1) from exc
+    if json_mode:
+        emit_json(data)
+        return
+    _report_write(data, "Project archived")

@@ -2224,6 +2224,56 @@ class DailyBotClient:
             "POST", f"projects/{project_uuid}/milestones/{milestone_uuid}/reopen/", idempotent=False
         )
 
+    # --- Container writes (board / project / goal) ---
+    #
+    # These need `tasks:admin`, which an organization API key can NEVER hold: the
+    # validator refuses to store it and the door refuses it independently. The
+    # plan's live probe measured an ADMIN_ORG *owner* refused identically, so the
+    # CLI must blame the credential kind rather than the user's role.
+
+    def create_board(self, *, name: str, idempotency_key: str | None = None, **fields: Any) -> dict[str, Any]:
+        """POST /v1/tasks/boards/ — accepts a key header; needs tasks:admin."""
+        payload: dict[str, Any] = {"name": name, **{k: v for k, v in fields.items() if v is not None}}
+        return self._tasks_write("POST", "boards/", json=payload, idempotent=True, idempotency_key=idempotency_key)
+
+    def archive_board(self, board_uuid: str, *, dry_run: bool = False, idempotency_key: str | None = None) -> dict[str, Any]:
+        """POST /v1/tasks/boards/<uuid>/archive/ — cascades to live tasks."""
+        return self._tasks_write(
+            "POST", f"boards/{board_uuid}/archive/",
+            params={"dry_run": "true"} if dry_run else None,
+            idempotent=True, idempotency_key=idempotency_key,
+        )
+
+    def restore_board(self, board_uuid: str, *, idempotency_key: str | None = None) -> dict[str, Any]:
+        """POST /v1/tasks/boards/<uuid>/restore/ — cascaded tasks stay archived."""
+        return self._tasks_write("POST", f"boards/{board_uuid}/restore/", idempotent=True, idempotency_key=idempotency_key)
+
+    def create_project(self, *, name: str, idempotency_key: str | None = None, **fields: Any) -> dict[str, Any]:
+        """POST /v1/tasks/projects/ — accepts a key header; needs tasks:admin."""
+        payload: dict[str, Any] = {"name": name, **{k: v for k, v in fields.items() if v is not None}}
+        return self._tasks_write("POST", "projects/", json=payload, idempotent=True, idempotency_key=idempotency_key)
+
+    def archive_project(self, project_uuid: str, *, dry_run: bool = False, idempotency_key: str | None = None) -> dict[str, Any]:
+        """POST /v1/tasks/projects/<uuid>/archive/."""
+        return self._tasks_write(
+            "POST", f"projects/{project_uuid}/archive/",
+            params={"dry_run": "true"} if dry_run else None,
+            idempotent=True, idempotency_key=idempotency_key,
+        )
+
+    def create_goal(self, *, name: str, idempotency_key: str | None = None, **fields: Any) -> dict[str, Any]:
+        """POST /v1/tasks/goals/ — accepts a key header; needs tasks:admin."""
+        payload: dict[str, Any] = {"name": name, **{k: v for k, v in fields.items() if v is not None}}
+        return self._tasks_write("POST", "goals/", json=payload, idempotent=True, idempotency_key=idempotency_key)
+
+    def archive_goal(self, goal_uuid: str, *, dry_run: bool = False, idempotency_key: str | None = None) -> dict[str, Any]:
+        """POST /v1/tasks/goals/<uuid>/archive/ — projects are not cascaded."""
+        return self._tasks_write(
+            "POST", f"goals/{goal_uuid}/archive/",
+            params={"dry_run": "true"} if dry_run else None,
+            idempotent=True, idempotency_key=idempotency_key,
+        )
+
     # --- Person-shaped doors (a bare API key has no answer here) ---
 
     def list_my_tasks(self, *, filters: dict[str, Any] | None = None, **page: Any) -> PaginatedResult:

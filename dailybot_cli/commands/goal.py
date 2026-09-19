@@ -6,8 +6,15 @@ import click
 from rich.table import Table
 
 from dailybot_cli.api_client import APIError, PaginatedResult
+from dailybot_cli.commands._destructive import preview_then_confirm
 from dailybot_cli.commands._rollups import render_rollup
-from dailybot_cli.commands.project import INCLUDE_VALUES, _envelope, _include_list
+from dailybot_cli.commands.project import (
+    INCLUDE_VALUES,
+    _envelope,
+    _include_list,
+    _report_write,
+    _require_person_for_admin,
+)
 from dailybot_cli.commands.public_api_helpers import (
     emit_json,
     exit_for_api_error,
@@ -114,3 +121,68 @@ def goal_get(goal_uuid: str, include: tuple[str, ...], json_mode: bool) -> None:
         return
     print_detail_panel("Goal", data, _GOAL_FIELDS)
     console.print(f"[bold]Progress[/bold]  {render_rollup(data, 'progress')}")
+
+
+@goal.command("create")
+@click.option("-n", "--name", required=True, help="Goal name.")
+@click.option("-d", "--description", default=None, help="Goal description.")
+@click.option("--idempotency-key", default=None, help="Reuse a key to make a retry safe.")
+@click.option("--json", "json_mode", is_flag=True, help="Emit machine-readable JSON to stdout.")
+def goal_create(
+    name: str, description: str | None, idempotency_key: str | None, json_mode: bool
+) -> None:
+    """Create a goal. Needs a signed-in person.
+
+    \b
+    Examples:
+      dailybot goal create --name "Q4 reliability"
+    """
+    _require_person_for_admin("goal create")
+    client = require_auth()
+    try:
+        with console.status("Creating the goal..."):
+            data: dict[str, Any] = client.create_goal(
+                name=name, description=description, idempotency_key=idempotency_key
+            )
+    except APIError as exc:
+        print_error(resolve_error_message(exc))
+        raise SystemExit(4 if exc.status_code in (401, 402, 403) else 1) from exc
+    if json_mode:
+        emit_json(data)
+        return
+    _report_write(data, f"Created goal {present_untrusted(data.get('name') or name)}")
+
+
+@goal.command("archive")
+@click.argument("goal_uuid")
+@click.option("--dry-run", is_flag=True, help="Show the consequence and exit without acting.")
+@click.option("-y", "--yes", "assume_yes", is_flag=True, help="Skip the prompt (still previews).")
+@click.option("--idempotency-key", default=None, help="Reuse a key to make a retry safe.")
+@click.option("--json", "json_mode", is_flag=True, help="Emit machine-readable JSON to stdout.")
+def goal_archive(
+    goal_uuid: str, dry_run: bool, assume_yes: bool, idempotency_key: str | None, json_mode: bool
+) -> None:
+    """Archive a goal. Its projects are NOT archived with it.
+
+    \b
+    Examples:
+      dailybot goal archive <goal-uuid> --dry-run
+    """
+    client = require_auth()
+    if not preview_then_confirm(
+        lambda: client.archive_goal(goal_uuid, dry_run=True),
+        assume_yes=assume_yes, preview_only=dry_run,
+    ):
+        return
+    try:
+        with console.status("Archiving the goal..."):
+            data: dict[str, Any] = client.archive_goal(
+                goal_uuid, dry_run=False, idempotency_key=idempotency_key
+            )
+    except APIError as exc:
+        print_error(resolve_error_message(exc))
+        raise SystemExit(4 if exc.status_code in (401, 403) else 1) from exc
+    if json_mode:
+        emit_json(data)
+        return
+    _report_write(data, "Goal archived. Its projects were not archived.")

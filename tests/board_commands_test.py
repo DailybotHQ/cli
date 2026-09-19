@@ -113,3 +113,106 @@ class TestHelp:
     @pytest.mark.parametrize("sub", ["list", "get", "snapshot"])
     def test_each_subcommand_renders_help(self, runner: CliRunner, sub: str) -> None:
         assert runner.invoke(cli, ["board", sub, "--help"]).exit_code == 0
+
+
+# ---------------------------------------------------------------------------
+# Container writes (plan task 16)
+# ---------------------------------------------------------------------------
+
+
+def _invoke_auth(runner: CliRunner, client: MagicMock, args: list[str], auth: str) -> Any:
+    with (
+        patch("dailybot_cli.commands.board.require_auth", return_value=client),
+        patch("dailybot_cli.commands.board.get_agent_auth", return_value=auth),
+    ):
+        return runner.invoke(cli, args)
+
+
+class TestContainerCreateNeedsAPerson:
+    """C-8 — measured: an ADMIN_ORG owner is refused too."""
+
+    def test_an_api_key_is_refused_before_the_request(
+        self, runner: CliRunner, client: MagicMock
+    ) -> None:
+        result = _invoke_auth(runner, client, ["board", "create", "--name", "Design"], "api_key")
+        assert result.exit_code == 3
+        client.create_board.assert_not_called()
+
+    def test_the_message_blames_the_credential_kind(
+        self, runner: CliRunner, client: MagicMock
+    ) -> None:
+        result = _invoke_auth(runner, client, ["board", "create", "--name", "x"], "api_key")
+        # Rich wraps at the terminal width, so a phrase can straddle a newline.
+        # Collapse whitespace before asserting on wording.
+        out: str = " ".join(result.output.lower().split())
+        assert "api key" in out
+        assert "dailybot login" in out
+
+    def test_it_does_not_tell_an_org_admin_to_become_an_admin(
+        self, runner: CliRunner, client: MagicMock
+    ) -> None:
+        # Task 1 measured an ADMIN_ORG owner refused identically. "You must be an
+        # admin" would send them hunting for a setting that cannot exist.
+        result = _invoke_auth(runner, client, ["board", "create", "--name", "x"], "api_key")
+        out: str = " ".join(result.output.lower().split())
+        assert "must be an admin" not in out
+        assert "be an org admin" not in out
+
+
+class TestGuestIsDistinctFromScope:
+    def test_guest_not_allowed_talks_about_role(
+        self, runner: CliRunner, client: MagicMock
+    ) -> None:
+        client.create_board.side_effect = APIError(403, "guest", code="guest_not_allowed")
+        result = _invoke_auth(runner, client, ["board", "create", "--name", "x"], "bearer")
+        assert "role" in " ".join(result.output.lower().split())
+
+
+_BOARD_PREVIEW: dict[str, Any] = {
+    "operation": "board.archive",
+    "reversible": True,
+    "restore_path": "/v1/tasks/boards/b-1/restore/",
+    "consequence": "Archives the board and cascade-archives 12 live tasks.",
+    "affects": {"boards": 1, "tasks_cascaded": 12},
+    "_idempotency_replayed": False,
+}
+
+
+class TestBoardArchivePreviews:
+
+    def test_dry_run_mutates_nothing(self, runner: CliRunner, client: MagicMock) -> None:
+        client.archive_board.return_value = _BOARD_PREVIEW
+        result = _invoke(runner, client, ["board", "archive", "b-1", "--dry-run"])
+        assert result.exit_code == 0
+        assert client.archive_board.call_count == 1
+
+    def test_the_cascade_count_is_shown(self, runner: CliRunner, client: MagicMock) -> None:
+        client.archive_board.return_value = _BOARD_PREVIEW
+        result = _invoke(runner, client, ["board", "archive", "b-1", "--dry-run"])
+        assert "12" in result.output
+
+    def test_it_warns_that_restoring_does_not_restore_cascaded_tasks(
+        self, runner: CliRunner, client: MagicMock
+    ) -> None:
+        client.archive_board.side_effect = [_BOARD_PREVIEW, {"_idempotency_replayed": False}]
+        result = _invoke(runner, client, ["board", "archive", "b-1", "--yes"])
+        out: str = " ".join(result.output.lower().split())
+        assert "not restore" in out or "stay archived" in out
+
+    def test_a_failed_preview_aborts(self, runner: CliRunner, client: MagicMock) -> None:
+        client.archive_board.side_effect = APIError(500, "boom", code="server_error")
+        result = _invoke(runner, client, ["board", "archive", "b-1", "--yes"])
+        assert result.exit_code != 0
+        assert client.archive_board.call_count == 1
+
+
+class TestBoardLimitIsSurfaced:
+    def test_the_entitlement_refusal_is_explained(
+        self, runner: CliRunner, client: MagicMock
+    ) -> None:
+        client.create_board.side_effect = APIError(
+            402, "limit", code="task_boards_limit_reached"
+        )
+        result = _invoke_auth(runner, client, ["board", "create", "--name", "x"], "bearer")
+        assert result.exit_code != 0
+        assert "limit" in " ".join(result.output.lower().split())
