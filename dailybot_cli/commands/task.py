@@ -24,8 +24,10 @@ from dailybot_cli.commands.public_api_helpers import (
 from dailybot_cli.commands.query_options import build_query_params, query_options
 from dailybot_cli.display import (
     console,
+    present_untrusted,
     print_error,
     print_pagination_footer,
+    print_success,
     print_task_detail,
     print_tasks_table,
 )
@@ -35,6 +37,12 @@ from dailybot_cli.display import (
 # strict (MEASURED_ANSWERS.md §3). The declared set is the contract, not the
 # historically-tolerated set.
 TASK_INCLUDE_VALUES: tuple[str, ...] = ("labels", "participants", "subtasks")
+
+# The server's idempotency slot lives for 24 hours. Reusing a key inside that
+# window REPLAYS the original write; reusing it after expiry is a NEW write and
+# duplicates. Both halves are stated in the help, because only knowing the first
+# one is how a retry loop quietly creates duplicates on day two.
+IDEMPOTENCY_TTL_HOURS: int = 24
 
 # Short aliases owned by the shared `query_options` decorator: -a (--all),
 # -l (--limit), -s (--search), -S (--since), -U (--until), -p (--page).
@@ -176,3 +184,180 @@ def task_get(task_uuid: str, json_mode: bool) -> None:
         emit_json(data)
         return
     print_task_detail(data)
+
+
+def _report_write(result: dict[str, Any], what: str) -> None:
+    """Report a write, distinguishing a fresh one from a server-side replay.
+
+    A replay means the server recognised the idempotency key and returned the
+    ORIGINAL result without performing a new write. Saying "created" there would
+    be a lie the caller may act on.
+    """
+    if result.get("_idempotency_replayed"):
+        print_success(
+            f"{what} — already applied (the server replayed a previous identical call; "
+            "nothing new was written)."
+        )
+        return
+    print_success(what)
+
+
+def _write_error(exc: APIError) -> None:
+    """Surface a write refusal and stop. Never retries."""
+    print_error(resolve_error_message(exc))
+    raise SystemExit(4 if exc.status_code in (401, 403, 409) else 1)
+
+
+@task.command("create")
+@click.option("-t", "--title", required=True, help="Task title.")
+@click.option("-b", "--board", default=None, help="Board to create it on.")
+@click.option("-d", "--description", default=None, help="Task description.")
+@click.option("--state", default=None, help="Initial workflow state.")
+@click.option("--assignee", default=None, help="User to assign it to.")
+@click.option("--due", default=None, help="Due date (YYYY-MM-DD).")
+@click.option(
+    "--idempotency-key",
+    default=None,
+    help="Reuse a key to make a retry safe. Generated automatically when omitted.",
+)
+@click.option("--json", "json_mode", is_flag=True, help="Emit machine-readable JSON to stdout.")
+def task_create(
+    title: str, board: str | None, description: str | None, state: str | None,
+    assignee: str | None, due: str | None, idempotency_key: str | None, json_mode: bool,
+) -> None:
+    """Create a task.
+
+    \b
+    An idempotency key is always sent, so a retry that times out cannot create a
+    second task. The server keeps that key for 24 hours: reusing it inside the
+    window replays the original result, and reusing it AFTER the window is a new
+    write that will duplicate.
+
+    \b
+    Examples:
+      dailybot task create --title "Fix the flaky test" --board <board-uuid>
+      dailybot task create -t "Ship it" --idempotency-key deploy-42 --json
+    """
+    client = require_auth()
+    try:
+        with console.status("Creating the task..."):
+            data: dict[str, Any] = client.create_task(
+                title=title, board=board, description=description, state=state,
+                executor=assignee, due_date=due, idempotency_key=idempotency_key,
+            )
+    except APIError as exc:
+        _write_error(exc)
+    if json_mode:
+        emit_json(data)
+        return
+    _report_write(data, f"Created {present_untrusted(data.get('title') or title)}")
+    print_task_detail(data)
+
+
+@task.command("update")
+@click.argument("task_uuid")
+@click.option("-t", "--title", default=None, help="New title.")
+@click.option("-d", "--description", default=None, help="New description.")
+@click.option("--state", default=None, help="New workflow state.")
+@click.option("--due", default=None, help="New due date (YYYY-MM-DD).")
+@click.option("--priority", default=None, help="New priority.")
+@click.option("--idempotency-key", default=None, help="Reuse a key to make a retry safe.")
+@click.option("--json", "json_mode", is_flag=True, help="Emit machine-readable JSON to stdout.")
+def task_update(
+    task_uuid: str, title: str | None, description: str | None, state: str | None,
+    due: str | None, priority: str | None, idempotency_key: str | None, json_mode: bool,
+) -> None:
+    """Change fields on a task.
+
+    \b
+    Only the fields you pass are sent — this is a partial update, never a
+    full-object overwrite, so a field you omit keeps its current value.
+
+    \b
+    Examples:
+      dailybot task update <task-uuid> --state done
+      dailybot task update <task-uuid> -t "Clearer title" --json
+    """
+    fields: dict[str, Any] = {
+        "title": title, "description": description, "state": state,
+        "due_date": due, "priority": priority,
+    }
+    supplied: dict[str, Any] = {k: v for k, v in fields.items() if v is not None}
+    if not supplied:
+        raise click.UsageError(
+            "Nothing to update. Pass at least one field, e.g. --title or --state."
+        )
+    client = require_auth()
+    try:
+        with console.status("Updating the task..."):
+            data: dict[str, Any] = client.update_task(
+                task_uuid, idempotency_key=idempotency_key, **supplied
+            )
+    except APIError as exc:
+        _write_error(exc)
+    if json_mode:
+        emit_json(data)
+        return
+    _report_write(data, "Task updated")
+
+
+@task.command("move")
+@click.argument("task_uuid")
+@click.option("--state", default=None, help="Target workflow state (column).")
+@click.option("--board", default=None, help="Target board.")
+@click.option("--idempotency-key", default=None, help="Reuse a key to make a retry safe.")
+@click.option("--json", "json_mode", is_flag=True, help="Emit machine-readable JSON to stdout.")
+def task_move(
+    task_uuid: str, state: str | None, board: str | None, idempotency_key: str | None,
+    json_mode: bool,
+) -> None:
+    """Move a task to another column or board.
+
+    \b
+    Examples:
+      dailybot task move <task-uuid> --state done
+      dailybot task move <task-uuid> --board <board-uuid>
+    """
+    if state is None and board is None:
+        raise click.UsageError("Pass --state or --board (or both) to say where it should go.")
+    client = require_auth()
+    fields: dict[str, Any] = {k: v for k, v in {"state": state, "board": board}.items() if v}
+    try:
+        with console.status("Moving the task..."):
+            data: dict[str, Any] = client.move_task(
+                task_uuid, idempotency_key=idempotency_key, **fields
+            )
+    except APIError as exc:
+        _write_error(exc)
+    if json_mode:
+        emit_json(data)
+        return
+    _report_write(data, "Task moved")
+
+
+@task.command("assign")
+@click.argument("task_uuid")
+@click.option("--to", "assignee", required=True, help="User uuid to assign the task to.")
+@click.option("--idempotency-key", default=None, help="Reuse a key to make a retry safe.")
+@click.option("--json", "json_mode", is_flag=True, help="Emit machine-readable JSON to stdout.")
+def task_assign(
+    task_uuid: str, assignee: str, idempotency_key: str | None, json_mode: bool
+) -> None:
+    """Assign a task to someone.
+
+    \b
+    Examples:
+      dailybot task assign <task-uuid> --to <user-uuid>
+    """
+    client = require_auth()
+    try:
+        with console.status("Assigning the task..."):
+            data: dict[str, Any] = client.update_task(
+                task_uuid, executor=assignee, idempotency_key=idempotency_key
+            )
+    except APIError as exc:
+        _write_error(exc)
+    if json_mode:
+        emit_json(data)
+        return
+    _report_write(data, "Task assigned")

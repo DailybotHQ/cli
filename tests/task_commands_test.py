@@ -151,3 +151,90 @@ class TestShortFlagsDoNotCollide:
             if opt.startswith("-") and not opt.startswith("--")
         ]
         assert len(shorts) == len(set(shorts)), f"duplicate short flags: {shorts}"
+
+
+# ---------------------------------------------------------------------------
+# Write surface (plan task 11)
+# ---------------------------------------------------------------------------
+
+
+class TestTaskCreate:
+    def test_it_sends_the_title(self, runner: CliRunner, client: MagicMock) -> None:
+        client.create_task.return_value = {"uuid": "t-1", "key": "K-1", "title": "x",
+                                           "_idempotency_replayed": False}
+        result = _invoke(runner, client, ["task", "create", "--title", "a task"])
+        assert result.exit_code == 0
+        assert client.create_task.call_args[1]["title"] == "a task"
+
+    def test_board_is_forwarded(self, runner: CliRunner, client: MagicMock) -> None:
+        client.create_task.return_value = {"uuid": "t-1", "_idempotency_replayed": False}
+        _invoke(runner, client, ["task", "create", "--title", "x", "--board", "b-1"])
+        assert client.create_task.call_args[1]["board"] == "b-1"
+
+    def test_an_explicit_idempotency_key_is_forwarded(
+        self, runner: CliRunner, client: MagicMock
+    ) -> None:
+        client.create_task.return_value = {"uuid": "t-1", "_idempotency_replayed": False}
+        _invoke(runner, client, ["task", "create", "--title", "x", "--idempotency-key", "mine"])
+        assert client.create_task.call_args[1]["idempotency_key"] == "mine"
+
+    def test_a_replay_is_reported_as_already_applied(
+        self, runner: CliRunner, client: MagicMock
+    ) -> None:
+        client.create_task.return_value = {"uuid": "t-1", "key": "K-1", "title": "x",
+                                           "_idempotency_replayed": True}
+        result = _invoke(runner, client, ["task", "create", "--title", "x"])
+        assert "already applied" in result.output.lower()
+
+    def test_a_fresh_write_is_not_called_a_replay(
+        self, runner: CliRunner, client: MagicMock
+    ) -> None:
+        client.create_task.return_value = {"uuid": "t-1", "key": "K-1", "title": "x",
+                                           "_idempotency_replayed": False}
+        result = _invoke(runner, client, ["task", "create", "--title", "x"])
+        assert "already applied" not in result.output.lower()
+
+    def test_payload_mismatch_says_use_a_new_key(self, runner: CliRunner, client: MagicMock) -> None:
+        client.create_task.side_effect = APIError(
+            409, "mismatch", code="idempotency_key_payload_mismatch"
+        )
+        result = _invoke(runner, client, ["task", "create", "--title", "x"])
+        assert result.exit_code != 0
+        assert "new key" in result.output.lower()
+
+    def test_in_progress_does_not_retry(self, runner: CliRunner, client: MagicMock) -> None:
+        client.create_task.side_effect = APIError(409, "running", code="idempotency_in_progress")
+        result = _invoke(runner, client, ["task", "create", "--title", "x"])
+        assert result.exit_code != 0
+        assert client.create_task.call_count == 1
+
+    def test_help_documents_the_ttl_and_the_duplication_risk(self, runner: CliRunner) -> None:
+        out: str = runner.invoke(cli, ["task", "create", "--help"]).output
+        assert "24" in out
+        assert "duplicate" in out.lower()
+
+
+class TestTaskUpdate:
+    def test_only_supplied_fields_are_sent(self, runner: CliRunner, client: MagicMock) -> None:
+        client.update_task.return_value = {"uuid": "t-1", "_idempotency_replayed": False}
+        _invoke(runner, client, ["task", "update", "t-1", "--title", "new"])
+        sent: dict[str, Any] = client.update_task.call_args[1]
+        assert sent["title"] == "new"
+        assert "description" not in sent or sent["description"] is None
+
+    def test_it_refuses_an_empty_update(self, runner: CliRunner, client: MagicMock) -> None:
+        result = _invoke(runner, client, ["task", "update", "t-1"])
+        assert result.exit_code == 2
+        client.update_task.assert_not_called()
+
+
+class TestTaskMoveAndAssign:
+    def test_move_to_a_state_uses_the_move_door(self, runner: CliRunner, client: MagicMock) -> None:
+        client.move_task.return_value = {"uuid": "t-1", "_idempotency_replayed": False}
+        _invoke(runner, client, ["task", "move", "t-1", "--state", "done"])
+        assert client.move_task.call_args[1]["state"] == "done"
+
+    def test_assign_uses_patch(self, runner: CliRunner, client: MagicMock) -> None:
+        client.update_task.return_value = {"uuid": "t-1", "_idempotency_replayed": False}
+        _invoke(runner, client, ["task", "assign", "t-1", "--to", "u-1"])
+        assert client.update_task.call_args[1]["executor"] == "u-1"
