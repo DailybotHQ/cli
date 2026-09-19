@@ -17,12 +17,14 @@ from dailybot_cli.commands.conversation import conversation
 from dailybot_cli.commands.env import env
 from dailybot_cli.commands.featured import featured
 from dailybot_cli.commands.form import form
+from dailybot_cli.commands.goal import goal
 from dailybot_cli.commands.hook import hook
 from dailybot_cli.commands.identity import me, org
 from dailybot_cli.commands.interactive import run_interactive
 from dailybot_cli.commands.interactive_chat import interactive
 from dailybot_cli.commands.kudos import kudos
 from dailybot_cli.commands.label import label
+from dailybot_cli.commands.project import project
 from dailybot_cli.commands.status import status
 from dailybot_cli.commands.task import task
 from dailybot_cli.commands.tasks import tasks
@@ -129,6 +131,8 @@ cli.add_command(workflow)
 cli.add_command(tasks)
 cli.add_command(task)
 cli.add_command(board)
+cli.add_command(project)
+cli.add_command(goal)
 cli.add_command(label)
 cli.add_command(featured)
 cli.add_command(agent)
