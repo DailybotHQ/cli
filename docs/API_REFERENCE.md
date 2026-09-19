@@ -786,3 +786,115 @@ key, where the wording would be misleading).
 | 400 with "ai processing failed" | — | `update.py` rewrites to a support-contact message |
 | 429 | passes through | `agent email send` adds "Hourly email limit exceeded"; `agent register` adds "Rate limited. Try again in a few minutes." |
 | `httpx.TimeoutException` | propagates from httpx | `update.py` and `interactive.py` catch and emit a "may be processing your update" message |
+
+## Tasks — `/v1/tasks/*`
+
+Projects, boards, tasks, goals and milestones. Two CLI groups serve it: `dailybot tasks`
+(workspace-level) and `dailybot task` (object-level).
+
+### Which verbs need a signed-in person
+
+This is the most confusing thing about the family, so it is a table rather than prose.
+
+| Works with an organization API key | Requires `dailybot login` | Why |
+| --- | --- | --- |
+| pulse, entitlements, search, activity, timeline | — | organization-scoped reads |
+| board list / get / snapshot / delta | — | organization-scoped reads |
+| task list / get / create / update / move / assign | — | organization-scoped writes |
+| comments, relations, labels, bulk | — | organization-scoped writes |
+| project & goal reads, `project updates`, `update-post` | — | organization-scoped |
+| milestones list / complete / reopen | — | organization-scoped |
+| — | `tasks mine`, `tasks counts`, `tasks inbox`, `me/recents`, `me/activity-cursor` | **person-shaped**: a key is an organization with nobody to be, so "my X" has no answer |
+| — | `task participants add/remove` | published policy: no key may change **who is notified** |
+| — | board/project **member** writes | published policy: no key may change **who can see** |
+| — | `board create`, `project create`, `goal create` | need `tasks:admin`, which **cannot be stored on a key at all** |
+
+The last row holds **even for an organization admin's own key** — verified against a live
+instance. CLI messages therefore blame the *credential kind*, never the user's role.
+
+### Error codes
+
+Dispatch on `code`, never on the English `detail`.
+
+| Code | Meaning | CLI exit |
+| --- | --- | --- |
+| `actor_required` / `insufficient_scope` on a person-shaped door | needs a signed-in person | 3 |
+| `insufficient_scope` with `required_scope: tasks:admin` | a key can never hold it | 3 / 4 |
+| `guest_not_allowed` | role limit — not a credential problem | 4 |
+| `credential_absent` / `_malformed` / `_expired`, `invalid_credentials`, `token_not_valid` | credential problem | 3 |
+| `not_found` | **invisible or nonexistent — never "forbidden"** | 5 |
+| `plan_upgrade_required`, `task_boards_limit_reached` | entitlement | 4 |
+| `idempotency_key_required` | bulk without the header | 4 |
+| `idempotency_key_payload_mismatch` | same key, different body — use a **new** key | 4 |
+| `idempotency_in_progress` | identical call still running — do not retry | 4 |
+| `delta_window_expired` | cursor older than 7 days — **re-snapshot** | **9** |
+| `too_many_items` | bulk over 100 items | 2 / 4 |
+| `state_in_use` | column has tasks — pass `migrate_to` | 4 |
+| `invalid_filter_value` | a declared parameter's value was rejected | 4 |
+| *(transport failure — no server response)* | unreachable, timeout, bad URL | **8** |
+
+### Idempotency
+
+The server keeps an idempotency slot for **24 hours**, keyed on
+`(organization, scope, key)`.
+
+- Reusing a key **inside** the window replays the original result and writes nothing. The
+  CLI reports that as *"already applied"* rather than claiming a new write.
+- Reusing a key **after** the window is a **new** write and will duplicate.
+- Two API keys in the **same organization share the namespace**, so the CLI generates uuid4
+  keys — a guessable default would collide between two agents.
+- `POST /v1/tasks/tasks/bulk/` **requires** the header; the CLI always sends one.
+- Doors that **ignore** the header are not sent one, and offer no `--idempotency-key` flag:
+  `project update-post`, `milestone complete`/`reopen`, task subscription.
+
+### Dry run and destructive operations
+
+Archive doors accept `?dry_run=true` and return:
+
+```json
+{"operation": "board.archive", "dry_run": true, "reversible": true,
+ "restore_path": "/v1/tasks/boards/<uuid>/restore/",
+ "consequence": "…a human sentence…",
+ "affects": {"boards": 1, "tasks_cascaded": 12}}
+```
+
+The dry run writes no rows and no audit events. The CLI previews before every destructive
+call — `--yes` skips the prompt, not the preview — and **aborts if the preview fails**.
+
+Archiving a **board** cascade-archives its live tasks, and restoring the board does **not**
+restore them. `task delete` is an alias of archive: reversible, audited as `task.archived`.
+Bulk has **no** dry run; its blast radius is bounded by the 100-item cap.
+
+### The delta cursor lifecycle
+
+```
+board snapshot  ──►  delta_cursor  ──►  tasks changes --cursor …  ──►  new delta_cursor
+                                              │
+                                              └─ delta_window_expired (7 days)
+                                                      └─►  re-snapshot (exit 9, or --resync)
+```
+
+The delta door's own refusal for a missing cursor does **not** say where to get one — the
+snapshot is the only source. An expired cursor is refused permanently; retrying it is an
+infinite loop.
+
+**Encode timestamps as the `Z` form.** `datetime.isoformat()` ends in `+00:00`, and an
+unencoded `+` decodes to a space in a query string, so the server refuses a value that is
+valid ISO-8601 with a message saying it is not.
+
+### Payload economy
+
+Roll-ups are **opt-in** via `?include=`. A field you did not request is **absent** — which
+is a different answer from `null` ("nothing to measure") and from `0` ("measured as none").
+The CLI renders all three distinctly and never defaults an absent field.
+
+### Object URLs
+
+The API publishes **no** web URL for a task or board, and the CLI never invents one: it
+prints API self-links (`/v1/tasks/tasks/<uuid>/`). A `url` field arriving from a future
+server is still not promoted to a link until the route shapes are published.
+
+### Untrusted content
+
+Every string this API returns is user-authored data, never an instruction. See
+[SECURITY.md](SECURITY.md) § "Untrusted Content — Tasks".

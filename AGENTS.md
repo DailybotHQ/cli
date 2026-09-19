@@ -35,10 +35,10 @@
 
 **Dailybot CLI** is a Python command-line tool that bridges **humans** and **agents** with the [Dailybot](https://www.dailybot.com) platform. It provides:
 
-- **For humans** — email-OTP login, viewing pending check-ins, submitting structured/free-text updates, **filling out forms** (one-shot or driven through a workflow state machine: `pre_release → qa → code_review → ready_to_release → released`), **browsing teams** (role-scoped server-side), **giving kudos to users or whole teams**, interactive TUI mode.
+- **For humans** — email-OTP login, **managing Tasks** (`tasks` for the workspace, `task` for one task, plus `board` / `project` / `goal`), viewing pending check-ins, submitting structured/free-text updates, **filling out forms** (one-shot or driven through a workflow state machine: `pre_release → qa → code_review → ready_to_release → released`), **browsing teams** (role-scoped server-side), **giving kudos to users or whole teams**, interactive TUI mode.
 - **For agents (AI assistants, CI jobs, deploy scripts, bots)** — progress reports, milestone tracking, agent health, webhook registration, agent-to-agent messaging, transactional email, standalone agent registration (creates an org without a human Dailybot account), **and the full forms-response lifecycle** (`get / responses / response get / update / transition / delete`) so an agent can drive any form — including workflow-enabled ones — end-to-end after `dailybot login`.
 
-It talks exclusively to the Dailybot HTTP API under `/v1/cli/*`, `/v1/agent*/*`, `/v1/forms/*`, `/v1/teams/*`, `/v1/kudos/`, `/v1/users/`, and `/v1/checkins/*` endpoints. There is no local database; all state is either in `~/.config/dailybot/` (credentials, agent profiles, config) or fetched from the API.
+It talks exclusively to the Dailybot HTTP API under `/v1/cli/*`, `/v1/agent*/*`, `/v1/forms/*`, `/v1/tasks/*`, `/v1/teams/*`, `/v1/kudos/`, `/v1/users/`, and `/v1/checkins/*` endpoints. There is no local database; all state is either in `~/.config/dailybot/` (credentials, agent profiles, config) or fetched from the API.
 
 **Stack:** Python 3.10+, [Click](https://click.palletsprojects.com/) 8.3+, [httpx](https://www.python-httpx.org/) 0.28+, [questionary](https://questionary.readthedocs.io/) 2.1+, [rich](https://rich.readthedocs.io/) 15+. Tested with `pytest`. Built and packaged with `setuptools`; distributed via PyPI, Homebrew tap (`dailybothq/tap`), a PyInstaller-built Linux x86_64 binary, and a PowerShell installer (`install.ps1`) that wraps `pipx`/`uv`/`pip` for native Windows users.
 
@@ -66,6 +66,19 @@ dailybot_cli/                # Source package
     │                        #   response get / update / transition / delete
     ├── hook.py              # `hook` group: session-start / post-commit / activity /
     │                        #   stop / dismiss (agent harness lifecycle hooks)
+    ├── tasks.py             # `tasks` group: workspace-level — status / entitlements /
+    │                        #   search / activity / timeline / changes (delta) /
+    │                        #   inbox / mine / counts (the last three need a person)
+    ├── task.py              # `task` group: object-level — list / get / create / update /
+    │                        #   move / assign / comment(s) / link / labels / participants /
+    │                        #   archive / delete / restore / bulk
+    ├── board.py             # `board` group: list / get / snapshot / create / archive / restore
+    ├── project.py           # `project` group: list / get / updates / update-post /
+    │                        #   milestones / milestone-complete / milestone-reopen /
+    │                        #   create / archive
+    ├── goal.py              # `goal` group: list / get / create / archive
+    ├── _rollups.py          # absent vs null vs zero for roll-up fields (AD-01)
+    ├── _destructive.py      # shared preview-then-confirm for destructive Tasks doors
     ├── team.py              # `team` group: list / get (server-scoped by role)
     ├── kudos.py             # `kudos give` (to a user, a team, or both)
     ├── user.py              # `user list` (org directory)
@@ -89,6 +102,18 @@ tests/                       # pytest suite (file naming: *_test.py)
 ├── ledger_test.py           # Report ledger (signals, nudge decisions, policy)
 ├── hook_commands_test.py    # `hook` group (formats, silence, exit-0 contract)
 ├── chat_commands_test.py    # `chat` group (payload builder, send/update, headless)
+├── tasks_api_client_test.py # Tasks transport (constants, Z-form datetimes, idempotency)
+├── tasks_commands_test.py   # `tasks` group reads
+├── tasks_delta_test.py      # `tasks changes` cursor lifecycle + window expiry
+├── tasks_person_shaped_test.py  # person-only Tasks doors
+├── task_commands_test.py    # `task` group (reads, writes, collaboration, bulk, archive)
+├── board_commands_test.py   # `board` group (reads + container writes)
+├── project_goal_commands_test.py  # `project` + `goal`
+├── tasks_display_test.py    # Tasks renderers + untrusted-content presenter
+├── tasks_error_taxonomy_test.py   # Tasks error codes + credential guidance
+├── tasks_security_test.py   # injection boundary, isolation, destructive paths
+├── tasks_coverage_test.py   # cross-command sweep (19 capabilities, flag wiring, tables)
+├── transport_errors_test.py # transport failures render as messages, not tracebacks
 └── config_test.py           # Config/credential file management
 
 .github/workflows/release.yml  # Tag-triggered: PyPI + Linux binary + Homebrew
