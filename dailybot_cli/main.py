@@ -8,6 +8,7 @@ from dailybot_cli import __version__
 from dailybot_cli.commands.agent import agent
 from dailybot_cli.commands.ask import ask
 from dailybot_cli.commands.auth import login, logout
+from dailybot_cli.commands.board import board
 from dailybot_cli.commands.channels import channels
 from dailybot_cli.commands.chat import chat
 from dailybot_cli.commands.checkin import checkin
@@ -127,6 +128,7 @@ cli.add_command(org)
 cli.add_command(workflow)
 cli.add_command(tasks)
 cli.add_command(task)
+cli.add_command(board)
 cli.add_command(label)
 cli.add_command(featured)
 cli.add_command(agent)
