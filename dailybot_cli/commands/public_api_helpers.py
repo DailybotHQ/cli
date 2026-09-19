@@ -91,9 +91,7 @@ ERROR_CODE_MESSAGES: dict[str, str] = {
         "before sending another; do not retry in a loop."
     ),
     # Validation and volume
-    "insufficient_scope": (
-        "Your credential does not hold the scope this action needs."
-    ),
+    "insufficient_scope": ("Your credential does not hold the scope this action needs."),
     "invalid_filter_value": "A filter value was rejected by the server.",
     "too_many_items": (
         "Too many items in one call. The server caps a bulk payload at 100 items — "
@@ -112,7 +110,6 @@ ERROR_CODE_MESSAGES: dict[str, str] = {
     # Isolation: 404 for anything invisible, never 403. Saying "permission" here
     # would both mislead and disclose that the object exists.
     "not_found": "Not found. Check the identifier, or it may belong to another organization.",
-
     "form_response_change_state_forbidden": (
         "You don't have permission to change the state of this submission. "
         "The form's audience may restrict transitions to specific users / teams. "

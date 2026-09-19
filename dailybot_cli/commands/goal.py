@@ -52,8 +52,12 @@ def goal() -> None:
 
 
 @goal.command("list")
-@click.option("--include", type=click.Choice(INCLUDE_VALUES, case_sensitive=False), multiple=True,
-              help="Ask for a roll-up (nothing is included by default).")
+@click.option(
+    "--include",
+    type=click.Choice(INCLUDE_VALUES, case_sensitive=False),
+    multiple=True,
+    help="Ask for a roll-up (nothing is included by default).",
+)
 @query_options
 @click.option("--json", "json_mode", is_flag=True, help="Emit machine-readable JSON to stdout.")
 def goal_list(include: tuple[str, ...], json_mode: bool, **flags: Any) -> None:
@@ -69,8 +73,11 @@ def goal_list(include: tuple[str, ...], json_mode: bool, **flags: Any) -> None:
         spec = build_query_params(**flags)
         with console.status("Reading goals..."):
             result: PaginatedResult = client.list_goals(
-                include=_include_list(include), page=spec.page, page_size=spec.page_size,
-                fetch_all=spec.fetch_all, limit=spec.limit,
+                include=_include_list(include),
+                page=spec.page,
+                page_size=spec.page_size,
+                fetch_all=spec.fetch_all,
+                limit=spec.limit,
             )
     except ValueError as exc:
         raise click.BadParameter(str(exc)) from exc
@@ -97,8 +104,12 @@ def goal_list(include: tuple[str, ...], json_mode: bool, **flags: Any) -> None:
 
 @goal.command("get")
 @click.argument("goal_uuid")
-@click.option("--include", type=click.Choice(INCLUDE_VALUES, case_sensitive=False), multiple=True,
-              help="Ask for a roll-up.")
+@click.option(
+    "--include",
+    type=click.Choice(INCLUDE_VALUES, case_sensitive=False),
+    multiple=True,
+    help="Ask for a roll-up.",
+)
 @click.option("--json", "json_mode", is_flag=True, help="Emit machine-readable JSON to stdout.")
 def goal_get(goal_uuid: str, include: tuple[str, ...], json_mode: bool) -> None:
     """Show one goal.
@@ -171,7 +182,8 @@ def goal_archive(
     client = require_auth()
     if not preview_then_confirm(
         lambda: client.archive_goal(goal_uuid, dry_run=True),
-        assume_yes=assume_yes, preview_only=dry_run,
+        assume_yes=assume_yes,
+        preview_only=dry_run,
     ):
         return
     try:

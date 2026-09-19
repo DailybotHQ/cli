@@ -98,15 +98,37 @@ class TestJsonModeCarriesDataNotNarration:
 
 class TestTheTrustedFieldSetIsExactlyThePacks:
     def test_no_user_authored_field_is_trusted(self) -> None:
-        for field in ("title", "description", "name", "body", "full_name", "filename",
-                      "summary", "verb", "status"):
+        for field in (
+            "title",
+            "description",
+            "name",
+            "body",
+            "full_name",
+            "filename",
+            "summary",
+            "verb",
+            "status",
+        ):
             assert field not in TASKS_TRUSTED_FIELDS
 
     def test_only_server_generated_fields_are_trusted(self) -> None:
-        assert frozenset(
-            {"uuid", "key", "rank", "cursor", "etag", "delta_cursor", "code",
-             "created_at", "updated_at", "completed_at"}
-        ) == TASKS_TRUSTED_FIELDS
+        assert (
+            frozenset(
+                {
+                    "uuid",
+                    "key",
+                    "rank",
+                    "cursor",
+                    "etag",
+                    "delta_cursor",
+                    "code",
+                    "created_at",
+                    "updated_at",
+                    "completed_at",
+                }
+            )
+            == TASKS_TRUSTED_FIELDS
+        )
 
 
 class TestIsolationIsNeverPermission:
@@ -126,7 +148,9 @@ class TestIsolationIsNeverPermission:
         # A cross-tenant uuid must be indistinguishable from a nonexistent one.
         # Leaking the difference at the presentation layer undoes 404-not-403.
         getattr(client, method).side_effect = APIError(404, "Not found.", code="not_found")
-        module: str = {"task": "task", "board": "board", "project": "project", "goal": "goal"}[args[0]]
+        module: str = {"task": "task", "board": "board", "project": "project", "goal": "goal"}[
+            args[0]
+        ]
         with patch(f"dailybot_cli.commands.{module}.require_auth", return_value=client):
             result = runner.invoke(cli, args)
         out: str = " ".join(result.output.lower().split())
@@ -142,8 +166,13 @@ class TestAttributionHonesty:
         # stays a standing before-state until AgentCredential ships. The CLI must
         # render what the server sent and invent nothing.
         client.list_tasks_activity.return_value = _page(
-            [{"uuid": "a-1", "summary": "moved a task", "actor": {"uuid": None, "name": "",
-                                                                 "kind": "system"}}]
+            [
+                {
+                    "uuid": "a-1",
+                    "summary": "moved a task",
+                    "actor": {"uuid": None, "name": "", "kind": "system"},
+                }
+            ]
         )
         with patch("dailybot_cli.commands.tasks.require_auth", return_value=client):
             result = runner.invoke(cli, ["tasks", "activity"])
@@ -167,8 +196,12 @@ class TestDestructivePathsCannotRunUnpreviewed:
         self, runner: CliRunner, client: MagicMock, args: list[str], module: str, method: str
     ) -> None:
         getattr(client, method).side_effect = [
-            {"operation": "x.archive", "reversible": True, "consequence": "c",
-             "_idempotency_replayed": False},
+            {
+                "operation": "x.archive",
+                "reversible": True,
+                "consequence": "c",
+                "_idempotency_replayed": False,
+            },
             {"_idempotency_replayed": False},
         ]
         with patch(f"dailybot_cli.commands.{module}.require_auth", return_value=client):
@@ -220,15 +253,28 @@ class TestNoWebUrlIsEverEmitted:
     @pytest.mark.parametrize(
         "args,module,method,payload",
         [
-            (["task", "get", "t-1"], "task", "get_task",
-             {"uuid": "t-1", "key": "K-1", "title": "x", "url": "https://evil.example/t/1"}),
-            (["board", "get", "b-1"], "board", "get_board",
-             {"uuid": "b-1", "key": "B", "name": "x", "web_url": "https://evil.example/b/1"}),
+            (
+                ["task", "get", "t-1"],
+                "task",
+                "get_task",
+                {"uuid": "t-1", "key": "K-1", "title": "x", "url": "https://evil.example/t/1"},
+            ),
+            (
+                ["board", "get", "b-1"],
+                "board",
+                "get_board",
+                {"uuid": "b-1", "key": "B", "name": "x", "web_url": "https://evil.example/b/1"},
+            ),
         ],
     )
     def test_a_server_supplied_url_is_not_promoted_to_a_link(
-        self, runner: CliRunner, client: MagicMock, args: list[str], module: str,
-        method: str, payload: dict[str, Any],
+        self,
+        runner: CliRunner,
+        client: MagicMock,
+        args: list[str],
+        module: str,
+        method: str,
+        payload: dict[str, Any],
     ) -> None:
         getattr(client, method).return_value = payload
         with patch(f"dailybot_cli.commands.{module}.require_auth", return_value=client):

@@ -234,8 +234,14 @@ def _write_error(exc: APIError) -> None:
 )
 @click.option("--json", "json_mode", is_flag=True, help="Emit machine-readable JSON to stdout.")
 def task_create(
-    title: str, board: str | None, description: str | None, state: str | None,
-    assignee: str | None, due: str | None, idempotency_key: str | None, json_mode: bool,
+    title: str,
+    board: str | None,
+    description: str | None,
+    state: str | None,
+    assignee: str | None,
+    due: str | None,
+    idempotency_key: str | None,
+    json_mode: bool,
 ) -> None:
     """Create a task.
 
@@ -254,8 +260,13 @@ def task_create(
     try:
         with console.status("Creating the task..."):
             data: dict[str, Any] = client.create_task(
-                title=title, board=board, description=description, state=state,
-                executor=assignee, due_date=due, idempotency_key=idempotency_key,
+                title=title,
+                board=board,
+                description=description,
+                state=state,
+                executor=assignee,
+                due_date=due,
+                idempotency_key=idempotency_key,
             )
     except APIError as exc:
         _write_error(exc)
@@ -276,8 +287,14 @@ def task_create(
 @click.option("--idempotency-key", default=None, help="Reuse a key to make a retry safe.")
 @click.option("--json", "json_mode", is_flag=True, help="Emit machine-readable JSON to stdout.")
 def task_update(
-    task_uuid: str, title: str | None, description: str | None, state: str | None,
-    due: str | None, priority: str | None, idempotency_key: str | None, json_mode: bool,
+    task_uuid: str,
+    title: str | None,
+    description: str | None,
+    state: str | None,
+    due: str | None,
+    priority: str | None,
+    idempotency_key: str | None,
+    json_mode: bool,
 ) -> None:
     """Change fields on a task.
 
@@ -291,8 +308,11 @@ def task_update(
       dailybot task update <task-uuid> -t "Clearer title" --json
     """
     fields: dict[str, Any] = {
-        "title": title, "description": description, "state": state,
-        "due_date": due, "priority": priority,
+        "title": title,
+        "description": description,
+        "state": state,
+        "due_date": due,
+        "priority": priority,
     }
     supplied: dict[str, Any] = {k: v for k, v in fields.items() if v is not None}
     if not supplied:
@@ -320,7 +340,10 @@ def task_update(
 @click.option("--idempotency-key", default=None, help="Reuse a key to make a retry safe.")
 @click.option("--json", "json_mode", is_flag=True, help="Emit machine-readable JSON to stdout.")
 def task_move(
-    task_uuid: str, state: str | None, board: str | None, idempotency_key: str | None,
+    task_uuid: str,
+    state: str | None,
+    board: str | None,
+    idempotency_key: str | None,
     json_mode: bool,
 ) -> None:
     """Move a task to another column or board.
@@ -444,8 +467,11 @@ def task_comments(task_uuid: str, json_mode: bool, **flags: Any) -> None:
         spec = build_query_params(**flags)
         with console.status("Reading comments..."):
             result: PaginatedResult = client.list_task_comments(
-                task_uuid, page=spec.page, page_size=spec.page_size,
-                fetch_all=spec.fetch_all, limit=spec.limit,
+                task_uuid,
+                page=spec.page,
+                page_size=spec.page_size,
+                fetch_all=spec.fetch_all,
+                limit=spec.limit,
             )
     except ValueError as exc:
         raise click.BadParameter(str(exc)) from exc
@@ -489,10 +515,19 @@ def task_link(
 
 @task.command("labels")
 @click.argument("task_uuid")
-@click.option("--mode", type=click.Choice(LABEL_MODES, case_sensitive=False), required=True,
-              help="add, remove or replace the task's labels.")
-@click.option("--label", "labels", multiple=True, required=True,
-              help="Label uuid. Repeatable, or comma-separated.")
+@click.option(
+    "--mode",
+    type=click.Choice(LABEL_MODES, case_sensitive=False),
+    required=True,
+    help="add, remove or replace the task's labels.",
+)
+@click.option(
+    "--label",
+    "labels",
+    multiple=True,
+    required=True,
+    help="Label uuid. Repeatable, or comma-separated.",
+)
 @click.option("--idempotency-key", default=None, help="Reuse a key to make a retry safe.")
 @click.option("--json", "json_mode", is_flag=True, help="Emit machine-readable JSON to stdout.")
 def task_labels(
@@ -515,7 +550,9 @@ def task_labels(
     try:
         with console.status("Updating labels..."):
             data: dict[str, Any] = client.batch_task_labels(
-                task_uuid, mode=mode.lower(), labels=list(dict.fromkeys(resolved)),
+                task_uuid,
+                mode=mode.lower(),
+                labels=list(dict.fromkeys(resolved)),
                 idempotency_key=idempotency_key,
             )
     except APIError as exc:
@@ -589,7 +626,8 @@ def task_archive(
     client = require_auth()
     if not preview_then_confirm(
         lambda: client.archive_task(task_uuid, dry_run=True),
-        assume_yes=assume_yes, preview_only=dry_run,
+        assume_yes=assume_yes,
+        preview_only=dry_run,
     ):
         return
     try:
@@ -625,7 +663,8 @@ def task_delete(task_uuid: str, dry_run: bool, assume_yes: bool, json_mode: bool
     client = require_auth()
     if not preview_then_confirm(
         lambda: client.archive_task(task_uuid, dry_run=True),
-        assume_yes=assume_yes, preview_only=dry_run,
+        assume_yes=assume_yes,
+        preview_only=dry_run,
     ):
         return
     try:
@@ -658,9 +697,7 @@ def task_restore(task_uuid: str, idempotency_key: str | None, json_mode: bool) -
     client = require_auth()
     try:
         with console.status("Restoring the task..."):
-            data: dict[str, Any] = client.restore_task(
-                task_uuid, idempotency_key=idempotency_key
-            )
+            data: dict[str, Any] = client.restore_task(task_uuid, idempotency_key=idempotency_key)
     except APIError as exc:
         _write_error(exc)
     if json_mode:
@@ -672,7 +709,10 @@ def task_restore(task_uuid: str, idempotency_key: str | None, json_mode: bool) -
 @task.command("bulk")
 @click.option("--operation", required=True, help="Operation to apply to every item.")
 @click.option(
-    "-f", "--file", "batch_file", required=True,
+    "-f",
+    "--file",
+    "batch_file",
+    required=True,
     type=click.File("r"),
     help="JSON file with the item list, or `-` for stdin.",
 )
@@ -740,11 +780,12 @@ def task_bulk(
     failed: list[dict[str, Any]] = [
         row for row in results if isinstance(row, dict) and row.get("status") == "error"
     ]
-    _report_write(data, f"Bulk {operation}: {len(results) - len(failed)} succeeded, {len(failed)} failed")
+    _report_write(
+        data, f"Bulk {operation}: {len(results) - len(failed)} succeeded, {len(failed)} failed"
+    )
     for row in failed:
         console.print(
-            f"  [red]failed[/red] {row.get('uuid', '?')} "
-            f"[dim]{row.get('code', '')}[/dim]"
+            f"  [red]failed[/red] {row.get('uuid', '?')} [dim]{row.get('code', '')}[/dim]"
         )
     if failed:
         # Multi-item calls tolerate partial progress; exiting 0 would hide it.

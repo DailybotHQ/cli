@@ -5,7 +5,6 @@ task 1's live probe (`analysis_results/PERMISSION_MATRIX_OBSERVED.md`), not agai
 the handoff's documented shapes. Where the two disagree, both are handled.
 """
 
-
 import pytest
 
 from dailybot_cli.api_client import APIError
@@ -43,13 +42,18 @@ class TestPersonShapedRefusal:
 
     def test_the_handoff_shape_is_recognised(self) -> None:
         # The pack documents 400 actor_required on me/tasks/.
-        exc = APIError(status_code=400, detail="Use a signed-in person for 'me'.", code="actor_required")
+        exc = APIError(
+            status_code=400, detail="Use a signed-in person for 'me'.", code="actor_required"
+        )
         assert is_person_shaped_refusal(exc, door="me/tasks") is True
 
     def test_the_observed_shape_is_recognised(self) -> None:
         # Task 1 measured 403 insufficient_scope on all six doors instead.
-        exc = APIError(status_code=403, detail="You do not have permission to do that.",
-                       code="insufficient_scope")
+        exc = APIError(
+            status_code=403,
+            detail="You do not have permission to do that.",
+            code="insufficient_scope",
+        )
         assert is_person_shaped_refusal(exc, door="me/tasks") is True
 
     def test_both_shapes_produce_the_same_guidance(self) -> None:
@@ -67,10 +71,19 @@ class TestPersonShapedRefusal:
         assert is_person_shaped_refusal(exc, door="boards") is False
 
     def test_the_person_shaped_door_list_matches_what_was_measured(self) -> None:
-        assert frozenset(
-            {"me/tasks", "me/tasks/counts", "me/recents", "me/activity-cursor",
-             "inbox", "inbox/unread-count"}
-        ) == PERSON_SHAPED_TASKS_DOORS
+        assert (
+            frozenset(
+                {
+                    "me/tasks",
+                    "me/tasks/counts",
+                    "me/recents",
+                    "me/activity-cursor",
+                    "inbox",
+                    "inbox/unread-count",
+                }
+            )
+            == PERSON_SHAPED_TASKS_DOORS
+        )
 
 
 class TestIsolationIsNotPermission:
@@ -91,8 +104,12 @@ class TestAdminScopeIsUnstorable:
     """C-8 — task 1 measured this refusal against an ADMIN_ORG owner too."""
 
     def test_the_message_blames_the_credential_kind_not_the_role(self) -> None:
-        exc = APIError(status_code=403, detail="x", code="insufficient_scope",
-                       extra={"required_scope": "tasks:admin"})
+        exc = APIError(
+            status_code=403,
+            detail="x",
+            code="insufficient_scope",
+            extra={"required_scope": "tasks:admin"},
+        )
         message: str = resolve_error_message(exc)
         assert "api key" in message.lower()
         assert "dailybot login" in message
@@ -101,22 +118,34 @@ class TestAdminScopeIsUnstorable:
         assert "be an admin" not in message.lower()
 
     def test_a_non_admin_scope_refusal_still_names_the_scope(self) -> None:
-        exc = APIError(status_code=403, detail="x", code="insufficient_scope",
-                       extra={"required_scope": "tasks:write"})
+        exc = APIError(
+            status_code=403,
+            detail="x",
+            code="insufficient_scope",
+            extra={"required_scope": "tasks:write"},
+        )
         assert "tasks:write" in resolve_error_message(exc)
 
 
 class TestScopesDoNotNest:
     def test_write_does_not_imply_read(self) -> None:
         # A tasks:write-only key refused a read must see which scope it lacked.
-        exc = APIError(status_code=403, detail="x", code="insufficient_scope",
-                       extra={"required_scope": "tasks:read"})
+        exc = APIError(
+            status_code=403,
+            detail="x",
+            code="insufficient_scope",
+            extra={"required_scope": "tasks:read"},
+        )
         assert "tasks:read" in resolve_error_message(exc)
 
     def test_guest_not_allowed_is_distinct_from_a_scope_refusal(self) -> None:
         guest = APIError(status_code=403, detail="x", code="guest_not_allowed")
-        scope = APIError(status_code=403, detail="x", code="insufficient_scope",
-                         extra={"required_scope": "tasks:write"})
+        scope = APIError(
+            status_code=403,
+            detail="x",
+            code="insufficient_scope",
+            extra={"required_scope": "tasks:write"},
+        )
         assert resolve_error_message(guest) != resolve_error_message(scope)
         # The fix differs: a role change, not a credential change.
         assert "role" in resolve_error_message(guest).lower()
@@ -149,11 +178,20 @@ class TestDeltaAndVolumeCodes:
 
 class TestAuthTaxonomy:
     @pytest.mark.parametrize(
-        "code", ["credential_absent", "credential_malformed", "credential_expired",
-                 "invalid_credentials", "token_not_valid"],
+        "code",
+        [
+            "credential_absent",
+            "credential_malformed",
+            "credential_expired",
+            "invalid_credentials",
+            "token_not_valid",
+        ],
     )
     def test_credential_problems_point_at_login(self, code: str) -> None:
-        assert "dailybot login" in ERROR_CODE_MESSAGES[code] or "key" in ERROR_CODE_MESSAGES[code].lower()
+        assert (
+            "dailybot login" in ERROR_CODE_MESSAGES[code]
+            or "key" in ERROR_CODE_MESSAGES[code].lower()
+        )
 
     def test_exit_code_for_a_credential_problem_is_not_authenticated(self) -> None:
         assert EXIT_NOT_AUTHENTICATED == 3

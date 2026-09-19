@@ -75,8 +75,12 @@ class TestIncludesAreOptIn:
 
     def test_include_is_forwarded_when_asked(self, runner: CliRunner, client: MagicMock) -> None:
         client.list_goals.return_value = _page()
-        _invoke(runner, client, ["goal", "list", "--include", "progress", "--include", "projects"],
-                module="goal")
+        _invoke(
+            runner,
+            client,
+            ["goal", "list", "--include", "progress", "--include", "projects"],
+            module="goal",
+        )
         assert set(client.list_goals.call_args[1]["include"]) == {"progress", "projects"}
 
 
@@ -95,8 +99,9 @@ class TestAbsentNullZeroAreThreeAnswers:
     ) -> None:
         # null is legitimately different: the goal has nothing to measure yet.
         client.list_goals.return_value = _page([{"uuid": "g-1", "name": "Q4", "progress": None}])
-        out: str = _invoke(runner, client, ["goal", "list", "--include", "progress"],
-                           module="goal").output
+        out: str = _invoke(
+            runner, client, ["goal", "list", "--include", "progress"], module="goal"
+        ).output
         assert "nothing to measure" in out.lower()
 
     def test_a_zero_rollup_renders_as_the_real_value(
@@ -106,8 +111,9 @@ class TestAbsentNullZeroAreThreeAnswers:
         client.list_goals.return_value = _page(
             [{"uuid": "g-1", "name": "Q4", "progress": 0, "project_count": 0}]
         )
-        out: str = _invoke(runner, client, ["goal", "list", "--include", "progress"],
-                           module="goal").output
+        out: str = _invoke(
+            runner, client, ["goal", "list", "--include", "progress"], module="goal"
+        ).output
         assert "0" in out
         assert "not requested" not in out.lower()
 
@@ -122,7 +128,9 @@ class TestAbsentNullZeroAreThreeAnswers:
 
 
 class TestUntrustedRendering:
-    def test_project_names_render_as_quoted_data(self, runner: CliRunner, client: MagicMock) -> None:
+    def test_project_names_render_as_quoted_data(
+        self, runner: CliRunner, client: MagicMock
+    ) -> None:
         client.list_projects.return_value = _page([{"uuid": "p-1", "name": "rm -rf everything"}])
         assert '"' in _invoke(runner, client, ["project", "list"]).output
 
@@ -139,8 +147,14 @@ class TestNoCreateHintThatCannotBeHonoured:
 
 class TestHelp:
     @pytest.mark.parametrize(
-        "args", [["project", "list"], ["project", "get"], ["project", "updates"],
-                 ["goal", "list"], ["goal", "get"]],
+        "args",
+        [
+            ["project", "list"],
+            ["project", "get"],
+            ["project", "updates"],
+            ["goal", "list"],
+            ["goal", "get"],
+        ],
     )
     def test_help_renders(self, runner: CliRunner, args: list[str]) -> None:
         assert runner.invoke(cli, [*args, "--help"]).exit_code == 0
@@ -170,9 +184,10 @@ class TestProjectUpdatePost:
     def test_no_idempotency_key_flag_is_offered(self, runner: CliRunner) -> None:
         # IDEMPOTENCY.md marks this door 'ignored'. Offering the flag would
         # advertise a guarantee the server does not honour.
-        assert "--idempotency-key" not in runner.invoke(
-            cli, ["project", "update-post", "--help"]
-        ).output
+        assert (
+            "--idempotency-key"
+            not in runner.invoke(cli, ["project", "update-post", "--help"]).output
+        )
 
     def test_no_web_url_is_printed_after_posting(
         self, runner: CliRunner, client: MagicMock
@@ -194,11 +209,15 @@ class TestMilestoneList:
 class TestMilestoneComplete:
     def test_dry_run_mutates_nothing(self, runner: CliRunner, client: MagicMock) -> None:
         client.complete_milestone.return_value = {
-            "operation": "milestone.complete", "dry_run": True, "reversible": True,
+            "operation": "milestone.complete",
+            "dry_run": True,
+            "reversible": True,
             "consequence": "Marks the milestone complete. Open tasks stay open.",
             "_idempotency_replayed": False,
         }
-        result = _invoke(runner, client, ["project", "milestone-complete", "p-1", "m-1", "--dry-run"])
+        result = _invoke(
+            runner, client, ["project", "milestone-complete", "p-1", "m-1", "--dry-run"]
+        )
         assert result.exit_code == 0
         assert client.complete_milestone.call_count == 1
         assert client.complete_milestone.call_args[1]["dry_run"] is True
@@ -208,8 +227,12 @@ class TestMilestoneComplete:
     ) -> None:
         # The thing a user will otherwise assume wrongly.
         client.complete_milestone.side_effect = [
-            {"consequence": "x", "reversible": True, "operation": "milestone.complete",
-             "_idempotency_replayed": False},
+            {
+                "consequence": "x",
+                "reversible": True,
+                "operation": "milestone.complete",
+                "_idempotency_replayed": False,
+            },
             {"uuid": "m-1", "_idempotency_replayed": False},
         ]
         result = _invoke(runner, client, ["project", "milestone-complete", "p-1", "m-1", "--yes"])

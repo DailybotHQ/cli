@@ -1980,7 +1980,6 @@ class DailyBotClient:
 
     # --- Organization Labels (/v1/labels/) ---
 
-
     # ------------------------------------------------------------------
     # Tasks (/v1/tasks/*)
     #
@@ -2106,9 +2105,7 @@ class DailyBotClient:
         """
         return self._tasks_read(f"boards/{board_uuid}/board/")
 
-    def get_board_delta(
-        self, board_uuid: str, *, updated_since: datetime | str
-    ) -> dict[str, Any]:
+    def get_board_delta(self, board_uuid: str, *, updated_since: datetime | str) -> dict[str, Any]:
         """GET /v1/tasks/boards/<uuid>/delta/ — the poll-loop door.
 
         Refuses three different things (MEASURED_ANSWERS.md §4): a missing
@@ -2132,11 +2129,18 @@ class DailyBotClient:
         return self._tasks_read(f"tasks/{task_uuid}/")
 
     def create_task(
-        self, *, title: str, board: str | None = None, idempotency_key: str | None = None,
+        self,
+        *,
+        title: str,
+        board: str | None = None,
+        idempotency_key: str | None = None,
         **fields: Any,
     ) -> dict[str, Any]:
         """POST /v1/tasks/tasks/ (or the board-scoped door). Accepts a key."""
-        payload: dict[str, Any] = {"title": title, **{k: v for k, v in fields.items() if v is not None}}
+        payload: dict[str, Any] = {
+            "title": title,
+            **{k: v for k, v in fields.items() if v is not None},
+        }
         if board:
             payload["board"] = board
         return self._tasks_write(
@@ -2149,8 +2153,11 @@ class DailyBotClient:
         """PATCH /v1/tasks/tasks/<uuid>/ — absolute fields; accepts a key."""
         payload: dict[str, Any] = {k: v for k, v in fields.items() if v is not None}
         return self._tasks_write(
-            "PATCH", f"tasks/{task_uuid}/", json=payload,
-            idempotent=True, idempotency_key=idempotency_key,
+            "PATCH",
+            f"tasks/{task_uuid}/",
+            json=payload,
+            idempotent=True,
+            idempotency_key=idempotency_key,
         )
 
     def move_task(
@@ -2158,8 +2165,11 @@ class DailyBotClient:
     ) -> dict[str, Any]:
         """POST /v1/tasks/tasks/<uuid>/move/ — accepts a key."""
         return self._tasks_write(
-            "POST", f"tasks/{task_uuid}/move/", json={k: v for k, v in fields.items() if v is not None},
-            idempotent=True, idempotency_key=idempotency_key,
+            "POST",
+            f"tasks/{task_uuid}/move/",
+            json={k: v for k, v in fields.items() if v is not None},
+            idempotent=True,
+            idempotency_key=idempotency_key,
         )
 
     def archive_task(
@@ -2171,9 +2181,11 @@ class DailyBotClient:
         and no audit events (BLAST_RADIUS.md).
         """
         return self._tasks_write(
-            "POST", f"tasks/{task_uuid}/archive/",
+            "POST",
+            f"tasks/{task_uuid}/archive/",
             params={"dry_run": "true"} if dry_run else None,
-            idempotent=True, idempotency_key=idempotency_key,
+            idempotent=True,
+            idempotency_key=idempotency_key,
         )
 
     def restore_task(self, task_uuid: str, *, idempotency_key: str | None = None) -> dict[str, Any]:
@@ -2195,8 +2207,11 @@ class DailyBotClient:
         so this method always sends one.
         """
         return self._tasks_write(
-            "POST", "tasks/bulk/", json={"operation": operation, "items": items},
-            idempotent=True, idempotency_key=idempotency_key,
+            "POST",
+            "tasks/bulk/",
+            json={"operation": operation, "items": items},
+            idempotent=True,
+            idempotency_key=idempotency_key,
         )
 
     # --- Collaboration ---
@@ -2206,8 +2221,11 @@ class DailyBotClient:
     ) -> dict[str, Any]:
         """POST /v1/tasks/tasks/<uuid>/comments/ — accepts a key."""
         return self._tasks_write(
-            "POST", f"tasks/{task_uuid}/comments/", json={"body": body},
-            idempotent=True, idempotency_key=idempotency_key,
+            "POST",
+            f"tasks/{task_uuid}/comments/",
+            json={"body": body},
+            idempotent=True,
+            idempotency_key=idempotency_key,
         )
 
     def list_task_comments(self, task_uuid: str, **page: Any) -> PaginatedResult:
@@ -2219,9 +2237,11 @@ class DailyBotClient:
     ) -> dict[str, Any]:
         """POST /v1/tasks/tasks/<uuid>/relations/ — accepts a key."""
         return self._tasks_write(
-            "POST", f"tasks/{task_uuid}/relations/",
+            "POST",
+            f"tasks/{task_uuid}/relations/",
             json={"related_task": other, "relation_type": relation},
-            idempotent=True, idempotency_key=idempotency_key,
+            idempotent=True,
+            idempotency_key=idempotency_key,
         )
 
     def batch_task_labels(
@@ -2229,8 +2249,11 @@ class DailyBotClient:
     ) -> dict[str, Any]:
         """POST /v1/tasks/tasks/<uuid>/labels/batch/ — accepts a key."""
         return self._tasks_write(
-            "POST", f"tasks/{task_uuid}/labels/batch/", json={"mode": mode, "labels": labels},
-            idempotent=True, idempotency_key=idempotency_key,
+            "POST",
+            f"tasks/{task_uuid}/labels/batch/",
+            json={"mode": mode, "labels": labels},
+            idempotent=True,
+            idempotency_key=idempotency_key,
         )
 
     def add_task_participant(
@@ -2238,15 +2261,20 @@ class DailyBotClient:
     ) -> dict[str, Any]:
         """POST /v1/tasks/tasks/<uuid>/participants/ — person-only; accepts a key."""
         return self._tasks_write(
-            "POST", f"tasks/{task_uuid}/participants/", json={"user_uuid": user_uuid},
-            idempotent=True, idempotency_key=idempotency_key,
+            "POST",
+            f"tasks/{task_uuid}/participants/",
+            json={"user_uuid": user_uuid},
+            idempotent=True,
+            idempotency_key=idempotency_key,
         )
 
     # --- Projects, goals, milestones ---
 
     def list_projects(self, *, include: list[str] | None = None, **page: Any) -> PaginatedResult:
         """GET /v1/tasks/projects/ — roll-ups only when `include` asks for them."""
-        return self._tasks_list("projects/", params={"include": ",".join(include)} if include else None, **page)
+        return self._tasks_list(
+            "projects/", params={"include": ",".join(include)} if include else None, **page
+        )
 
     def get_project(self, project_uuid: str, *, include: list[str] | None = None) -> dict[str, Any]:
         """GET /v1/tasks/projects/<uuid>/."""
@@ -2269,7 +2297,9 @@ class DailyBotClient:
 
     def list_goals(self, *, include: list[str] | None = None, **page: Any) -> PaginatedResult:
         """GET /v1/tasks/goals/ — roll-ups are ABSENT unless requested (AD-01)."""
-        return self._tasks_list("goals/", params={"include": ",".join(include)} if include else None, **page)
+        return self._tasks_list(
+            "goals/", params={"include": ",".join(include)} if include else None, **page
+        )
 
     def get_goal(self, goal_uuid: str, *, include: list[str] | None = None) -> dict[str, Any]:
         """GET /v1/tasks/goals/<uuid>/."""
@@ -2290,8 +2320,10 @@ class DailyBotClient:
         Completing a milestone does NOT close its open tasks.
         """
         return self._tasks_write(
-            "POST", f"projects/{project_uuid}/milestones/{milestone_uuid}/complete/",
-            params={"dry_run": "true"} if dry_run else None, idempotent=False,
+            "POST",
+            f"projects/{project_uuid}/milestones/{milestone_uuid}/complete/",
+            params={"dry_run": "true"} if dry_run else None,
+            idempotent=False,
         )
 
     def reopen_milestone(self, project_uuid: str, milestone_uuid: str) -> dict[str, Any]:
@@ -2307,52 +2339,94 @@ class DailyBotClient:
     # plan's live probe measured an ADMIN_ORG *owner* refused identically, so the
     # CLI must blame the credential kind rather than the user's role.
 
-    def create_board(self, *, name: str, idempotency_key: str | None = None, **fields: Any) -> dict[str, Any]:
+    def create_board(
+        self, *, name: str, idempotency_key: str | None = None, **fields: Any
+    ) -> dict[str, Any]:
         """POST /v1/tasks/boards/ — accepts a key header; needs tasks:admin."""
-        payload: dict[str, Any] = {"name": name, **{k: v for k, v in fields.items() if v is not None}}
-        return self._tasks_write("POST", "boards/", json=payload, idempotent=True, idempotency_key=idempotency_key)
+        payload: dict[str, Any] = {
+            "name": name,
+            **{k: v for k, v in fields.items() if v is not None},
+        }
+        return self._tasks_write(
+            "POST", "boards/", json=payload, idempotent=True, idempotency_key=idempotency_key
+        )
 
-    def archive_board(self, board_uuid: str, *, dry_run: bool = False, idempotency_key: str | None = None) -> dict[str, Any]:
+    def archive_board(
+        self, board_uuid: str, *, dry_run: bool = False, idempotency_key: str | None = None
+    ) -> dict[str, Any]:
         """POST /v1/tasks/boards/<uuid>/archive/ — cascades to live tasks."""
         return self._tasks_write(
-            "POST", f"boards/{board_uuid}/archive/",
+            "POST",
+            f"boards/{board_uuid}/archive/",
             params={"dry_run": "true"} if dry_run else None,
-            idempotent=True, idempotency_key=idempotency_key,
+            idempotent=True,
+            idempotency_key=idempotency_key,
         )
 
-    def restore_board(self, board_uuid: str, *, idempotency_key: str | None = None) -> dict[str, Any]:
+    def restore_board(
+        self, board_uuid: str, *, idempotency_key: str | None = None
+    ) -> dict[str, Any]:
         """POST /v1/tasks/boards/<uuid>/restore/ — cascaded tasks stay archived."""
-        return self._tasks_write("POST", f"boards/{board_uuid}/restore/", idempotent=True, idempotency_key=idempotency_key)
+        return self._tasks_write(
+            "POST",
+            f"boards/{board_uuid}/restore/",
+            idempotent=True,
+            idempotency_key=idempotency_key,
+        )
 
-    def create_project(self, *, name: str, idempotency_key: str | None = None, **fields: Any) -> dict[str, Any]:
+    def create_project(
+        self, *, name: str, idempotency_key: str | None = None, **fields: Any
+    ) -> dict[str, Any]:
         """POST /v1/tasks/projects/ — accepts a key header; needs tasks:admin."""
-        payload: dict[str, Any] = {"name": name, **{k: v for k, v in fields.items() if v is not None}}
-        return self._tasks_write("POST", "projects/", json=payload, idempotent=True, idempotency_key=idempotency_key)
+        payload: dict[str, Any] = {
+            "name": name,
+            **{k: v for k, v in fields.items() if v is not None},
+        }
+        return self._tasks_write(
+            "POST", "projects/", json=payload, idempotent=True, idempotency_key=idempotency_key
+        )
 
-    def archive_project(self, project_uuid: str, *, dry_run: bool = False, idempotency_key: str | None = None) -> dict[str, Any]:
+    def archive_project(
+        self, project_uuid: str, *, dry_run: bool = False, idempotency_key: str | None = None
+    ) -> dict[str, Any]:
         """POST /v1/tasks/projects/<uuid>/archive/."""
         return self._tasks_write(
-            "POST", f"projects/{project_uuid}/archive/",
+            "POST",
+            f"projects/{project_uuid}/archive/",
             params={"dry_run": "true"} if dry_run else None,
-            idempotent=True, idempotency_key=idempotency_key,
+            idempotent=True,
+            idempotency_key=idempotency_key,
         )
 
-    def create_goal(self, *, name: str, idempotency_key: str | None = None, **fields: Any) -> dict[str, Any]:
+    def create_goal(
+        self, *, name: str, idempotency_key: str | None = None, **fields: Any
+    ) -> dict[str, Any]:
         """POST /v1/tasks/goals/ — accepts a key header; needs tasks:admin."""
-        payload: dict[str, Any] = {"name": name, **{k: v for k, v in fields.items() if v is not None}}
-        return self._tasks_write("POST", "goals/", json=payload, idempotent=True, idempotency_key=idempotency_key)
+        payload: dict[str, Any] = {
+            "name": name,
+            **{k: v for k, v in fields.items() if v is not None},
+        }
+        return self._tasks_write(
+            "POST", "goals/", json=payload, idempotent=True, idempotency_key=idempotency_key
+        )
 
-    def archive_goal(self, goal_uuid: str, *, dry_run: bool = False, idempotency_key: str | None = None) -> dict[str, Any]:
+    def archive_goal(
+        self, goal_uuid: str, *, dry_run: bool = False, idempotency_key: str | None = None
+    ) -> dict[str, Any]:
         """POST /v1/tasks/goals/<uuid>/archive/ — projects are not cascaded."""
         return self._tasks_write(
-            "POST", f"goals/{goal_uuid}/archive/",
+            "POST",
+            f"goals/{goal_uuid}/archive/",
             params={"dry_run": "true"} if dry_run else None,
-            idempotent=True, idempotency_key=idempotency_key,
+            idempotent=True,
+            idempotency_key=idempotency_key,
         )
 
     # --- Person-shaped doors (a bare API key has no answer here) ---
 
-    def list_my_tasks(self, *, filters: dict[str, Any] | None = None, **page: Any) -> PaginatedResult:
+    def list_my_tasks(
+        self, *, filters: dict[str, Any] | None = None, **page: Any
+    ) -> PaginatedResult:
         """GET /v1/tasks/me/tasks/ — needs a signed-in person."""
         return self._tasks_list("me/tasks/", params=filters, **page)
 

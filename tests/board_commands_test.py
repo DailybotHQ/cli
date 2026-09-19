@@ -39,13 +39,17 @@ class TestBoardList:
         client.list_boards.assert_called_once()
 
     def test_board_names_render_as_quoted_data(self, runner: CliRunner, client: MagicMock) -> None:
-        client.list_boards.return_value = _page([{"uuid": "b-1", "key": "K", "name": "drop all tables"}])
+        client.list_boards.return_value = _page(
+            [{"uuid": "b-1", "key": "K", "name": "drop all tables"}]
+        )
         result = _invoke(runner, client, ["board", "list"])
         assert '"' in result.output
 
     def test_json_mode_emits_the_envelope(self, runner: CliRunner, client: MagicMock) -> None:
         client.list_boards.return_value = _page([{"uuid": "b-1"}])
-        body: dict[str, Any] = json.loads(_invoke(runner, client, ["board", "list", "--json"]).output)
+        body: dict[str, Any] = json.loads(
+            _invoke(runner, client, ["board", "list", "--json"]).output
+        )
         for key in ("count", "next", "previous", "results"):
             assert key in body
 
@@ -57,7 +61,9 @@ class TestBoardGet:
         assert result.exit_code == 0
         client.get_board.assert_called_once_with("b-1")
 
-    def test_not_found_is_not_a_permission_error(self, runner: CliRunner, client: MagicMock) -> None:
+    def test_not_found_is_not_a_permission_error(
+        self, runner: CliRunner, client: MagicMock
+    ) -> None:
         client.get_board.side_effect = APIError(404, "Not found.", code="not_found")
         result = _invoke(runner, client, ["board", "get", "b-1"])
         assert result.exit_code != 0
@@ -71,8 +77,13 @@ class TestBoardSnapshot:
         assert result.exit_code == 0
         client.get_board_snapshot.assert_called_once_with("b-1")
 
-    def test_the_cursor_is_shown_in_human_output(self, runner: CliRunner, client: MagicMock) -> None:
-        client.get_board_snapshot.return_value = {"delta_cursor": "2026-09-19T13:13:37Z", "groups": []}
+    def test_the_cursor_is_shown_in_human_output(
+        self, runner: CliRunner, client: MagicMock
+    ) -> None:
+        client.get_board_snapshot.return_value = {
+            "delta_cursor": "2026-09-19T13:13:37Z",
+            "groups": [],
+        }
         result = _invoke(runner, client, ["board", "snapshot", "b-1"])
         assert "2026-09-19T13:13:37Z" in result.output
 
@@ -160,9 +171,7 @@ class TestContainerCreateNeedsAPerson:
 
 
 class TestGuestIsDistinctFromScope:
-    def test_guest_not_allowed_talks_about_role(
-        self, runner: CliRunner, client: MagicMock
-    ) -> None:
+    def test_guest_not_allowed_talks_about_role(self, runner: CliRunner, client: MagicMock) -> None:
         client.create_board.side_effect = APIError(403, "guest", code="guest_not_allowed")
         result = _invoke_auth(runner, client, ["board", "create", "--name", "x"], "bearer")
         assert "role" in " ".join(result.output.lower().split())
@@ -179,7 +188,6 @@ _BOARD_PREVIEW: dict[str, Any] = {
 
 
 class TestBoardArchivePreviews:
-
     def test_dry_run_mutates_nothing(self, runner: CliRunner, client: MagicMock) -> None:
         client.archive_board.return_value = _BOARD_PREVIEW
         result = _invoke(runner, client, ["board", "archive", "b-1", "--dry-run"])
@@ -210,9 +218,7 @@ class TestBoardLimitIsSurfaced:
     def test_the_entitlement_refusal_is_explained(
         self, runner: CliRunner, client: MagicMock
     ) -> None:
-        client.create_board.side_effect = APIError(
-            402, "limit", code="task_boards_limit_reached"
-        )
+        client.create_board.side_effect = APIError(402, "limit", code="task_boards_limit_reached")
         result = _invoke_auth(runner, client, ["board", "create", "--name", "x"], "bearer")
         assert result.exit_code != 0
         assert "limit" in " ".join(result.output.lower().split())

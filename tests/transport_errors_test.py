@@ -89,9 +89,7 @@ class TestTheMessageDistinguishesFailureModes:
                 message = str(exc)
         assert "may have been" in message.lower()
 
-    def test_a_timeout_on_a_read_does_not_warn_about_writes(
-        self, client: DailyBotClient
-    ) -> None:
+    def test_a_timeout_on_a_read_does_not_warn_about_writes(self, client: DailyBotClient) -> None:
         with patch("httpx.get", side_effect=httpx.ReadTimeout("slow")):
             try:
                 client.get_tasks_pulse()

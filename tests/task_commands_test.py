@@ -141,13 +141,17 @@ class TestHelp:
 class TestShortFlagsDoNotCollide:
     """Click only *warns* on a duplicate short flag, so the wrong option silently wins."""
 
-    @pytest.mark.parametrize("group,sub", [("task", "list"), ("tasks", "search"), ("tasks", "activity")])
+    @pytest.mark.parametrize(
+        "group,sub", [("task", "list"), ("tasks", "search"), ("tasks", "activity")]
+    )
     def test_no_short_flag_is_declared_twice(self, group: str, sub: str) -> None:
         from dailybot_cli.main import cli as root
 
         command = root.commands[group].commands[sub]  # type: ignore[attr-defined]
         shorts: list[str] = [
-            opt for param in command.params for opt in getattr(param, "opts", [])
+            opt
+            for param in command.params
+            for opt in getattr(param, "opts", [])
             if opt.startswith("-") and not opt.startswith("--")
         ]
         assert len(shorts) == len(set(shorts)), f"duplicate short flags: {shorts}"
@@ -160,8 +164,12 @@ class TestShortFlagsDoNotCollide:
 
 class TestTaskCreate:
     def test_it_sends_the_title(self, runner: CliRunner, client: MagicMock) -> None:
-        client.create_task.return_value = {"uuid": "t-1", "key": "K-1", "title": "x",
-                                           "_idempotency_replayed": False}
+        client.create_task.return_value = {
+            "uuid": "t-1",
+            "key": "K-1",
+            "title": "x",
+            "_idempotency_replayed": False,
+        }
         result = _invoke(runner, client, ["task", "create", "--title", "a task"])
         assert result.exit_code == 0
         assert client.create_task.call_args[1]["title"] == "a task"
@@ -181,20 +189,30 @@ class TestTaskCreate:
     def test_a_replay_is_reported_as_already_applied(
         self, runner: CliRunner, client: MagicMock
     ) -> None:
-        client.create_task.return_value = {"uuid": "t-1", "key": "K-1", "title": "x",
-                                           "_idempotency_replayed": True}
+        client.create_task.return_value = {
+            "uuid": "t-1",
+            "key": "K-1",
+            "title": "x",
+            "_idempotency_replayed": True,
+        }
         result = _invoke(runner, client, ["task", "create", "--title", "x"])
         assert "already applied" in result.output.lower()
 
     def test_a_fresh_write_is_not_called_a_replay(
         self, runner: CliRunner, client: MagicMock
     ) -> None:
-        client.create_task.return_value = {"uuid": "t-1", "key": "K-1", "title": "x",
-                                           "_idempotency_replayed": False}
+        client.create_task.return_value = {
+            "uuid": "t-1",
+            "key": "K-1",
+            "title": "x",
+            "_idempotency_replayed": False,
+        }
         result = _invoke(runner, client, ["task", "create", "--title", "x"])
         assert "already applied" not in result.output.lower()
 
-    def test_payload_mismatch_says_use_a_new_key(self, runner: CliRunner, client: MagicMock) -> None:
+    def test_payload_mismatch_says_use_a_new_key(
+        self, runner: CliRunner, client: MagicMock
+    ) -> None:
         client.create_task.side_effect = APIError(
             409, "mismatch", code="idempotency_key_payload_mismatch"
         )
@@ -409,8 +427,10 @@ class TestDeleteIsAnArchiveAlias:
 class TestIrreversibleIsMarked:
     def test_no_restore_path_is_offered(self, runner: CliRunner, client: MagicMock) -> None:
         hard: dict[str, Any] = {
-            "operation": "task.purge", "reversible": False,
-            "consequence": "Removes it for good.", "_idempotency_replayed": False,
+            "operation": "task.purge",
+            "reversible": False,
+            "consequence": "Removes it for good.",
+            "_idempotency_replayed": False,
         }
         client.archive_task.return_value = hard
         result = _invoke(runner, client, ["task", "archive", "t-1", "--dry-run"])
@@ -446,7 +466,11 @@ class TestBulkAlwaysSendsAKey:
         with runner.isolated_filesystem():
             with open("batch.json", "w") as fh:
                 json.dump([{"uuid": "t-1"}], fh)
-            _invoke(runner, client, ["task", "bulk", "--operation", "archive", "-f", "batch.json", "--yes"])
+            _invoke(
+                runner,
+                client,
+                ["task", "bulk", "--operation", "archive", "-f", "batch.json", "--yes"],
+            )
         assert "idempotency_key" in client.bulk_tasks.call_args[1]
 
     def test_an_explicit_key_is_forwarded(self, runner: CliRunner, client: MagicMock) -> None:
@@ -454,18 +478,36 @@ class TestBulkAlwaysSendsAKey:
         with runner.isolated_filesystem():
             with open("b.json", "w") as fh:
                 json.dump([{"uuid": "t-1"}], fh)
-            _invoke(runner, client, ["task", "bulk", "--operation", "archive", "-f", "b.json",
-                                     "--idempotency-key", "batch-7", "--yes"])
+            _invoke(
+                runner,
+                client,
+                [
+                    "task",
+                    "bulk",
+                    "--operation",
+                    "archive",
+                    "-f",
+                    "b.json",
+                    "--idempotency-key",
+                    "batch-7",
+                    "--yes",
+                ],
+            )
         assert client.bulk_tasks.call_args[1]["idempotency_key"] == "batch-7"
 
 
 class TestBulkCap:
-    def test_over_the_cap_is_refused_client_side(self, runner: CliRunner, client: MagicMock) -> None:
+    def test_over_the_cap_is_refused_client_side(
+        self, runner: CliRunner, client: MagicMock
+    ) -> None:
         with runner.isolated_filesystem():
             with open("big.json", "w") as fh:
                 json.dump([{"uuid": f"t-{i}"} for i in range(101)], fh)
-            result = _invoke(runner, client, ["task", "bulk", "--operation", "archive",
-                                              "-f", "big.json", "--yes"])
+            result = _invoke(
+                runner,
+                client,
+                ["task", "bulk", "--operation", "archive", "-f", "big.json", "--yes"],
+            )
         assert result.exit_code == 2
         assert "100" in result.output
         client.bulk_tasks.assert_not_called()
@@ -478,8 +520,9 @@ class TestBulkCap:
         with runner.isolated_filesystem():
             with open("b.json", "w") as fh:
                 json.dump([{"uuid": "t-1"}], fh)
-            result = _invoke(runner, client, ["task", "bulk", "--operation", "archive",
-                                              "-f", "b.json", "--yes"])
+            result = _invoke(
+                runner, client, ["task", "bulk", "--operation", "archive", "-f", "b.json", "--yes"]
+            )
         assert result.exit_code != 0
         assert "100" in result.output
 
@@ -490,8 +533,9 @@ class TestBulkReplayAndPartials:
         with runner.isolated_filesystem():
             with open("b.json", "w") as fh:
                 json.dump([{"uuid": "t-1"}], fh)
-            result = _invoke(runner, client, ["task", "bulk", "--operation", "archive",
-                                              "-f", "b.json", "--yes"])
+            result = _invoke(
+                runner, client, ["task", "bulk", "--operation", "archive", "-f", "b.json", "--yes"]
+            )
         assert "already applied" in result.output.lower()
 
     def test_a_mixed_result_renders_per_item_and_exits_nonzero(
@@ -507,8 +551,9 @@ class TestBulkReplayAndPartials:
         with runner.isolated_filesystem():
             with open("b.json", "w") as fh:
                 json.dump([{"uuid": "t-1"}, {"uuid": "t-2"}], fh)
-            result = _invoke(runner, client, ["task", "bulk", "--operation", "archive",
-                                              "-f", "b.json", "--yes"])
+            result = _invoke(
+                runner, client, ["task", "bulk", "--operation", "archive", "-f", "b.json", "--yes"]
+            )
         assert result.exit_code != 0
         assert "t-2" in result.output
         assert "not_found" in result.output

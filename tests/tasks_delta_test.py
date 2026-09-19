@@ -80,7 +80,9 @@ class TestWindowExpiry:
 
     def test_it_does_not_retry_the_delta_call(self, runner: CliRunner, client: MagicMock) -> None:
         client.get_board_delta.side_effect = APIError(
-            400, "expired", code="delta_window_expired",
+            400,
+            "expired",
+            code="delta_window_expired",
             extra={"full_resync_required": True, "max_window_days": 7},
         )
         _invoke(runner, client, ["tasks", "changes", "b-1", "--cursor", "old"])

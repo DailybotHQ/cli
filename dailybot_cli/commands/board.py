@@ -245,7 +245,8 @@ def board_archive(
     client = require_auth()
     if not preview_then_confirm(
         lambda: client.archive_board(board_uuid, dry_run=True),
-        assume_yes=assume_yes, preview_only=dry_run,
+        assume_yes=assume_yes,
+        preview_only=dry_run,
     ):
         return
     try:
@@ -284,9 +285,7 @@ def board_restore(board_uuid: str, idempotency_key: str | None, json_mode: bool)
     client = require_auth()
     try:
         with console.status("Restoring the board..."):
-            data: dict[str, Any] = client.restore_board(
-                board_uuid, idempotency_key=idempotency_key
-            )
+            data: dict[str, Any] = client.restore_board(board_uuid, idempotency_key=idempotency_key)
     except APIError as exc:
         print_error(resolve_error_message(exc))
         raise SystemExit(4 if exc.status_code in (401, 403) else 1) from exc

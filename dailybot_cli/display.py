@@ -1720,6 +1720,4 @@ def print_task_comments(comments: list[dict[str, Any]]) -> None:
         attribution: str = present_untrusted(author_name, limit=24)
         if comment.get("provenance") == "typed":
             attribution += " [dim](typed by a person)[/dim]"
-        console.print(
-            f"{attribution}: {present_untrusted(comment.get('body'), limit=400)}"
-        )
+        console.print(f"{attribution}: {present_untrusted(comment.get('body'), limit=400)}")

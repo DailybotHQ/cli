@@ -57,7 +57,9 @@ class TestHappyPathUnderAPerson:
         assert result.exit_code == 0
         client.list_my_tasks.assert_called_once()
 
-    def test_counts_reads_the_person_shaped_door(self, runner: CliRunner, client: MagicMock) -> None:
+    def test_counts_reads_the_person_shaped_door(
+        self, runner: CliRunner, client: MagicMock
+    ) -> None:
         client.get_my_task_counts.return_value = {"assigned": 4, "overdue": 1}
         result = _invoke(runner, client, ["tasks", "counts"])
         assert result.exit_code == 0
@@ -66,7 +68,9 @@ class TestHappyPathUnderAPerson:
 
 class TestApiKeyIsRefusedBeforeTheRequest:
     @pytest.mark.parametrize("args", PERSON_COMMANDS)
-    def test_no_http_call_is_made(self, runner: CliRunner, client: MagicMock, args: list[str]) -> None:
+    def test_no_http_call_is_made(
+        self, runner: CliRunner, client: MagicMock, args: list[str]
+    ) -> None:
         result = _invoke(runner, client, args, auth="api_key")
         assert result.exit_code == EXIT_NOT_AUTHENTICATED
         client.list_tasks_inbox.assert_not_called()
@@ -74,7 +78,9 @@ class TestApiKeyIsRefusedBeforeTheRequest:
         client.get_my_task_counts.assert_not_called()
 
     @pytest.mark.parametrize("args", PERSON_COMMANDS)
-    def test_the_message_names_the_fix(self, runner: CliRunner, client: MagicMock, args: list[str]) -> None:
+    def test_the_message_names_the_fix(
+        self, runner: CliRunner, client: MagicMock, args: list[str]
+    ) -> None:
         result = _invoke(runner, client, args, auth="api_key")
         assert "dailybot login" in result.output
 

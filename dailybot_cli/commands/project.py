@@ -67,8 +67,12 @@ def project() -> None:
 
 
 @project.command("list")
-@click.option("--include", type=click.Choice(INCLUDE_VALUES, case_sensitive=False),
-              multiple=True, help="Ask for a roll-up (nothing is included by default).")
+@click.option(
+    "--include",
+    type=click.Choice(INCLUDE_VALUES, case_sensitive=False),
+    multiple=True,
+    help="Ask for a roll-up (nothing is included by default).",
+)
 @query_options
 @click.option("--json", "json_mode", is_flag=True, help="Emit machine-readable JSON to stdout.")
 def project_list(include: tuple[str, ...], json_mode: bool, **flags: Any) -> None:
@@ -84,8 +88,11 @@ def project_list(include: tuple[str, ...], json_mode: bool, **flags: Any) -> Non
         spec = build_query_params(**flags)
         with console.status("Reading projects..."):
             result: PaginatedResult = client.list_projects(
-                include=_include_list(include), page=spec.page, page_size=spec.page_size,
-                fetch_all=spec.fetch_all, limit=spec.limit,
+                include=_include_list(include),
+                page=spec.page,
+                page_size=spec.page_size,
+                fetch_all=spec.fetch_all,
+                limit=spec.limit,
             )
     except ValueError as exc:
         raise click.BadParameter(str(exc)) from exc
@@ -110,8 +117,12 @@ def project_list(include: tuple[str, ...], json_mode: bool, **flags: Any) -> Non
 
 @project.command("get")
 @click.argument("project_uuid")
-@click.option("--include", type=click.Choice(INCLUDE_VALUES, case_sensitive=False), multiple=True,
-              help="Ask for a roll-up.")
+@click.option(
+    "--include",
+    type=click.Choice(INCLUDE_VALUES, case_sensitive=False),
+    multiple=True,
+    help="Ask for a roll-up.",
+)
 @click.option("--json", "json_mode", is_flag=True, help="Emit machine-readable JSON to stdout.")
 def project_get(project_uuid: str, include: tuple[str, ...], json_mode: bool) -> None:
     """Show one project.
@@ -155,8 +166,11 @@ def project_updates(json_mode: bool, **flags: Any) -> None:
         spec = build_query_params(**flags)
         with console.status("Reading project updates..."):
             result: PaginatedResult = client.list_project_updates(
-                params=spec.params or None, page=spec.page, page_size=spec.page_size,
-                fetch_all=spec.fetch_all, limit=spec.limit,
+                params=spec.params or None,
+                page=spec.page,
+                page_size=spec.page_size,
+                fetch_all=spec.fetch_all,
+                limit=spec.limit,
             )
     except ValueError as exc:
         raise click.BadParameter(str(exc)) from exc
@@ -212,9 +226,7 @@ def project_update_post(project_uuid: str, body: str, json_mode: bool) -> None:
         with console.status("Posting the update..."):
             # This door IGNORES Idempotency-Key, so none is sent and no flag is
             # offered — advertising one would promise a guarantee that does not exist.
-            data: dict[str, Any] = client.post_project_update(
-                project_uuid, body=_read_body(body)
-            )
+            data: dict[str, Any] = client.post_project_update(project_uuid, body=_read_body(body))
     except APIError as exc:
         print_error(resolve_error_message(exc))
         raise SystemExit(4 if exc.status_code in (401, 403) else 1) from exc
@@ -243,8 +255,11 @@ def project_milestones(project_uuid: str | None, json_mode: bool, **flags: Any) 
         spec = build_query_params(**flags)
         with console.status("Reading milestones..."):
             result: PaginatedResult = client.list_milestones(
-                project_uuid, page=spec.page, page_size=spec.page_size,
-                fetch_all=spec.fetch_all, limit=spec.limit,
+                project_uuid,
+                page=spec.page,
+                page_size=spec.page_size,
+                fetch_all=spec.fetch_all,
+                limit=spec.limit,
             )
     except ValueError as exc:
         raise click.BadParameter(str(exc)) from exc
@@ -327,9 +342,7 @@ def project_milestone_complete(
 @click.argument("project_uuid")
 @click.argument("milestone_uuid")
 @click.option("--json", "json_mode", is_flag=True, help="Emit machine-readable JSON to stdout.")
-def project_milestone_reopen(
-    project_uuid: str, milestone_uuid: str, json_mode: bool
-) -> None:
+def project_milestone_reopen(project_uuid: str, milestone_uuid: str, json_mode: bool) -> None:
     """Reopen a completed milestone.
 
     \b
@@ -408,7 +421,8 @@ def project_archive(
     client = require_auth()
     if not preview_then_confirm(
         lambda: client.archive_project(project_uuid, dry_run=True),
-        assume_yes=assume_yes, preview_only=dry_run,
+        assume_yes=assume_yes,
+        preview_only=dry_run,
     ):
         return
     try:

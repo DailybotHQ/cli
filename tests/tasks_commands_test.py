@@ -47,9 +47,7 @@ class TestGroupWiring:
         result = runner.invoke(cli, ["tasks", "--help"])
         assert "dailybot task" in result.output
 
-    @pytest.mark.parametrize(
-        "sub", ["status", "entitlements", "search", "activity", "timeline"]
-    )
+    @pytest.mark.parametrize("sub", ["status", "entitlements", "search", "activity", "timeline"])
     def test_each_subcommand_renders_its_help(self, runner: CliRunner, sub: str) -> None:
         result = runner.invoke(cli, ["tasks", sub, "--help"])
         assert result.exit_code == 0
@@ -75,13 +73,19 @@ class TestStatus:
 
 class TestEntitlements:
     def test_it_calls_the_entitlements_door(self, runner: CliRunner, client: MagicMock) -> None:
-        client.get_tasks_entitlements.return_value = {"enabled": True, "boards": {"used": 3, "limit": 3}}
+        client.get_tasks_entitlements.return_value = {
+            "enabled": True,
+            "boards": {"used": 3, "limit": 3},
+        }
         result = _invoke(runner, client, ["tasks", "entitlements"])
         assert result.exit_code == 0
         client.get_tasks_entitlements.assert_called_once_with()
 
     def test_the_board_limit_is_surfaced(self, runner: CliRunner, client: MagicMock) -> None:
-        client.get_tasks_entitlements.return_value = {"enabled": True, "boards": {"used": 3, "limit": 3}}
+        client.get_tasks_entitlements.return_value = {
+            "enabled": True,
+            "boards": {"used": 3, "limit": 3},
+        }
         result = _invoke(runner, client, ["tasks", "entitlements"])
         assert "3" in result.output
 
@@ -117,7 +121,9 @@ class TestActivityAndTimeline:
 
     def test_timeline_forwards_the_date_range(self, runner: CliRunner, client: MagicMock) -> None:
         client.list_tasks_timeline.return_value = _page()
-        _invoke(runner, client, ["tasks", "timeline", "--since", "2026-09-01", "--until", "2026-09-19"])
+        _invoke(
+            runner, client, ["tasks", "timeline", "--since", "2026-09-01", "--until", "2026-09-19"]
+        )
         kwargs: dict[str, Any] = client.list_tasks_timeline.call_args[1]
         assert kwargs["date_from"] == "2026-09-01"
         assert kwargs["date_to"] == "2026-09-19"
