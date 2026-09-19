@@ -85,9 +85,18 @@ class TestQueryDatetime:
         )
         assert rendered == "2026-09-19T13:13:37Z"
 
-    def test_a_string_cursor_passes_through_untouched(self) -> None:
-        # The server hands back an opaque cursor; the client must not reformat it.
+    def test_a_z_form_string_is_stable(self) -> None:
         assert as_query_datetime("2026-09-19T13:13:37Z") == "2026-09-19T13:13:37Z"
+
+    def test_a_server_cursor_carrying_an_offset_is_normalised(self) -> None:
+        # The server's delta_cursor is an ISO-8601 timestamp and can carry
+        # `+00:00`. Echoing it back verbatim would reproduce the exact bug this
+        # helper exists to prevent, so a parseable string IS normalised.
+        assert as_query_datetime("2026-09-19T13:13:37+00:00") == "2026-09-19T13:13:37Z"
+
+    def test_a_genuinely_opaque_token_is_passed_through(self) -> None:
+        # Not a timestamp: not ours to reinterpret.
+        assert as_query_datetime("opaque-cursor-abc123") == "opaque-cursor-abc123"
 
 
 class TestTasksReadDoors:

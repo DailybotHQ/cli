@@ -15,7 +15,12 @@ from typing import Any
 
 import click
 
-from dailybot_cli.api_client import APIError, PaginatedResult
+from dailybot_cli.api_client import (
+    TASKS_DELTA_MAX_WINDOW_DAYS,
+    APIError,
+    PaginatedResult,
+    as_query_datetime,
+)
 from dailybot_cli.commands.public_api_helpers import (
     emit_json,
     exit_for_api_error,
@@ -25,10 +30,23 @@ from dailybot_cli.commands.query_options import build_query_params, query_option
 from dailybot_cli.display import (
     console,
     present_untrusted,
+    print_board_snapshot,
+    print_delta_summary,
     print_detail_panel,
+    print_error,
     print_pagination_footer,
+    print_success,
     print_tasks_table,
 )
+
+# A dedicated exit code so an agent can branch on "my cursor died" without
+# parsing prose. Deliberately outside the shared EXIT_* range (2-7) because the
+# correct response is an action — re-snapshot — not a generic failure.
+EXIT_DELTA_WINDOW_EXPIRED: int = 9
+
+# Published server ceiling for the delta scope, documented in the command's help
+# so a caller writing a loop knows the limit before they hit it.
+DELTA_RATE_LIMIT_PER_MIN: int = 240
 
 _PULSE_FIELDS: list[tuple[str, str]] = [
     ("Open", "open"),
@@ -236,3 +254,99 @@ def tasks_timeline(json_mode: bool, **flags: Any) -> None:
             f"{present_untrusted(entry.get('title') or entry.get('summary'), limit=90)}"
         )
     print_pagination_footer(len(result.results), result.count, has_more=bool(result.next))
+
+
+@tasks.command("changes")
+@click.argument("board")
+@click.option("--cursor", default=None, help="Resume from this delta cursor (from a snapshot).")
+@click.option("--since", default=None, help="ISO-8601 timestamp to read changes since.")
+@click.option(
+    "--resync",
+    is_flag=True,
+    help="If the cursor has expired, read a fresh snapshot instead of failing.",
+)
+@click.option("--json", "json_mode", is_flag=True, help="Emit machine-readable JSON to stdout.")
+def tasks_changes(
+    board: str, cursor: str | None, since: str | None, resync: bool, json_mode: bool
+) -> None:
+    """Read what changed on a board since a cursor.
+
+    \b
+    With no cursor, the board snapshot is read first and its `delta_cursor` is
+    used — the delta door's own refusal does not say where to get one.
+
+    \b
+    The server keeps a 7-day window. A cursor older than that is refused
+    permanently with `delta_window_expired`: retrying it can never succeed, and
+    the only correct response is a fresh snapshot. Pass --resync to do that
+    automatically; otherwise this command exits 9 so a caller can branch on it.
+
+    \b
+    This performs exactly ONE delta read per invocation. The polling loop belongs
+    to you, because you own the rate limit: the server publishes 240 delta reads
+    per minute.
+
+    \b
+    Examples:
+      dailybot tasks changes <board-uuid>
+      dailybot tasks changes <board-uuid> --cursor 2026-09-19T13:13:37Z --json
+      dailybot tasks changes <board-uuid> --resync
+    """
+    client = require_auth()
+    marker: str | None = cursor or since
+
+    if marker is None:
+        try:
+            with console.status("Reading the board snapshot for a cursor..."):
+                snapshot: dict[str, Any] = client.get_board_snapshot(board)
+        except APIError as exc:
+            exit_for_api_error(exc, json_mode)
+        marker = snapshot.get("delta_cursor")
+        if not marker:
+            print_error(
+                "The board snapshot carried no `delta_cursor`, so there is nothing to read "
+                "changes from. Pass --cursor explicitly."
+            )
+            raise SystemExit(1)
+
+    try:
+        with console.status("Reading changes..."):
+            delta: dict[str, Any] = client.get_board_delta(
+                board, updated_since=as_query_datetime(marker)
+            )
+    except APIError as exc:
+        if exc.code == "delta_window_expired":
+            # Never retry: this cursor is dead permanently, so a loop here spins
+            # forever. Either re-snapshot on request, or exit with a code the
+            # caller can branch on.
+            if resync:
+                try:
+                    with console.status("Cursor expired — reading a fresh snapshot..."):
+                        fresh: dict[str, Any] = client.get_board_snapshot(board)
+                except APIError as inner:
+                    exit_for_api_error(inner, json_mode)
+                if json_mode:
+                    emit_json(fresh)
+                    return
+                print_success(
+                    f"Cursor had expired (window: {TASKS_DELTA_MAX_WINDOW_DAYS} days). "
+                    "Read a fresh snapshot instead."
+                )
+                print_board_snapshot(fresh)
+                return
+            print_delta_summary(
+                {
+                    "code": exc.code,
+                    "full_resync_required": True,
+                    "max_window_days": (exc.extra or {}).get(
+                        "max_window_days", TASKS_DELTA_MAX_WINDOW_DAYS
+                    ),
+                }
+            )
+            raise SystemExit(EXIT_DELTA_WINDOW_EXPIRED) from exc
+        exit_for_api_error(exc, json_mode)
+
+    if json_mode:
+        emit_json(delta)
+        return
+    print_delta_summary(delta)

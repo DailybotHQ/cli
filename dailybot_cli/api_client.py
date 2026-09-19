@@ -166,11 +166,21 @@ def as_query_datetime(value: datetime | str) -> str:
     (MEASURED_ANSWERS.md §4, "The trap that is not our defect").
 
     A naive datetime is read as UTC. Microseconds are dropped so a cursor
-    round-trips stably. A string is passed through untouched: the server hands
-    back an opaque cursor and the client must not reformat it.
+    round-trips stably.
+
+    A **string** is normalised only if it parses as ISO-8601, and passed through
+    untouched otherwise. Both halves matter: the server's ``delta_cursor`` is an
+    ISO-8601 timestamp and can carry ``+00:00``, so echoing it back verbatim
+    would reproduce the very bug this function exists to prevent — while a cursor
+    that is genuinely opaque must not be reformatted into something the server
+    cannot read.
     """
     if isinstance(value, str):
-        return value
+        try:
+            parsed: datetime = datetime.fromisoformat(value.replace("Z", "+00:00"))
+        except ValueError:
+            return value  # opaque token — not ours to reinterpret
+        value = parsed
     moment: datetime = value if value.tzinfo is not None else value.replace(tzinfo=timezone.utc)
     return moment.astimezone(timezone.utc).replace(microsecond=0).strftime("%Y-%m-%dT%H:%M:%SZ")
 
