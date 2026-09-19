@@ -50,6 +50,69 @@ EXIT_USER_ABORTED: int = 7
 # Server-side error codes from {detail, code} responses. Kept here so command
 # handlers and tests share a single source of truth.
 ERROR_CODE_MESSAGES: dict[str, str] = {
+    # --- Tasks (/v1/tasks/*) -------------------------------------------------
+    # Written against what the server actually returned in the live probe
+    # recorded in the plan's PERMISSION_MATRIX_OBSERVED.md, not against prose.
+    #
+    # Auth taxonomy
+    "credential_absent": (
+        "No credential was sent. Run `dailybot login`, or set an API key with "
+        "`dailybot config key=<your-api-key>`."
+    ),
+    "credential_malformed": (
+        "The credential was rejected as malformed. Re-run `dailybot login`, or check the "
+        "API key you configured."
+    ),
+    "credential_expired": "Your session expired. Run `dailybot login` to re-authenticate.",
+    "invalid_credentials": (
+        "This credential is not valid for this server. Check you are pointing at the right "
+        "API URL (`dailybot env show`), then re-run `dailybot login` or rotate the API key."
+    ),
+    "token_not_valid": "Your session token is no longer valid. Run `dailybot login`.",
+    "actor_required": (
+        "This is a person-shaped door and an organization API key has nobody to be. "
+        "Run `dailybot login` and retry as a signed-in person."
+    ),
+    # Entitlement
+    "task_boards_limit_reached": (
+        "Your plan's board limit is already reached. Archive a board or upgrade the plan."
+    ),
+    # Idempotency
+    "idempotency_key_required": (
+        "This door requires an idempotency key so a retry cannot duplicate the write. "
+        "Pass `--idempotency-key <value>`, or let the CLI generate one."
+    ),
+    "idempotency_key_payload_mismatch": (
+        "That idempotency key was already used with a different body, and this body was "
+        "not written. Use a new key — retrying with the same one cannot succeed."
+    ),
+    "idempotency_in_progress": (
+        "An identical call is still running. Wait for it to finish and check the result "
+        "before sending another; do not retry in a loop."
+    ),
+    # Validation and volume
+    "insufficient_scope": (
+        "Your credential does not hold the scope this action needs."
+    ),
+    "invalid_filter_value": "A filter value was rejected by the server.",
+    "too_many_items": (
+        "Too many items in one call. The server caps a bulk payload at 100 items — "
+        "split the batch and send it in chunks."
+    ),
+    "state_in_use": (
+        "That column still has tasks on it, so it cannot be archived. Pass `migrate_to` "
+        "with the column the tasks should move to."
+    ),
+    # Delta
+    "delta_window_expired": (
+        "That cursor is older than the server's 7-day delta window and will never be "
+        "accepted again. Read the board snapshot to get a fresh cursor and resume from "
+        "there — do not send this one again."
+    ),
+    # Isolation: 404 for anything invisible, never 403. Saying "permission" here
+    # would both mislead and disclose that the object exists.
+    "not_found": "Not found. Check the identifier, or it may belong to another organization.",
+
     "form_response_change_state_forbidden": (
         "You don't have permission to change the state of this submission. "
         "The form's audience may restrict transitions to specific users / teams. "
@@ -392,6 +455,113 @@ def _augment_code_message(base: str, code: str, extra: dict[str, Any]) -> str:
                 detail_bits += f" Your role: {current}."
             return f"{base}{detail_bits}"
     return base
+
+
+# --- Tasks credential guidance ---------------------------------------------
+#
+# The six doors defined relative to *the calling user*. A bare organization API
+# key is an organization with nobody to be, so none of them has an answer for it.
+#
+# Historically this refused in TWO shapes — `400 actor_required` from the service
+# on `me/tasks/`, and `403 insufficient_scope` from the permission layer on the
+# other five (AGENT_SURFACE.md D-1). The plan's live probe measured all six
+# answering `403 insufficient_scope` uniformly, so the divergence appears fixed
+# upstream. Both shapes are still handled: the CLI ships to users whose server we
+# do not control, and a fix present on one instance may not be deployed on another.
+PERSON_SHAPED_TASKS_DOORS: frozenset[str] = frozenset(
+    {
+        "me/tasks",
+        "me/tasks/counts",
+        "me/recents",
+        "me/activity-cursor",
+        "inbox",
+        "inbox/unread-count",
+    }
+)
+
+# The machine-readable vocabulary the Tasks family can return. Kept as an explicit
+# set so a test can assert every one of them has a message, rather than trusting
+# that nobody forgot one.
+TASKS_ERROR_CODES: frozenset[str] = frozenset(
+    {
+        "credential_absent",
+        "credential_malformed",
+        "credential_expired",
+        "invalid_credentials",
+        "token_not_valid",
+        "actor_required",
+        "insufficient_scope",
+        "guest_not_allowed",
+        "plan_upgrade_required",
+        "task_boards_limit_reached",
+        "idempotency_key_required",
+        "idempotency_key_payload_mismatch",
+        "idempotency_in_progress",
+        "invalid_filter_value",
+        "too_many_items",
+        "state_in_use",
+        "delta_window_expired",
+        "not_found",
+    }
+)
+
+_PERSON_SHAPED_GUIDANCE: str = (
+    "This door answers for a signed-in person, and an organization API key has nobody "
+    "to be. Run `dailybot login` and retry."
+)
+
+_ADMIN_SCOPE_GUIDANCE: str = (
+    "This action needs the `tasks:admin` scope, which an organization API key can never "
+    "hold — it cannot even be stored on one. Run `dailybot login` and retry as a signed-in "
+    "person."
+)
+
+
+def is_person_shaped_refusal(exc: APIError, *, door: str | None = None) -> bool:
+    """Is this refusal the "you are not a person" condition, in either shape?
+
+    ``door`` is the Tasks door being called, without the ``/v1/tasks/`` prefix.
+    It is required to disambiguate: ``insufficient_scope`` on ``boards`` is a
+    genuine scope problem, while the same code on ``inbox`` is this condition
+    wearing the permission layer's clothes.
+    """
+    if exc.code == "actor_required":
+        return True
+    if exc.code == "insufficient_scope" and door is not None:
+        return door.strip("/") in PERSON_SHAPED_TASKS_DOORS
+    return False
+
+
+def resolve_error_message(exc: APIError, *, door: str | None = None) -> str:
+    """The user-facing message for an ``APIError``, dispatched on ``code``.
+
+    Never branches on the English ``detail`` (``AGENTS.md`` rule 10): prose is not
+    a control surface. An unknown code falls back to the server's own detail,
+    which is better than inventing a guess about what it meant.
+    """
+    if is_person_shaped_refusal(exc, door=door):
+        return _PERSON_SHAPED_GUIDANCE
+    if exc.code == "guest_not_allowed":
+        # The pre-existing message for this code is Labels-specific and stays as it
+        # is; here the distinction that matters is WHICH fix applies. A scope
+        # refusal is fixed by changing credential, this one only by changing role.
+        return (
+            "Guest accounts cannot use this door. This is a role limit, not a credential "
+            "problem — ask an organization admin to change your role."
+        )
+    if exc.code == "insufficient_scope":
+        required: Any = (exc.extra or {}).get("required_scope")
+        if required == "tasks:admin":
+            return _ADMIN_SCOPE_GUIDANCE
+        if required:
+            return (
+                f"Your credential is missing the `{required}` scope. Scopes do not nest — "
+                f"`tasks:write` alone cannot read. Use a credential that holds `{required}`."
+            )
+    base: str | None = ERROR_CODE_MESSAGES.get(exc.code) if exc.code else None
+    if base is None:
+        return exc.detail
+    return _augment_code_message(base, exc.code or "", exc.extra or {})
 
 
 def exit_for_api_error(
