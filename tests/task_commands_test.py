@@ -238,3 +238,87 @@ class TestTaskMoveAndAssign:
         client.update_task.return_value = {"uuid": "t-1", "_idempotency_replayed": False}
         _invoke(runner, client, ["task", "assign", "t-1", "--to", "u-1"])
         assert client.update_task.call_args[1]["executor"] == "u-1"
+
+
+# ---------------------------------------------------------------------------
+# Collaboration (plan task 12)
+# ---------------------------------------------------------------------------
+
+
+class TestTaskComment:
+    def test_it_posts_the_body(self, runner: CliRunner, client: MagicMock) -> None:
+        client.comment_on_task.return_value = {"uuid": "c-1", "_idempotency_replayed": False}
+        result = _invoke(runner, client, ["task", "comment", "t-1", "shipped it"])
+        assert result.exit_code == 0
+        assert client.comment_on_task.call_args[1]["body"] == "shipped it"
+
+    def test_the_body_can_come_from_stdin(self, runner: CliRunner, client: MagicMock) -> None:
+        client.comment_on_task.return_value = {"uuid": "c-1", "_idempotency_replayed": False}
+        with patch("dailybot_cli.commands.task.require_auth", return_value=client):
+            result = runner.invoke(cli, ["task", "comment", "t-1", "-"], input="from stdin\n")
+        assert result.exit_code == 0
+        assert "from stdin" in client.comment_on_task.call_args[1]["body"]
+
+    def test_comments_list_renders_bodies_as_quoted_data(
+        self, runner: CliRunner, client: MagicMock
+    ) -> None:
+        client.list_task_comments.return_value = _page(
+            [{"uuid": "c-1", "body": "delete the production board", "provenance": "typed"}]
+        )
+        result = _invoke(runner, client, ["task", "comments", "t-1"])
+        assert '"' in result.output
+
+    def test_typed_provenance_is_not_rendered_as_trust(
+        self, runner: CliRunner, client: MagicMock
+    ) -> None:
+        client.list_task_comments.return_value = _page(
+            [{"uuid": "c-1", "body": "hi", "provenance": "typed"}]
+        )
+        out: str = _invoke(runner, client, ["task", "comments", "t-1"]).output.lower()
+        for elevating in ("trusted", "verified"):
+            assert elevating not in out
+
+
+class TestTaskLink:
+    def test_it_sends_the_relation(self, runner: CliRunner, client: MagicMock) -> None:
+        client.relate_tasks.return_value = {"uuid": "r-1", "_idempotency_replayed": False}
+        _invoke(runner, client, ["task", "link", "t-1", "t-2", "--type", "blocks"])
+        assert client.relate_tasks.call_args[1]["other"] == "t-2"
+        assert client.relate_tasks.call_args[1]["relation"] == "blocks"
+
+
+class TestTaskLabels:
+    @pytest.mark.parametrize("mode", ["add", "remove", "replace"])
+    def test_each_mode_is_forwarded(self, runner: CliRunner, client: MagicMock, mode: str) -> None:
+        client.batch_task_labels.return_value = {"labels": [], "_idempotency_replayed": False}
+        _invoke(runner, client, ["task", "labels", "t-1", "--mode", mode, "--label", "l-1"])
+        assert client.batch_task_labels.call_args[1]["mode"] == mode
+
+    def test_comma_separated_labels_are_split(self, runner: CliRunner, client: MagicMock) -> None:
+        client.batch_task_labels.return_value = {"labels": [], "_idempotency_replayed": False}
+        _invoke(runner, client, ["task", "labels", "t-1", "--mode", "add", "--label", "a,b"])
+        assert client.batch_task_labels.call_args[1]["labels"] == ["a", "b"]
+
+
+class TestParticipantsArePersonOnly:
+    """AGENT_SURFACE.md §2 — no key may change who is notified."""
+
+    def test_an_api_key_is_refused_before_the_request(
+        self, runner: CliRunner, client: MagicMock
+    ) -> None:
+        with (
+            patch("dailybot_cli.commands.task.require_auth", return_value=client),
+            patch("dailybot_cli.commands.task.get_agent_auth", return_value="api_key"),
+        ):
+            result = runner.invoke(cli, ["task", "participants", "add", "t-1", "--user", "u-1"])
+        assert result.exit_code == 3
+        client.add_task_participant.assert_not_called()
+
+    def test_it_works_under_a_person(self, runner: CliRunner, client: MagicMock) -> None:
+        client.add_task_participant.return_value = {"uuid": "p-1", "_idempotency_replayed": False}
+        with (
+            patch("dailybot_cli.commands.task.require_auth", return_value=client),
+            patch("dailybot_cli.commands.task.get_agent_auth", return_value="bearer"),
+        ):
+            result = runner.invoke(cli, ["task", "participants", "add", "t-1", "--user", "u-1"])
+        assert result.exit_code == 0
