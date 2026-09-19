@@ -226,7 +226,11 @@ def _write_error(exc: APIError) -> None:
 @click.option(
     "--idempotency-key",
     default=None,
-    help="Reuse a key to make a retry safe. Generated automatically when omitted.",
+    help=(
+        "Reuse a key to make a retry safe. Generated automatically when omitted. "
+        f"The server keeps it for {IDEMPOTENCY_TTL_HOURS}h: reusing it inside that "
+        "window replays the original result, reusing it after duplicates."
+    ),
 )
 @click.option("--json", "json_mode", is_flag=True, help="Emit machine-readable JSON to stdout.")
 def task_create(
