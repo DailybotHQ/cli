@@ -2057,6 +2057,21 @@ class DailyBotClient:
             limit=limit,
         )
 
+    @staticmethod
+    def _with_include(
+        params: dict[str, Any] | None, include: list[str] | None
+    ) -> dict[str, Any] | None:
+        """Merge an ``include`` selector into a caller's query params.
+
+        They used to compete: these methods hardcoded ``params={"include": …}``, so
+        a caller forwarding the shared query flags via ``params=`` either collided
+        or had its filters silently dropped.
+        """
+        merged: dict[str, Any] = dict(params) if params else {}
+        if include:
+            merged["include"] = ",".join(include)
+        return merged or None
+
     # --- Workspace-level reads ---
 
     def get_tasks_pulse(self) -> dict[str, Any]:
@@ -2228,9 +2243,11 @@ class DailyBotClient:
             idempotency_key=idempotency_key,
         )
 
-    def list_task_comments(self, task_uuid: str, **page: Any) -> PaginatedResult:
+    def list_task_comments(
+        self, task_uuid: str, *, params: dict[str, Any] | None = None, **page: Any
+    ) -> PaginatedResult:
         """GET /v1/tasks/tasks/<uuid>/comments/."""
-        return self._tasks_list(f"tasks/{task_uuid}/comments/", **page)
+        return self._tasks_list(f"tasks/{task_uuid}/comments/", params=params, **page)
 
     def relate_tasks(
         self, task_uuid: str, *, other: str, relation: str, idempotency_key: str | None = None
@@ -2270,16 +2287,20 @@ class DailyBotClient:
 
     # --- Projects, goals, milestones ---
 
-    def list_projects(self, *, include: list[str] | None = None, **page: Any) -> PaginatedResult:
+    def list_projects(
+        self,
+        *,
+        include: list[str] | None = None,
+        params: dict[str, Any] | None = None,
+        **page: Any,
+    ) -> PaginatedResult:
         """GET /v1/tasks/projects/ — roll-ups only when `include` asks for them."""
-        return self._tasks_list(
-            "projects/", params={"include": ",".join(include)} if include else None, **page
-        )
+        return self._tasks_list("projects/", params=self._with_include(params, include), **page)
 
     def get_project(self, project_uuid: str, *, include: list[str] | None = None) -> dict[str, Any]:
         """GET /v1/tasks/projects/<uuid>/."""
         return self._tasks_read(
-            f"projects/{project_uuid}/", params={"include": ",".join(include)} if include else None
+            f"projects/{project_uuid}/", params=self._with_include(None, include)
         )
 
     def list_project_updates(self, **page: Any) -> PaginatedResult:
@@ -2295,22 +2316,26 @@ class DailyBotClient:
             "POST", f"projects/{project_uuid}/updates/", json={"body": body}, idempotent=False
         )
 
-    def list_goals(self, *, include: list[str] | None = None, **page: Any) -> PaginatedResult:
+    def list_goals(
+        self,
+        *,
+        include: list[str] | None = None,
+        params: dict[str, Any] | None = None,
+        **page: Any,
+    ) -> PaginatedResult:
         """GET /v1/tasks/goals/ — roll-ups are ABSENT unless requested (AD-01)."""
-        return self._tasks_list(
-            "goals/", params={"include": ",".join(include)} if include else None, **page
-        )
+        return self._tasks_list("goals/", params=self._with_include(params, include), **page)
 
     def get_goal(self, goal_uuid: str, *, include: list[str] | None = None) -> dict[str, Any]:
         """GET /v1/tasks/goals/<uuid>/."""
-        return self._tasks_read(
-            f"goals/{goal_uuid}/", params={"include": ",".join(include)} if include else None
-        )
+        return self._tasks_read(f"goals/{goal_uuid}/", params=self._with_include(None, include))
 
-    def list_milestones(self, project_uuid: str | None = None, **page: Any) -> PaginatedResult:
+    def list_milestones(
+        self, project_uuid: str | None = None, *, params: dict[str, Any] | None = None, **page: Any
+    ) -> PaginatedResult:
         """GET the milestone family, org-wide or scoped to one project."""
         path: str = f"projects/{project_uuid}/milestones/" if project_uuid else "milestones/"
-        return self._tasks_list(path, **page)
+        return self._tasks_list(path, params=params, **page)
 
     def complete_milestone(
         self, project_uuid: str, milestone_uuid: str, *, dry_run: bool = False
@@ -2424,11 +2449,15 @@ class DailyBotClient:
 
     # --- Person-shaped doors (a bare API key has no answer here) ---
 
-    def list_my_tasks(
-        self, *, filters: dict[str, Any] | None = None, **page: Any
-    ) -> PaginatedResult:
-        """GET /v1/tasks/me/tasks/ — needs a signed-in person."""
-        return self._tasks_list("me/tasks/", params=filters, **page)
+    def list_my_tasks(self, **page: Any) -> PaginatedResult:
+        """GET /v1/tasks/me/tasks/ — needs a signed-in person.
+
+        Takes ``**page`` only, like every other list door. The previous signature
+        declared ``filters=`` **and** ``**page``, so a caller passing ``params=``
+        — which every other list door accepts — collided with the explicit
+        ``params=filters`` and raised ``TypeError`` on every single invocation.
+        """
+        return self._tasks_list("me/tasks/", **page)
 
     def get_my_task_counts(self) -> dict[str, Any]:
         """GET /v1/tasks/me/tasks/counts/ — needs a signed-in person."""

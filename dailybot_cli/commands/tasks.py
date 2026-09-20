@@ -25,12 +25,17 @@ from dailybot_cli.commands.public_api_helpers import (
     EXIT_NOT_AUTHENTICATED,
     emit_json,
     exit_for_api_error,
+    exit_for_tasks_error,
     require_auth,
-    resolve_error_message,
 )
-from dailybot_cli.commands.query_options import build_query_params, query_options
+from dailybot_cli.commands.query_options import (
+    build_query_params,
+    paging_options,
+    query_options,
+)
 from dailybot_cli.config import get_agent_auth
 from dailybot_cli.display import (
+    TASKS_TRUSTED_FIELDS,
     console,
     present_untrusted,
     print_board_snapshot,
@@ -192,7 +197,10 @@ def tasks_entitlements(json_mode: bool) -> None:
 
 @tasks.command("search")
 @click.option("-q", "--query", required=True, help="Text to search for across the workspace.")
-@query_options
+# `paging_options`, not `query_options`: the search door declares no date
+# parameters, and advertising --since/--last-week on a command that silently
+# drops them is worse than not offering them.
+@paging_options
 @click.option("--json", "json_mode", is_flag=True, help="Emit machine-readable JSON to stdout.")
 def tasks_search(query: str, json_mode: bool, **flags: Any) -> None:
     """Search tasks, boards and projects by text.
@@ -205,7 +213,7 @@ def tasks_search(query: str, json_mode: bool, **flags: Any) -> None:
     client = require_auth()
     try:
         page: dict[str, Any] = _page_kwargs(**flags)
-        page.pop("params", None)
+        page.pop("params", None)  # paging_options supplies no filter params
         with console.status("Searching..."):
             result: PaginatedResult = client.search_tasks(query, **page)
     except ValueError as exc:
@@ -405,8 +413,7 @@ def tasks_inbox(json_mode: bool, **flags: Any) -> None:
     except ValueError as exc:
         raise click.BadParameter(str(exc)) from exc
     except APIError as exc:
-        print_error(resolve_error_message(exc, door="inbox"))
-        raise SystemExit(EXIT_NOT_AUTHENTICATED) from exc
+        exit_for_tasks_error(exc, json_mode, door="inbox")
     if json_mode:
         emit_json(_envelope(result))
         return
@@ -448,8 +455,7 @@ def tasks_mine(scope: str | None, json_mode: bool, **flags: Any) -> None:
     except ValueError as exc:
         raise click.BadParameter(str(exc)) from exc
     except APIError as exc:
-        print_error(resolve_error_message(exc, door="me/tasks"))
-        raise SystemExit(EXIT_NOT_AUTHENTICATED) from exc
+        exit_for_tasks_error(exc, json_mode, door="me/tasks")
     if json_mode:
         emit_json(_envelope(result))
         return
@@ -475,10 +481,14 @@ def tasks_counts(json_mode: bool) -> None:
         with console.status("Counting your tasks..."):
             data: dict[str, Any] = client.get_my_task_counts()
     except APIError as exc:
-        print_error(resolve_error_message(exc, door="me/tasks/counts"))
-        raise SystemExit(EXIT_NOT_AUTHENTICATED) from exc
+        exit_for_tasks_error(exc, json_mode, door="me/tasks/counts")
     if json_mode:
         emit_json(data)
         return
+    # Both key and value are interpolated into a markup string, so both must go
+    # through the presenter — a bucket named `[bold red]…[/]` would otherwise style
+    # the terminal, which is exactly the injection `present_untrusted` exists to
+    # stop. Server-generated field names stay plain.
     for key, value in data.items():
-        console.print(f"[bold]{key}[/bold]  {value}")
+        label: str = key if key in TASKS_TRUSTED_FIELDS else present_untrusted(key, limit=32)
+        console.print(f"[bold]{label}[/bold]  {present_untrusted(value, limit=40)}")

@@ -561,6 +561,47 @@ def resolve_error_message(exc: APIError, *, door: str | None = None) -> str:
     return _augment_code_message(base, exc.code or "", exc.extra or {})
 
 
+# Status -> exit code for a Tasks write refusal. Extracted because the same
+# literal `SystemExit(4 if status in (401, 403) else 1)` was copied into four
+# command modules and disagreed with both `exit_for_api_error` and the exit table
+# published in `docs/API_REFERENCE.md`: a 401 exited 4 (so an agent that re-logins
+# on 3 saw a permission error), and a 404 exited 1 (so "invisible" became
+# indistinguishable from a generic failure).
+_TASKS_WRITE_EXIT_BY_STATUS: dict[int, int] = {
+    401: EXIT_NOT_AUTHENTICATED,
+    402: EXIT_PERMISSION_DENIED,
+    403: EXIT_PERMISSION_DENIED,
+    404: EXIT_NOT_FOUND,
+    409: EXIT_PERMISSION_DENIED,
+    429: EXIT_RATE_LIMITED,
+}
+
+
+def tasks_write_exit_code(exc: APIError) -> int:
+    """Exit code for a Tasks write refusal, matching the documented table."""
+    return _TASKS_WRITE_EXIT_BY_STATUS.get(exc.status_code, 1)
+
+
+def exit_for_tasks_error(exc: APIError, json_mode: bool, *, door: str | None = None) -> NoReturn:
+    """Surface a Tasks refusal and exit with the documented code.
+
+    Honours ``--json`` on every path: an agent parsing stdout must not get an
+    empty stream with prose on stderr just because the failure was a refusal
+    rather than a success.
+    """
+    message: str = resolve_error_message(exc, door=door)
+    code: int = (
+        EXIT_NOT_AUTHENTICATED
+        if is_person_shaped_refusal(exc, door=door)
+        else tasks_write_exit_code(exc)
+    )
+    if json_mode:
+        emit_json({"status": "error", "code": exc.code, "detail": exc.detail, "message": message})
+    else:
+        print_error(message)
+    raise SystemExit(code)
+
+
 def exit_for_api_error(
     exc: APIError,
     json_mode: bool,

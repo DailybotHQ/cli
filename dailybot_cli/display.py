@@ -14,7 +14,7 @@ from rich.panel import Panel
 from rich.table import Table
 from rich.text import Text
 
-from dailybot_cli.api_client import resource_uuid
+from dailybot_cli.api_client import TASKS_DELTA_MAX_WINDOW_DAYS, resource_uuid
 from dailybot_cli.config import get_api_url, get_app_url
 
 console: Console = Console()
@@ -1651,7 +1651,7 @@ def print_delta_summary(delta: dict[str, Any]) -> None:
     cursor is an infinite loop — it will never be accepted again.
     """
     if delta.get("code") == "delta_window_expired" or delta.get("full_resync_required"):
-        days: Any = delta.get("max_window_days", 7)
+        days: Any = delta.get("max_window_days", TASKS_DELTA_MAX_WINDOW_DAYS)
         print_warning(
             f"That cursor is older than the server's {days}-day delta window and will "
             "never be accepted again. Read the board snapshot to get a fresh cursor and "
@@ -1700,6 +1700,82 @@ def print_dry_run_consequence(preview: dict[str, Any]) -> None:
         border = "red"
         title = "Dry run — irreversible"
     console.print(Panel("\n".join(lines), title=title, border_style=border))
+
+
+def print_boards_table(boards: list[dict[str, Any]]) -> None:
+    """Render a board list. Keys and uuids are trusted; names are not."""
+    if not boards:
+        print_info("No boards.")
+        return
+    table: Table = Table(title="Boards")
+    table.add_column("Key", style="cyan", no_wrap=True)
+    table.add_column("Name")
+    table.add_column("UUID", no_wrap=True)
+    for row in boards:
+        table.add_row(
+            str(row.get("key") or ""),
+            present_untrusted(row.get("name")),
+            str(row.get("uuid") or ""),
+        )
+    console.print(table)
+
+
+def print_projects_table(projects: list[dict[str, Any]], *, rollup: Any = None) -> None:
+    """Render a project list. ``rollup`` renders the absent/null/value distinction."""
+    if not projects:
+        print_info("No projects.")
+        return
+    table: Table = Table(title="Projects")
+    table.add_column("Name")
+    table.add_column("Progress", no_wrap=True)
+    table.add_column("UUID", no_wrap=True)
+    for row in projects:
+        table.add_row(
+            present_untrusted(row.get("name")),
+            rollup(row, "progress") if rollup else "",
+            str(row.get("uuid") or ""),
+        )
+    console.print(table)
+
+
+def print_goals_table(goals: list[dict[str, Any]], *, rollup: Any = None) -> None:
+    """Render a goal list, preserving absent / null / value as three answers."""
+    if not goals:
+        print_info("No goals.")
+        return
+    table: Table = Table(title="Goals")
+    table.add_column("Name")
+    table.add_column("Progress", no_wrap=True)
+    table.add_column("Projects", no_wrap=True)
+    table.add_column("UUID", no_wrap=True)
+    for row in goals:
+        table.add_row(
+            present_untrusted(row.get("name")),
+            rollup(row, "progress") if rollup else "",
+            rollup(row, "project_count") if rollup else "",
+            str(row.get("uuid") or ""),
+        )
+    console.print(table)
+
+
+def print_milestones_table(milestones: list[dict[str, Any]], *, rollup: Any = None) -> None:
+    """Render a milestone list."""
+    if not milestones:
+        print_info("No milestones.")
+        return
+    table: Table = Table(title="Milestones")
+    table.add_column("Name")
+    table.add_column("Status", no_wrap=True)
+    table.add_column("Open", no_wrap=True)
+    table.add_column("UUID", no_wrap=True)
+    for row in milestones:
+        table.add_row(
+            present_untrusted(row.get("name")),
+            present_untrusted(row.get("status"), limit=16),
+            rollup(row, "open_task_count") if rollup else "",
+            str(row.get("uuid") or ""),
+        )
+    console.print(table)
 
 
 def print_task_comments(comments: list[dict[str, Any]]) -> None:

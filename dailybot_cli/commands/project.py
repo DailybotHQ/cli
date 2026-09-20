@@ -3,7 +3,6 @@
 from typing import Any
 
 import click
-from rich.table import Table
 
 from dailybot_cli.api_client import APIError, PaginatedResult
 from dailybot_cli.commands._destructive import preview_then_confirm
@@ -13,6 +12,7 @@ from dailybot_cli.commands.public_api_helpers import (
     EXIT_USER_ABORTED,
     emit_json,
     exit_for_api_error,
+    exit_for_tasks_error,
     require_auth,
     resolve_error_message,
 )
@@ -24,7 +24,9 @@ from dailybot_cli.display import (
     print_detail_panel,
     print_dry_run_consequence,
     print_error,
+    print_milestones_table,
     print_pagination_footer,
+    print_projects_table,
     print_success,
 )
 
@@ -89,6 +91,7 @@ def project_list(include: tuple[str, ...], json_mode: bool, **flags: Any) -> Non
         with console.status("Reading projects..."):
             result: PaginatedResult = client.list_projects(
                 include=_include_list(include),
+                params=spec.params or None,
                 page=spec.page,
                 page_size=spec.page_size,
                 fetch_all=spec.fetch_all,
@@ -101,17 +104,7 @@ def project_list(include: tuple[str, ...], json_mode: bool, **flags: Any) -> Non
     if json_mode:
         emit_json(_envelope(result))
         return
-    table: Table = Table(title="Projects")
-    table.add_column("Name")
-    table.add_column("Progress", no_wrap=True)
-    table.add_column("UUID", no_wrap=True)
-    for row in result.results:
-        table.add_row(
-            present_untrusted(row.get("name")),
-            render_rollup(row, "progress"),
-            str(row.get("uuid") or ""),
-        )
-    console.print(table)
+    print_projects_table(result.results, rollup=render_rollup)
     print_pagination_footer(len(result.results), result.count, has_more=bool(result.next))
 
 
@@ -136,10 +129,9 @@ def project_get(project_uuid: str, include: tuple[str, ...], json_mode: bool) ->
         with console.status("Reading the project..."):
             data: dict[str, Any] = client.get_project(project_uuid, include=_include_list(include))
     except APIError as exc:
-        if exc.code == "not_found":
-            print_error(resolve_error_message(exc))
-            raise SystemExit(5) from exc
-        exit_for_api_error(exc, json_mode)
+        # Isolation is 404-not-403: routed through the shared mapper so the exit
+        # code and the --json payload match the documented table.
+        exit_for_tasks_error(exc, json_mode)
     if json_mode:
         emit_json(data)
         return
@@ -228,8 +220,7 @@ def project_update_post(project_uuid: str, body: str, json_mode: bool) -> None:
             # offered — advertising one would promise a guarantee that does not exist.
             data: dict[str, Any] = client.post_project_update(project_uuid, body=_read_body(body))
     except APIError as exc:
-        print_error(resolve_error_message(exc))
-        raise SystemExit(4 if exc.status_code in (401, 403) else 1) from exc
+        exit_for_tasks_error(exc, json_mode)
     if json_mode:
         emit_json(data)
         return
@@ -256,6 +247,7 @@ def project_milestones(project_uuid: str | None, json_mode: bool, **flags: Any) 
         with console.status("Reading milestones..."):
             result: PaginatedResult = client.list_milestones(
                 project_uuid,
+                params=spec.params or None,
                 page=spec.page,
                 page_size=spec.page_size,
                 fetch_all=spec.fetch_all,
@@ -268,19 +260,7 @@ def project_milestones(project_uuid: str | None, json_mode: bool, **flags: Any) 
     if json_mode:
         emit_json(_envelope(result))
         return
-    table: Table = Table(title="Milestones")
-    table.add_column("Name")
-    table.add_column("Status", no_wrap=True)
-    table.add_column("Open", no_wrap=True)
-    table.add_column("UUID", no_wrap=True)
-    for row in result.results:
-        table.add_row(
-            present_untrusted(row.get("name")),
-            present_untrusted(row.get("status"), limit=16),
-            render_rollup(row, "open_task_count"),
-            str(row.get("uuid") or ""),
-        )
-    console.print(table)
+    print_milestones_table(result.results, rollup=render_rollup)
     print_pagination_footer(len(result.results), result.count, has_more=bool(result.next))
 
 
@@ -330,8 +310,7 @@ def project_milestone_complete(
                 project_uuid, milestone_uuid, dry_run=False
             )
     except APIError as exc:
-        print_error(resolve_error_message(exc))
-        raise SystemExit(4 if exc.status_code in (401, 403) else 1) from exc
+        exit_for_tasks_error(exc, json_mode)
     if json_mode:
         emit_json(data)
         return
@@ -354,8 +333,7 @@ def project_milestone_reopen(project_uuid: str, milestone_uuid: str, json_mode: 
         with console.status("Reopening the milestone..."):
             data: dict[str, Any] = client.reopen_milestone(project_uuid, milestone_uuid)
     except APIError as exc:
-        print_error(resolve_error_message(exc))
-        raise SystemExit(4 if exc.status_code in (401, 403) else 1) from exc
+        exit_for_tasks_error(exc, json_mode)
     if json_mode:
         emit_json(data)
         return
@@ -395,8 +373,7 @@ def project_create(
                 name=name, description=description, idempotency_key=idempotency_key
             )
     except APIError as exc:
-        print_error(resolve_error_message(exc))
-        raise SystemExit(4 if exc.status_code in (401, 402, 403) else 1) from exc
+        exit_for_tasks_error(exc, json_mode)
     if json_mode:
         emit_json(data)
         return
@@ -431,8 +408,7 @@ def project_archive(
                 project_uuid, dry_run=False, idempotency_key=idempotency_key
             )
     except APIError as exc:
-        print_error(resolve_error_message(exc))
-        raise SystemExit(4 if exc.status_code in (401, 403) else 1) from exc
+        exit_for_tasks_error(exc, json_mode)
     if json_mode:
         emit_json(data)
         return

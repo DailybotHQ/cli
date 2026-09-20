@@ -11,7 +11,7 @@ parameter name would produce a 400.
 """
 
 import json as _json
-from typing import Any
+from typing import Any, NoReturn
 
 import click
 
@@ -22,8 +22,8 @@ from dailybot_cli.commands.public_api_helpers import (
     EXIT_USER_ABORTED,
     emit_json,
     exit_for_api_error,
+    exit_for_tasks_error,
     require_auth,
-    resolve_error_message,
 )
 from dailybot_cli.commands.query_options import build_query_params, query_options
 from dailybot_cli.config import get_agent_auth
@@ -141,7 +141,11 @@ def task_list(
 
     try:
         spec = build_query_params(**flags)
-        merged: dict[str, Any] = {**(spec.params or {}), **filters}
+        # `/v1/tasks/tasks/` is strict and refuses any parameter it does not
+        # declare, and it declares none of the shared text/date filters. Forwarding
+        # them would spend a round trip to earn a 400 whose message blames the
+        # *value*, not the parameter name. Drop them here instead.
+        merged: dict[str, Any] = dict(filters)
         with console.status("Reading tasks..."):
             result: PaginatedResult = client.list_tasks(
                 filters=merged or None,
@@ -182,12 +186,10 @@ def task_get(task_uuid: str, json_mode: bool) -> None:
         with console.status("Reading the task..."):
             data: dict[str, Any] = client.get_task(task_uuid)
     except APIError as exc:
-        if exc.code == "not_found":
-            # Isolation is 404-not-403: an invisible object and a nonexistent one
-            # must be indistinguishable, so this must not read as a permission error.
-            print_error(resolve_error_message(exc))
-            raise SystemExit(5) from exc
-        exit_for_api_error(exc, json_mode)
+        # Isolation is 404-not-403: an invisible object and a nonexistent one must
+        # be indistinguishable. Routed through the shared mapper so the exit code
+        # and the --json payload match the documented table.
+        exit_for_tasks_error(exc, json_mode)
     if json_mode:
         emit_json(data)
         return
@@ -210,10 +212,14 @@ def _report_write(result: dict[str, Any], what: str) -> None:
     print_success(what)
 
 
-def _write_error(exc: APIError) -> None:
-    """Surface a write refusal and stop. Never retries."""
-    print_error(resolve_error_message(exc))
-    raise SystemExit(4 if exc.status_code in (401, 403, 409) else 1)
+def _write_error(exc: APIError, json_mode: bool = False) -> NoReturn:
+    """Surface a write refusal and stop. Never retries.
+
+    Delegates the status -> exit mapping to the shared helper so this module
+    cannot drift from `exit_for_api_error` or from the exit table in
+    `docs/API_REFERENCE.md`.
+    """
+    exit_for_tasks_error(exc, json_mode)
 
 
 @task.command("create")
@@ -269,7 +275,7 @@ def task_create(
                 idempotency_key=idempotency_key,
             )
     except APIError as exc:
-        _write_error(exc)
+        _write_error(exc, json_mode)
     if json_mode:
         emit_json(data)
         return
@@ -326,7 +332,7 @@ def task_update(
                 task_uuid, idempotency_key=idempotency_key, **supplied
             )
     except APIError as exc:
-        _write_error(exc)
+        _write_error(exc, json_mode)
     if json_mode:
         emit_json(data)
         return
@@ -363,7 +369,7 @@ def task_move(
                 task_uuid, idempotency_key=idempotency_key, **fields
             )
     except APIError as exc:
-        _write_error(exc)
+        _write_error(exc, json_mode)
     if json_mode:
         emit_json(data)
         return
@@ -391,7 +397,7 @@ def task_assign(
                 task_uuid, executor=assignee, idempotency_key=idempotency_key
             )
     except APIError as exc:
-        _write_error(exc)
+        _write_error(exc, json_mode)
     if json_mode:
         emit_json(data)
         return
@@ -439,7 +445,7 @@ def task_comment(task_uuid: str, body: str, idempotency_key: str | None, json_mo
                 task_uuid, body=_read_body(body), idempotency_key=idempotency_key
             )
     except APIError as exc:
-        _write_error(exc)
+        _write_error(exc, json_mode)
     if json_mode:
         emit_json(data)
         return
@@ -468,6 +474,7 @@ def task_comments(task_uuid: str, json_mode: bool, **flags: Any) -> None:
         with console.status("Reading comments..."):
             result: PaginatedResult = client.list_task_comments(
                 task_uuid,
+                params=spec.params or None,
                 page=spec.page,
                 page_size=spec.page_size,
                 fetch_all=spec.fetch_all,
@@ -506,7 +513,7 @@ def task_link(
                 task_uuid, other=other_uuid, relation=relation, idempotency_key=idempotency_key
             )
     except APIError as exc:
-        _write_error(exc)
+        _write_error(exc, json_mode)
     if json_mode:
         emit_json(data)
         return
@@ -556,7 +563,7 @@ def task_labels(
                 idempotency_key=idempotency_key,
             )
     except APIError as exc:
-        _write_error(exc)
+        _write_error(exc, json_mode)
     if json_mode:
         emit_json(data)
         return
@@ -595,7 +602,7 @@ def participants_add(
                 task_uuid, user_uuid=user, idempotency_key=idempotency_key
             )
     except APIError as exc:
-        _write_error(exc)
+        _write_error(exc, json_mode)
     if json_mode:
         emit_json(data)
         return
@@ -636,7 +643,7 @@ def task_archive(
                 task_uuid, dry_run=False, idempotency_key=idempotency_key
             )
     except APIError as exc:
-        _write_error(exc)
+        _write_error(exc, json_mode)
     if json_mode:
         emit_json(data)
         return
@@ -672,7 +679,7 @@ def task_delete(task_uuid: str, dry_run: bool, assume_yes: bool, json_mode: bool
             # The DELETE alias IGNORES Idempotency-Key, so none is offered here.
             data: dict[str, Any] = client.archive_task(task_uuid, dry_run=False)
     except APIError as exc:
-        _write_error(exc)
+        _write_error(exc, json_mode)
     if json_mode:
         emit_json(data)
         return
@@ -699,7 +706,7 @@ def task_restore(task_uuid: str, idempotency_key: str | None, json_mode: bool) -
         with console.status("Restoring the task..."):
             data: dict[str, Any] = client.restore_task(task_uuid, idempotency_key=idempotency_key)
     except APIError as exc:
-        _write_error(exc)
+        _write_error(exc, json_mode)
     if json_mode:
         emit_json(data)
         return
@@ -770,7 +777,7 @@ def task_bulk(
                 operation=operation, items=items, idempotency_key=idempotency_key
             )
     except APIError as exc:
-        _write_error(exc)
+        _write_error(exc, json_mode)
 
     if json_mode:
         emit_json(data)

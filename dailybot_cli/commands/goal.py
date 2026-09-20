@@ -3,7 +3,6 @@
 from typing import Any
 
 import click
-from rich.table import Table
 
 from dailybot_cli.api_client import APIError, PaginatedResult
 from dailybot_cli.commands._destructive import preview_then_confirm
@@ -18,15 +17,15 @@ from dailybot_cli.commands.project import (
 from dailybot_cli.commands.public_api_helpers import (
     emit_json,
     exit_for_api_error,
+    exit_for_tasks_error,
     require_auth,
-    resolve_error_message,
 )
 from dailybot_cli.commands.query_options import build_query_params, query_options
 from dailybot_cli.display import (
     console,
     present_untrusted,
     print_detail_panel,
-    print_error,
+    print_goals_table,
     print_pagination_footer,
 )
 
@@ -74,6 +73,7 @@ def goal_list(include: tuple[str, ...], json_mode: bool, **flags: Any) -> None:
         with console.status("Reading goals..."):
             result: PaginatedResult = client.list_goals(
                 include=_include_list(include),
+                params=spec.params or None,
                 page=spec.page,
                 page_size=spec.page_size,
                 fetch_all=spec.fetch_all,
@@ -86,19 +86,7 @@ def goal_list(include: tuple[str, ...], json_mode: bool, **flags: Any) -> None:
     if json_mode:
         emit_json(_envelope(result))
         return
-    table: Table = Table(title="Goals")
-    table.add_column("Name")
-    table.add_column("Progress", no_wrap=True)
-    table.add_column("Projects", no_wrap=True)
-    table.add_column("UUID", no_wrap=True)
-    for row in result.results:
-        table.add_row(
-            present_untrusted(row.get("name")),
-            render_rollup(row, "progress"),
-            render_rollup(row, "project_count"),
-            str(row.get("uuid") or ""),
-        )
-    console.print(table)
+    print_goals_table(result.results, rollup=render_rollup)
     print_pagination_footer(len(result.results), result.count, has_more=bool(result.next))
 
 
@@ -123,10 +111,9 @@ def goal_get(goal_uuid: str, include: tuple[str, ...], json_mode: bool) -> None:
         with console.status("Reading the goal..."):
             data: dict[str, Any] = client.get_goal(goal_uuid, include=_include_list(include))
     except APIError as exc:
-        if exc.code == "not_found":
-            print_error(resolve_error_message(exc))
-            raise SystemExit(5) from exc
-        exit_for_api_error(exc, json_mode)
+        # Isolation is 404-not-403: routed through the shared mapper so the exit
+        # code and the --json payload match the documented table.
+        exit_for_tasks_error(exc, json_mode)
     if json_mode:
         emit_json(data)
         return
@@ -156,8 +143,7 @@ def goal_create(
                 name=name, description=description, idempotency_key=idempotency_key
             )
     except APIError as exc:
-        print_error(resolve_error_message(exc))
-        raise SystemExit(4 if exc.status_code in (401, 402, 403) else 1) from exc
+        exit_for_tasks_error(exc, json_mode)
     if json_mode:
         emit_json(data)
         return
@@ -192,8 +178,7 @@ def goal_archive(
                 goal_uuid, dry_run=False, idempotency_key=idempotency_key
             )
     except APIError as exc:
-        print_error(resolve_error_message(exc))
-        raise SystemExit(4 if exc.status_code in (401, 403) else 1) from exc
+        exit_for_tasks_error(exc, json_mode)
     if json_mode:
         emit_json(data)
         return

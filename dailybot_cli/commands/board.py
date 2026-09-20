@@ -10,7 +10,6 @@ That handoff is named in both commands' help on purpose.
 from typing import Any
 
 import click
-from rich.table import Table
 
 from dailybot_cli.api_client import APIError, PaginatedResult
 from dailybot_cli.commands._destructive import preview_then_confirm
@@ -18,8 +17,8 @@ from dailybot_cli.commands.public_api_helpers import (
     EXIT_NOT_AUTHENTICATED,
     emit_json,
     exit_for_api_error,
+    exit_for_tasks_error,
     require_auth,
-    resolve_error_message,
 )
 from dailybot_cli.commands.query_options import build_query_params, query_options
 from dailybot_cli.config import get_agent_auth
@@ -27,6 +26,7 @@ from dailybot_cli.display import (
     console,
     present_untrusted,
     print_board_snapshot,
+    print_boards_table,
     print_detail_panel,
     print_error,
     print_pagination_footer,
@@ -94,17 +94,7 @@ def board_list(json_mode: bool, **flags: Any) -> None:
     if json_mode:
         emit_json(_envelope(result))
         return
-    table: Table = Table(title="Boards")
-    table.add_column("Key", style="cyan", no_wrap=True)
-    table.add_column("Name")
-    table.add_column("UUID", no_wrap=True)
-    for row in result.results:
-        table.add_row(
-            str(row.get("key") or ""),
-            present_untrusted(row.get("name")),
-            str(row.get("uuid") or ""),
-        )
-    console.print(table)
+    print_boards_table(result.results)
     print_pagination_footer(len(result.results), result.count, has_more=bool(result.next))
 
 
@@ -123,10 +113,9 @@ def board_get(board_uuid: str, json_mode: bool) -> None:
         with console.status("Reading the board..."):
             data: dict[str, Any] = client.get_board(board_uuid)
     except APIError as exc:
-        if exc.code == "not_found":
-            print_error(resolve_error_message(exc))
-            raise SystemExit(5) from exc
-        exit_for_api_error(exc, json_mode)
+        # Isolation is 404-not-403: routed through the shared mapper so the exit
+        # code and the --json payload match the documented table.
+        exit_for_tasks_error(exc, json_mode)
     if json_mode:
         emit_json(data)
         return
@@ -154,10 +143,9 @@ def board_snapshot(board_uuid: str, json_mode: bool) -> None:
         with console.status("Reading the board snapshot..."):
             data: dict[str, Any] = client.get_board_snapshot(board_uuid)
     except APIError as exc:
-        if exc.code == "not_found":
-            print_error(resolve_error_message(exc))
-            raise SystemExit(5) from exc
-        exit_for_api_error(exc, json_mode)
+        # Isolation is 404-not-403: routed through the shared mapper so the exit
+        # code and the --json payload match the documented table.
+        exit_for_tasks_error(exc, json_mode)
     if json_mode:
         emit_json(data)
         return
@@ -215,8 +203,7 @@ def board_create(
                 name=name, description=description, idempotency_key=idempotency_key
             )
     except APIError as exc:
-        print_error(resolve_error_message(exc))
-        raise SystemExit(4 if exc.status_code in (401, 402, 403) else 1) from exc
+        exit_for_tasks_error(exc, json_mode)
     if json_mode:
         emit_json(data)
         return
@@ -255,8 +242,7 @@ def board_archive(
                 board_uuid, dry_run=False, idempotency_key=idempotency_key
             )
     except APIError as exc:
-        print_error(resolve_error_message(exc))
-        raise SystemExit(4 if exc.status_code in (401, 403) else 1) from exc
+        exit_for_tasks_error(exc, json_mode)
     if json_mode:
         emit_json(data)
         return
@@ -287,8 +273,7 @@ def board_restore(board_uuid: str, idempotency_key: str | None, json_mode: bool)
         with console.status("Restoring the board..."):
             data: dict[str, Any] = client.restore_board(board_uuid, idempotency_key=idempotency_key)
     except APIError as exc:
-        print_error(resolve_error_message(exc))
-        raise SystemExit(4 if exc.status_code in (401, 403) else 1) from exc
+        exit_for_tasks_error(exc, json_mode)
     if json_mode:
         emit_json(data)
         return
