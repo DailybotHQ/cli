@@ -33,17 +33,17 @@ from dailybot_cli.commands.query_options import (
     paging_options,
     query_options,
 )
-from dailybot_cli.config import get_agent_auth
+from dailybot_cli.config import get_token
 from dailybot_cli.display import (
     TASKS_TRUSTED_FIELDS,
     console,
     present_untrusted,
     print_board_snapshot,
     print_delta_summary,
-    print_detail_panel,
     print_error,
     print_pagination_footer,
     print_success,
+    print_tasks_detail_panel,
     print_tasks_table,
 )
 
@@ -51,10 +51,6 @@ from dailybot_cli.display import (
 # parsing prose. Deliberately outside the shared EXIT_* range (2-7) because the
 # correct response is an action — re-snapshot — not a generic failure.
 EXIT_DELTA_WINDOW_EXPIRED: int = 9
-
-# Published server ceiling for the delta scope, documented in the command's help
-# so a caller writing a loop knows the limit before they hit it.
-DELTA_RATE_LIMIT_PER_MIN: int = 240
 
 # Values `me/tasks/` declares for its `scope` filter. The door ignores UNKNOWN
 # parameters but still refuses a declared one whose value it cannot read
@@ -84,7 +80,12 @@ def _require_person(door: str) -> None:
     an ``ADMIN_ORG`` owner refused exactly like a member, so "you need to be an
     admin" would send an organization admin hunting for a setting that cannot exist.
     """
-    if get_agent_auth() == "api_key":
+    # Refuse only when there is genuinely no person behind the session.
+    # `get_agent_auth()` answers "api_key" whenever ANY key is configured, even
+    # with a Bearer token also present — but `_headers()` still sends Bearer
+    # first in that case, so the request WOULD have authenticated as a person.
+    # Gating on the key alone refused a valid login.
+    if get_token() is None:
         print_error(
             f"`{door}` answers for a signed-in person, and an organization API key has "
             "nobody to be. Run `dailybot login` and retry."
@@ -153,7 +154,7 @@ def tasks_status(json_mode: bool) -> None:
     if json_mode:
         emit_json(data)
         return
-    print_detail_panel("Tasks pulse", data, _PULSE_FIELDS)
+    print_tasks_detail_panel("Tasks pulse", data, _PULSE_FIELDS)
 
 
 @tasks.command("entitlements")
@@ -188,7 +189,7 @@ def tasks_entitlements(json_mode: bool) -> None:
         "labels": labels.get("enabled") if isinstance(labels, dict) else labels,
         "reason": data.get("reason"),
     }
-    print_detail_panel(
+    print_tasks_detail_panel(
         "Tasks entitlements",
         rows,
         [("Enabled", "enabled"), ("Boards", "boards"), ("Labels", "labels"), ("Reason", "reason")],
@@ -371,15 +372,21 @@ def tasks_changes(
                 )
                 print_board_snapshot(fresh)
                 return
-            print_delta_summary(
-                {
-                    "code": exc.code,
-                    "full_resync_required": True,
-                    "max_window_days": (exc.extra or {}).get(
-                        "max_window_days", TASKS_DELTA_MAX_WINDOW_DAYS
-                    ),
-                }
-            )
+            expiry: dict[str, Any] = {
+                "status": "error",
+                "code": exc.code,
+                "detail": exc.detail,
+                "full_resync_required": True,
+                "max_window_days": (exc.extra or {}).get(
+                    "max_window_days", TASKS_DELTA_MAX_WINDOW_DAYS
+                ),
+            }
+            # An agent that parses stdout on every non-zero exit must get JSON
+            # here too, not a Rich warning it cannot decode.
+            if json_mode:
+                emit_json(expiry)
+            else:
+                print_delta_summary(expiry)
             raise SystemExit(EXIT_DELTA_WINDOW_EXPIRED) from exc
         exit_for_api_error(exc, json_mode)
 

@@ -36,7 +36,10 @@ def _page(rows: list[dict[str, Any]] | None = None) -> PaginatedResult:
 def _invoke(runner: CliRunner, client: MagicMock, args: list[str], *, auth: str = "bearer") -> Any:
     with (
         patch("dailybot_cli.commands.tasks.require_auth", return_value=client),
-        patch("dailybot_cli.commands.tasks.get_agent_auth", return_value=auth),
+        patch(
+            "dailybot_cli.commands.tasks.get_token",
+            return_value=(None if auth == "api_key" else "tok"),
+        ),
     ):
         return runner.invoke(cli, args)
 

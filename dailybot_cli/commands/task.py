@@ -25,8 +25,12 @@ from dailybot_cli.commands.public_api_helpers import (
     exit_for_tasks_error,
     require_auth,
 )
-from dailybot_cli.commands.query_options import build_query_params, query_options
-from dailybot_cli.config import get_agent_auth
+from dailybot_cli.commands.query_options import (
+    build_query_params,
+    paging_options,
+    query_options,
+)
+from dailybot_cli.config import get_token
 from dailybot_cli.display import (
     console,
     present_untrusted,
@@ -100,7 +104,10 @@ def task() -> None:
     multiple=True,
     help="Ask for a roll-up. Nothing is included by default — absence is a real answer.",
 )
-@query_options
+# `paging_options`, not `query_options`: `/v1/tasks/tasks/` is strict and declares
+# none of the shared text/date filters. Advertising --search / --last-week on a
+# command that silently drops them lets a caller believe filtering worked.
+@paging_options
 @click.option("--json", "json_mode", is_flag=True, help="Emit machine-readable JSON to stdout.")
 def task_list(
     board: str | None,
@@ -410,7 +417,9 @@ def _require_person_for(action: str) -> None:
     Published policy: two writes no organization API key may ever make — changing
     who can see, and changing who is notified. Participants are the second.
     """
-    if get_agent_auth() == "api_key":
+    # See tasks.py `_require_person`: gate on the absence of a person token, not
+    # on the presence of a key — both can be configured at once.
+    if get_token() is None:
         print_error(
             f"`{action}` changes who is notified, and no organization API key may do that — "
             "there is no person behind it to be accountable. Run `dailybot login` and retry."
@@ -635,6 +644,7 @@ def task_archive(
         lambda: client.archive_task(task_uuid, dry_run=True),
         assume_yes=assume_yes,
         preview_only=dry_run,
+        json_mode=json_mode,
     ):
         return
     try:
@@ -672,6 +682,7 @@ def task_delete(task_uuid: str, dry_run: bool, assume_yes: bool, json_mode: bool
         lambda: client.archive_task(task_uuid, dry_run=True),
         assume_yes=assume_yes,
         preview_only=dry_run,
+        json_mode=json_mode,
     ):
         return
     try:

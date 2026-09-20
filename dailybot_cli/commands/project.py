@@ -17,17 +17,17 @@ from dailybot_cli.commands.public_api_helpers import (
     resolve_error_message,
 )
 from dailybot_cli.commands.query_options import build_query_params, query_options
-from dailybot_cli.config import get_agent_auth
+from dailybot_cli.config import get_token
 from dailybot_cli.display import (
     console,
     present_untrusted,
-    print_detail_panel,
     print_dry_run_consequence,
     print_error,
     print_milestones_table,
     print_pagination_footer,
     print_projects_table,
     print_success,
+    print_tasks_detail_panel,
 )
 
 INCLUDE_VALUES: tuple[str, ...] = ("progress", "projects")
@@ -135,7 +135,7 @@ def project_get(project_uuid: str, include: tuple[str, ...], json_mode: bool) ->
     if json_mode:
         emit_json(data)
         return
-    print_detail_panel("Project", data, _PROJECT_FIELDS)
+    print_tasks_detail_panel("Project", data, _PROJECT_FIELDS)
     console.print(f"[bold]Progress[/bold]  {render_rollup(data, 'progress')}")
 
 
@@ -297,6 +297,9 @@ def project_milestone_complete(
         )
         raise SystemExit(1) from exc
 
+    if json_mode and dry_run:
+        emit_json(preview)
+        return
     print_dry_run_consequence(preview)
     if dry_run:
         return
@@ -342,7 +345,8 @@ def project_milestone_reopen(project_uuid: str, milestone_uuid: str, json_mode: 
 
 def _require_person_for_admin(action: str) -> None:
     """Refuse a key on a `tasks:admin` door — see board.py for the full reasoning."""
-    if get_agent_auth() == "api_key":
+    # See tasks.py `_require_person`: gate on the absence of a person token.
+    if get_token() is None:
         print_error(
             f"`{action}` needs the `tasks:admin` scope, which an organization API key can "
             "never hold — it cannot even be stored on one. Run `dailybot login` and retry "
@@ -400,6 +404,7 @@ def project_archive(
         lambda: client.archive_project(project_uuid, dry_run=True),
         assume_yes=assume_yes,
         preview_only=dry_run,
+        json_mode=json_mode,
     ):
         return
     try:

@@ -326,7 +326,7 @@ class TestParticipantsArePersonOnly:
     ) -> None:
         with (
             patch("dailybot_cli.commands.task.require_auth", return_value=client),
-            patch("dailybot_cli.commands.task.get_agent_auth", return_value="api_key"),
+            patch("dailybot_cli.commands.task.get_token", return_value=None),
         ):
             result = runner.invoke(cli, ["task", "participants", "add", "t-1", "--user", "u-1"])
         assert result.exit_code == 3
@@ -336,7 +336,7 @@ class TestParticipantsArePersonOnly:
         client.add_task_participant.return_value = {"uuid": "p-1", "_idempotency_replayed": False}
         with (
             patch("dailybot_cli.commands.task.require_auth", return_value=client),
-            patch("dailybot_cli.commands.task.get_agent_auth", return_value="bearer"),
+            patch("dailybot_cli.commands.task.get_token", return_value="tok"),
         ):
             result = runner.invoke(cli, ["task", "participants", "add", "t-1", "--user", "u-1"])
         assert result.exit_code == 0

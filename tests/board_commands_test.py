@@ -132,9 +132,13 @@ class TestHelp:
 
 
 def _invoke_auth(runner: CliRunner, client: MagicMock, args: list[str], auth: str) -> Any:
+    # The guard refuses when there is no PERSON token, not when a key exists:
+    # both credentials can be configured at once, and the HTTP layer prefers
+    # Bearer in that case.
+    token: str | None = None if auth == "api_key" else "tok"
     with (
         patch("dailybot_cli.commands.board.require_auth", return_value=client),
-        patch("dailybot_cli.commands.board.get_agent_auth", return_value=auth),
+        patch("dailybot_cli.commands.board.get_token", return_value=token),
     ):
         return runner.invoke(cli, args)
 

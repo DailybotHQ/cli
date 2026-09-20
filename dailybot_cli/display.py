@@ -1702,6 +1702,24 @@ def print_dry_run_consequence(preview: dict[str, Any]) -> None:
     console.print(Panel("\n".join(lines), title=title, border_style=border))
 
 
+def print_tasks_detail_panel(
+    title: str, data: dict[str, Any], fields: list[tuple[str, str]]
+) -> None:
+    """Detail panel for a Tasks object, with user-authored fields quoted.
+
+    The shared `print_detail_panel` interpolates `str(raw)` into a Rich cell, so a
+    board named `[bold red]URGENT[/bold red]` styles the terminal and reaches an
+    agent unquoted — the same injection the list renderers close. Fields whose key
+    is in `TASKS_TRUSTED_FIELDS` stay plain; everything else goes through the
+    presenter.
+    """
+    safe: dict[str, Any] = {}
+    for _, key in fields:
+        raw: Any = data.get(key)
+        safe[key] = raw if key in TASKS_TRUSTED_FIELDS else present_untrusted(raw, limit=120)
+    print_detail_panel(title, safe, fields)
+
+
 def print_boards_table(boards: list[dict[str, Any]]) -> None:
     """Render a board list. Keys and uuids are trusted; names are not."""
     if not boards:

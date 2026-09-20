@@ -21,16 +21,16 @@ from dailybot_cli.commands.public_api_helpers import (
     require_auth,
 )
 from dailybot_cli.commands.query_options import build_query_params, query_options
-from dailybot_cli.config import get_agent_auth
+from dailybot_cli.config import get_token
 from dailybot_cli.display import (
     console,
     present_untrusted,
     print_board_snapshot,
     print_boards_table,
-    print_detail_panel,
     print_error,
     print_pagination_footer,
     print_success,
+    print_tasks_detail_panel,
 )
 
 _BOARD_FIELDS: list[tuple[str, str]] = [
@@ -119,7 +119,7 @@ def board_get(board_uuid: str, json_mode: bool) -> None:
     if json_mode:
         emit_json(data)
         return
-    print_detail_panel("Board", data, _BOARD_FIELDS)
+    print_tasks_detail_panel("Board", data, _BOARD_FIELDS)
 
 
 @board.command("snapshot")
@@ -161,7 +161,8 @@ def _require_person_for_admin(action: str) -> None:
     blame the **credential kind**. Telling an organization admin they "need to be an
     admin" would send them looking for a setting that cannot exist.
     """
-    if get_agent_auth() == "api_key":
+    # See tasks.py `_require_person`: gate on the absence of a person token.
+    if get_token() is None:
         print_error(
             f"`{action}` needs the `tasks:admin` scope, which an organization API key can "
             "never hold — it cannot even be stored on one. Run `dailybot login` and retry "
@@ -234,6 +235,7 @@ def board_archive(
         lambda: client.archive_board(board_uuid, dry_run=True),
         assume_yes=assume_yes,
         preview_only=dry_run,
+        json_mode=json_mode,
     ):
         return
     try:

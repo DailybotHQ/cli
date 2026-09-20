@@ -78,7 +78,7 @@ class TestCriticalListMyTasksReachesTheApi:
         # the REAL client with only httpx patched.
         with (
             patch("dailybot_cli.commands.tasks.require_auth", return_value=real_client),
-            patch("dailybot_cli.commands.tasks.get_agent_auth", return_value="bearer"),
+            patch("dailybot_cli.commands.tasks.get_token", return_value="tok"),
             patch("httpx.get", return_value=_ok()),
         ):
             result = runner.invoke(cli, ["tasks", "mine", "--scope", "assigned"])
@@ -109,7 +109,7 @@ class TestExitCodesMatchTheDocumentedTable:
         client.list_tasks_inbox.side_effect = APIError(500, "boom", code="server_error")
         with (
             patch("dailybot_cli.commands.tasks.require_auth", return_value=client),
-            patch("dailybot_cli.commands.tasks.get_agent_auth", return_value="bearer"),
+            patch("dailybot_cli.commands.tasks.get_token", return_value="tok"),
         ):
             result = runner.invoke(cli, ["tasks", "inbox"])
         assert result.exit_code != EXIT_NOT_AUTHENTICATED
@@ -120,7 +120,7 @@ class TestExitCodesMatchTheDocumentedTable:
         client.list_tasks_inbox.side_effect = APIError(403, "x", code="insufficient_scope")
         with (
             patch("dailybot_cli.commands.tasks.require_auth", return_value=client),
-            patch("dailybot_cli.commands.tasks.get_agent_auth", return_value="bearer"),
+            patch("dailybot_cli.commands.tasks.get_token", return_value="tok"),
         ):
             result = runner.invoke(cli, ["tasks", "inbox"])
         assert result.exit_code == EXIT_NOT_AUTHENTICATED
@@ -133,7 +133,7 @@ class TestExitCodesMatchTheDocumentedTable:
         client.list_tasks_inbox.side_effect = APIError(403, "nope", code="insufficient_scope")
         with (
             patch("dailybot_cli.commands.tasks.require_auth", return_value=client),
-            patch("dailybot_cli.commands.tasks.get_agent_auth", return_value="bearer"),
+            patch("dailybot_cli.commands.tasks.get_token", return_value="tok"),
         ):
             result = runner.invoke(cli, ["tasks", "inbox", "--json"])
         body: dict[str, Any] = _json.loads(result.output)
@@ -183,17 +183,22 @@ class TestAdvertisedFlagsAreHonoured:
         assert sent["include"] == "progress"
         assert sent["search"] == "q4"
 
-    def test_task_list_does_not_send_undeclared_parameters(
+    def test_task_list_does_not_advertise_filters_the_door_refuses(self, runner: CliRunner) -> None:
+        # `/v1/tasks/tasks/` is strict and declares none of the shared text/date
+        # filters. The first fix dropped them silently, which still let a caller
+        # believe `--search deploy` had filtered; the flags are now simply not
+        # offered, so a bad invocation is a usage error instead of a wrong answer.
+        out: str = runner.invoke(cli, ["task", "list", "--help"]).output
+        for undeclared in ("--search", "--last-week", "--since", "--until"):
+            assert undeclared not in out
+
+    def test_task_list_rejects_an_undeclared_filter_as_a_usage_error(
         self, runner: CliRunner, client: MagicMock
     ) -> None:
-        # The door is strict and refuses what it does not declare; spending a round
-        # trip to earn a 400 is worse than dropping the flag locally.
-        client.list_tasks.return_value = _page()
         with patch("dailybot_cli.commands.task.require_auth", return_value=client):
-            runner.invoke(cli, ["task", "list", "--last-week"])
-        sent: Any = client.list_tasks.call_args[1]["filters"]
-        for undeclared in ("search", "start_date", "end_date"):
-            assert sent is None or undeclared not in sent
+            result = runner.invoke(cli, ["task", "list", "--last-week"])
+        assert result.exit_code == 2
+        client.list_tasks.assert_not_called()
 
     def test_tasks_search_does_not_advertise_date_flags_it_drops(self, runner: CliRunner) -> None:
         out: str = runner.invoke(cli, ["tasks", "search", "--help"]).output
@@ -210,7 +215,7 @@ class TestCountsRespectsTheInjectionBoundary:
         client.get_my_task_counts.return_value = {"[bold red]pwned[/]": 1}
         with (
             patch("dailybot_cli.commands.tasks.require_auth", return_value=client),
-            patch("dailybot_cli.commands.tasks.get_agent_auth", return_value="bearer"),
+            patch("dailybot_cli.commands.tasks.get_token", return_value="tok"),
         ):
             result = runner.invoke(cli, ["tasks", "counts"])
         # The literal characters DO appear — that is the point: they are shown as

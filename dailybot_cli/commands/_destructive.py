@@ -20,7 +20,11 @@ from typing import Any
 import click
 
 from dailybot_cli.api_client import APIError
-from dailybot_cli.commands.public_api_helpers import EXIT_USER_ABORTED, resolve_error_message
+from dailybot_cli.commands.public_api_helpers import (
+    EXIT_USER_ABORTED,
+    emit_json,
+    resolve_error_message,
+)
 from dailybot_cli.display import console, print_dry_run_consequence, print_error
 
 
@@ -29,6 +33,7 @@ def preview_then_confirm(
     *,
     assume_yes: bool,
     preview_only: bool,
+    json_mode: bool = False,
 ) -> bool:
     """Fetch and render the server's dry-run preview, then decide whether to act.
 
@@ -45,6 +50,11 @@ def preview_then_confirm(
         )
         raise SystemExit(1) from exc
 
+    if json_mode and preview_only:
+        # --dry-run --json must emit the blast radius as data. Printing only the
+        # Rich panel forced an agent to scrape formatted output for the counts.
+        emit_json(preview)
+        return False
     print_dry_run_consequence(preview)
     if preview_only:
         return False

@@ -24,9 +24,9 @@ from dailybot_cli.commands.query_options import build_query_params, query_option
 from dailybot_cli.display import (
     console,
     present_untrusted,
-    print_detail_panel,
     print_goals_table,
     print_pagination_footer,
+    print_tasks_detail_panel,
 )
 
 _GOAL_FIELDS: list[tuple[str, str]] = [
@@ -117,7 +117,7 @@ def goal_get(goal_uuid: str, include: tuple[str, ...], json_mode: bool) -> None:
     if json_mode:
         emit_json(data)
         return
-    print_detail_panel("Goal", data, _GOAL_FIELDS)
+    print_tasks_detail_panel("Goal", data, _GOAL_FIELDS)
     console.print(f"[bold]Progress[/bold]  {render_rollup(data, 'progress')}")
 
 
@@ -170,6 +170,7 @@ def goal_archive(
         lambda: client.archive_goal(goal_uuid, dry_run=True),
         assume_yes=assume_yes,
         preview_only=dry_run,
+        json_mode=json_mode,
     ):
         return
     try:
