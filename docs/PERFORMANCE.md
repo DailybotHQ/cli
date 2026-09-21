@@ -117,6 +117,18 @@ tests. Recorded so the next person does not have to re-measure to find it.
 work, and is not relaxed here — no CHANGELOG entry is warranted because no budget was
 changed. The gap is recorded above with its cause and its fix.
 
+**Server-side cost, confirmed by the API team (2026-09-20).** Query budgets are now
+declared on the two hot paths the CLI polls — `boards/{id}/delta/` (13) and
+`tasks/{id}/` (9) — and flatness is asserted between 2 and 40 tasks, including the
+empty delta poll.
+
+The finding that matters for us: **an organization API key costs 3–4 more queries
+per door than a CLI Bearer token**, because key auth resolves the key, its
+organization, the plan, the owner and the feature gate per request. The credential
+an unattended agent holds is the expensive one. Nothing in the CLI changes — the
+budgets are the server's — but a caller sizing a polling loop should know it, and
+`docs/API_REFERENCE.md` carries the per-door table.
+
 **Contract checks (asserted by tests, re-verified here):**
 
 - every Tasks call sits in the **read tier**; `grep` for inline `timeout=` in

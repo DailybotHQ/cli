@@ -808,6 +808,8 @@ This is the most confusing thing about the family, so it is a table rather than 
 | — | `task participants add` | published policy: no key may change **who is notified** |
 | — | board/project **member** writes | published policy: no key may change **who can see** |
 | — | `board create`, `project create`, `goal create` | need `tasks:admin`, which **cannot be stored on a key at all** |
+| — | label CRUD, `boards/{id}/labels/` | a product decision, still open: `usage_count` sums a per-person visibility predicate, so it has no correct value for a key |
+| — | `boards/{id}/mentionables/` | **person-shaped by definition** — it answers "who may *this viewer* address". For an assignee picker on a key, use the org roster (`dailybot user list`) or board members |
 
 The last row holds **even for an organization admin's own key** — verified against a live
 instance. CLI messages therefore blame the *credential kind*, never the user's role.
@@ -833,6 +835,33 @@ Dispatch on `code`, never on the English `detail`.
 | `invalid_filter_value` | a declared parameter's value was rejected | 4 |
 | *(transport failure — no server response)* | unreachable, timeout, bad URL | **8** |
 
+### Credential cost — an API key is the expensive one
+
+Confirmed by the API team, 2026-09-20: **an organization API key costs 3–4 more
+queries per door than a CLI Bearer token**, because key authentication resolves the
+key, its organization, the plan, the owner and the feature gate on every request.
+
+| Door | CLI token | **API key** |
+| --- | --- | --- |
+| `GET /pulse/` | 12 | **13** |
+| `GET /activity/` | 6 | **10** |
+| `GET /tasks/` | 7 | **10** |
+| `GET /tasks/{id}/` | 7 | **9** |
+| `GET /boards/{id}/delta/` (empty poll) | 10 | **13** |
+| `GET /boards/{id}/board/` | 11 | **14** |
+
+The credential an unattended agent holds is the costlier one, and the published
+budgets now state that worst case. This does not change any CLI behaviour — it is
+here so a caller sizing a polling loop knows what it is paying.
+
+### Deep walks are approximate under concurrent modification
+
+`--all` follows `next` until the end. The API team states plainly that **pagination
+under concurrent modification is not asserted**: walking a large project while other
+people edit it cannot currently promise exactly-once delivery. Treat a deep walk as
+approximate, and prefer `tasks changes` with a cursor when you need to know what
+actually changed.
+
 ### Idempotency
 
 The server keeps an idempotency slot for **24 hours**, keyed on
@@ -844,6 +873,9 @@ The server keeps an idempotency slot for **24 hours**, keyed on
 - Two API keys in the **same organization share the namespace**, so the CLI generates uuid4
   keys — a guessable default would collide between two agents.
 - `POST /v1/tasks/tasks/bulk/` **requires** the header; the CLI always sends one.
+  **"Key required" in the capability table means the *header*, not the credential:**
+  confirmed by the API team, bulk serves a session JWT, a CLI Bearer token and an
+  organization API key alike. The CLI correctly does not refuse a Bearer token.
 - Doors that **ignore** the header are not sent one, and offer no `--idempotency-key` flag:
   `project update-post`, `milestone complete`/`reopen`, task subscription.
 
