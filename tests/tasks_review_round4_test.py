@@ -18,7 +18,11 @@ import pytest
 from click.testing import CliRunner
 
 from dailybot_cli.api_client import APIError, DailyBotClient, PaginatedResult, TransportError
-from dailybot_cli.commands.public_api_helpers import EXIT_USAGE_ERROR, tasks_write_exit_code
+from dailybot_cli.commands.public_api_helpers import (
+    EXIT_NOT_FOUND,
+    EXIT_USAGE_ERROR,
+    tasks_write_exit_code,
+)
 from dailybot_cli.main import cli
 
 
@@ -148,7 +152,9 @@ class TestJsonModeKeepsStdoutParseable:
         result = self._archive(
             runner, client, ["task", "archive", "t-1", "--yes", "--json"], "task"
         )
-        assert result.exit_code == 1
+        # Exit 5, not 1: the fifth review round showed a flat 1 here made an agent
+        # branching "5 → skip, 1 → alert" page on every already-archived object.
+        assert result.exit_code == EXIT_NOT_FOUND
         assert json.loads(result.stdout)["status"] == "error"
 
     def test_dry_run_json_is_unchanged(self, runner: CliRunner, client: MagicMock) -> None:

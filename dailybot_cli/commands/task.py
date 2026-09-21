@@ -14,6 +14,7 @@ import json as _json
 from typing import Any, NoReturn
 
 import click
+from rich.console import Console
 from rich.markup import escape
 
 from dailybot_cli.api_client import TASKS_BULK_MAX_ITEMS, APIError, PaginatedResult
@@ -35,6 +36,7 @@ from dailybot_cli.commands.query_options import (
 from dailybot_cli.config import get_token
 from dailybot_cli.display import (
     console,
+    error_console,
     present_untrusted,
     print_error,
     print_pagination_footer,
@@ -783,11 +785,16 @@ def task_bulk(
         # `--operation` is free-form caller input, so it must be escaped before it
         # reaches a Rich markup string: `[/bold][red]x` otherwise raises MarkupError
         # before the HTTP call and the root safety net blames the CLI for a bug.
-        console.print(
+        #
+        # Under --json the warning and the prompt go to stderr, exactly as
+        # `_destructive.preview_then_confirm` does: stdout must stay a single
+        # parseable document, and the record of what was about to happen must survive.
+        notice: Console = error_console if json_mode else console
+        notice.print(
             f"About to apply [bold]{escape(operation)}[/bold] to "
             f"[bold]{len(items)}[/bold] item(s). There is no dry run for bulk."
         )
-        if not click.confirm("Proceed?", default=False):
+        if not click.confirm("Proceed?", default=False, err=json_mode):
             print_error("Aborted. Nothing was changed.")
             raise SystemExit(EXIT_USER_ABORTED)
 
@@ -812,8 +819,12 @@ def task_bulk(
         data, f"Bulk {operation}: {len(results) - len(failed)} succeeded, {len(failed)} failed"
     )
     for row in failed:
+        # Both values are echoed from the caller's own batch file, so both are
+        # untrusted for markup purposes — the same footgun as `--operation`, except
+        # this one fires *after* the success line has already printed.
         console.print(
-            f"  [red]failed[/red] {row.get('uuid', '?')} [dim]{row.get('code', '')}[/dim]"
+            f"  [red]failed[/red] {escape(str(row.get('uuid', '?')))} "
+            f"[dim]{escape(str(row.get('code', '')))}[/dim]"
         )
     if failed:
         # Multi-item calls tolerate partial progress; exiting 0 would hide it.

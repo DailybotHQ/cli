@@ -24,6 +24,7 @@ from dailybot_cli.commands.public_api_helpers import (
     EXIT_USER_ABORTED,
     emit_json,
     resolve_error_message,
+    tasks_write_exit_code,
 )
 from dailybot_cli.display import console, print_dry_run_consequence, print_error
 
@@ -61,7 +62,10 @@ def preview_then_confirm(
             )
         else:
             print_error(message)
-        raise SystemExit(1) from exc
+        # The documented table, not a flat 1: `dailybot task archive <gone> --yes`
+        # must exit 5 like every other not-found, or an agent branching
+        # "5 → skip, 1 → alert" pages on every already-archived object.
+        raise SystemExit(tasks_write_exit_code(exc)) from exc
 
     if json_mode and preview_only:
         # --dry-run --json must emit the blast radius as data. Printing only the

@@ -826,7 +826,7 @@ Dispatch on `code`, never on the English `detail`.
 | `credential_absent` / `_malformed` / `_expired`, `invalid_credentials`, `token_not_valid` | credential problem | 3 |
 | `not_found` | **invisible or nonexistent — never "forbidden"** | 5 |
 | `plan_upgrade_required`, `task_boards_limit_reached` | entitlement | 4 |
-| `idempotency_key_required` | bulk without the header | 4 |
+| `idempotency_key_required` | bulk without the header | 2 |
 | `idempotency_key_payload_mismatch` | same key, different body — use a **new** key | 4 |
 | `idempotency_in_progress` | identical call still running — do not retry | 4 |
 | `delta_window_expired` | cursor older than 7 days — **re-snapshot** | **9** |
@@ -834,6 +834,18 @@ Dispatch on `code`, never on the English `detail`.
 | `state_in_use` | column has tasks — pass `migrate_to` | 4 |
 | `invalid_filter_value` | a declared parameter's value was rejected | 2 |
 | *(transport failure — no server response)* | unreachable, timeout, bad URL | **8** |
+
+The split is by HTTP status, not by code family: a **400** is the caller's mistake and exits
+**2** (`too_many_items`, `invalid_filter_value`, `idempotency_key_required`), a **409** is a
+server-side conflict the caller must resolve differently and exits **4**
+(`idempotency_key_payload_mismatch`, `idempotency_in_progress`, `state_in_use`). Reads and
+writes agree; they did not before, and an agent branching on exit 2 for bad input mis-handled
+every Tasks write.
+
+`400 actor_required` is the exception that proves it: it means "this credential is an
+organization with nobody to be", which is a credential problem wearing a validation status
+code. The client retries it with the alternative credential exactly as it retries a 401 — so
+a login session behind an `env.json` key still reaches the person-shaped doors.
 
 ### Credential cost — an API key is the expensive one
 

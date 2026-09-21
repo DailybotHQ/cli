@@ -27,6 +27,30 @@ LONG_TIMEOUT_SECS: float = 120.0  # AI-processing endpoints (ask, submit_update)
 # stripped or malformed). Retrying on both makes env.json + a stale
 # session work seamlessly regardless of which convention the server uses.
 _AUTH_RETRY_STATUS_CODES: frozenset[int] = frozenset({401, 403})
+
+# The person-shaped Tasks doors have a third refusal shape: `400 actor_required`,
+# meaning "this credential is an organization with nobody to be". It is the same
+# condition as a 401 — the wrong *kind* of credential was presented — but it does
+# not arrive with an auth status code, so the retry above would skip it. That
+# matters whenever `.dailybot/env.json` supplies the key: `_prefer_api_key` then
+# sends `X-API-KEY` first even though a Bearer session exists, and without this the
+# CLI would tell an already-signed-in user to run `dailybot login`.
+_ACTOR_REQUIRED_CODE: str = "actor_required"
+
+
+def _is_auth_retryable(response: httpx.Response) -> bool:
+    """True when the refusal means "wrong credential kind", whatever its status."""
+    if response.status_code in _AUTH_RETRY_STATUS_CODES:
+        return True
+    if response.status_code != 400:
+        return False
+    try:
+        body: Any = response.json()
+    except Exception:
+        return False
+    return isinstance(body, dict) and body.get("code") == _ACTOR_REQUIRED_CODE
+
+
 DEFAULT_PAGE_SIZE: int = 25  # server default page size for paginated list endpoints
 MAX_PAGE_SIZE: int = 100  # server clamps above this; the client clamps too
 
@@ -360,13 +384,17 @@ class DailyBotClient:
         if params is not None:
             kwargs["params"] = params
 
-        response: httpx.Response = httpx.request(method, url, **kwargs)
+        response: httpx.Response = self._guard_transport(
+            lambda: httpx.request(method, url, **kwargs), method=method
+        )
 
-        if response.status_code in _AUTH_RETRY_STATUS_CODES:
+        if _is_auth_retryable(response):
             alt: dict[str, str] | None = self._alt_auth_headers()
             if alt is not None:
                 kwargs["headers"] = alt
-                response = httpx.request(method, url, **kwargs)
+                response = self._guard_transport(
+                    lambda: httpx.request(method, url, **kwargs), method=method
+                )
 
         return response
 
@@ -416,7 +444,7 @@ class DailyBotClient:
 
         response: httpx.Response = self._dispatch_guarded(method, url, **kwargs)
 
-        if response.status_code in _AUTH_RETRY_STATUS_CODES:
+        if _is_auth_retryable(response):
             alt: dict[str, str] | None = self._alt_auth_headers()
             if alt is not None:
                 retry_headers: dict[str, str] = dict(alt)
@@ -454,6 +482,23 @@ class DailyBotClient:
             f"Could not reach Dailybot at {host}. Check your connection, or whether that "
             "is the right server (`dailybot env show`, or pass `--api-url`)."
         )
+
+    def _guard_transport(
+        self, send: Callable[[], httpx.Response], *, method: str
+    ) -> httpx.Response:
+        """Run ``send`` and convert any transport failure into a ``TransportError``.
+
+        The call-site-preserving twin of :meth:`_dispatch_guarded`: the agent and
+        login endpoints call ``httpx.request`` / ``httpx.post`` directly and the
+        test suite patches exactly those, so they cannot be routed through the
+        per-method dispatcher. They still need the same net — without it a dead
+        host made ``dailybot agent update`` exit 1 with "Unexpected error" instead
+        of the documented transport exit.
+        """
+        try:
+            return send()
+        except httpx.HTTPError as exc:
+            raise TransportError(self._transport_message(exc, method=method.upper())) from exc
 
     def _dispatch_guarded(self, method: str, url: str, **kwargs: Any) -> httpx.Response:
         """`_dispatch_http` with every transport failure converted to a CLI error.
@@ -664,11 +709,14 @@ class DailyBotClient:
 
     def request_code(self, email: str) -> dict[str, Any]:
         """POST /v1/cli/auth/request-code/"""
-        response: httpx.Response = httpx.post(
-            f"{self.api_url}/v1/cli/auth/request-code/",
-            json={"email": email},
-            headers=self._headers(authenticated=False),
-            timeout=self.timeout,
+        response: httpx.Response = self._guard_transport(
+            lambda: httpx.post(
+                f"{self.api_url}/v1/cli/auth/request-code/",
+                json={"email": email},
+                headers=self._headers(authenticated=False),
+                timeout=self.timeout,
+            ),
+            method="POST",
         )
         return self._handle_response(response)
 
@@ -682,11 +730,14 @@ class DailyBotClient:
         payload: dict[str, Any] = {"email": email, "code": code}
         if organization_id is not None:
             payload["organization_id"] = organization_id
-        response: httpx.Response = httpx.post(
-            f"{self.api_url}/v1/cli/auth/verify-code/",
-            json=payload,
-            headers=self._headers(authenticated=False),
-            timeout=self.timeout,
+        response: httpx.Response = self._guard_transport(
+            lambda: httpx.post(
+                f"{self.api_url}/v1/cli/auth/verify-code/",
+                json=payload,
+                headers=self._headers(authenticated=False),
+                timeout=self.timeout,
+            ),
+            method="POST",
         )
         return self._handle_response(response)
 
@@ -702,10 +753,13 @@ class DailyBotClient:
         Bearer-only lifecycle operation — retrying with an API key would
         neither succeed nor be semantically meaningful.
         """
-        response: httpx.Response = httpx.post(
-            f"{self.api_url}/v1/cli/auth/logout/",
-            headers=self._headers(),
-            timeout=self.timeout,
+        response: httpx.Response = self._guard_transport(
+            lambda: httpx.post(
+                f"{self.api_url}/v1/cli/auth/logout/",
+                headers=self._headers(),
+                timeout=self.timeout,
+            ),
+            method="POST",
         )
         return self._handle_response(response)
 
@@ -2633,10 +2687,13 @@ class DailyBotClient:
 
     def get_registration_challenge(self) -> dict[str, Any]:
         """GET /v1/agent/register/challenge/ — no auth required."""
-        response: httpx.Response = httpx.get(
-            f"{self.api_url}/v1/agent/register/challenge/",
-            headers=self._headers(authenticated=False),
-            timeout=self.timeout,
+        response: httpx.Response = self._guard_transport(
+            lambda: httpx.get(
+                f"{self.api_url}/v1/agent/register/challenge/",
+                headers=self._headers(authenticated=False),
+                timeout=self.timeout,
+            ),
+            method="GET",
         )
         return self._handle_response(response)
 
@@ -2661,10 +2718,13 @@ class DailyBotClient:
         }
         if contact_email:
             payload["contact_email"] = contact_email
-        response: httpx.Response = httpx.post(
-            f"{self.api_url}/v1/agent/register/",
-            json=payload,
-            headers=self._headers(authenticated=False),
-            timeout=self.timeout,
+        response: httpx.Response = self._guard_transport(
+            lambda: httpx.post(
+                f"{self.api_url}/v1/agent/register/",
+                json=payload,
+                headers=self._headers(authenticated=False),
+                timeout=self.timeout,
+            ),
+            method="POST",
         )
         return self._handle_response(response)
