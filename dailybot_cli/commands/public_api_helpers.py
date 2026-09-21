@@ -181,6 +181,11 @@ ERROR_CODE_MESSAGES: dict[str, str] = {
     ),
     "paid_plan_required": "Organization Labels require a paid plan with Feature.LABELS enabled.",
     "feature_not_available": "Organization Labels are not available on this plan.",
+    "feature_temporarily_read_only": (
+        "Tasks writes are temporarily switched off for everyone while Dailybot works on "
+        "something. Reads still answer. This is an incident lever, not your permissions "
+        "or your plan — wait and retry rather than changing anything."
+    ),
     "guest_not_allowed": "Guests cannot manage organization Labels.",
     "duplicate_name": "A label with this name already exists.",
     "archived_label_not_assignable": "This label is archived and cannot be assigned.",
@@ -495,6 +500,7 @@ TASKS_ERROR_CODES: frozenset[str] = frozenset(
         "guest_not_allowed",
         "plan_upgrade_required",
         "task_boards_limit_reached",
+        "feature_temporarily_read_only",
         "idempotency_key_required",
         "idempotency_key_payload_mismatch",
         "idempotency_in_progress",
@@ -583,13 +589,19 @@ def resolve_error_message(
     if is_person_shaped_refusal(exc, door=door):
         return _PERSON_SHAPED_GUIDANCE
     if exc.code == "plan_upgrade_required" and (tasks_surface or door is not None):
-        # The shared message enumerates the free-plan AGENT allowlist (reports,
-        # emails, health, pending check-ins) — true, and about a different product
-        # surface. On a Tasks door it steers the reader somewhere that cannot help.
+        # Two things this must not get wrong. The shared message enumerates the
+        # free-plan AGENT allowlist (reports, emails, health, pending check-ins) —
+        # true, and about a different product surface. And the code says "upgrade",
+        # but the gate is a per-organization **rollout**, not a plan scope: Tasks is
+        # deliberately absent from the plan's feature set, so upgrading alone may
+        # change nothing. The server names both remedies; so do we.
         upgrade: Any = (exc.extra or {}).get("upgrade_url")
         message: str = (
-            "Dailybot Tasks is not available on your organization's current plan. "
-            "This is a plan limit, not a credential or role problem."
+            "Dailybot Tasks is not enabled for this organization. It is switched on per "
+            "organization, so this is not a credential or role problem and signing in "
+            "again will not change it: ask a workspace admin to enable Tasks, or upgrade "
+            "the plan. `dailybot tasks entitlements` reports the current state and the "
+            "reason without refusing."
         )
         return f"{message} Upgrade at: {upgrade}" if upgrade else message
     if exc.code == "guest_not_allowed":
@@ -642,6 +654,12 @@ _TASKS_WRITE_EXIT_BY_STATUS: dict[int, int] = {
     404: EXIT_NOT_FOUND,
     409: EXIT_PERMISSION_DENIED,
     429: EXIT_RATE_LIMITED,
+    # The writes kill switch. It is transient by design, so it shares the exit code
+    # that already means "back off and retry" rather than the one that means
+    # "refused, do not retry" — the `code` is what distinguishes the cause. Left
+    # unmapped it exited 1, and an agent reading an unknown failure retries hard
+    # against a system someone has deliberately put into read-only.
+    503: EXIT_RATE_LIMITED,
 }
 
 

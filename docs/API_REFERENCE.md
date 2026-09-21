@@ -825,7 +825,9 @@ Dispatch on `code`, never on the English `detail`.
 | `guest_not_allowed` | role limit — not a credential problem | 4 |
 | `credential_absent` / `_malformed` / `_expired`, `invalid_credentials`, `token_not_valid` | credential problem | 3 |
 | `not_found` | **invisible or nonexistent — never "forbidden"** | 5 |
-| `plan_upgrade_required`, `task_boards_limit_reached` | entitlement | 4 |
+| `plan_upgrade_required` | **Tasks is switched off for the organization** — a per-org rollout, not a plan scope, so an upgrade alone may not fix it | 4 |
+| `task_boards_limit_reached` | the plan's board cap | 4 |
+| `feature_temporarily_read_only` | Tasks writes switched off org-wide during an incident — **transient**, reads still answer | **6** |
 | `idempotency_key_required` | bulk without the header | 2 |
 | `idempotency_key_payload_mismatch` | same key, different body — use a **new** key | 4 |
 | `idempotency_in_progress` | identical call still running — do not retry | 4 |
@@ -870,6 +872,32 @@ exit 7.
 organization with nobody to be", which is a credential problem wearing a validation status
 code. The client retries it with the alternative credential exactly as it retries a 401 — so
 a login session behind an `env.json` key still reaches the person-shaped doors.
+
+### Entitlement: Tasks is switched on per organization
+
+Every Tasks door except one is gated on a per-organization rollout. When it is off the door
+answers **402 `plan_upgrade_required`** with an `extra.upgrade_url`, and the CLI exits 4.
+
+Two things about that code are easy to get wrong:
+
+- **It is not a plan scope.** Tasks is deliberately absent from the plan's feature set, so
+  the gate is the rollout and an upgrade on its own may not open it. The server names both
+  remedies — a workspace admin enables Tasks, or the plan is upgraded — and so does the CLI.
+- **It is not a credential or role problem.** `dailybot login`, a different API key and an
+  admin role all change nothing.
+
+**Permission wins over entitlement.** A guest gets `403 guest_not_allowed` and a scopeless
+key gets `403 insufficient_scope` even when Tasks is also off, so neither learns the
+organization's entitlement state from the refusal.
+
+`dailybot tasks entitlements` is the one door that opts out of the gate: it always answers
+200 and **reports** `enabled`, `reason`, the board cap and whether Labels are available,
+rather than refusing against them. Call it first rather than discovering the gate one refusal
+at a time.
+
+A separate lever, `feature_temporarily_read_only` (**503**, exit **6**), switches Tasks
+**writes** off for everyone during an incident while reads keep answering. It is transient:
+back off and retry, and change nothing.
 
 ### Credential cost — an API key is the expensive one
 
