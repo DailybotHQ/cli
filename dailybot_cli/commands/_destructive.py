@@ -80,6 +80,20 @@ def preview_then_confirm(
     if assume_yes:
         return True
     if not click.confirm("Proceed?", default=False, err=json_mode):
-        print_error("Aborted. Nothing was changed.")
+        aborted: str = "Aborted. Nothing was changed."
+        if json_mode:
+            # Same reason as the preview-failure branch above: a caller that parses
+            # stdout on every non-zero exit must not get a JSONDecodeError for a
+            # refusal it can act on.
+            emit_json(
+                {
+                    "status": "error",
+                    "code": "user_aborted",
+                    "detail": aborted,
+                    "message": aborted,
+                }
+            )
+        else:
+            print_error(aborted)
         raise SystemExit(EXIT_USER_ABORTED)
     return True

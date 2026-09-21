@@ -226,7 +226,7 @@ def _fill_meta(meta: dict[str, Any] | None, result: "PaginatedResult") -> None:
 EXIT_TRANSPORT_ERROR: int = 8
 
 
-class TransportError(Exception):
+class TransportError(httpx.HTTPError):
     """Raised when a request never produced a readable HTTP response.
 
     Deliberately **not** a subclass of :class:`APIError`. An ``APIError`` is a
@@ -235,9 +235,33 @@ class TransportError(Exception):
     would mean every ``except APIError`` block silently treats "the network is
     down" as "the server said no".
 
-    The consequence is that the ~30 existing ``except APIError`` handlers do not
-    catch this — which is correct, and why the root callback in ``main.py`` carries
-    a last-resort net so nothing reaches the user as a traceback.
+    It **is** an ``httpx.HTTPError``, and that is equally deliberate. The TUI and
+    the interactive menu already carry ~25 ``except (APIError, httpx.HTTPError)``
+    handlers that show an in-app "couldn't reach Dailybot" message; making this a
+    bare ``Exception`` walked straight past all of them and killed the Textual app
+    instead. Wrapping a failure must not make the failure less catchable than it
+    was before.
+
+    The ~30 ``except APIError`` handlers still do not catch it — which is correct,
+    and why the root callback in ``main.py`` carries a last-resort net so nothing
+    reaches the user as a traceback.
+
+    ``idempotency_key`` carries the key the timed-out write actually sent, when
+    there was one. It is the only thing that makes the retry safe, and it is
+    exactly the call that cannot read it off a response body.
+    """
+
+    def __init__(self, message: str, *, idempotency_key: str | None = None) -> None:
+        super().__init__(message)
+        self.idempotency_key: str | None = idempotency_key
+
+
+class TransportTimeout(TransportError, httpx.TimeoutException):
+    """A transport failure that was specifically a timeout.
+
+    Separate from its parent so the pre-existing ``except httpx.TimeoutException``
+    handlers — which say "that took longer than expected" rather than "we could not
+    reach the server" — keep firing.
     """
 
 
@@ -489,8 +513,18 @@ class DailyBotClient:
             "is the right server (`dailybot env show`, or pass `--api-url`)."
         )
 
+    @staticmethod
+    def _transport_class(exc: Exception) -> type[TransportError]:
+        """Pick the wrapper that keeps the original handler catching it."""
+        return TransportTimeout if isinstance(exc, httpx.TimeoutException) else TransportError
+
     def _guard_transport(
-        self, send: Callable[[], httpx.Response], *, method: str, mutates: bool = True
+        self,
+        send: Callable[[], httpx.Response],
+        *,
+        method: str,
+        mutates: bool = True,
+        timeout_message: str | None = None,
     ) -> httpx.Response:
         """Run ``send`` and convert any transport failure into a ``TransportError``.
 
@@ -504,7 +538,9 @@ class DailyBotClient:
         try:
             return send()
         except httpx.HTTPError as exc:
-            raise TransportError(
+            if timeout_message and isinstance(exc, httpx.TimeoutException):
+                raise TransportTimeout(timeout_message) from exc
+            raise self._transport_class(exc)(
                 self._transport_message(exc, method=method.upper(), mutates=mutates)
             ) from exc
 
@@ -529,7 +565,7 @@ class DailyBotClient:
             # is the only retry this client has; silently retrying a connection
             # failure would hide an outage from the caller who owns that decision,
             # and could double-post a non-idempotent write.
-            raise TransportError(
+            raise self._transport_class(exc)(
                 self._transport_message(exc, method=method.upper(), mutates=mutates)
             ) from exc
 
@@ -733,6 +769,15 @@ class DailyBotClient:
                 timeout=self.timeout,
             ),
             method="POST",
+            # The generic write advice — "check the current state before retrying" —
+            # is actively harmful here. Requesting a code again INVALIDATES the one
+            # already sent (AGENTS.md DON'T #17), so a user who retries on a timeout
+            # burns the code sitting in their inbox.
+            timeout_message=(
+                "The request timed out, but the code may already have been sent. "
+                "Check your inbox first: asking for another code invalidates the one "
+                "you have."
+            ),
         )
         return self._handle_response(response)
 
@@ -754,6 +799,12 @@ class DailyBotClient:
                 timeout=self.timeout,
             ),
             method="POST",
+            # A timeout here may have CONSUMED the code without returning a token.
+            # "Check the state and retry" would send the user back with a spent code.
+            timeout_message=(
+                "The request timed out. The code may already have been used, so "
+                "verifying it again can fail: run `dailybot login` to request a new one."
+            ),
         )
         return self._handle_response(response)
 
@@ -2112,9 +2163,17 @@ class DailyBotClient:
         if idempotent and not previewing:
             sent_key = idempotency_key or str(uuid.uuid4())
             extra = {IDEMPOTENCY_KEY_HEADER: sent_key}
-        response: httpx.Response = self._request(
-            method, self._tasks_url(path), json=json, params=params, extra_headers=extra
-        )
+        try:
+            response: httpx.Response = self._request(
+                method, self._tasks_url(path), json=json, params=params, extra_headers=extra
+            )
+        except TransportError as exc:
+            # The timeout is the ONLY call that needs the key and the only one that
+            # cannot read it off a response body. Surfacing it on the 2xx path alone
+            # left the documented safe retry unreachable exactly when it mattered.
+            if sent_key is not None and exc.idempotency_key is None:
+                exc.idempotency_key = sent_key
+            raise
         result: dict[str, Any] = self._handle_response(response)
         replayed: str = str(getattr(response, "headers", {}).get(IDEMPOTENCY_REPLAYED_HEADER, ""))
         if isinstance(result, dict):

@@ -98,8 +98,12 @@ ERROR_CODE_MESSAGES: dict[str, str] = {
         "split the batch and send it in chunks."
     ),
     "state_in_use": (
-        "That column still has tasks on it, so it cannot be archived. Pass `migrate_to` "
-        "with the column the tasks should move to."
+        # The recovery the server names is `migrate_to`, and no command on this "
+        # surface can send it. Telling the operator to pass a flag that does not "
+        # exist is worse than telling them the CLI cannot do it.
+        "That column still has tasks on it, so it cannot be archived. The server needs a "
+        "`migrate_to` column to move them to, which this CLI cannot send yet — move or "
+        "archive the tasks first, or make the change from the Dailybot web app."
     ),
     # Delta
     "delta_window_expired": (

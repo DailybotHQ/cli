@@ -802,7 +802,18 @@ def task_bulk(
             f"[bold]{len(items)}[/bold] item(s). There is no dry run for bulk."
         )
         if not click.confirm("Proceed?", default=False, err=json_mode):
-            print_error("Aborted. Nothing was changed.")
+            aborted: str = "Aborted. Nothing was changed."
+            if json_mode:
+                emit_json(
+                    {
+                        "status": "error",
+                        "code": "user_aborted",
+                        "detail": aborted,
+                        "message": aborted,
+                    }
+                )
+            else:
+                print_error(aborted)
             raise SystemExit(EXIT_USER_ABORTED)
 
     client = require_auth()

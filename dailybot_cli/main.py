@@ -149,7 +149,14 @@ class _SafetyNetGroup(click.Group):
         """
         return "--json" in sys.argv[1:]
 
-    def _fail(self, message: str, code: int, error_code: str) -> NoReturn:
+    def _fail(
+        self,
+        message: str,
+        code: int,
+        error_code: str,
+        *,
+        extra: dict[str, Any] | None = None,
+    ) -> NoReturn:
         if self._wants_json():
             emit_json(
                 {
@@ -157,6 +164,7 @@ class _SafetyNetGroup(click.Group):
                     "code": error_code,
                     "detail": message,
                     "message": message,
+                    **(extra or {}),
                 }
             )
         else:
@@ -175,7 +183,20 @@ class _SafetyNetGroup(click.Group):
         ):
             raise
         except TransportError as exc:
-            self._fail(str(exc), EXIT_TRANSPORT_ERROR, "transport_error")
+            message: str = str(exc)
+            if exc.idempotency_key:
+                # Without this the caller cannot perform the retry the write surface
+                # documents: re-running mints a new key the server cannot replay.
+                message += (
+                    f" Retry with --idempotency-key {exc.idempotency_key} so the "
+                    "write cannot be applied twice."
+                )
+            self._fail(
+                message,
+                EXIT_TRANSPORT_ERROR,
+                "transport_error",
+                extra={"idempotency_key": exc.idempotency_key} if exc.idempotency_key else None,
+            )
         except Exception as exc:
             self._fail(
                 f"Unexpected error: {type(exc).__name__}: {exc}. "

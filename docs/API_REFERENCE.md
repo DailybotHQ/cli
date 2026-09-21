@@ -831,7 +831,7 @@ Dispatch on `code`, never on the English `detail`.
 | `idempotency_in_progress` | identical call still running — do not retry | 4 |
 | `delta_window_expired` | cursor older than 7 days — **re-snapshot** | **9** |
 | `too_many_items` | bulk over 100 items | 2 |
-| `state_in_use` | column has tasks — pass `migrate_to` | 4 |
+| `state_in_use` | column has tasks; the server wants `migrate_to`, which **the CLI cannot send yet** — empty the column or use the web app | 4 |
 | `invalid_filter_value` | a declared parameter's value was rejected | 2 |
 | *(transport failure — no server response)* | unreachable, timeout, bad URL | **8** |
 
@@ -857,7 +857,13 @@ tell — and does not need to tell — whether the request was spent.
 
 A **transport failure** (exit 8) emits the same envelope with
 `code: "transport_error"`, so an agent that parses stdout on every non-zero exit never has to
-special-case an unreachable host.
+special-case an unreachable host. When the call that failed was an idempotent **write**, the
+envelope also carries `idempotency_key` — the key that write sent. Retry with
+`--idempotency-key <that value>`: a timed-out write has no response body to read the key
+from, and a fresh key cannot be replayed, so that is the only way the retry is safe.
+
+Declining a confirmation prompt emits the same envelope with `code: "user_aborted"` and
+exit 7.
 
 `400 actor_required` is the exception that proves it: it means "this credential is an
 organization with nobody to be", which is a credential problem wearing a validation status
