@@ -629,7 +629,9 @@ This repo opts into the DWP **AI Diff Reviewer** addon ([`DailybotHQ/ai-diff-rev
 | **Local** | Augments the mandatory Security Review | Vendored skill at [`.agents/skills/ai-diff-reviewer/`](.agents/skills/ai-diff-reviewer/) + [`.review/extension.md`](.review/extension.md). Invoke *"Review my current branch"*. Soft-fail if skill/extension/invocation errors; `critical` findings from a completed pass still block Security Review. |
 | **CI** | PR merge gate | [`.github/workflows/pr-review.yml`](.github/workflows/pr-review.yml) — apply the **`Ready`** label on a PR targeting `main` to run the review (remove + re-add to re-run). Stable check name: **`AI review gate`**. Emergency bypass label: `skip-ai-review` (protect with a ruleset if the gate is required). |
 
-**Secret required for CI:** `CURSOR_API_KEY` (repo Settings → Secrets and variables → Actions). Without it, applying `Ready` fails the merge gate loudly.
+**Secret required for CI:** `XAI_API_KEY` (repo Settings → Secrets and variables → Actions). Without it, applying `Ready` fails the merge gate loudly.
+
+**Provider: `grok` (xAI Grok CLI), pinned to `grok-4.5`.** It replaced `cursor` because the Cursor CLI exposes no turn-count flag, so its only bound is the action's 900-second invocation timeout — and a large diff simply stops fitting, failing the gate with zero findings. `agent-max-turns` is enforced natively on `grok`, so the run is bounded by work done rather than by wall clock. The job's display name is the required-check context: renaming the provider means updating the branch ruleset to match.
 
 **Post-CI walkthrough (optional):** after CI posts findings, invoke the vendored `apply-review` sub-skill to walk findings per-finding (apply / defer / skip). Read-only by default; never commits or pushes.
 

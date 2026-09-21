@@ -61,7 +61,7 @@ The full pack lives under [`.agents/skills/deepworkplan/`](../skills/deepworkpla
 
 ### AI Diff Reviewer (vendored from [`DailybotHQ/ai-diff-reviewer`](https://github.com/DailybotHQ/ai-diff-reviewer))
 
-Vendored at **v2.0.1** under [`.agents/skills/ai-diff-reviewer/`](../skills/ai-diff-reviewer/). Flow B is enabled: local Security Review augmentation + CI gate via [`.github/workflows/pr-review.yml`](../../.github/workflows/pr-review.yml) (trigger label **`Ready`**; secret `CURSOR_API_KEY`; extension [`.review/extension.md`](../../.review/extension.md)).
+Vendored at **v2.3.1** under [`.agents/skills/ai-diff-reviewer/`](../skills/ai-diff-reviewer/). Flow B is enabled: local Security Review augmentation + CI gate via [`.github/workflows/pr-review.yml`](../../.github/workflows/pr-review.yml) (trigger label **`Ready`**; secret `XAI_API_KEY`; extension [`.review/extension.md`](../../.review/extension.md)).
 
 | Slug | Procedure | Use when |
 |------|-----------|----------|

@@ -91,8 +91,10 @@ This repo (`cli`) uses **AI Diff Reviewer v2** in Flow B (local skill + CI):
 - **CI workflow:** [`.github/workflows/pr-review.yml`](../.github/workflows/pr-review.yml)
 - **Trigger:** apply the **`Ready`** label on a PR targeting `main` (remove + re-add to re-run)
 - **Extension:** [`.review/extension.md`](../.review/extension.md) (shared by local + CI)
-- **Merge gate check name:** `AI review gate`
-- **Secret:** `CURSOR_API_KEY`
+- **Merge gate check name:** `AI review gate` (stable — this is the one to mark required)
+- **Review job check name:** `AI review — grok` (carries the provider; renaming the provider renames this context, so the branch ruleset has to move with it)
+- **Provider:** `grok` (xAI Grok CLI), model pinned to `grok-4.5`, bounded by `agent-max-turns`
+- **Secret:** `XAI_API_KEY`
 - **Emergency bypass:** `skip-ai-review` (protect with a ruleset if the gate is required)
 - **Marker:** `<!-- ai-pr-reviewer-marker -->`
 

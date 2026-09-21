@@ -20,7 +20,7 @@ name: PR review
 # `skip-ai-review` while `Ready` is already present also re-runs (bypass).
 #
 # Secrets required (repo settings > Secrets):
-#   * CURSOR_API_KEY — Cursor subscription key (unlimited on Pro).
+#   * XAI_API_KEY — xAI API key, for the Grok CLI runner.
 #     Without it the review job is skipped (should_run=false) and the merge
 #     gate fails loud ("no provider secret configured"). Fork PRs never see
 #     repo secrets (GitHub behavior on `pull_request` runs), so fork heads are
@@ -66,7 +66,7 @@ jobs:
           EVENT_LABEL: ${{ github.event.label.name }}
           LABELS_JSON: ${{ toJSON(github.event.pull_request.labels.*.name) }}
           AUTHOR_ASSOC: ${{ github.event.pull_request.author_association }}
-          HAS_CURSOR: ${{ secrets.CURSOR_API_KEY != '' }}
+          HAS_PROVIDER_KEY: ${{ secrets.XAI_API_KEY != '' }}
           IS_FORK: ${{ github.event.pull_request.head.repo.full_name != github.repository }}
         run: |
           set -euo pipefail
@@ -130,10 +130,10 @@ jobs:
             exit 0
           fi
 
-          # Provider secret gate. If CURSOR_API_KEY is absent, the merge gate
+          # Provider secret gate. If XAI_API_KEY is absent, the merge gate
           # will fail loud (see gate job) with a clear message.
-          if [ "$HAS_CURSOR" != "true" ]; then
-            echo "::error::CURSOR_API_KEY is not configured on this repo. Set it in Settings > Secrets to unblock the merge gate."
+          if [ "$HAS_PROVIDER_KEY" != "true" ]; then
+            echo "::error::XAI_API_KEY is not configured on this repo. Set it in Settings > Secrets to unblock the merge gate."
             {
               echo 'should_run=false'
               echo 'empty_reason=no-provider-secret'
@@ -174,7 +174,7 @@ jobs:
           gh label create skip-ai-review --repo "$REPO" --color b60205 --description "Emergency bypass: skip AI Diff Reviewer LLM pass" || true
 
   review:
-    name: 'AI review — cursor'
+    name: 'AI review — grok'
     needs: [scope, labels-bootstrap]
     if: needs.scope.outputs.should_run == 'true'
     runs-on: ubuntu-latest
@@ -184,20 +184,32 @@ jobs:
         with:
           # `git diff origin/<base>...HEAD` requires the base ref locally.
           fetch-depth: 0
-          # Do NOT persist GITHUB_TOKEN into .git/config — the Cursor CLI runs
+          # Do NOT persist GITHUB_TOKEN into .git/config — the Grok CLI runs
           # with broad local access; a persisted token on disk is an exfil
           # surface. The reviewer talks to the GitHub API in-process.
           persist-credentials: false
       # Pinned to the exact tag recorded in skills-lock.json for the vendored
       # skill — a floating @v2 could change prompts/default.md while the local
-      # skill stays at v2.0.0, silently breaking the parity claim above. Bump
+      # skill stays behind, silently breaking the parity claim above. Bump
       # this pin and the vendored skill together, in one PR.
-      - uses: DailybotHQ/ai-diff-reviewer@v2.0.0
+      - uses: DailybotHQ/ai-diff-reviewer@v2.3.1
         with:
-          provider: cursor
-          api-key: ${{ secrets.CURSOR_API_KEY }}
+          # Grok, not Cursor. The Cursor CLI exposes no turn-count flag, so its
+          # only bound is the action's 900 s invocation timeout — which this PR's
+          # diff stopped fitting into (five consecutive timeouts, zero findings).
+          # `agent-max-turns` is enforced NATIVELY on grok (`--max-turns N`), so
+          # the run is bounded by work done rather than by wall clock.
+          provider: grok
+          api-key: ${{ secrets.XAI_API_KEY }}
           github-token: ${{ secrets.GITHUB_TOKEN }}
-          model: auto
+          # Pinned, not left to the default: `grok-4.5` is the provider default
+          # today, and upstream's 2026-09-16 benchmark has it tying grok-4.6 on
+          # defects found with no false positives at a quarter of the runtime.
+          # Naming it means a later default change cannot move this gate silently.
+          model: grok-4.5
+          # The bound Cursor could not give us. Generous enough for a full pass;
+          # a review that stops at the cap says so instead of dying at 900 s.
+          agent-max-turns: 60
           label-gate: Ready
           author-association: OWNER,MEMBER,COLLABORATOR
           applied-label: pr-reviewed
@@ -234,7 +246,7 @@ jobs:
             exit 1
           fi
           if [ "$EMPTY_REASON" = "no-provider-secret" ]; then
-            echo "::error::Review requested (via 'Ready' label) but CURSOR_API_KEY is not configured. Set it in Settings > Secrets to unblock the merge gate."
+            echo "::error::Review requested (via 'Ready' label) but XAI_API_KEY is not configured. Set it in Settings > Secrets to unblock the merge gate."
             exit 1
           fi
           if [ "$REVIEW_RESULT" != "success" ]; then
