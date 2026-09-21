@@ -2167,14 +2167,17 @@ class DailyBotClient:
             response: httpx.Response = self._request(
                 method, self._tasks_url(path), json=json, params=params, extra_headers=extra
             )
+            result: dict[str, Any] = self._handle_response(response)
         except TransportError as exc:
-            # The timeout is the ONLY call that needs the key and the only one that
-            # cannot read it off a response body. Surfacing it on the 2xx path alone
-            # left the documented safe retry unreachable exactly when it mattered.
+            # Two paths reach here and NEITHER has a body to recover the key from:
+            # a timeout, and an unreadable 2xx (a captive portal's HTML 200), which
+            # `_handle_response` also raises as a transport failure. In both the
+            # write may already have been applied, so a blind retry mints a fresh
+            # uuid4 the server cannot replay — and duplicates. Guarding only the
+            # request left the second path silently uncovered.
             if sent_key is not None and exc.idempotency_key is None:
                 exc.idempotency_key = sent_key
             raise
-        result: dict[str, Any] = self._handle_response(response)
         replayed: str = str(getattr(response, "headers", {}).get(IDEMPOTENCY_REPLAYED_HEADER, ""))
         if isinstance(result, dict):
             result[IDEMPOTENCY_REPLAYED_KEY] = replayed.lower() == "true"

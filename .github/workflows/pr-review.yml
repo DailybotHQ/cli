@@ -1,7 +1,9 @@
 name: PR review
 
-# AI-driven pre-merge review powered by `DailybotHQ/ai-diff-reviewer@v2.0.0`
-# (marketplace listing: "AI Diff Reviewer"). Cursor-only, label-gated on
+# AI-driven pre-merge review powered by `DailybotHQ/ai-diff-reviewer`
+# (marketplace listing: "AI Diff Reviewer"). The pin and the provider live on
+# the `uses:`/`with:` lines below — this header deliberately does not repeat
+# them, because the last time it did the two drifted apart. Label-gated on
 # `Ready`, gated on write-tier authorship (author-association whitelist),
 # stable-named merge gate for branch protection. Runs the same review
 # methodology as the vendored `ai-diff-reviewer` skill when

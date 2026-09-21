@@ -277,3 +277,55 @@ class TestRecoveryAdviceNamesSomethingThatExists:
         ]
         # If this ever becomes non-empty, the message above should change back.
         assert declared == [], declared
+
+
+class TestAnUnreadableSuccessAlsoCarriesTheKey:
+    """Grok's first review: the round-11 fix guarded one of two paths.
+
+    `_handle_response` raises `TransportError` for an unreadable 2xx — a captive
+    portal's HTML 200 — and that happens *after* the POST reached the server. The
+    attach-and-reraise only wrapped `_request`, so this path left the key unset and
+    a blind retry would mint a fresh uuid4 and duplicate the write.
+    """
+
+    def _html_200(self) -> MagicMock:
+        mock: MagicMock = MagicMock(spec=httpx.Response)
+        mock.status_code = 200
+        mock.json.side_effect = ValueError("Expecting value")
+        mock.headers = {}
+        mock.text = "<html>captive portal</html>"
+        return mock
+
+    def test_the_key_survives_an_unreadable_2xx(self, real_client: DailyBotClient) -> None:
+        with (
+            patch("httpx.post", return_value=self._html_200()),
+            pytest.raises(TransportError) as caught,
+        ):
+            real_client.create_task(title="x")
+        assert caught.value.idempotency_key
+
+    def test_an_explicit_key_is_the_one_returned(self, real_client: DailyBotClient) -> None:
+        with (
+            patch("httpx.post", return_value=self._html_200()),
+            pytest.raises(TransportError) as caught,
+        ):
+            real_client.create_task(title="x", idempotency_key="mine-2")
+        assert caught.value.idempotency_key == "mine-2"
+
+    def test_a_read_still_carries_none(self, real_client: DailyBotClient) -> None:
+        # Reads send no key, so there is nothing to attach — and claiming one
+        # would invite a pointless --idempotency-key on a GET.
+        with (
+            patch("httpx.get", return_value=self._html_200()),
+            pytest.raises(TransportError) as caught,
+        ):
+            real_client.get_task("t-1")
+        assert caught.value.idempotency_key is None
+
+    def test_the_cli_surfaces_it(self, runner: CliRunner, client: MagicMock) -> None:
+        client.create_task.side_effect = TransportError(
+            "unreadable response", idempotency_key="key-11"
+        )
+        with patch("dailybot_cli.commands.task.require_auth", return_value=client):
+            result = runner.invoke(cli, ["task", "create", "-t", "x"])
+        assert "key-11" in result.stderr
