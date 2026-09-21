@@ -8,7 +8,7 @@ from rich.markup import escape
 from dailybot_cli.api_client import APIError, PaginatedResult
 from dailybot_cli.commands._destructive import preview_then_confirm
 from dailybot_cli.commands._rollups import render_rollup
-from dailybot_cli.commands._writes import report_write
+from dailybot_cli.commands._writes import named, report_write
 from dailybot_cli.commands.public_api_helpers import (
     emit_json,
     exit_for_tasks_error,
@@ -364,7 +364,7 @@ def project_create(
     if json_mode:
         emit_json(data)
         return
-    report_write(data, f"Created project {present_untrusted(data.get('name') or name)}")
+    report_write(data, f"Created project {named(data, name)}")
 
 
 @project.command("archive")

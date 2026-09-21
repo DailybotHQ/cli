@@ -23,7 +23,7 @@ from dailybot_cli.api_client import (
     PaginatedResult,
 )
 from dailybot_cli.commands._destructive import preview_then_confirm
-from dailybot_cli.commands._writes import report_write
+from dailybot_cli.commands._writes import IDEMPOTENCY_TTL_HOURS, named, report_write
 from dailybot_cli.commands.public_api_helpers import (
     EXIT_USER_ABORTED,
     emit_json,
@@ -42,7 +42,6 @@ from dailybot_cli.config import get_token
 from dailybot_cli.display import (
     console,
     error_console,
-    present_untrusted,
     print_error,
     print_pagination_footer,
     print_task_comments,
@@ -60,7 +59,8 @@ TASK_INCLUDE_VALUES: tuple[str, ...] = ("labels", "participants", "subtasks")
 # window REPLAYS the original write; reusing it after expiry is a NEW write and
 # duplicates. Both halves are stated in the help, because only knowing the first
 # one is how a retry loop quietly creates duplicates on day two.
-IDEMPOTENCY_TTL_HOURS: int = 24
+# Owned by `_writes.py`, which prints the same number in the post-write hint — two
+# copies would drift and the help would contradict the CLI's own output.
 
 LABEL_MODES: tuple[str, ...] = ("add", "remove", "replace")
 
@@ -291,7 +291,7 @@ def task_create(
     if json_mode:
         emit_json(data)
         return
-    report_write(data, f"Created {present_untrusted(data.get('title') or title)}")
+    report_write(data, f"Created {named(data, title, field='title')}")
     print_task_detail(data)
 
 
@@ -669,8 +669,15 @@ def task_archive(
 @click.argument("task_uuid")
 @click.option("--dry-run", is_flag=True, help="Show the consequence and exit without acting.")
 @click.option("-y", "--yes", "assume_yes", is_flag=True, help="Skip the prompt (still previews).")
+@click.option("--idempotency-key", default=None, help="Reuse a key to make a retry safe.")
 @click.option("--json", "json_mode", is_flag=True, help="Emit machine-readable JSON to stdout.")
-def task_delete(task_uuid: str, dry_run: bool, assume_yes: bool, json_mode: bool) -> None:
+def task_delete(
+    task_uuid: str,
+    dry_run: bool,
+    assume_yes: bool,
+    idempotency_key: str | None,
+    json_mode: bool,
+) -> None:
     """Archive a task. An alias of `task archive` — nothing is destroyed.
 
     \b
@@ -692,8 +699,12 @@ def task_delete(task_uuid: str, dry_run: bool, assume_yes: bool, json_mode: bool
         return
     try:
         with console.status("Archiving the task..."):
-            # The DELETE alias IGNORES Idempotency-Key, so none is offered here.
-            data: dict[str, Any] = client.archive_task(task_uuid, dry_run=False)
+            # This alias posts to the SAME archive door, which honours the header —
+            # so it takes the same flag. Without it the CLI printed a key and told
+            # the caller to pass it back through an option that did not exist.
+            data: dict[str, Any] = client.archive_task(
+                task_uuid, dry_run=False, idempotency_key=idempotency_key
+            )
     except APIError as exc:
         _write_error(exc, json_mode)
     if json_mode:

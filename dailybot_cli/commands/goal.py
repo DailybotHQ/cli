@@ -7,7 +7,7 @@ import click
 from dailybot_cli.api_client import APIError, PaginatedResult
 from dailybot_cli.commands._destructive import preview_then_confirm
 from dailybot_cli.commands._rollups import render_rollup
-from dailybot_cli.commands._writes import report_write
+from dailybot_cli.commands._writes import named, report_write
 from dailybot_cli.commands.project import (
     GOAL_INCLUDE_VALUES,
     _envelope,
@@ -22,7 +22,6 @@ from dailybot_cli.commands.public_api_helpers import (
 from dailybot_cli.commands.query_options import build_query_params, query_options, resolve_fetch_all
 from dailybot_cli.display import (
     console,
-    present_untrusted,
     print_goals_table,
     print_pagination_footer,
     print_projects_table,
@@ -155,7 +154,7 @@ def goal_create(
     if json_mode:
         emit_json(data)
         return
-    report_write(data, f"Created goal {present_untrusted(data.get('name') or name)}")
+    report_write(data, f"Created goal {named(data, name)}")
 
 
 @goal.command("archive")

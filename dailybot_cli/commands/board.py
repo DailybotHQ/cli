@@ -13,7 +13,7 @@ import click
 
 from dailybot_cli.api_client import APIError, PaginatedResult
 from dailybot_cli.commands._destructive import preview_then_confirm
-from dailybot_cli.commands._writes import report_write
+from dailybot_cli.commands._writes import named, report_write
 from dailybot_cli.commands.public_api_helpers import (
     emit_json,
     exit_for_tasks_error,
@@ -24,7 +24,6 @@ from dailybot_cli.commands.query_options import build_query_params, query_option
 from dailybot_cli.config import get_token
 from dailybot_cli.display import (
     console,
-    present_untrusted,
     print_board_snapshot,
     print_boards_table,
     print_pagination_footer,
@@ -200,7 +199,7 @@ def board_create(
     if json_mode:
         emit_json(data)
         return
-    report_write(data, f"Created board {present_untrusted(data.get('name') or name)}")
+    report_write(data, f"Created board {named(data, name)}")
 
 
 @board.command("archive")

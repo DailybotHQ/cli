@@ -79,6 +79,7 @@ dailybot_cli/                # Source package
     ├── goal.py              # `goal` group: list / get / create / archive
     ├── _rollups.py          # absent vs null vs zero for roll-up fields (AD-01)
     ├── _destructive.py      # shared preview-then-confirm for destructive Tasks doors
+    ├── _writes.py           # one write reporter: replay, idempotency key, escaping
     ├── team.py              # `team` group: list / get (server-scoped by role)
     ├── kudos.py             # `kudos give` (to a user, a team, or both)
     ├── user.py              # `user list` (org directory)

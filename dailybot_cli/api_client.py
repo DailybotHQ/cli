@@ -2177,8 +2177,20 @@ class DailyBotClient:
         return self._tasks_read("entitlements/")
 
     def search_tasks(self, query: str, **page: Any) -> PaginatedResult:
-        """GET /v1/tasks/search/?q= — full-text search across the surface."""
-        return self._tasks_list("search/", params={"q": query[:MAX_SEARCH_QUERY_LENGTH]}, **page)
+        """GET /v1/tasks/search/?q= — full-text search across the surface.
+
+        A query over the ceiling is **refused**, not truncated. Truncating returned
+        results for a query the caller never typed, with exit 0 — so they would
+        conclude the text is absent from the workspace. Every other search path in
+        this client already raises here.
+        """
+        if len(query) > MAX_SEARCH_QUERY_LENGTH:
+            raise APIError(
+                400,
+                f"Search query is too long ({len(query)} chars, max {MAX_SEARCH_QUERY_LENGTH}).",
+                code="search_query_too_long",
+            )
+        return self._tasks_list("search/", params={"q": query}, **page)
 
     def list_tasks_activity(self, **page: Any) -> PaginatedResult:
         """GET /v1/tasks/activity/ — the catch-up feed after an absence."""
