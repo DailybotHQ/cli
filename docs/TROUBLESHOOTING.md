@@ -215,3 +215,23 @@ Resolution order for agent commands (most → least specific):
 5. Login Bearer token
 
 If a higher-priority source exists, the lower-priority one is ignored. To debug, run `dailybot agent profiles` and `env | grep DAILYBOT_`.
+
+## The CLI cannot reach the API
+
+`Could not reach Dailybot at <url>` with **exit code 8** means the request never
+produced a response — the host is unreachable, the port is closed, or DNS failed.
+It is not an authentication or permission problem.
+
+1. Check which server the CLI is pointed at: `dailybot env show` (a repo-level
+   `.dailybot/env.json` profile beats your global login — see `docs/CONFIGURATION.md`).
+2. If that URL is wrong for what you are doing, override it for one command with
+   `--api-url`, or switch profile with `dailybot env use <name>`.
+3. `The configured API URL is not usable` means the URL itself is malformed — check
+   `--api-url`, `DAILYBOT_API_URL`, `.dailybot/env.json` and `dailybot config`.
+
+A **timeout on a write** is reported differently on purpose: the request may already
+have been applied, so check the current state before retrying rather than assuming it
+failed.
+
+Exit code 8 is reserved for this condition so an agent can branch on it without
+parsing the message.

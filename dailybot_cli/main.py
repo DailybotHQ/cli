@@ -1,13 +1,17 @@
 """Dailybot CLI entry point."""
 
 import platform
+import sys
+from typing import Any, NoReturn
 
 import click
 
 from dailybot_cli import __version__
+from dailybot_cli.api_client import EXIT_TRANSPORT_ERROR, TransportError
 from dailybot_cli.commands.agent import agent
 from dailybot_cli.commands.ask import ask
 from dailybot_cli.commands.auth import login, logout
+from dailybot_cli.commands.board import board
 from dailybot_cli.commands.channels import channels
 from dailybot_cli.commands.chat import chat
 from dailybot_cli.commands.checkin import checkin
@@ -16,13 +20,18 @@ from dailybot_cli.commands.conversation import conversation
 from dailybot_cli.commands.env import env
 from dailybot_cli.commands.featured import featured
 from dailybot_cli.commands.form import form
+from dailybot_cli.commands.goal import goal
 from dailybot_cli.commands.hook import hook
 from dailybot_cli.commands.identity import me, org
 from dailybot_cli.commands.interactive import run_interactive
 from dailybot_cli.commands.interactive_chat import interactive
 from dailybot_cli.commands.kudos import kudos
 from dailybot_cli.commands.label import label
+from dailybot_cli.commands.project import project
+from dailybot_cli.commands.public_api_helpers import emit_json
 from dailybot_cli.commands.status import status
+from dailybot_cli.commands.task import task
+from dailybot_cli.commands.tasks import tasks
 from dailybot_cli.commands.team import team
 from dailybot_cli.commands.uninstall import uninstall
 from dailybot_cli.commands.update import update
@@ -110,6 +119,95 @@ def cli(ctx: click.Context, api_url: str | None, app_url: str | None) -> None:
         run_interactive()
 
 
+class _SafetyNetGroup(click.Group):
+    """Root group that refuses to let an unexpected exception reach the user.
+
+    `AGENTS.md` rule 10 and DON'T #8 forbid a naked `httpx` exception surfacing to
+    a user, and `APIError` cannot carry a transport failure (it has no status code),
+    so every `except APIError` in the command layer is structurally unable to catch
+    one. This is the last-resort net.
+
+    It is a **net, not a muffler**. `SystemExit`, Click's own `UsageError`/`Abort`
+    and `KeyboardInterrupt` pass straight through: swallowing them would break exit
+    codes, argument validation and Ctrl-C respectively. Only a genuinely unexpected
+    exception is converted into a message plus a documented exit code.
+
+    The `hook` group keeps its own contract (`docs/AGENT_HOOKS.md`: always exit 0,
+    never break the agent harness); its callbacks already degrade to silence, and
+    this net never turns a hook invocation non-zero.
+    """
+
+    @staticmethod
+    def _wants_json() -> bool:
+        """Did the invocation ask for machine-readable output?
+
+        The net catches the exception above every command callback, so the leaf's
+        ``json_mode`` parameter is out of reach. The flag is a literal in argv and
+        is spelled one way across the whole CLI, so reading it there is exact —
+        and the alternative is an empty stdout on the one exit an unattended
+        caller is most likely to hit.
+        """
+        return "--json" in sys.argv[1:]
+
+    def _fail(
+        self,
+        message: str,
+        code: int,
+        error_code: str,
+        *,
+        extra: dict[str, Any] | None = None,
+    ) -> NoReturn:
+        if self._wants_json():
+            emit_json(
+                {
+                    "status": "error",
+                    "code": error_code,
+                    "detail": message,
+                    "message": message,
+                    **(extra or {}),
+                }
+            )
+        else:
+            print_error(message)
+        raise SystemExit(code)
+
+    def invoke(self, ctx: click.Context) -> Any:
+        try:
+            return super().invoke(ctx)
+        except (
+            click.ClickException,
+            click.Abort,
+            click.exceptions.Exit,
+            SystemExit,
+            KeyboardInterrupt,
+        ):
+            raise
+        except TransportError as exc:
+            message: str = str(exc)
+            if exc.idempotency_key:
+                # Without this the caller cannot perform the retry the write surface
+                # documents: re-running mints a new key the server cannot replay.
+                message += (
+                    f" Retry with --idempotency-key {exc.idempotency_key} so the "
+                    "write cannot be applied twice."
+                )
+            self._fail(
+                message,
+                EXIT_TRANSPORT_ERROR,
+                "transport_error",
+                extra={"idempotency_key": exc.idempotency_key} if exc.idempotency_key else None,
+            )
+        except Exception as exc:
+            self._fail(
+                f"Unexpected error: {type(exc).__name__}: {exc}. "
+                "This is a bug — please report it with the command you ran.",
+                1,
+                "unexpected_error",
+            )
+
+
+cli.__class__ = _SafetyNetGroup
+
 cli.add_command(login)
 cli.add_command(logout)
 cli.add_command(update)
@@ -123,6 +221,11 @@ cli.add_command(user)
 cli.add_command(me)
 cli.add_command(org)
 cli.add_command(workflow)
+cli.add_command(tasks)
+cli.add_command(task)
+cli.add_command(board)
+cli.add_command(project)
+cli.add_command(goal)
 cli.add_command(label)
 cli.add_command(featured)
 cli.add_command(agent)

@@ -46,6 +46,7 @@ Rules of thumb:
 
 - **Never** hand-pick a timeout inline at the call site (`httpx.post(url, timeout=120.0)`). Always use one of the two named constants.
 - A new endpoint goes in the **read tier by default**; only promote to the submit tier with an explicit comment justifying it (e.g. "endpoint runs AI summarisation server-side").
+- Transport failures (`httpx.HTTPError` and its subclasses) are converted to `TransportError` at the dispatch boundary and are **never retried** — the bounded 429 backoff in `_send_with_retry` remains the only retry. Silently retrying a connection failure hides an outage from the caller and can double-post a non-idempotent write.
 - Retries are intentionally **not** layered into `api_client.py`. The Dailybot API is idempotent only for the read tier; transparent retry of submits would risk double-posting. If a future read endpoint needs jittered retry, add it as an opt-in helper, not a default.
 
 ### 3. Terminal rendering budget — `display.py` / `rich`
@@ -73,6 +74,70 @@ Hooks run on **every** Claude Code / Cursor lifecycle event (session-start, post
 Every hook callback is wrapped in `try: ... except Exception: return` (degrade-to-silence) so a failing hook never breaks the developer's harness — but the wrapper is a safety net, not an excuse to do slow work.
 
 ---
+
+### 5. Tasks surface — measured 2026-09-19
+
+The Tasks work added **six** command groups (`tasks`, `task`, `board`, `project`, `goal`,
+plus two shared helper modules) to a `main.py` that already imported 25 command modules at
+top level. Measured on this repo, 12 runs each, reporting min / p50:
+
+| Metric | Budget | Before (`d561210`) | After | Delta |
+|---|---|---|---|---|
+| `--version` wall | **≤ 200 ms** | 152 / 160 ms | 171 / 180 ms | **+19 / +20 ms** — inside budget |
+| `dailybot_cli` import graph | **≤ 100 ms** | 120 / 123 ms | 133 / 139 ms | **+13 / +16 ms** — already over before |
+
+**Per-module cost of everything this work added: ~4.4 ms**, measured directly:
+
+```
+commands.board        1.23 ms      commands.goal         1.06 ms
+commands.task         0.67 ms      commands.tasks        0.59 ms
+commands.project      0.50 ms      commands._destructive 0.21 ms
+commands._rollups     0.17 ms
+```
+
+The end-to-end delta is larger than that sum because process-level measurement is noisy at
+this scale; the per-module figures are the reliable number.
+
+**The import budget was already exceeded before this work, and the cause is not Tasks.**
+The dominant costs are pre-existing top-level imports:
+
+```
+commands.ask → commands.interactive_chat → questionary → prompt_toolkit   ~44 ms
+api_client → httpx                                                        ~42 ms
+```
+
+`questionary` is imported at module top level for commands that do not use it — precisely
+the anti-pattern §1 names. Moving it into the callbacks that need it is the single largest
+available lever (~44 ms, which alone would bring the graph close to budget). **That is not
+Tasks work and was deliberately not done here**: it touches the 25 pre-existing modules, and
+a performance refactor of the interactive surface deserves its own change with its own
+tests. Recorded so the next person does not have to re-measure to find it.
+
+**Budget status:** the wall budget is met. The import budget is **not**, was not before this
+work, and is not relaxed here — no CHANGELOG entry is warranted because no budget was
+changed. The gap is recorded above with its cause and its fix.
+
+**Server-side cost, confirmed by the API team (2026-09-20).** Query budgets are now
+declared on the two hot paths the CLI polls — `boards/{id}/delta/` (13) and
+`tasks/{id}/` (9) — and flatness is asserted between 2 and 40 tasks, including the
+empty delta poll.
+
+The finding that matters for us: **an organization API key costs 3–4 more queries
+per door than a CLI Bearer token**, because key auth resolves the key, its
+organization, the plan, the owner and the feature gate per request. The credential
+an unattended agent holds is the expensive one. Nothing in the CLI changes — the
+budgets are the server's — but a caller sizing a polling loop should know it, and
+`docs/API_REFERENCE.md` carries the per-door table.
+
+**Contract checks (asserted by tests, re-verified here):**
+
+- every Tasks call sits in the **read tier**; `grep` for inline `timeout=` in
+  `api_client.py` returns **0**;
+- no Tasks list command sends a default `include` — verified live: `list_goals()` sends
+  `{}`, `list_goals(include=["progress"])` sends `{"include": "progress"}`;
+- no Tasks command adds a retry; the bounded 429 backoff remains the only one;
+- `tasks changes` performs exactly one delta read per invocation (no `--follow`), so the
+  published 240/min ceiling stays the caller's to manage.
 
 ## How we measure
 

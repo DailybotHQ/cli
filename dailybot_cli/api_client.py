@@ -1,8 +1,10 @@
 """HTTP client for Dailybot CLI API endpoints."""
 
 import time
+import uuid
 from collections.abc import Callable
 from dataclasses import dataclass, field
+from datetime import datetime, timezone
 from typing import Any
 
 import httpx
@@ -25,6 +27,30 @@ LONG_TIMEOUT_SECS: float = 120.0  # AI-processing endpoints (ask, submit_update)
 # stripped or malformed). Retrying on both makes env.json + a stale
 # session work seamlessly regardless of which convention the server uses.
 _AUTH_RETRY_STATUS_CODES: frozenset[int] = frozenset({401, 403})
+
+# The person-shaped Tasks doors have a third refusal shape: `400 actor_required`,
+# meaning "this credential is an organization with nobody to be". It is the same
+# condition as a 401 — the wrong *kind* of credential was presented — but it does
+# not arrive with an auth status code, so the retry above would skip it. That
+# matters whenever `.dailybot/env.json` supplies the key: `_prefer_api_key` then
+# sends `X-API-KEY` first even though a Bearer session exists, and without this the
+# CLI would tell an already-signed-in user to run `dailybot login`.
+_ACTOR_REQUIRED_CODE: str = "actor_required"
+
+
+def _is_auth_retryable(response: httpx.Response) -> bool:
+    """True when the refusal means "wrong credential kind", whatever its status."""
+    if response.status_code in _AUTH_RETRY_STATUS_CODES:
+        return True
+    if response.status_code != 400:
+        return False
+    try:
+        body: Any = response.json()
+    except Exception:
+        return False
+    return isinstance(body, dict) and body.get("code") == _ACTOR_REQUIRED_CODE
+
+
 DEFAULT_PAGE_SIZE: int = 25  # server default page size for paginated list endpoints
 MAX_PAGE_SIZE: int = 100  # server clamps above this; the client clamps too
 
@@ -36,6 +62,23 @@ FREE_PLAN_DAILY_LIMIT_CODE: str = "free_plan_daily_limit_exceeded"
 MAX_FALLBACK_DETAIL_CHARS: int = 160  # cap for a non-JSON error body echoed to the user
 MAX_SEARCH_QUERY_LENGTH: int = 256  # server rejects search queries longer than this
 MAX_OWNER_USER_IDS: int = 50  # server rejects owner_user_ids lists longer than this
+
+# --- Tasks (/v1/tasks/*) ---
+TASKS_BASE_PATH: str = "/v1/tasks/"
+# Server cap on a bulk payload; above it the server answers `too_many_items`.
+# BLAST_RADIUS.md records this as THE volume guard for unattended destructive
+# loops — the CLI adds no second ceiling of its own.
+TASKS_BULK_MAX_ITEMS: int = 100
+IDEMPOTENCY_KEY_HEADER: str = "Idempotency-Key"
+IDEMPOTENCY_REPLAYED_HEADER: str = "Idempotency-Replayed"
+# The board delta door keeps a 7-day window; an older cursor is refused forever
+# with `delta_window_expired` + `full_resync_required`. Retrying is an infinite
+# loop — the only correct response is a fresh snapshot.
+TASKS_DELTA_MAX_WINDOW_DAYS: int = 7
+# Key surfaced on a write result when the server replayed a previous identical
+# call instead of performing a new one (from IDEMPOTENCY_REPLAYED_HEADER).
+IDEMPOTENCY_REPLAYED_KEY: str = "_idempotency_replayed"
+IDEMPOTENCY_KEY_SENT_KEY: str = "_idempotency_key"
 
 
 def _fallback_detail(response: httpx.Response) -> str:
@@ -137,12 +180,89 @@ def _label_entity_collection(entity_type: str) -> str:
     )
 
 
+def as_query_datetime(value: datetime | str) -> str:
+    """Render a datetime for a Tasks query string, always in the ``Z`` form.
+
+    ``datetime.now(timezone.utc).isoformat()`` ends in ``+00:00``. In a query
+    string an unencoded ``+`` decodes to a space, so the server receives
+    ``...T13:13:37 00:00`` and correctly refuses it — with a message saying the
+    value must be ISO-8601, about a value that is. This is the single most
+    likely way a Python client breaks the delta door
+    (MEASURED_ANSWERS.md §4, "The trap that is not our defect").
+
+    A naive datetime is read as UTC. Microseconds are dropped so a cursor
+    round-trips stably.
+
+    A **string** is normalised only if it parses as ISO-8601, and passed through
+    untouched otherwise. Both halves matter: the server's ``delta_cursor`` is an
+    ISO-8601 timestamp and can carry ``+00:00``, so echoing it back verbatim
+    would reproduce the very bug this function exists to prevent — while a cursor
+    that is genuinely opaque must not be reformatted into something the server
+    cannot read.
+    """
+    if isinstance(value, str):
+        try:
+            parsed: datetime = datetime.fromisoformat(value.replace("Z", "+00:00"))
+        except ValueError:
+            return value  # opaque token — not ours to reinterpret
+        value = parsed
+    moment: datetime = value if value.tzinfo is not None else value.replace(tzinfo=timezone.utc)
+    return moment.astimezone(timezone.utc).replace(microsecond=0).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
 def _fill_meta(meta: dict[str, Any] | None, result: "PaginatedResult") -> None:
     """Populate a caller-provided meta dict with pagination totals, if given."""
     if meta is not None:
         meta["count"] = result.count
         meta["next"] = result.next
         meta["previous"] = result.previous
+
+
+# Exit code for "the request never reached a server, or the answer was
+# unreadable". Deliberately distinct from every EXIT_* the command layer uses
+# (2-7) and from the delta-window code (9): an agent branching on the exit status
+# is the primary consumer, and conflating "no network" with "forbidden" would
+# send it down the wrong recovery path.
+EXIT_TRANSPORT_ERROR: int = 8
+
+
+class TransportError(httpx.HTTPError):
+    """Raised when a request never produced a readable HTTP response.
+
+    Deliberately **not** a subclass of :class:`APIError`. An ``APIError`` is a
+    *server verdict* — it has a status code and a machine-readable ``code`` a
+    command can branch on. A transport failure has neither, and pretending it does
+    would mean every ``except APIError`` block silently treats "the network is
+    down" as "the server said no".
+
+    It **is** an ``httpx.HTTPError``, and that is equally deliberate. The TUI and
+    the interactive menu already carry ~25 ``except (APIError, httpx.HTTPError)``
+    handlers that show an in-app "couldn't reach Dailybot" message; making this a
+    bare ``Exception`` walked straight past all of them and killed the Textual app
+    instead. Wrapping a failure must not make the failure less catchable than it
+    was before.
+
+    The ~30 ``except APIError`` handlers still do not catch it — which is correct,
+    and why the root callback in ``main.py`` carries a last-resort net so nothing
+    reaches the user as a traceback.
+
+    ``idempotency_key`` carries the key the timed-out write actually sent, when
+    there was one. It is the only thing that makes the retry safe, and it is
+    exactly the call that cannot read it off a response body.
+    """
+
+    def __init__(self, message: str, *, idempotency_key: str | None = None) -> None:
+        super().__init__(message)
+        self.idempotency_key: str | None = idempotency_key
+
+
+class TransportTimeout(TransportError, httpx.TimeoutException):
+    """A transport failure that was specifically a timeout.
+
+    Separate from its parent so the pre-existing ``except httpx.TimeoutException``
+    handlers — which say "that took longer than expected" rather than "we could not
+    reach the server" — keep firing.
+    """
 
 
 class APIError(Exception):
@@ -289,13 +409,17 @@ class DailyBotClient:
         if params is not None:
             kwargs["params"] = params
 
-        response: httpx.Response = httpx.request(method, url, **kwargs)
+        response: httpx.Response = self._guard_transport(
+            lambda: httpx.request(method, url, **kwargs), method=method
+        )
 
-        if response.status_code in _AUTH_RETRY_STATUS_CODES:
+        if _is_auth_retryable(response):
             alt: dict[str, str] | None = self._alt_auth_headers()
             if alt is not None:
                 kwargs["headers"] = alt
-                response = httpx.request(method, url, **kwargs)
+                response = self._guard_transport(
+                    lambda: httpx.request(method, url, **kwargs), method=method
+                )
 
         return response
 
@@ -307,6 +431,7 @@ class DailyBotClient:
         json: dict[str, Any] | None = None,
         params: dict[str, Any] | None = None,
         timeout: float | None = None,
+        extra_headers: dict[str, str] | None = None,
     ) -> httpx.Response:
         """Execute a user-scoped authenticated request with alt-credential retry.
 
@@ -330,8 +455,11 @@ class DailyBotClient:
         both invocations (primary + retry) go through the same dispatch so
         the retry is transparent to callers and to test mocks alike.
         """
+        headers: dict[str, str] = self._headers()
+        if extra_headers:
+            headers.update(extra_headers)
         kwargs: dict[str, Any] = {
-            "headers": self._headers(),
+            "headers": headers,
             "timeout": self.timeout if timeout is None else timeout,
         }
         if params is not None:
@@ -339,15 +467,107 @@ class DailyBotClient:
         if json is not None:
             kwargs["json"] = json
 
-        response: httpx.Response = self._dispatch_http(method, url, **kwargs)
+        response: httpx.Response = self._dispatch_guarded(method, url, **kwargs)
 
-        if response.status_code in _AUTH_RETRY_STATUS_CODES:
+        if _is_auth_retryable(response):
             alt: dict[str, str] | None = self._alt_auth_headers()
             if alt is not None:
-                kwargs["headers"] = alt
-                response = self._dispatch_http(method, url, **kwargs)
+                retry_headers: dict[str, str] = dict(alt)
+                if extra_headers:
+                    retry_headers.update(extra_headers)
+                kwargs["headers"] = retry_headers
+                response = self._dispatch_guarded(method, url, **kwargs)
 
         return response
+
+    def _transport_message(self, exc: Exception, *, method: str, mutates: bool = True) -> str:
+        """Explain a transport failure in terms the reader can act on.
+
+        The failure modes are kept distinct because the fixes differ: an
+        unreachable host is a connection or a wrong URL, a timeout on a **write**
+        may already have been applied, and a malformed URL is a configuration
+        problem the user can locate.
+
+        ``mutates`` is False for a POST that provably writes nothing — a destructive
+        **preview** (``?dry_run=true``) is a POST that creates no rows and no audit
+        events. Telling the operator their archive "may have been applied" when it
+        provably was not sends them into recovery for a mutation that never ran.
+        """
+        host: str = self.api_url
+        if isinstance(exc, (httpx.UnsupportedProtocol, httpx.InvalidURL)):
+            return (
+                f"The configured API URL is not usable: {host!r}. Check `--api-url`, "
+                "`DAILYBOT_API_URL`, `.dailybot/env.json` (`dailybot env show`) or "
+                "`dailybot config`."
+            )
+        if isinstance(exc, httpx.TimeoutException):
+            if mutates and method.upper() in {"POST", "PATCH", "PUT", "DELETE"}:
+                return (
+                    f"The request to {host} timed out. It **may have been applied** — a "
+                    "write that times out is not known to have failed, so check the "
+                    "current state before retrying."
+                )
+            return f"The request to {host} timed out. Check your connection and retry."
+        return (
+            f"Could not reach Dailybot at {host}. Check your connection, or whether that "
+            "is the right server (`dailybot env show`, or pass `--api-url`)."
+        )
+
+    @staticmethod
+    def _transport_class(exc: Exception) -> type[TransportError]:
+        """Pick the wrapper that keeps the original handler catching it."""
+        return TransportTimeout if isinstance(exc, httpx.TimeoutException) else TransportError
+
+    def _guard_transport(
+        self,
+        send: Callable[[], httpx.Response],
+        *,
+        method: str,
+        mutates: bool = True,
+        timeout_message: str | None = None,
+    ) -> httpx.Response:
+        """Run ``send`` and convert any transport failure into a ``TransportError``.
+
+        The call-site-preserving twin of :meth:`_dispatch_guarded`: the agent and
+        login endpoints call ``httpx.request`` / ``httpx.post`` directly and the
+        test suite patches exactly those, so they cannot be routed through the
+        per-method dispatcher. They still need the same net — without it a dead
+        host made ``dailybot agent update`` exit 1 with "Unexpected error" instead
+        of the documented transport exit.
+        """
+        try:
+            return send()
+        except httpx.HTTPError as exc:
+            if timeout_message and isinstance(exc, httpx.TimeoutException):
+                raise TransportTimeout(timeout_message) from exc
+            raise self._transport_class(exc)(
+                self._transport_message(exc, method=method.upper(), mutates=mutates)
+            ) from exc
+
+    def _dispatch_guarded(self, method: str, url: str, **kwargs: Any) -> httpx.Response:
+        """`_dispatch_http` with every transport failure converted to a CLI error.
+
+        The raw dispatcher stays a ``@staticmethod`` with its long-standing
+        per-method patchable surface, because the test suite patches
+        ``httpx.get`` / ``httpx.post`` directly and asserts the routing. The
+        guard lives here so the routing contract is untouched.
+        """
+        # A `dry_run=true` POST provably writes nothing, so its timeout must not
+        # claim the operation may have been applied.
+        params: Any = kwargs.get("params") or {}
+        mutates: bool = not (
+            isinstance(params, dict) and str(params.get("dry_run")).lower() in {"true", "1"}
+        )
+        try:
+            return self._dispatch_http(method, url, **kwargs)
+        except httpx.HTTPError as exc:
+            # No retry on purpose. The bounded 429 backoff in `_send_with_retry`
+            # is the only retry this client has; silently retrying a connection
+            # failure would hide an outage from the caller who owns that decision,
+            # and could double-post a non-idempotent write.
+            raise self._transport_class(exc)(
+                self._transport_message(exc, method=method.upper(), mutates=mutates)
+            ) from exc
 
     @staticmethod
     def _dispatch_http(method: str, url: str, **kwargs: Any) -> httpx.Response:
@@ -410,7 +630,15 @@ class DailyBotClient:
             )
         if response.status_code == 204:
             return {}
-        return response.json()
+        try:
+            return response.json()
+        except Exception as exc:
+            # A 2xx whose body is not JSON: a captive portal, a proxy error page,
+            # an HTML 200. The error branch above already guards its own decode;
+            # this path did not, so a bare JSONDecodeError escaped to the user.
+            raise TransportError(
+                f"The server returned an unreadable response: {_fallback_detail(response)}"
+            ) from exc
 
     def _send_with_retry(self, send: Callable[[], httpx.Response]) -> httpx.Response:
         """Issue a request via ``send`` with bounded retry on a transient 429.
@@ -494,7 +722,16 @@ class DailyBotClient:
             response: httpx.Response = self._send_with_retry(_do_get)
             if response.status_code >= 400:
                 self._handle_response(response)
-            body: Any = response.json()
+            try:
+                body: Any = response.json()
+            except Exception as exc:
+                # Same unreadable-2xx case `_handle_response` guards (a captive
+                # portal, a proxy HTML 200). List reads bypass that helper on the
+                # success path, so without this they surfaced a bare
+                # JSONDecodeError and exited 1 instead of the documented 8.
+                raise TransportError(
+                    f"The server returned an unreadable response: {_fallback_detail(response)}"
+                ) from exc
             if isinstance(body, dict) and "results" in body:
                 collected.extend(body.get("results", []))
                 count = body.get("count", count)
@@ -524,11 +761,23 @@ class DailyBotClient:
 
     def request_code(self, email: str) -> dict[str, Any]:
         """POST /v1/cli/auth/request-code/"""
-        response: httpx.Response = httpx.post(
-            f"{self.api_url}/v1/cli/auth/request-code/",
-            json={"email": email},
-            headers=self._headers(authenticated=False),
-            timeout=self.timeout,
+        response: httpx.Response = self._guard_transport(
+            lambda: httpx.post(
+                f"{self.api_url}/v1/cli/auth/request-code/",
+                json={"email": email},
+                headers=self._headers(authenticated=False),
+                timeout=self.timeout,
+            ),
+            method="POST",
+            # The generic write advice — "check the current state before retrying" —
+            # is actively harmful here. Requesting a code again INVALIDATES the one
+            # already sent (AGENTS.md DON'T #17), so a user who retries on a timeout
+            # burns the code sitting in their inbox.
+            timeout_message=(
+                "The request timed out, but the code may already have been sent. "
+                "Check your inbox first: asking for another code invalidates the one "
+                "you have."
+            ),
         )
         return self._handle_response(response)
 
@@ -542,11 +791,20 @@ class DailyBotClient:
         payload: dict[str, Any] = {"email": email, "code": code}
         if organization_id is not None:
             payload["organization_id"] = organization_id
-        response: httpx.Response = httpx.post(
-            f"{self.api_url}/v1/cli/auth/verify-code/",
-            json=payload,
-            headers=self._headers(authenticated=False),
-            timeout=self.timeout,
+        response: httpx.Response = self._guard_transport(
+            lambda: httpx.post(
+                f"{self.api_url}/v1/cli/auth/verify-code/",
+                json=payload,
+                headers=self._headers(authenticated=False),
+                timeout=self.timeout,
+            ),
+            method="POST",
+            # A timeout here may have CONSUMED the code without returning a token.
+            # "Check the state and retry" would send the user back with a spent code.
+            timeout_message=(
+                "The request timed out. The code may already have been used, so "
+                "verifying it again can fail: run `dailybot login` to request a new one."
+            ),
         )
         return self._handle_response(response)
 
@@ -562,10 +820,13 @@ class DailyBotClient:
         Bearer-only lifecycle operation — retrying with an API key would
         neither succeed nor be semantically meaningful.
         """
-        response: httpx.Response = httpx.post(
-            f"{self.api_url}/v1/cli/auth/logout/",
-            headers=self._headers(),
-            timeout=self.timeout,
+        response: httpx.Response = self._guard_transport(
+            lambda: httpx.post(
+                f"{self.api_url}/v1/cli/auth/logout/",
+                headers=self._headers(),
+                timeout=self.timeout,
+            ),
+            method="POST",
         )
         return self._handle_response(response)
 
@@ -1849,6 +2110,540 @@ class DailyBotClient:
 
     # --- Organization Labels (/v1/labels/) ---
 
+    # ------------------------------------------------------------------
+    # Tasks (/v1/tasks/*)
+    #
+    # Contract of record: the API handoff pack under
+    # .dwp/handoffs/PLAN_tasks_api_cli_enablement/analysis_results/.
+    # Three rules govern this whole section:
+    #   * every datetime in a query goes through `as_query_datetime` (the
+    #     `+00:00` trap — MEASURED_ANSWERS.md §4);
+    #   * `Idempotency-Key` is sent ONLY on the doors IDEMPOTENCY.md marks
+    #     `accepted` or `required` — advertising it on an `ignored` door would
+    #     promise a guarantee the server does not honour;
+    #   * every door stays in the read timeout tier (docs/PERFORMANCE.md §2
+    #     says a new endpoint is read-tier by default; none of these runs
+    #     server-side AI processing).
+    # ------------------------------------------------------------------
+
+    def _tasks_url(self, path: str) -> str:
+        """Build an absolute URL under the Tasks base path."""
+        return f"{self.api_url}{TASKS_BASE_PATH}{path.lstrip('/')}"
+
+    def _tasks_write(
+        self,
+        method: str,
+        path: str,
+        *,
+        json: dict[str, Any] | None = None,
+        params: dict[str, Any] | None = None,
+        idempotent: bool = False,
+        idempotency_key: str | None = None,
+    ) -> dict[str, Any]:
+        """Issue a Tasks write and surface the replay flag.
+
+        ``idempotent`` reflects the door's posture in IDEMPOTENCY.md, not the
+        caller's preference: when it is False no key is sent, even if one was
+        supplied, because the server ignores it there.
+
+        A generated key is a uuid4. It must be unguessable: the idempotency slot
+        is keyed on ``(organization, scope, key)``, so two different keys in the
+        same organization **share a namespace** (MEASURED_ANSWERS.md §6 Q5) and a
+        sequential default would collide between two agents.
+        """
+        extra: dict[str, str] | None = None
+        sent_key: str | None = None
+        # A `dry_run=true` call writes nothing, so it has nothing to make idempotent —
+        # and returning a key for it invites the caller to reuse that key for the real
+        # mutation, whose payload differs (`idempotency_key_payload_mismatch`).
+        previewing: bool = bool(params) and str((params or {}).get("dry_run", "")).lower() in {
+            "true",
+            "1",
+        }
+        if idempotent and not previewing:
+            sent_key = idempotency_key or str(uuid.uuid4())
+            extra = {IDEMPOTENCY_KEY_HEADER: sent_key}
+        try:
+            response: httpx.Response = self._request(
+                method, self._tasks_url(path), json=json, params=params, extra_headers=extra
+            )
+            result: dict[str, Any] = self._handle_response(response)
+        except TransportError as exc:
+            # Two paths reach here and NEITHER has a body to recover the key from:
+            # a timeout, and an unreadable 2xx (a captive portal's HTML 200), which
+            # `_handle_response` also raises as a transport failure. In both the
+            # write may already have been applied, so a blind retry mints a fresh
+            # uuid4 the server cannot replay — and duplicates. Guarding only the
+            # request left the second path silently uncovered.
+            if sent_key is not None and exc.idempotency_key is None:
+                exc.idempotency_key = sent_key
+            raise
+        replayed: str = str(getattr(response, "headers", {}).get(IDEMPOTENCY_REPLAYED_HEADER, ""))
+        if isinstance(result, dict):
+            result[IDEMPOTENCY_REPLAYED_KEY] = replayed.lower() == "true"
+            if sent_key is not None:
+                # The generated key has to leave the client, or the safety it buys
+                # is unreachable: re-running the command mints a NEW uuid4, so a
+                # retry after a timeout duplicates. Surfacing it is what makes the
+                # documented "a retry cannot create a second task" true.
+                result[IDEMPOTENCY_KEY_SENT_KEY] = sent_key
+        return result
+
+    def _tasks_read(self, path: str, *, params: dict[str, Any] | None = None) -> dict[str, Any]:
+        """Issue a Tasks read (single object or non-paginated document)."""
+        return self._handle_response(self._request("GET", self._tasks_url(path), params=params))
+
+    def _tasks_list(
+        self,
+        path: str,
+        *,
+        params: dict[str, Any] | None = None,
+        page: int | None = None,
+        page_size: int | None = None,
+        fetch_all: bool = False,
+        limit: int | None = None,
+    ) -> PaginatedResult:
+        """Issue a Tasks list read through the shared pagination helper."""
+        return self._paginated_get(
+            self._tasks_url(path),
+            params=params,
+            page=page,
+            page_size=page_size,
+            fetch_all=fetch_all,
+            limit=limit,
+        )
+
+    @staticmethod
+    def _with_include(
+        params: dict[str, Any] | None, include: list[str] | None
+    ) -> dict[str, Any] | None:
+        """Merge an ``include`` selector into a caller's query params.
+
+        They used to compete: these methods hardcoded ``params={"include": …}``, so
+        a caller forwarding the shared query flags via ``params=`` either collided
+        or had its filters silently dropped.
+        """
+        merged: dict[str, Any] = dict(params) if params else {}
+        if include:
+            merged["include"] = ",".join(include)
+        return merged or None
+
+    # --- Workspace-level reads ---
+
+    def get_tasks_pulse(self) -> dict[str, Any]:
+        """GET /v1/tasks/pulse/ — the workspace snapshot an agent reads first."""
+        return self._tasks_read("pulse/")
+
+    def get_tasks_entitlements(self) -> dict[str, Any]:
+        """GET /v1/tasks/entitlements/ — never answers 402 by contract."""
+        return self._tasks_read("entitlements/")
+
+    def search_tasks(self, query: str, **page: Any) -> PaginatedResult:
+        """GET /v1/tasks/search/?q= — full-text search across the surface.
+
+        A query over the ceiling is **refused**, not truncated. Truncating returned
+        results for a query the caller never typed, with exit 0 — so they would
+        conclude the text is absent from the workspace. Every other search path in
+        this client already raises here.
+        """
+        if len(query) > MAX_SEARCH_QUERY_LENGTH:
+            raise APIError(
+                400,
+                f"Search query is too long ({len(query)} chars, max {MAX_SEARCH_QUERY_LENGTH}).",
+                code="search_query_too_long",
+            )
+        return self._tasks_list("search/", params={"q": query}, **page)
+
+    def list_tasks_activity(self, **page: Any) -> PaginatedResult:
+        """GET /v1/tasks/activity/ — the catch-up feed after an absence."""
+        return self._tasks_list("activity/", **page)
+
+    def list_tasks_timeline(
+        self, *, date_from: str | None = None, date_to: str | None = None, **page: Any
+    ) -> PaginatedResult:
+        """GET /v1/tasks/timeline/ — a dated view of the workspace."""
+        params: dict[str, Any] = {}
+        if date_from:
+            params["from"] = date_from
+        if date_to:
+            params["to"] = date_to
+        return self._tasks_list("timeline/", params=params or None, **page)
+
+    # --- Boards ---
+
+    def list_boards(self, **page: Any) -> PaginatedResult:
+        """GET /v1/tasks/boards/."""
+        return self._tasks_list("boards/", **page)
+
+    def get_board(self, board_uuid: str) -> dict[str, Any]:
+        """GET /v1/tasks/boards/<uuid>/."""
+        return self._tasks_read(f"boards/{board_uuid}/")
+
+    def get_board_snapshot(self, board_uuid: str) -> dict[str, Any]:
+        """GET /v1/tasks/boards/<uuid>/board/ — the dense cold-context door.
+
+        Carries ``delta_cursor``, which is the only place a caller can obtain a
+        cursor for :meth:`get_board_delta`; the delta door's own 400 does not
+        say where to get one.
+        """
+        return self._tasks_read(f"boards/{board_uuid}/board/")
+
+    def get_board_delta(self, board_uuid: str, *, updated_since: datetime | str) -> dict[str, Any]:
+        """GET /v1/tasks/boards/<uuid>/delta/ — the poll-loop door.
+
+        Refuses three different things (MEASURED_ANSWERS.md §4): a missing
+        cursor, a cursor older than the 7-day window
+        (``delta_window_expired`` + ``full_resync_required``), and a cursor it
+        cannot parse. Only the second is recoverable, and only by re-snapshotting.
+        """
+        return self._tasks_read(
+            f"boards/{board_uuid}/delta/",
+            params={"updated_since": as_query_datetime(updated_since)},
+        )
+
+    # --- Tasks ---
+
+    def list_tasks(self, *, filters: dict[str, Any] | None = None, **page: Any) -> PaginatedResult:
+        """GET /v1/tasks/tasks/ — strict about parameters; only declared ones."""
+        return self._tasks_list("tasks/", params=filters, **page)
+
+    def get_task(self, task_uuid: str) -> dict[str, Any]:
+        """GET /v1/tasks/tasks/<uuid>/ — the most frequent call of all."""
+        return self._tasks_read(f"tasks/{task_uuid}/")
+
+    def create_task(
+        self,
+        *,
+        title: str,
+        board: str | None = None,
+        idempotency_key: str | None = None,
+        **fields: Any,
+    ) -> dict[str, Any]:
+        """POST /v1/tasks/tasks/ — always this path. Accepts an idempotency key.
+
+        The board-scoped door exists on the server; this client does not use it.
+        `board` travels in the payload, so a caller looking for a path variant here
+        will not find one.
+        """
+        payload: dict[str, Any] = {
+            "title": title,
+            **{k: v for k, v in fields.items() if v is not None},
+        }
+        if board:
+            payload["board"] = board
+        return self._tasks_write(
+            "POST", "tasks/", json=payload, idempotent=True, idempotency_key=idempotency_key
+        )
+
+    def update_task(
+        self, task_uuid: str, *, idempotency_key: str | None = None, **fields: Any
+    ) -> dict[str, Any]:
+        """PATCH /v1/tasks/tasks/<uuid>/ — absolute fields; accepts a key."""
+        payload: dict[str, Any] = {k: v for k, v in fields.items() if v is not None}
+        return self._tasks_write(
+            "PATCH",
+            f"tasks/{task_uuid}/",
+            json=payload,
+            idempotent=True,
+            idempotency_key=idempotency_key,
+        )
+
+    def move_task(
+        self, task_uuid: str, *, idempotency_key: str | None = None, **fields: Any
+    ) -> dict[str, Any]:
+        """POST /v1/tasks/tasks/<uuid>/move/ — accepts a key."""
+        return self._tasks_write(
+            "POST",
+            f"tasks/{task_uuid}/move/",
+            json={k: v for k, v in fields.items() if v is not None},
+            idempotent=True,
+            idempotency_key=idempotency_key,
+        )
+
+    def archive_task(
+        self, task_uuid: str, *, dry_run: bool = False, idempotency_key: str | None = None
+    ) -> dict[str, Any]:
+        """POST /v1/tasks/tasks/<uuid>/archive/ — reversible; accepts a key.
+
+        With ``dry_run`` the server previews the consequence and writes no rows
+        and no audit events (BLAST_RADIUS.md).
+        """
+        return self._tasks_write(
+            "POST",
+            f"tasks/{task_uuid}/archive/",
+            params={"dry_run": "true"} if dry_run else None,
+            idempotent=True,
+            idempotency_key=idempotency_key,
+        )
+
+    def restore_task(self, task_uuid: str, *, idempotency_key: str | None = None) -> dict[str, Any]:
+        """POST /v1/tasks/tasks/<uuid>/restore/ — accepts a key."""
+        return self._tasks_write(
+            "POST", f"tasks/{task_uuid}/restore/", idempotent=True, idempotency_key=idempotency_key
+        )
+
+    def subscribe_task(self, task_uuid: str) -> dict[str, Any]:
+        """POST /v1/tasks/tasks/<uuid>/subscription/ — key IGNORED by the server."""
+        return self._tasks_write("POST", f"tasks/{task_uuid}/subscription/", idempotent=False)
+
+    def bulk_tasks(
+        self, *, operation: str, items: list[dict[str, Any]], idempotency_key: str | None = None
+    ) -> dict[str, Any]:
+        """POST /v1/tasks/tasks/bulk/ — the ONE door that REQUIRES a key.
+
+        Without the header the server answers ``400 idempotency_key_required``,
+        so this method always sends one.
+        """
+        return self._tasks_write(
+            "POST",
+            "tasks/bulk/",
+            json={"operation": operation, "items": items},
+            idempotent=True,
+            idempotency_key=idempotency_key,
+        )
+
+    # --- Collaboration ---
+
+    def comment_on_task(
+        self, task_uuid: str, *, body: str, idempotency_key: str | None = None
+    ) -> dict[str, Any]:
+        """POST /v1/tasks/tasks/<uuid>/comments/ — accepts a key."""
+        return self._tasks_write(
+            "POST",
+            f"tasks/{task_uuid}/comments/",
+            json={"body": body},
+            idempotent=True,
+            idempotency_key=idempotency_key,
+        )
+
+    def list_task_comments(
+        self, task_uuid: str, *, params: dict[str, Any] | None = None, **page: Any
+    ) -> PaginatedResult:
+        """GET /v1/tasks/tasks/<uuid>/comments/."""
+        return self._tasks_list(f"tasks/{task_uuid}/comments/", params=params, **page)
+
+    def relate_tasks(
+        self, task_uuid: str, *, other: str, relation: str, idempotency_key: str | None = None
+    ) -> dict[str, Any]:
+        """POST /v1/tasks/tasks/<uuid>/relations/ — accepts a key."""
+        return self._tasks_write(
+            "POST",
+            f"tasks/{task_uuid}/relations/",
+            json={"related_task": other, "relation_type": relation},
+            idempotent=True,
+            idempotency_key=idempotency_key,
+        )
+
+    def batch_task_labels(
+        self, task_uuid: str, *, mode: str, labels: list[str], idempotency_key: str | None = None
+    ) -> dict[str, Any]:
+        """POST /v1/tasks/tasks/<uuid>/labels/batch/ — accepts a key."""
+        return self._tasks_write(
+            "POST",
+            f"tasks/{task_uuid}/labels/batch/",
+            json={"mode": mode, "labels": labels},
+            idempotent=True,
+            idempotency_key=idempotency_key,
+        )
+
+    def add_task_participant(
+        self, task_uuid: str, *, user_uuid: str, idempotency_key: str | None = None
+    ) -> dict[str, Any]:
+        """POST /v1/tasks/tasks/<uuid>/participants/ — person-only; accepts a key."""
+        return self._tasks_write(
+            "POST",
+            f"tasks/{task_uuid}/participants/",
+            json={"user_uuid": user_uuid},
+            idempotent=True,
+            idempotency_key=idempotency_key,
+        )
+
+    # --- Projects, goals, milestones ---
+
+    def list_projects(
+        self,
+        *,
+        include: list[str] | None = None,
+        params: dict[str, Any] | None = None,
+        **page: Any,
+    ) -> PaginatedResult:
+        """GET /v1/tasks/projects/ — roll-ups only when `include` asks for them."""
+        return self._tasks_list("projects/", params=self._with_include(params, include), **page)
+
+    def get_project(self, project_uuid: str, *, include: list[str] | None = None) -> dict[str, Any]:
+        """GET /v1/tasks/projects/<uuid>/."""
+        return self._tasks_read(
+            f"projects/{project_uuid}/", params=self._with_include(None, include)
+        )
+
+    def list_project_updates(self, **page: Any) -> PaginatedResult:
+        """GET /v1/tasks/projects/updates/ — the batched digest."""
+        return self._tasks_list("projects/updates/", **page)
+
+    def post_project_update(self, project_uuid: str, *, body: str) -> dict[str, Any]:
+        """POST /v1/tasks/projects/<uuid>/updates/ — key IGNORED by the server.
+
+        The loop-closing command: it is how the team sees what an agent did.
+        """
+        return self._tasks_write(
+            "POST", f"projects/{project_uuid}/updates/", json={"body": body}, idempotent=False
+        )
+
+    def list_goals(
+        self,
+        *,
+        include: list[str] | None = None,
+        params: dict[str, Any] | None = None,
+        **page: Any,
+    ) -> PaginatedResult:
+        """GET /v1/tasks/goals/ — roll-ups are ABSENT unless requested (AD-01)."""
+        return self._tasks_list("goals/", params=self._with_include(params, include), **page)
+
+    def get_goal(self, goal_uuid: str, *, include: list[str] | None = None) -> dict[str, Any]:
+        """GET /v1/tasks/goals/<uuid>/."""
+        return self._tasks_read(f"goals/{goal_uuid}/", params=self._with_include(None, include))
+
+    def list_milestones(
+        self, project_uuid: str | None = None, *, params: dict[str, Any] | None = None, **page: Any
+    ) -> PaginatedResult:
+        """GET the milestone family, org-wide or scoped to one project."""
+        path: str = f"projects/{project_uuid}/milestones/" if project_uuid else "milestones/"
+        return self._tasks_list(path, params=params, **page)
+
+    def complete_milestone(
+        self, project_uuid: str, milestone_uuid: str, *, dry_run: bool = False
+    ) -> dict[str, Any]:
+        """POST .../milestones/<uuid>/complete/ — capability 19.
+
+        Completing a milestone does NOT close its open tasks.
+        """
+        return self._tasks_write(
+            "POST",
+            f"projects/{project_uuid}/milestones/{milestone_uuid}/complete/",
+            params={"dry_run": "true"} if dry_run else None,
+            idempotent=False,
+        )
+
+    def reopen_milestone(self, project_uuid: str, milestone_uuid: str) -> dict[str, Any]:
+        """POST .../milestones/<uuid>/reopen/ — the reverse verb."""
+        return self._tasks_write(
+            "POST", f"projects/{project_uuid}/milestones/{milestone_uuid}/reopen/", idempotent=False
+        )
+
+    # --- Container writes (board / project / goal) ---
+    #
+    # These need `tasks:admin`, which an organization API key can NEVER hold: the
+    # validator refuses to store it and the door refuses it independently. The
+    # plan's live probe measured an ADMIN_ORG *owner* refused identically, so the
+    # CLI must blame the credential kind rather than the user's role.
+
+    def create_board(
+        self, *, name: str, idempotency_key: str | None = None, **fields: Any
+    ) -> dict[str, Any]:
+        """POST /v1/tasks/boards/ — accepts a key header; needs tasks:admin."""
+        payload: dict[str, Any] = {
+            "name": name,
+            **{k: v for k, v in fields.items() if v is not None},
+        }
+        return self._tasks_write(
+            "POST", "boards/", json=payload, idempotent=True, idempotency_key=idempotency_key
+        )
+
+    def archive_board(
+        self, board_uuid: str, *, dry_run: bool = False, idempotency_key: str | None = None
+    ) -> dict[str, Any]:
+        """POST /v1/tasks/boards/<uuid>/archive/ — cascades to live tasks."""
+        return self._tasks_write(
+            "POST",
+            f"boards/{board_uuid}/archive/",
+            params={"dry_run": "true"} if dry_run else None,
+            idempotent=True,
+            idempotency_key=idempotency_key,
+        )
+
+    def restore_board(
+        self, board_uuid: str, *, idempotency_key: str | None = None
+    ) -> dict[str, Any]:
+        """POST /v1/tasks/boards/<uuid>/restore/ — cascaded tasks stay archived."""
+        return self._tasks_write(
+            "POST",
+            f"boards/{board_uuid}/restore/",
+            idempotent=True,
+            idempotency_key=idempotency_key,
+        )
+
+    def create_project(
+        self, *, name: str, idempotency_key: str | None = None, **fields: Any
+    ) -> dict[str, Any]:
+        """POST /v1/tasks/projects/ — accepts a key header; needs tasks:admin."""
+        payload: dict[str, Any] = {
+            "name": name,
+            **{k: v for k, v in fields.items() if v is not None},
+        }
+        return self._tasks_write(
+            "POST", "projects/", json=payload, idempotent=True, idempotency_key=idempotency_key
+        )
+
+    def archive_project(
+        self, project_uuid: str, *, dry_run: bool = False, idempotency_key: str | None = None
+    ) -> dict[str, Any]:
+        """POST /v1/tasks/projects/<uuid>/archive/."""
+        return self._tasks_write(
+            "POST",
+            f"projects/{project_uuid}/archive/",
+            params={"dry_run": "true"} if dry_run else None,
+            idempotent=True,
+            idempotency_key=idempotency_key,
+        )
+
+    def create_goal(
+        self, *, name: str, idempotency_key: str | None = None, **fields: Any
+    ) -> dict[str, Any]:
+        """POST /v1/tasks/goals/ — accepts a key header; needs tasks:admin."""
+        payload: dict[str, Any] = {
+            "name": name,
+            **{k: v for k, v in fields.items() if v is not None},
+        }
+        return self._tasks_write(
+            "POST", "goals/", json=payload, idempotent=True, idempotency_key=idempotency_key
+        )
+
+    def archive_goal(
+        self, goal_uuid: str, *, dry_run: bool = False, idempotency_key: str | None = None
+    ) -> dict[str, Any]:
+        """POST /v1/tasks/goals/<uuid>/archive/ — projects are not cascaded."""
+        return self._tasks_write(
+            "POST",
+            f"goals/{goal_uuid}/archive/",
+            params={"dry_run": "true"} if dry_run else None,
+            idempotent=True,
+            idempotency_key=idempotency_key,
+        )
+
+    # --- Person-shaped doors (a bare API key has no answer here) ---
+
+    def list_my_tasks(self, **page: Any) -> PaginatedResult:
+        """GET /v1/tasks/me/tasks/ — needs a signed-in person.
+
+        Takes ``**page`` only, like every other list door. The previous signature
+        declared ``filters=`` **and** ``**page``, so a caller passing ``params=``
+        — which every other list door accepts — collided with the explicit
+        ``params=filters`` and raised ``TypeError`` on every single invocation.
+        """
+        return self._tasks_list("me/tasks/", **page)
+
+    def get_my_task_counts(self) -> dict[str, Any]:
+        """GET /v1/tasks/me/tasks/counts/ — needs a signed-in person."""
+        return self._tasks_read("me/tasks/counts/")
+
+    def list_tasks_inbox(self, **page: Any) -> PaginatedResult:
+        """GET /v1/tasks/inbox/ — needs a signed-in person."""
+        return self._tasks_list("inbox/", **page)
+
+    def get_tasks_inbox_unread_count(self) -> dict[str, Any]:
+        """GET /v1/tasks/inbox/unread-count/ — needs a signed-in person."""
+        return self._tasks_read("inbox/unread-count/")
+
     def get_labels_entitlement(self) -> dict[str, Any]:
         """GET /v1/labels/entitlement/ — org Labels feature flags for the caller."""
         response: httpx.Response = self._request("GET", f"{self.api_url}/v1/labels/entitlement/")
@@ -2002,10 +2797,13 @@ class DailyBotClient:
 
     def get_registration_challenge(self) -> dict[str, Any]:
         """GET /v1/agent/register/challenge/ — no auth required."""
-        response: httpx.Response = httpx.get(
-            f"{self.api_url}/v1/agent/register/challenge/",
-            headers=self._headers(authenticated=False),
-            timeout=self.timeout,
+        response: httpx.Response = self._guard_transport(
+            lambda: httpx.get(
+                f"{self.api_url}/v1/agent/register/challenge/",
+                headers=self._headers(authenticated=False),
+                timeout=self.timeout,
+            ),
+            method="GET",
         )
         return self._handle_response(response)
 
@@ -2030,10 +2828,13 @@ class DailyBotClient:
         }
         if contact_email:
             payload["contact_email"] = contact_email
-        response: httpx.Response = httpx.post(
-            f"{self.api_url}/v1/agent/register/",
-            json=payload,
-            headers=self._headers(authenticated=False),
-            timeout=self.timeout,
+        response: httpx.Response = self._guard_transport(
+            lambda: httpx.post(
+                f"{self.api_url}/v1/agent/register/",
+                json=payload,
+                headers=self._headers(authenticated=False),
+                timeout=self.timeout,
+            ),
+            method="POST",
         )
         return self._handle_response(response)

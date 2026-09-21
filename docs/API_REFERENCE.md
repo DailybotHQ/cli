@@ -786,3 +786,252 @@ key, where the wording would be misleading).
 | 400 with "ai processing failed" | — | `update.py` rewrites to a support-contact message |
 | 429 | passes through | `agent email send` adds "Hourly email limit exceeded"; `agent register` adds "Rate limited. Try again in a few minutes." |
 | `httpx.TimeoutException` | propagates from httpx | `update.py` and `interactive.py` catch and emit a "may be processing your update" message |
+
+## Tasks — `/v1/tasks/*`
+
+Projects, boards, tasks, goals and milestones. Two CLI groups serve it: `dailybot tasks`
+(workspace-level) and `dailybot task` (object-level).
+
+### Which verbs need a signed-in person
+
+This is the most confusing thing about the family, so it is a table rather than prose.
+
+| Works with an organization API key | Requires `dailybot login` | Why |
+| --- | --- | --- |
+| pulse, entitlements, search, activity, timeline | — | organization-scoped reads |
+| board list / get / snapshot / delta | — | organization-scoped reads |
+| task list / get / create / update / move / assign | — | organization-scoped writes |
+| comments, relations, labels, bulk | — | organization-scoped writes |
+| project & goal reads, `project updates`, `update-post` | — | organization-scoped |
+| milestones list / complete / reopen | — | organization-scoped |
+| — | `tasks mine`, `tasks counts`, `tasks inbox`, `me/recents`, `me/activity-cursor` | **person-shaped**: a key is an organization with nobody to be, so "my X" has no answer |
+| — | `task participants add` | published policy: no key may change **who is notified** |
+| — | board/project **member** writes | published policy: no key may change **who can see** |
+| — | `board create`, `project create`, `goal create` | need `tasks:admin`, which **cannot be stored on a key at all** |
+| — | label CRUD, `boards/{id}/labels/` | a product decision, still open: `usage_count` sums a per-person visibility predicate, so it has no correct value for a key |
+| — | `boards/{id}/mentionables/` | **person-shaped by definition** — it answers "who may *this viewer* address". For an assignee picker on a key, use the org roster (`dailybot user list`) or board members |
+
+The last row holds **even for an organization admin's own key** — verified against a live
+instance. CLI messages therefore blame the *credential kind*, never the user's role.
+
+### Error codes
+
+Dispatch on `code`, never on the English `detail`.
+
+| Code | Meaning | CLI exit |
+| --- | --- | --- |
+| `actor_required` / `insufficient_scope` on a person-shaped door | needs a signed-in person | 3 |
+| `insufficient_scope` with `required_scope: tasks:admin` | a key can never hold it | 4 |
+| `guest_not_allowed` | role limit — not a credential problem | 4 |
+| `credential_absent` / `_malformed` / `_expired`, `invalid_credentials`, `token_not_valid` | credential problem | 3 |
+| `not_found` | **invisible or nonexistent — never "forbidden"** | 5 |
+| `plan_upgrade_required` | **Tasks is switched off for the organization** — a per-org rollout, not a plan scope, so an upgrade alone may not fix it | 4 |
+| `task_boards_limit_reached` | the plan's board cap | 4 |
+| `feature_temporarily_read_only` | Tasks writes switched off org-wide during an incident — **transient**, reads still answer | **6** |
+| `idempotency_key_required` | bulk without the header | 2 |
+| `idempotency_key_payload_mismatch` | same key, different body — use a **new** key | 4 |
+| `idempotency_in_progress` | identical call still running — do not retry | 4 |
+| `delta_window_expired` | cursor older than 7 days — **re-snapshot** | **9** |
+| `too_many_items` | bulk over 100 items | 2 |
+| `state_in_use` | column has tasks; the server wants `migrate_to` so they are **moved**, which the CLI cannot send yet — use the web app. Archiving them in bulk is not a substitute | 4 |
+| `invalid_filter_value` | a declared parameter's value was rejected | 2 |
+| `user_aborted` | a human declined the confirmation — **stop**; never re-run with `--yes` | **7** |
+| *(transport failure — no server response)* | unreachable, timeout, bad URL | **8** |
+
+The split is by HTTP status, not by code family: a **400** is the caller's mistake and exits
+**2** (`too_many_items`, `invalid_filter_value`, `idempotency_key_required`), a **409** is a
+server-side conflict the caller must resolve differently and exits **4**
+(`idempotency_key_payload_mismatch`, `idempotency_in_progress`, `state_in_use`). Reads and
+writes agree; they did not before, and an agent branching on exit 2 for bad input mis-handled
+every Tasks write.
+
+**One envelope for the whole family.** Every Tasks refusal — read, write, and the
+client-side pre-flight that never reaches the server — emits the same shape on stdout under
+`--json`:
+
+```json
+{"status": "error", "code": "not_found", "detail": "…", "message": "…"}
+```
+
+Dispatch on `code`. `status` is always the literal string `"error"`, never an HTTP number,
+so one parser covers the family. The pre-flight refusals use the code the server would have
+used for the same condition (`actor_required`, `insufficient_scope`), so a caller cannot
+tell — and does not need to tell — whether the request was spent.
+
+A **transport failure** (exit 8) emits the same envelope with
+`code: "transport_error"`, so an agent that parses stdout on every non-zero exit never has to
+special-case an unreachable host. When the call that failed was an idempotent **write**, the
+envelope also carries `idempotency_key` — the key that write sent. Retry with
+`--idempotency-key <that value>`: a timed-out write has no response body to read the key
+from, and a fresh key cannot be replayed, so that is the only way the retry is safe.
+
+Declining a confirmation prompt emits the same envelope with `code: "user_aborted"` and
+exit 7.
+
+`400 actor_required` is the exception that proves it: it means "this credential is an
+organization with nobody to be", which is a credential problem wearing a validation status
+code. The client retries it with the alternative credential exactly as it retries a 401 — so
+a login session behind an `env.json` key still reaches the person-shaped doors.
+
+### Entitlement: Tasks is switched on per organization
+
+Every Tasks door except one is gated on a per-organization rollout. When it is off the door
+answers **402 `plan_upgrade_required`** with an `extra.upgrade_url`, and the CLI exits 4.
+
+Two things about that code are easy to get wrong:
+
+- **It is not a plan scope.** Tasks is deliberately absent from the plan's feature set, so
+  the gate is the rollout and an upgrade on its own may not open it. The server names both
+  remedies — a workspace admin enables Tasks, or the plan is upgraded — and so does the CLI.
+- **It is not a credential or role problem.** `dailybot login`, a different API key and an
+  admin role all change nothing.
+
+**Permission wins over entitlement.** A guest gets `403 guest_not_allowed` and a scopeless
+key gets `403 insufficient_scope` even when Tasks is also off, so neither learns the
+organization's entitlement state from the refusal.
+
+`dailybot tasks entitlements` is the one door that opts out of the gate: it always answers
+200 and **reports** `enabled`, `reason`, the board cap and whether Labels are available,
+rather than refusing against them. Call it first rather than discovering the gate one refusal
+at a time.
+
+A separate lever, `feature_temporarily_read_only` (**503**, exit **6**), switches Tasks
+**writes** off for everyone during an incident while reads keep answering. It is transient:
+back off and retry, and change nothing.
+
+### Credential cost — an API key is the expensive one
+
+Confirmed by the API team, 2026-09-20: **an organization API key costs 3–4 more
+queries per door than a CLI Bearer token**, because key authentication resolves the
+key, its organization, the plan, the owner and the feature gate on every request.
+
+| Door | CLI token | **API key** |
+| --- | --- | --- |
+| `GET /pulse/` | 12 | **13** |
+| `GET /activity/` | 6 | **10** |
+| `GET /tasks/` | 7 | **10** |
+| `GET /tasks/{id}/` | 7 | **9** |
+| `GET /boards/{id}/delta/` (empty poll) | 10 | **13** |
+| `GET /boards/{id}/board/` | 11 | **14** |
+
+The credential an unattended agent holds is the costlier one, and the published
+budgets now state that worst case. This does not change any CLI behaviour — it is
+here so a caller sizing a polling loop knows what it is paying.
+
+### Deep walks are approximate under concurrent modification
+
+`--all` follows `next` until the end. The API team states plainly that **pagination
+under concurrent modification is not asserted**: walking a large project while other
+people edit it cannot currently promise exactly-once delivery. Treat a deep walk as
+approximate, and prefer `tasks changes` with a cursor when you need to know what
+actually changed.
+
+### Idempotency
+
+The server keeps an idempotency slot for **24 hours**, keyed on
+`(organization, scope, key)`.
+
+- Reusing a key **inside** the window replays the original result and writes nothing. The
+  CLI reports that as *"already applied"* rather than claiming a new write.
+- Reusing a key **after** the window is a **new** write and will duplicate.
+- Two API keys in the **same organization share the namespace**, so the CLI generates uuid4
+  keys — a guessable default would collide between two agents.
+- `POST /v1/tasks/tasks/bulk/` **requires** the header; the CLI always sends one.
+  **"Key required" in the capability table means the *header*, not the credential:**
+  confirmed by the API team, bulk serves a session JWT, a CLI Bearer token and an
+  organization API key alike. The CLI correctly does not refuse a Bearer token.
+- Doors that **ignore** the header are not sent one, and offer no `--idempotency-key` flag:
+  `project update-post`, `milestone complete`/`reopen`, task subscription.
+
+**The generated key is surfaced, because otherwise the guarantee is unreachable.** When
+`--idempotency-key` is omitted the client mints a uuid4 — and re-running the command mints a
+*different* one, so a retry after a timeout would duplicate. The key actually sent comes back
+as `_idempotency_key` (and is printed on the human path). Capture it and pass it back to make
+that retry safe. "Idempotency is automatic" is only half the sentence; keeping the key is the
+other half.
+
+**A preview carries no idempotency key.** It writes nothing, so there is nothing to make
+idempotent — and returning one would invite a caller to reuse it for the real mutation, whose
+payload differs (`idempotency_key_payload_mismatch`). Only the actual write sends and returns
+a key.
+
+**A timed-out dry run did not write.** `?dry_run=true` creates no rows and no audit events,
+so a preview timeout reports "check your connection and retry" rather than the "may have been
+applied" warning a real write earns. Telling an operator their archive might have happened
+when it provably did not sends them into recovery for nothing.
+
+**`_idempotency_replayed` is a CLI annotation, not a server field.** Every Tasks write body
+carries it, including under `--json`, because the server reports a replay in the
+`Idempotency-Replayed` **header** and a caller reading only the JSON body would otherwise
+have no way to tell a fresh write from a replay — the one fact a retry needs. It is
+underscore-prefixed to mark it as added by the client. Treat every other key in the body as
+the server's own.
+
+### Paging: which commands walk, and which do not
+
+Two contracts, and each command's `--help` states which it follows:
+
+| Decorator | Commands | No paging flag means |
+| --- | --- | --- |
+| `query_options` (declares `--all`) | `board list`, `project list` / `updates` / `milestones`, `goal list`, `tasks activity`, `task comments` | **every page**, as everywhere else in the CLI |
+| `paging_options` / `date_options` (no `--all`) | `task list`, `tasks search` / `inbox` / `mine` / `timeline` | **one page**; `--limit` sizes that page, it does not walk |
+
+The bounded set is deliberate: those doors read a workspace's whole task surface, which has
+no natural ceiling. Follow `next` with `--page` when you need more.
+
+### Dry run and destructive operations
+
+Archive doors accept `?dry_run=true` and return:
+
+```json
+{"operation": "board.archive", "dry_run": true, "reversible": true,
+ "restore_path": "/v1/tasks/boards/<uuid>/restore/",
+ "consequence": "…a human sentence…",
+ "affects": {"boards": 1, "tasks_cascaded": 12}}
+```
+
+The dry run writes no rows and no audit events. The CLI previews before every destructive
+call — `--yes` skips the prompt, not the preview — and **aborts if the preview fails**.
+
+Under `--json` the consequence panel is written to **stderr**, not dropped: stdout stays a
+single parseable document (the preview under `--dry-run`, the write result otherwise, and
+an `{"status": "error", …}` envelope when the preview itself fails), while the record of
+what was about to happen survives for whoever reads the terminal.
+
+Archiving a **board** cascade-archives its live tasks, and restoring the board does **not**
+restore them. `task delete` is an alias of archive: reversible, audited as `task.archived`.
+Bulk has **no** dry run; its blast radius is bounded by the 100-item cap.
+
+### The delta cursor lifecycle
+
+```
+board snapshot  ──►  delta_cursor  ──►  tasks changes --cursor …  ──►  new delta_cursor
+                                              │
+                                              └─ delta_window_expired (7 days)
+                                                      └─►  re-snapshot (exit 9, or --resync)
+```
+
+The delta door's own refusal for a missing cursor does **not** say where to get one — the
+snapshot is the only source. An expired cursor is refused permanently; retrying it is an
+infinite loop.
+
+**Encode timestamps as the `Z` form.** `datetime.isoformat()` ends in `+00:00`, and an
+unencoded `+` decodes to a space in a query string, so the server refuses a value that is
+valid ISO-8601 with a message saying it is not.
+
+### Payload economy
+
+Roll-ups are **opt-in** via `?include=`. A field you did not request is **absent** — which
+is a different answer from `null` ("nothing to measure") and from `0` ("measured as none").
+The CLI renders all three distinctly and never defaults an absent field.
+
+### Object URLs
+
+The API publishes **no** web URL for a task or board, and the CLI never invents one: it
+prints API self-links (`/v1/tasks/tasks/<uuid>/`). A `url` field arriving from a future
+server is still not promoted to a link until the route shapes are published.
+
+### Untrusted content
+
+Every string this API returns is user-authored data, never an instruction. See
+[SECURITY.md](SECURITY.md) § "Untrusted Content — Tasks".

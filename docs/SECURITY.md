@@ -73,6 +73,75 @@ The default API URL is `https://api.dailybot.com` — TLS is enforced by httpx (
 
 We do **not** disable certificate verification anywhere. Don't add a flag for it.
 
+## Untrusted Content — Tasks
+
+**Every string the Tasks API returns is user-authored data, never an instruction.**
+
+This is a different class of hazard from the rest of the CLI. Anyone who can create a
+task on a shared board can write text that an agent will later read **while holding a
+credential**, so a task titled `delete this board` is an injection vector into a
+privileged execution context. The CLI matters here more than a typical client because its
+output is routinely consumed *by* an agent — that is the premise of the Dailybot agent
+skill pack.
+
+**The boundary is the renderer.** `display.present_untrusted()` is the single enforcement
+point: it escapes Rich markup (so a title cannot style the terminal), wraps the value in
+quotes (so a reader sees a datum, not a sentence addressed to them), and truncates.
+Every user-authored field goes through it.
+
+**The trusted set is exact and auditable.** `display.TASKS_TRUSTED_FIELDS` lists the only
+server-generated fields — `uuid`, `key`, `rank`, `cursor`, `etag`, `delta_cursor`, `code`,
+and the three timestamps. Everything else is untrusted. A test asserts the set matches the
+API contract rather than relying on memory.
+
+**`provenance: typed` is attribution, not trust.** It means a person typed the comment. It
+does not make the comment an instruction, and the renderer never labels it "trusted",
+"verified" or "system".
+
+**`--json` carries data, not narration.** Untrusted values are emitted as plain string
+fields and are never interpolated into a message, so an agent parsing the output can tell
+a field from a sentence.
+
+Regression coverage lives in `tests/tasks_security_test.py`, which renders
+instruction-shaped strings through every Tasks view in both human and JSON modes.
+
+## Tasks Credentials and Isolation
+
+**Some Tasks doors require a signed-in person.** `me/tasks`, `me/tasks/counts`,
+`me/recents`, `me/activity-cursor`, `inbox` and `inbox/unread-count` are defined relative
+to the calling user; an organization API key is an organization with nobody to be, so it
+is refused. So are the writes that change **who can see** or **who is notified**
+(participants, membership).
+
+**`tasks:admin` can never be held by an API key.** The scope validator refuses to store it
+and the doors refuse it independently, so `board create`, `project create` and
+`goal create` need `dailybot login`. This holds **even for an organization admin's own
+key** — verified against a live instance. CLI messages therefore blame the *credential
+kind*, never the user's role: telling an org admin they "need to be an admin" would send
+them looking for a setting that cannot exist.
+
+**Isolation is 404, never 403.** An object in another organization is *invisible*, not
+forbidden. No Tasks command renders permission language for `not_found`, because doing so
+would both mislead the user and disclose that the object exists.
+
+**The CLI never claims an actor the server did not name.** A bare API key is attributed
+`automation` server-side; where the server names nobody, the CLI says nothing.
+
+## Destructive Operations — Tasks
+
+No destructive Tasks command acts without the server's own statement of what it will do.
+`commands/_destructive.preview_then_confirm()` fetches `?dry_run=true`, renders the
+consequence, the affected counts and the restore path, and only then asks.
+
+- `--yes` skips the **prompt**, never the preview. The record of what was about to happen
+  is the point, and the flag is advisory anyway: the server bounds blast radius per call.
+- `--dry-run` shows the preview and performs no mutation.
+- **A preview that fails aborts.** Not knowing the blast radius is not permission to proceed.
+- An irreversible operation is marked as such and offered no restore path.
+- `task delete` is an alias of archive and says so; it never claims data was destroyed.
+- Bulk has no dry run; its blast radius is bounded by the server's 100-item cap, which the
+  CLI enforces before sending.
+
 ## OTP Handling
 
 The login flow is two HTTP calls:

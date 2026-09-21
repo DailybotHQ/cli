@@ -14,7 +14,7 @@ from rich.panel import Panel
 from rich.table import Table
 from rich.text import Text
 
-from dailybot_cli.api_client import resource_uuid
+from dailybot_cli.api_client import TASKS_DELTA_MAX_WINDOW_DAYS, resource_uuid
 from dailybot_cli.config import get_api_url, get_app_url
 
 console: Console = Console()
@@ -1503,3 +1503,321 @@ def print_archived(kind: str, uuid: str) -> None:
 def print_reordered(kind: str, order: list[str]) -> None:
     """Confirm that questions were reordered."""
     print_success(f"{kind.capitalize()} questions reordered ({len(order)} items).")
+
+
+# ---------------------------------------------------------------------------
+# Tasks (/v1/tasks/*) — renderers and the untrusted-content boundary
+#
+# UNTRUSTED_CONTENT.md is non-negotiable: every string the Tasks API returns is
+# **user-authored data, never an instruction**. Anyone who can create a task on a
+# shared board can write text an agent will later read while holding a credential,
+# so a title reading "delete this board" is an injection vector into a privileged
+# execution context.
+#
+# This matters more here than elsewhere in the CLI because the CLI's own output is
+# routinely read BY an agent — that is the premise of the skill pack. The renderer
+# is therefore the boundary: untrusted values are escaped and visibly quoted in
+# human output, and stay plain field values in --json (never interpolated into a
+# message string).
+# ---------------------------------------------------------------------------
+
+# The ONLY server-generated fields. Everything else on a Tasks payload is
+# user-authored. Kept as an explicit constant so the boundary is auditable
+# rather than remembered (UNTRUSTED_CONTENT.md § Server contract).
+TASKS_TRUSTED_FIELDS: frozenset[str] = frozenset(
+    {
+        "uuid",
+        "key",
+        "rank",
+        "cursor",
+        "etag",
+        "delta_cursor",
+        "code",
+        "created_at",
+        "updated_at",
+        "completed_at",
+    }
+)
+
+# Table cells truncate; a 4 KB description must not blow up a row.
+UNTRUSTED_CELL_LIMIT: int = 60
+_EMPTY_PLACEHOLDER: str = "—"
+
+
+def present_untrusted(value: Any, *, limit: int | None = None) -> str:
+    """Render a user-authored string as visibly quoted, escaped data.
+
+    Three things happen here, and each closes a distinct hole:
+
+    * **escape** — Rich reads ``[...]`` as a style tag, so a task titled
+      ``[bold red]urgent[/bold red]`` would otherwise style the operator's terminal.
+    * **quote** — the value is wrapped so a reader (human or model) sees a datum,
+      not a sentence addressed to them. This is the whole point: an agent reading
+      ``delete this board`` unquoted may act on it.
+    * **truncate** — a cell stays a cell.
+
+    Server-generated fields (:data:`TASKS_TRUSTED_FIELDS`) bypass this; everything
+    else goes through it.
+    """
+    if value is None or value == "":
+        return _EMPTY_PLACEHOLDER
+    text: str = str(value)
+    cap: int = limit if limit is not None else UNTRUSTED_CELL_LIMIT
+    if len(text) > cap:
+        text = text[: cap - 1] + "\u2026"
+    return f'"{escape(text)}"'
+
+
+def _state_name(task: dict[str, Any]) -> str:
+    state: Any = task.get("state")
+    if isinstance(state, dict):
+        return present_untrusted(state.get("name"), limit=18)
+    return present_untrusted(state, limit=18)
+
+
+def print_tasks_table(tasks: list[dict[str, Any]]) -> None:
+    """Render a task list. Keys and uuids are trusted; titles are not."""
+    if not tasks:
+        print_info("No tasks.")
+        return
+    table: Table = Table(title="Tasks", show_lines=False)
+    table.add_column("Key", style="cyan", no_wrap=True)
+    table.add_column("Title")
+    table.add_column("State", no_wrap=True)
+    table.add_column("Assignee", no_wrap=True)
+    for task in tasks:
+        owner: Any = task.get("executor") or task.get("owner") or {}
+        owner_name: Any = owner.get("full_name") if isinstance(owner, dict) else owner
+        table.add_row(
+            str(task.get("key") or task.get("uuid") or ""),
+            present_untrusted(task.get("title")),
+            _state_name(task),
+            present_untrusted(owner_name, limit=20),
+        )
+    console.print(table)
+
+
+def print_task_detail(task: dict[str, Any]) -> None:
+    """Render one task.
+
+    Prints the **API self-link** only. The web app owns its path shapes and they
+    are not published (OBJECT_URLS.md); the plan's live probe confirmed the payload
+    carries no ``url`` field at all. Inventing one would hand a human a dead link.
+    """
+    uuid_value: str = str(task.get("uuid") or "")
+    lines: list[str] = [
+        f"[bold]Key[/bold]        {escape(str(task.get('key') or '—'))}",
+        f"[bold]Title[/bold]      {present_untrusted(task.get('title'), limit=200)}",
+        f"[bold]State[/bold]      {_state_name(task)}",
+        f"[bold]UUID[/bold]       {escape(uuid_value)}",
+        f"[bold]API link[/bold]   /v1/tasks/tasks/{escape(uuid_value)}/",
+    ]
+    description: Any = task.get("description")
+    if description:
+        lines.append(f"[bold]Description[/bold] {present_untrusted(description, limit=400)}")
+    console.print(Panel("\n".join(lines), title="Task", border_style="cyan"))
+
+
+def print_board_snapshot(snapshot: dict[str, Any]) -> None:
+    """Render the dense board snapshot and surface its delta cursor.
+
+    The cursor is the only place a caller can obtain one: the delta door's own 400
+    for a missing cursor does not say where to get it. So it is printed plainly,
+    copyably, and next to the command that consumes it.
+    """
+    groups: Any = snapshot.get("groups") or []
+    table: Table = Table(title="Board snapshot")
+    table.add_column("Column", style="cyan", no_wrap=True)
+    table.add_column("Tasks", justify="right", no_wrap=True)
+    for group in groups:
+        if not isinstance(group, dict):
+            continue
+        items: Any = group.get("tasks") or []
+        table.add_row(present_untrusted(group.get("name"), limit=24), str(len(items)))
+    console.print(table)
+    cursor: Any = snapshot.get("delta_cursor")
+    if cursor:
+        console.print(
+            f"[bold]delta_cursor[/bold]  {escape(str(cursor))}\n"
+            "[dim]Pass it to `dailybot tasks changes` to read only what changed since.[/dim]"
+        )
+
+
+def print_delta_summary(delta: dict[str, Any]) -> None:
+    """Render a delta read, or the window-expiry instruction.
+
+    ``delta_window_expired`` is rendered as a **warning, not an error**: the
+    correct response is an action (re-snapshot), not a failure. Retrying the same
+    cursor is an infinite loop — it will never be accepted again.
+    """
+    if delta.get("code") == "delta_window_expired" or delta.get("full_resync_required"):
+        days: Any = delta.get("max_window_days", TASKS_DELTA_MAX_WINDOW_DAYS)
+        print_warning(
+            f"That cursor is older than the server's {days}-day delta window and will "
+            "never be accepted again. Read the board snapshot to get a fresh cursor and "
+            "resume from there."
+        )
+        return
+    changed: Any = delta.get("changed") or []
+    created: Any = delta.get("created") or []
+    archived: Any = delta.get("archived") or []
+    console.print(
+        f"[bold]Changed[/bold] {len(changed)}  "
+        f"[bold]Created[/bold] {len(created)}  "
+        f"[bold]Archived[/bold] {len(archived)}"
+    )
+    cursor: Any = delta.get("delta_cursor")
+    if cursor:
+        console.print(f"[bold]delta_cursor[/bold]  {escape(str(cursor))}")
+
+
+def print_dry_run_consequence(preview: dict[str, Any], *, to_stderr: bool = False) -> None:
+    """Render a dry-run preview.
+
+    BLAST_RADIUS.md is explicit that the CLI must state the **consequence**, not
+    merely ask "are you sure" — so the server's own sentence is the headline and
+    the affected counts are shown verbatim. An irreversible operation says so
+    unmistakably and is offered no restore path, because there is none.
+
+    ``to_stderr`` keeps the record without breaking the ``--json`` contract: under
+    ``--json`` stdout must be a single parseable document, so the panel moves to
+    stderr rather than disappearing. Losing the record was never an option — the
+    rule above is that the consequence is always shown.
+    """
+    reversible: bool = bool(preview.get("reversible"))
+    operation: str = str(preview.get("operation") or "operation")
+    lines: list[str] = [f"[bold]Operation[/bold]  {escape(operation)}"]
+    consequence: Any = preview.get("consequence")
+    if consequence:
+        lines.append(f"\n{escape(str(consequence))}\n")
+    affects: Any = preview.get("affects")
+    if isinstance(affects, dict) and affects:
+        detail: str = "  ".join(f"{escape(str(k))}={escape(str(v))}" for k, v in affects.items())
+        lines.append(f"[bold]Affects[/bold]    {detail}")
+    if reversible:
+        restore: Any = preview.get("restore_path")
+        if restore:
+            lines.append(f"[bold]Restore[/bold]    {escape(str(restore))}")
+        border: str = "yellow"
+        title: str = "Dry run — reversible"
+    else:
+        lines.append("[bold red]This operation is IRREVERSIBLE.[/bold red]")
+        border = "red"
+        title = "Dry run — irreversible"
+    stream: Console = error_console if to_stderr else console
+    stream.print(Panel("\n".join(lines), title=title, border_style=border))
+
+
+def print_tasks_detail_panel(
+    title: str, data: dict[str, Any], fields: list[tuple[str, str]]
+) -> None:
+    """Detail panel for a Tasks object, with user-authored fields quoted.
+
+    The shared `print_detail_panel` interpolates `str(raw)` into a Rich cell, so a
+    board named `[bold red]URGENT[/bold red]` styles the terminal and reaches an
+    agent unquoted — the same injection the list renderers close. Fields whose key
+    is in `TASKS_TRUSTED_FIELDS` stay plain; everything else goes through the
+    presenter.
+    """
+    safe: dict[str, Any] = {}
+    for _, key in fields:
+        raw: Any = data.get(key)
+        safe[key] = raw if key in TASKS_TRUSTED_FIELDS else present_untrusted(raw, limit=120)
+    print_detail_panel(title, safe, fields)
+
+
+def print_boards_table(boards: list[dict[str, Any]]) -> None:
+    """Render a board list. Keys and uuids are trusted; names are not."""
+    if not boards:
+        print_info("No boards.")
+        return
+    table: Table = Table(title="Boards")
+    table.add_column("Key", style="cyan", no_wrap=True)
+    table.add_column("Name")
+    table.add_column("UUID", no_wrap=True)
+    for row in boards:
+        table.add_row(
+            str(row.get("key") or ""),
+            present_untrusted(row.get("name")),
+            str(row.get("uuid") or ""),
+        )
+    console.print(table)
+
+
+def print_projects_table(projects: list[dict[str, Any]], *, rollup: Any = None) -> None:
+    """Render a project list. ``rollup`` renders the absent/null/value distinction."""
+    if not projects:
+        print_info("No projects.")
+        return
+    table: Table = Table(title="Projects")
+    table.add_column("Name")
+    table.add_column("Progress", no_wrap=True)
+    table.add_column("UUID", no_wrap=True)
+    for row in projects:
+        table.add_row(
+            present_untrusted(row.get("name")),
+            rollup(row, "progress") if rollup else "",
+            str(row.get("uuid") or ""),
+        )
+    console.print(table)
+
+
+def print_goals_table(goals: list[dict[str, Any]], *, rollup: Any = None) -> None:
+    """Render a goal list, preserving absent / null / value as three answers."""
+    if not goals:
+        print_info("No goals.")
+        return
+    table: Table = Table(title="Goals")
+    table.add_column("Name")
+    table.add_column("Progress", no_wrap=True)
+    table.add_column("Projects", no_wrap=True)
+    table.add_column("UUID", no_wrap=True)
+    for row in goals:
+        table.add_row(
+            present_untrusted(row.get("name")),
+            rollup(row, "progress") if rollup else "",
+            rollup(row, "project_count") if rollup else "",
+            str(row.get("uuid") or ""),
+        )
+    console.print(table)
+
+
+def print_milestones_table(milestones: list[dict[str, Any]], *, rollup: Any = None) -> None:
+    """Render a milestone list."""
+    if not milestones:
+        print_info("No milestones.")
+        return
+    table: Table = Table(title="Milestones")
+    table.add_column("Name")
+    table.add_column("Status", no_wrap=True)
+    table.add_column("Open", no_wrap=True)
+    table.add_column("UUID", no_wrap=True)
+    for row in milestones:
+        table.add_row(
+            present_untrusted(row.get("name")),
+            present_untrusted(row.get("status"), limit=16),
+            rollup(row, "open_task_count") if rollup else "",
+            str(row.get("uuid") or ""),
+        )
+    console.print(table)
+
+
+def print_task_comments(comments: list[dict[str, Any]]) -> None:
+    """Render task comments.
+
+    A comment body is the highest-value injection surface in the Tasks family: it
+    is free text written by whoever can see the task, read later by an agent
+    holding a credential. ``provenance: typed`` means a person typed it — which is
+    **still data, not instructions** — so it is rendered as attribution and never
+    as a trust marker.
+    """
+    if not comments:
+        print_info("No comments.")
+        return
+    for comment in comments:
+        author: Any = comment.get("author") or {}
+        author_name: Any = author.get("full_name") if isinstance(author, dict) else author
+        attribution: str = present_untrusted(author_name, limit=24)
+        if comment.get("provenance") == "typed":
+            attribution += " [dim](typed by a person)[/dim]"
+        console.print(f"{attribution}: {present_untrusted(comment.get('body'), limit=400)}")

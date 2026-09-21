@@ -859,6 +859,73 @@ Replies to agent emails land as messages retrievable via `dailybot agent message
 | `dailybot form transition <uuid> <resp_uuid> <state>` | Advance a response through the workflow |
 | `dailybot form delete <uuid> <resp_uuid>` | Delete a response (author / owner / admin) |
 
+### Tasks
+
+Projects, boards and tasks. Two groups: **`dailybot tasks`** answers questions about the
+workspace, **`dailybot task`** reads or changes one task.
+
+The command an agent should reach for first is **`dailybot project update-post`** — it is
+how the team sees what was done. An agent that moves tasks silently is invisible to the
+humans who own them.
+
+| Command | Description |
+|---------|-------------|
+| `dailybot tasks status` | Workspace pulse — open / overdue / blocked counts in one request |
+| `dailybot tasks entitlements` | What the plan allows (board limit, Labels); always answers 200 |
+| `dailybot tasks search -q <text>` | Search tasks, boards and projects |
+| `dailybot tasks activity` | Activity feed — the catch-up read after an absence |
+| `dailybot tasks timeline` | Dated view of the workspace |
+| `dailybot tasks changes <board>` | What changed since a cursor. **One read per call**; exits 9 if the cursor expired (`--resync` re-snapshots) |
+| `dailybot tasks inbox` | Your Tasks notifications — **needs `dailybot login`** |
+| `dailybot tasks mine` | Tasks that are yours (`--scope`) — **needs `dailybot login`** |
+| `dailybot tasks counts` | Your task counts by bucket — **needs `dailybot login`** |
+| `dailybot task list` | List tasks (`--board`, `--state`, `--assignee`, `--label`, `--has-dates`, `--include`) |
+| `dailybot task get <uuid>` | Show one task |
+| `dailybot task create --title <t>` | Create a task; sends an idempotency key so a retry cannot duplicate |
+| `dailybot task update <uuid>` | Change fields — partial update, never an overwrite |
+| `dailybot task move <uuid>` | Move to another column (`--state`) or board (`--board`) |
+| `dailybot task assign <uuid> --to <user>` | Assign a task |
+| `dailybot task comment <uuid> <body>` | Comment (`-` reads the body from stdin) |
+| `dailybot task comments <uuid>` | List a task's comments |
+| `dailybot task link <a> <b> --type <rel>` | Relate two tasks |
+| `dailybot task labels <uuid> --mode add\|remove\|replace` | Change a task's labels |
+| `dailybot task participants add <uuid> --user <u>` | Add a participant — **needs `dailybot login`** |
+| `dailybot task archive <uuid>` | Archive a task. Previews the consequence first; reversible |
+| `dailybot task delete <uuid>` | Alias of archive — nothing is destroyed |
+| `dailybot task restore <uuid>` | Restore an archived task |
+| `dailybot task bulk --operation <op> -f <file>` | One operation over many tasks. Max **100** items; no dry run |
+| `dailybot board list` | List boards |
+| `dailybot board get <uuid>` | Board metadata |
+| `dailybot board snapshot <uuid>` | The whole board in one request; carries the `delta_cursor` that `tasks changes` consumes |
+| `dailybot board create --name <n>` | Create a board — **needs `dailybot login`** |
+| `dailybot board archive <uuid>` | Archive a board. **Cascade-archives its live tasks**, and restoring does not bring them back |
+| `dailybot board restore <uuid>` | Restore a board (cascaded tasks stay archived) |
+| `dailybot project list` | List projects (`--include progress`) |
+| `dailybot project get <uuid>` | Show one project |
+| `dailybot project updates` | Batched update digest — replaces one request per project |
+| `dailybot project update-post <uuid> <body>` | **Post a project update** — how the team sees what was done |
+| `dailybot project milestones [<uuid>]` | List milestones |
+| `dailybot project milestone-complete <p> <m>` | Complete a milestone. **Its open tasks stay open** |
+| `dailybot project milestone-reopen <p> <m>` | Reopen a milestone |
+| `dailybot project create --name <n>` | Create a project — **needs `dailybot login`** |
+| `dailybot project archive <uuid>` | Archive a project |
+| `dailybot goal list` | List goals (`--include` is repeatable: `--include progress --include projects`) |
+| `dailybot goal get <uuid>` | Show one goal |
+| `dailybot goal create --name <n>` | Create a goal — **needs `dailybot login`** |
+| `dailybot goal archive <uuid>` | Archive a goal (its projects are not archived) |
+
+**Three things worth knowing before you script against this:**
+
+- **Some doors need a person.** An organization API key has no answer for "my tasks" or
+  "my inbox", and it can never hold `tasks:admin` — so container creates need
+  `dailybot login`. This is true even for an organization admin's own key.
+- **Roll-ups are opt-in.** A field you did not request with `--include` is **absent** from
+  the payload. Absent, `null` and `0` are three different answers, and the CLI renders them
+  as three different things.
+- **Destructive commands preview first.** The server is asked what the operation will do,
+  and that consequence is printed — including with `--yes`, which skips the prompt, not the
+  preview.
+
 ### Kudos
 
 | Command | Description |

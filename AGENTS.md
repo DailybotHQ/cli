@@ -35,10 +35,10 @@
 
 **Dailybot CLI** is a Python command-line tool that bridges **humans** and **agents** with the [Dailybot](https://www.dailybot.com) platform. It provides:
 
-- **For humans** — email-OTP login, viewing pending check-ins, submitting structured/free-text updates, **filling out forms** (one-shot or driven through a workflow state machine: `pre_release → qa → code_review → ready_to_release → released`), **browsing teams** (role-scoped server-side), **giving kudos to users or whole teams**, interactive TUI mode.
+- **For humans** — email-OTP login, **managing Tasks** (`tasks` for the workspace, `task` for one task, plus `board` / `project` / `goal`), viewing pending check-ins, submitting structured/free-text updates, **filling out forms** (one-shot or driven through a workflow state machine: `pre_release → qa → code_review → ready_to_release → released`), **browsing teams** (role-scoped server-side), **giving kudos to users or whole teams**, interactive TUI mode.
 - **For agents (AI assistants, CI jobs, deploy scripts, bots)** — progress reports, milestone tracking, agent health, webhook registration, agent-to-agent messaging, transactional email, standalone agent registration (creates an org without a human Dailybot account), **and the full forms-response lifecycle** (`get / responses / response get / update / transition / delete`) so an agent can drive any form — including workflow-enabled ones — end-to-end after `dailybot login`.
 
-It talks exclusively to the Dailybot HTTP API under `/v1/cli/*`, `/v1/agent*/*`, `/v1/forms/*`, `/v1/teams/*`, `/v1/kudos/`, `/v1/users/`, and `/v1/checkins/*` endpoints. There is no local database; all state is either in `~/.config/dailybot/` (credentials, agent profiles, config) or fetched from the API.
+It talks exclusively to the Dailybot HTTP API under `/v1/cli/*`, `/v1/agent*/*`, `/v1/forms/*`, `/v1/tasks/*`, `/v1/teams/*`, `/v1/kudos/`, `/v1/users/`, and `/v1/checkins/*` endpoints. There is no local database; all state is either in `~/.config/dailybot/` (credentials, agent profiles, config) or fetched from the API.
 
 **Stack:** Python 3.10+, [Click](https://click.palletsprojects.com/) 8.3+, [httpx](https://www.python-httpx.org/) 0.28+, [questionary](https://questionary.readthedocs.io/) 2.1+, [rich](https://rich.readthedocs.io/) 15+. Tested with `pytest`. Built and packaged with `setuptools`; distributed via PyPI, Homebrew tap (`dailybothq/tap`), a PyInstaller-built Linux x86_64 binary, and a PowerShell installer (`install.ps1`) that wraps `pipx`/`uv`/`pip` for native Windows users.
 
@@ -66,6 +66,20 @@ dailybot_cli/                # Source package
     │                        #   response get / update / transition / delete
     ├── hook.py              # `hook` group: session-start / post-commit / activity /
     │                        #   stop / dismiss (agent harness lifecycle hooks)
+    ├── tasks.py             # `tasks` group: workspace-level — status / entitlements /
+    │                        #   search / activity / timeline / changes (delta) /
+    │                        #   inbox / mine / counts (the last three need a person)
+    ├── task.py              # `task` group: object-level — list / get / create / update /
+    │                        #   move / assign / comment(s) / link / labels / participants /
+    │                        #   archive / delete / restore / bulk
+    ├── board.py             # `board` group: list / get / snapshot / create / archive / restore
+    ├── project.py           # `project` group: list / get / updates / update-post /
+    │                        #   milestones / milestone-complete / milestone-reopen /
+    │                        #   create / archive
+    ├── goal.py              # `goal` group: list / get / create / archive
+    ├── _rollups.py          # absent vs null vs zero for roll-up fields (AD-01)
+    ├── _destructive.py      # shared preview-then-confirm for destructive Tasks doors
+    ├── _writes.py           # one write reporter: replay, idempotency key, escaping
     ├── team.py              # `team` group: list / get (server-scoped by role)
     ├── kudos.py             # `kudos give` (to a user, a team, or both)
     ├── user.py              # `user list` (org directory)
@@ -89,6 +103,18 @@ tests/                       # pytest suite (file naming: *_test.py)
 ├── ledger_test.py           # Report ledger (signals, nudge decisions, policy)
 ├── hook_commands_test.py    # `hook` group (formats, silence, exit-0 contract)
 ├── chat_commands_test.py    # `chat` group (payload builder, send/update, headless)
+├── tasks_api_client_test.py # Tasks transport (constants, Z-form datetimes, idempotency)
+├── tasks_commands_test.py   # `tasks` group reads
+├── tasks_delta_test.py      # `tasks changes` cursor lifecycle + window expiry
+├── tasks_person_shaped_test.py  # person-only Tasks doors
+├── task_commands_test.py    # `task` group (reads, writes, collaboration, bulk, archive)
+├── board_commands_test.py   # `board` group (reads + container writes)
+├── project_goal_commands_test.py  # `project` + `goal`
+├── tasks_display_test.py    # Tasks renderers + untrusted-content presenter
+├── tasks_error_taxonomy_test.py   # Tasks error codes + credential guidance
+├── tasks_security_test.py   # injection boundary, isolation, destructive paths
+├── tasks_coverage_test.py   # cross-command sweep (19 capabilities, flag wiring, tables)
+├── transport_errors_test.py # transport failures render as messages, not tracebacks
 └── config_test.py           # Config/credential file management
 
 .github/workflows/release.yml  # Tag-triggered: PyPI + Linux binary + Homebrew
@@ -499,7 +525,7 @@ dailybot agent update --name "Claude Code" --milestone \
   --metadata '{"model":"claude-opus-4-7","plan":"PLAN_agent_profiles","repo":"cli"}'
 ```
 
-Full philosophy, what to report, and what to skip: [.agents/skills/dailybot/report/SKILL.md](.agents/skills/dailybot/report/SKILL.md) (part of the vendored Dailybot agent skill pack at `.agents/skills/dailybot/`, **v3.13.0**, which also ships the `chat` (incl. `--send-as-user`/`--send-as-me`, interactive buttons with approval flows / workflow triggers / modals / callbacks), the `conversation` sub-skill (open/reuse a Slack group DM with the bot and post a report, `conversation open`), `kudos` (give + browse: `list`/`org`/`wall-of-fame`), `teams` (+ account context `me`/`org`/`user get`), `channels`, the `workflow` surface (`list`/`get`/`trigger`, plus `--filter api_trigger`), the full `forms` (org-scoped `list` + `--mine`) / `checkin` **authoring** sub-skills, the `labels` sub-skill (org Labels CRUD + assign/batch), the `featured` sub-skill (private Featured stars), and the `env` sub-skill (per-repo API keys via the opt-in, gitignored `.dailybot/env.json`) — plus the shared list pagination/search/date filters and machine-readable error-code reference. The whole pack requires `dailybot-cli >= 3.9.0` (single baseline)). Key rules:
+Full philosophy, what to report, and what to skip: [.agents/skills/dailybot/report/SKILL.md](.agents/skills/dailybot/report/SKILL.md) (part of the vendored Dailybot agent skill pack at `.agents/skills/dailybot/`, **v3.14.0**, which also ships the `chat` (incl. `--send-as-user`/`--send-as-me`, interactive buttons with approval flows / workflow triggers / modals / callbacks), the `conversation` sub-skill (open/reuse a Slack group DM with the bot and post a report, `conversation open`), `kudos` (give + browse: `list`/`org`/`wall-of-fame`), `teams` (+ account context `me`/`org`/`user get`), `channels`, the `workflow` surface (`list`/`get`/`trigger`, plus `--filter api_trigger`), the full `forms` (org-scoped `list` + `--mine`) / `checkin` **authoring** sub-skills, the `labels` sub-skill (org Labels CRUD + assign/batch), the `featured` sub-skill (private Featured stars), the `env` sub-skill (per-repo API keys via the opt-in, gitignored `.dailybot/env.json`), and the `tasks` sub-skill (boards, backlog, sprint/kanban columns, projects, goals, milestones and project updates — `dailybot tasks` for the workspace and `dailybot task` for one task, plus `board`/`project`/`goal`) — plus the shared list pagination/search/date filters, the untrusted-content boundary, idempotent retries, the delta-cursor lifecycle, destructive previews, and the machine-readable error-code reference. The pack baseline is `dailybot-cli >= 3.9.0`; `dailybot-tasks` needs `>= 3.12.0`). Key rules:
 
 - 1–3 sentences, **always in English**
 - Focus on WHAT + WHY, never "Agent completed…"
@@ -530,7 +556,7 @@ When applying bot feedback on a PR, agents **must** skip `isMinimized == true` c
 
 Reusable **Skills** (slash commands) and **Agents** (specialized personas) live under [`.agents/`](.agents/) — the vendor-neutral standard adopted by most coding agents (Claude Code, Cursor, Codex, Gemini, Copilot, …):
 
-- [`.agents/skills/`](.agents/skills/) — slash-command procedures (e.g., `/quick-fix`, `/release-prep`, `/cli-command-add`, plus the vendored Dailybot pack at `.agents/skills/dailybot/` with `/dailybot-report`, `/dailybot-chat`, `/dailybot-conversation`, `/dailybot-kudos`, `/dailybot-teams`, `/dailybot-forms`, `/dailybot-checkin`, `/dailybot-email`, `/dailybot-health`, `/dailybot-messages`, `/dailybot-labels`, `/dailybot-featured`, `/dailybot-env`, and the vendored Deep Work Plan pack at `.agents/skills/deepworkplan/` with `/deepworkplan-create`, `/deepworkplan-execute`, `/deepworkplan-refine`, `/deepworkplan-resume`, `/deepworkplan-status`, `/deepworkplan-verify`, `/deepworkplan-onboard`)
+- [`.agents/skills/`](.agents/skills/) — slash-command procedures (e.g., `/quick-fix`, `/release-prep`, `/cli-command-add`, plus the vendored Dailybot pack at `.agents/skills/dailybot/` with `/dailybot-report`, `/dailybot-chat`, `/dailybot-conversation`, `/dailybot-kudos`, `/dailybot-teams`, `/dailybot-forms`, `/dailybot-checkin`, `/dailybot-email`, `/dailybot-health`, `/dailybot-messages`, `/dailybot-labels`, `/dailybot-featured`, `/dailybot-env`, `/dailybot-tasks`, and the vendored Deep Work Plan pack at `.agents/skills/deepworkplan/` with `/deepworkplan-create`, `/deepworkplan-execute`, `/deepworkplan-refine`, `/deepworkplan-resume`, `/deepworkplan-status`, `/deepworkplan-verify`, `/deepworkplan-onboard`)
 - [`.agents/agents/`](.agents/agents/) — agent personas (e.g., `cli-developer`, `release-manager`, `docs-writer`, `test-engineer`)
 - [`.agents/commands/`](.agents/commands/) — thin slash-command delegators that route to a sub-skill (the `dwp-*` short aliases, `/skill-create`, `/agent-create`, `/deepworkplan-onboard`)
 - [`.agents/docs/skills_agents_catalog.md`](.agents/docs/skills_agents_catalog.md) — full skill + persona index
@@ -603,7 +629,9 @@ This repo opts into the DWP **AI Diff Reviewer** addon ([`DailybotHQ/ai-diff-rev
 | **Local** | Augments the mandatory Security Review | Vendored skill at [`.agents/skills/ai-diff-reviewer/`](.agents/skills/ai-diff-reviewer/) + [`.review/extension.md`](.review/extension.md). Invoke *"Review my current branch"*. Soft-fail if skill/extension/invocation errors; `critical` findings from a completed pass still block Security Review. |
 | **CI** | PR merge gate | [`.github/workflows/pr-review.yml`](.github/workflows/pr-review.yml) — apply the **`Ready`** label on a PR targeting `main` to run the review (remove + re-add to re-run). Stable check name: **`AI review gate`**. Emergency bypass label: `skip-ai-review` (protect with a ruleset if the gate is required). |
 
-**Secret required for CI:** `CURSOR_API_KEY` (repo Settings → Secrets and variables → Actions). Without it, applying `Ready` fails the merge gate loudly.
+**Secret required for CI:** `XAI_API_KEY` (repo Settings → Secrets and variables → Actions). Without it, applying `Ready` fails the merge gate loudly.
+
+**Provider: `grok` (xAI Grok CLI), pinned to `grok-4.5`.** It replaced `cursor` because the Cursor CLI exposes no turn-count flag, so its only bound is the action's 900-second invocation timeout — and a large diff simply stops fitting, failing the gate with zero findings. `agent-max-turns` is enforced natively on `grok`, so the run is bounded by work done rather than by wall clock. The job's display name is the required-check context: renaming the provider means updating the branch ruleset to match.
 
 **Post-CI walkthrough (optional):** after CI posts findings, invoke the vendored `apply-review` sub-skill to walk findings per-finding (apply / defer / skip). Read-only by default; never commits or pushes.
 
