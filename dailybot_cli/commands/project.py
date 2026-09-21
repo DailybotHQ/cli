@@ -3,6 +3,7 @@
 from typing import Any
 
 import click
+from rich.markup import escape
 
 from dailybot_cli.api_client import APIError, PaginatedResult
 from dailybot_cli.commands._destructive import preview_then_confirm
@@ -173,7 +174,7 @@ def project_updates(json_mode: bool, **flags: Any) -> None:
         return
     for update in result.results:
         console.print(
-            f"[dim]{update.get('created_at', '')}[/dim] "
+            f"[dim]{escape(str(update.get('created_at', '')))}[/dim] "
             f"{present_untrusted(update.get('body'), limit=160)}"
         )
     print_pagination_footer(len(result.results), result.count, has_more=bool(result.next))

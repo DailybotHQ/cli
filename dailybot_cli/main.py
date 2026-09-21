@@ -1,7 +1,8 @@
 """Dailybot CLI entry point."""
 
 import platform
-from typing import Any
+import sys
+from typing import Any, NoReturn
 
 import click
 
@@ -27,6 +28,7 @@ from dailybot_cli.commands.interactive_chat import interactive
 from dailybot_cli.commands.kudos import kudos
 from dailybot_cli.commands.label import label
 from dailybot_cli.commands.project import project
+from dailybot_cli.commands.public_api_helpers import emit_json
 from dailybot_cli.commands.status import status
 from dailybot_cli.commands.task import task
 from dailybot_cli.commands.tasks import tasks
@@ -135,6 +137,32 @@ class _SafetyNetGroup(click.Group):
     this net never turns a hook invocation non-zero.
     """
 
+    @staticmethod
+    def _wants_json() -> bool:
+        """Did the invocation ask for machine-readable output?
+
+        The net catches the exception above every command callback, so the leaf's
+        ``json_mode`` parameter is out of reach. The flag is a literal in argv and
+        is spelled one way across the whole CLI, so reading it there is exact —
+        and the alternative is an empty stdout on the one exit an unattended
+        caller is most likely to hit.
+        """
+        return "--json" in sys.argv[1:]
+
+    def _fail(self, message: str, code: int, error_code: str) -> NoReturn:
+        if self._wants_json():
+            emit_json(
+                {
+                    "status": "error",
+                    "code": error_code,
+                    "detail": message,
+                    "message": message,
+                }
+            )
+        else:
+            print_error(message)
+        raise SystemExit(code)
+
     def invoke(self, ctx: click.Context) -> Any:
         try:
             return super().invoke(ctx)
@@ -147,14 +175,14 @@ class _SafetyNetGroup(click.Group):
         ):
             raise
         except TransportError as exc:
-            print_error(str(exc))
-            raise SystemExit(EXIT_TRANSPORT_ERROR) from exc
+            self._fail(str(exc), EXIT_TRANSPORT_ERROR, "transport_error")
         except Exception as exc:
-            print_error(
+            self._fail(
                 f"Unexpected error: {type(exc).__name__}: {exc}. "
-                "This is a bug — please report it with the command you ran."
+                "This is a bug — please report it with the command you ran.",
+                1,
+                "unexpected_error",
             )
-            raise SystemExit(1) from exc
 
 
 cli.__class__ = _SafetyNetGroup

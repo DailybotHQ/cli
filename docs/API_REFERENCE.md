@@ -821,7 +821,7 @@ Dispatch on `code`, never on the English `detail`.
 | Code | Meaning | CLI exit |
 | --- | --- | --- |
 | `actor_required` / `insufficient_scope` on a person-shaped door | needs a signed-in person | 3 |
-| `insufficient_scope` with `required_scope: tasks:admin` | a key can never hold it | 3 / 4 |
+| `insufficient_scope` with `required_scope: tasks:admin` | a key can never hold it | 4 |
 | `guest_not_allowed` | role limit — not a credential problem | 4 |
 | `credential_absent` / `_malformed` / `_expired`, `invalid_credentials`, `token_not_valid` | credential problem | 3 |
 | `not_found` | **invisible or nonexistent — never "forbidden"** | 5 |
@@ -854,6 +854,10 @@ Dispatch on `code`. `status` is always the literal string `"error"`, never an HT
 so one parser covers the family. The pre-flight refusals use the code the server would have
 used for the same condition (`actor_required`, `insufficient_scope`), so a caller cannot
 tell — and does not need to tell — whether the request was spent.
+
+A **transport failure** (exit 8) emits the same envelope with
+`code: "transport_error"`, so an agent that parses stdout on every non-zero exit never has to
+special-case an unreachable host.
 
 `400 actor_required` is the exception that proves it: it means "this credential is an
 organization with nobody to be", which is a credential problem wearing a validation status
@@ -903,6 +907,13 @@ The server keeps an idempotency slot for **24 hours**, keyed on
   organization API key alike. The CLI correctly does not refuse a Bearer token.
 - Doors that **ignore** the header are not sent one, and offer no `--idempotency-key` flag:
   `project update-post`, `milestone complete`/`reopen`, task subscription.
+
+**`_idempotency_replayed` is a CLI annotation, not a server field.** Every Tasks write body
+carries it, including under `--json`, because the server reports a replay in the
+`Idempotency-Replayed` **header** and a caller reading only the JSON body would otherwise
+have no way to tell a fresh write from a replay — the one fact a retry needs. It is
+underscore-prefixed to mark it as added by the client. Treat every other key in the body as
+the server's own.
 
 ### Dry run and destructive operations
 

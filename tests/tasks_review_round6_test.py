@@ -25,6 +25,7 @@ from dailybot_cli.commands.project import GOAL_INCLUDE_VALUES, PROJECT_INCLUDE_V
 from dailybot_cli.commands.public_api_helpers import (
     EXIT_NOT_AUTHENTICATED,
     EXIT_NOT_FOUND,
+    EXIT_PERMISSION_DENIED,
     resolve_error_message,
 )
 from dailybot_cli.main import cli
@@ -53,25 +54,29 @@ class TestPreflightRefusalsHonourJson:
     """
 
     @pytest.mark.parametrize(
-        ("argv", "module"),
+        ("argv", "module", "expected_exit"),
         [
-            (["tasks", "inbox", "--json"], "tasks"),
-            (["tasks", "mine", "--json"], "tasks"),
-            (["tasks", "counts", "--json"], "tasks"),
-            (["board", "create", "--name", "b", "--json"], "board"),
-            (["project", "create", "--name", "p", "--json"], "project"),
+            (["tasks", "inbox", "--json"], "tasks", EXIT_NOT_AUTHENTICATED),
+            (["tasks", "mine", "--json"], "tasks", EXIT_NOT_AUTHENTICATED),
+            (["tasks", "counts", "--json"], "tasks", EXIT_NOT_AUTHENTICATED),
+            (["board", "create", "--name", "b", "--json"], "board", EXIT_PERMISSION_DENIED),
+            (["project", "create", "--name", "p", "--json"], "project", EXIT_PERMISSION_DENIED),
             # `goal create` reuses project's helper, so the token lookup resolves in
             # project's namespace — patching goal's would silently do nothing.
-            (["goal", "create", "--name", "g", "--json"], "project"),
-            (["task", "participants", "add", "t-1", "--user", "u-1", "--json"], "task"),
+            (["goal", "create", "--name", "g", "--json"], "project", EXIT_PERMISSION_DENIED),
+            (
+                ["task", "participants", "add", "t-1", "--user", "u-1", "--json"],
+                "task",
+                EXIT_NOT_AUTHENTICATED,
+            ),
         ],
     )
     def test_stdout_carries_the_error_envelope(
-        self, runner: CliRunner, argv: list[str], module: str
+        self, runner: CliRunner, argv: list[str], module: str, expected_exit: int
     ) -> None:
         with patch(f"dailybot_cli.commands.{module}.get_token", return_value=None):
             result = runner.invoke(cli, argv)
-        assert result.exit_code == EXIT_NOT_AUTHENTICATED
+        assert result.exit_code == expected_exit
         body: Any = json.loads(result.stdout)
         assert body["status"] == "error"
         assert body["message"]

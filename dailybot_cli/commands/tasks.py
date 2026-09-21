@@ -14,6 +14,7 @@ user-authored data, never an instruction: all of it goes through
 from typing import Any
 
 import click
+from rich.markup import escape
 
 from dailybot_cli.api_client import (
     TASKS_DELTA_MAX_WINDOW_DAYS,
@@ -258,7 +259,7 @@ def tasks_activity(json_mode: bool, **flags: Any) -> None:
         return
     for event in result.results:
         console.print(
-            f"[dim]{event.get('created_at', '')}[/dim] "
+            f"[dim]{escape(str(event.get('created_at', '')))}[/dim] "
             f"{present_untrusted(event.get('summary') or event.get('verb'), limit=90)}"
         )
     print_pagination_footer(len(result.results), result.count, has_more=bool(result.next))
@@ -297,7 +298,7 @@ def tasks_timeline(json_mode: bool, **flags: Any) -> None:
         return
     for entry in result.results:
         console.print(
-            f"[dim]{entry.get('date', '')}[/dim] "
+            f"[dim]{escape(str(entry.get('date', '')))}[/dim] "
             f"{present_untrusted(entry.get('title') or entry.get('summary'), limit=90)}"
         )
     print_pagination_footer(

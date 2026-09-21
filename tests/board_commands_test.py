@@ -150,7 +150,9 @@ class TestContainerCreateNeedsAPerson:
         self, runner: CliRunner, client: MagicMock
     ) -> None:
         result = _invoke_auth(runner, client, ["board", "create", "--name", "Design"], "api_key")
-        assert result.exit_code == 3
+        # 4, not 3: a `tasks:admin` refusal is a 403 on the wire, and the pre-flight
+        # must be indistinguishable from the server's own answer.
+        assert result.exit_code == 4
         client.create_board.assert_not_called()
 
     def test_the_message_blames_the_credential_kind(

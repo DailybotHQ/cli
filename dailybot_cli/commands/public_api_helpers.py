@@ -543,7 +543,13 @@ def refuse_without_person(message: str, *, json_mode: bool, admin: bool = False)
         )
     else:
         print_error(message)
-    raise SystemExit(EXIT_NOT_AUTHENTICATED)
+    # The exit must match what the SERVER would return for the same condition, or
+    # the pre-flight becomes observable: an agent branching "3 → re-login,
+    # 4 → permission" saw 3 from the pre-flight and 4 from the server for one
+    # condition. A `tasks:admin` refusal is a 403 on the wire, so it is 4 here too;
+    # a person-shaped door answers `actor_required`, which is a credential problem
+    # and stays 3.
+    raise SystemExit(EXIT_PERMISSION_DENIED if admin else EXIT_NOT_AUTHENTICATED)
 
 
 def is_person_shaped_refusal(exc: APIError, *, door: str | None = None) -> bool:

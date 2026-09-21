@@ -250,13 +250,17 @@ class TestIdempotencyPostureIsTableDriven:
 # `project._require_person_for_admin`, so the guard looks `get_agent_auth` up in
 # the *project* namespace. Patching `goal.get_agent_auth` silently does nothing —
 # the kind of coupling a table like this makes visible.
-PERSON_ONLY: list[tuple[list[str], str, str]] = [
-    (["tasks", "inbox"], "tasks", "tasks"),
-    (["tasks", "mine"], "tasks", "tasks"),
-    (["tasks", "counts"], "tasks", "tasks"),
-    (["board", "create", "--name", "x"], "board", "board"),
-    (["project", "create", "--name", "x"], "project", "project"),
-    (["goal", "create", "--name", "x"], "goal", "project"),
+# The fourth column is the exit the SERVER would produce for the same refusal, and
+# the pre-flight must match it or it becomes observable. A person-shaped door
+# answers `actor_required` (a credential problem, 3); a `tasks:admin` door answers
+# `403 insufficient_scope` (a permission verdict, 4).
+PERSON_ONLY: list[tuple[list[str], str, str, int]] = [
+    (["tasks", "inbox"], "tasks", "tasks", 3),
+    (["tasks", "mine"], "tasks", "tasks", 3),
+    (["tasks", "counts"], "tasks", "tasks", 3),
+    (["board", "create", "--name", "x"], "board", "board", 4),
+    (["project", "create", "--name", "x"], "project", "project", 4),
+    (["goal", "create", "--name", "x"], "goal", "project", 4),
 ]
 
 
@@ -264,24 +268,25 @@ class TestRoleMatrixIsTableDriven:
     """Fixtures come from the plan's observed matrix; mocked as always (rule 7)."""
 
     @pytest.mark.parametrize(
-        "args,auth_module,guard_module",
+        "args,auth_module,guard_module,expected_exit",
         PERSON_ONLY,
-        ids=[f"{a[0]}-{a[1]}" for a, _, _ in PERSON_ONLY],
+        ids=[f"{a[0]}-{a[1]}" for a, _, _, _ in PERSON_ONLY],
     )
-    def test_an_api_key_is_refused_with_exit_three(
+    def test_an_api_key_is_refused_with_the_servers_own_exit(
         self,
         runner: CliRunner,
         client: MagicMock,
         args: list[str],
         auth_module: str,
         guard_module: str,
+        expected_exit: int,
     ) -> None:
         with (
             patch(f"dailybot_cli.commands.{auth_module}.require_auth", return_value=client),
             patch(f"dailybot_cli.commands.{guard_module}.get_token", return_value=None),
         ):
             result = runner.invoke(cli, args)
-        assert result.exit_code == 3, f"{args} did not refuse an API key"
+        assert result.exit_code == expected_exit, f"{args} did not refuse an API key"
 
 
 class TestJsonModeShape:

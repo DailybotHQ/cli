@@ -806,14 +806,19 @@ def task_bulk(
     except APIError as exc:
         _write_error(exc, json_mode)
 
-    if json_mode:
-        emit_json(data)
-        return
-
+    # The failed-row scan happens BEFORE the --json branch: a partial failure must
+    # exit non-zero in both modes. It used to be human-only, so an agent reading
+    # only the process exit saw 0 while the same call told a person it had failed.
     results: Any = data.get("results") or []
     failed: list[dict[str, Any]] = [
         row for row in results if isinstance(row, dict) and row.get("status") == "error"
     ]
+
+    if json_mode:
+        emit_json(data)
+        # Multi-item calls tolerate partial progress; exiting 0 would hide it.
+        raise SystemExit(1 if failed else 0)
+
     _report_write(
         data, f"Bulk {operation}: {len(results) - len(failed)} succeeded, {len(failed)} failed"
     )
@@ -826,5 +831,4 @@ def task_bulk(
             f"[dim]{escape(str(row.get('code', '')))}[/dim]"
         )
     if failed:
-        # Multi-item calls tolerate partial progress; exiting 0 would hide it.
         raise SystemExit(1)
