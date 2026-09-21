@@ -255,6 +255,17 @@ class TestRecoveryAdviceNamesSomethingThatExists:
         message: str = ERROR_CODE_MESSAGES["state_in_use"]
         assert "cannot send" in message or "cannot do" in message
 
+    def test_the_documented_tables_list_the_abort(self) -> None:
+        import pathlib
+
+        # An exit code the branching table omits is an exit code an agent treats as
+        # an unknown failure — and the obvious "recovery" for a declined archive is
+        # to re-run it with --yes, skipping the prompt the human just refused.
+        repo: pathlib.Path = pathlib.Path(__file__).resolve().parent.parent
+        table: str = (repo / "docs/API_REFERENCE.md").read_text()
+        assert "user_aborted" in table
+        assert "--yes" in table
+
     def test_no_command_declares_migrate_to(self) -> None:
         import pathlib
 
