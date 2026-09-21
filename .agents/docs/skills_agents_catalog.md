@@ -18,7 +18,7 @@ Slash commands. Invoked as `/<name>` (Claude Code) or `#<name>` (Codex/Cursor/Ge
 
 ### Dailybot agent skill pack (vendored from [`DailybotHQ/agent-skill`](https://github.com/DailybotHQ/agent-skill))
 
-The full pack lives under [`.agents/skills/dailybot/`](../skills/dailybot/) (router + sixteen sub-skills; vendored at **v3.13.0**). Every sub-skill requires `dailybot-cli >= 3.9.0` — the pack baseline. The router auto-routes by intent — read [`skills/dailybot/SKILL.md`](../skills/dailybot/SKILL.md) and let it pick the right sub-skill. Direct sub-skill entry points:
+The full pack lives under [`.agents/skills/dailybot/`](../skills/dailybot/) (router + seventeen sub-skills; vendored at **v3.14.0**). Every sub-skill requires `dailybot-cli >= 3.9.0` — the pack baseline; `dailybot-tasks` is the one that needs more (`>= 3.12.0`, the release that ships the Tasks commands). The router auto-routes by intent — read [`skills/dailybot/SKILL.md`](../skills/dailybot/SKILL.md) and let it pick the right sub-skill. Direct sub-skill entry points:
 
 | Slug | Procedure | Use when |
 |------|-----------|----------|
@@ -37,6 +37,7 @@ The full pack lives under [`.agents/skills/dailybot/`](../skills/dailybot/) (rou
 | `dailybot-workflow` | [`skills/dailybot/workflow/SKILL.md`](../skills/dailybot/workflow/SKILL.md) | Listing / reading / triggering org workflows — `workflow list` (incl. `--filter api_trigger`) / `workflow get` / `workflow trigger` (plan-gated) |
 | `dailybot-labels` | [`skills/dailybot/labels/SKILL.md`](../skills/dailybot/labels/SKILL.md) | Organization Labels — create/list/update/archive/delete and assign (or batch) to forms, check-ins, and workflows/automations (web chip-picker parity; `dailybot-cli >= 3.9.0`) |
 | `dailybot-featured` | [`skills/dailybot/featured/SKILL.md`](../skills/dailybot/featured/SKILL.md) | Private per-user Featured stars on forms, automations, and check-ins (not org Labels; `dailybot-cli >= 3.9.0`) |
+| `dailybot-tasks` | [`skills/dailybot/tasks/SKILL.md`](../skills/dailybot/tasks/SKILL.md) | Managing Dailybot Tasks — boards, backlog, sprint/kanban columns, projects, goals, milestones and project updates (`dailybot tasks` for the workspace, `dailybot task` for one task, plus `board`/`project`/`goal`). Needs `dailybot-cli >= 3.12.0` |
 | `dailybot-env` | [`skills/dailybot/env/SKILL.md`](../skills/dailybot/env/SKILL.md) | Managing per-repo API keys in the opt-in, gitignored `.dailybot/env.json` (`env add/use/show/list/remove/off/on`) — be "logged into different orgs in different repos" |
 
 ### Deep Work Plan skill pack (vendored from [`DailybotHQ/deepworkplan-skill`](https://github.com/DailybotHQ/deepworkplan-skill))
