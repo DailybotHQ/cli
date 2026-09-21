@@ -567,7 +567,9 @@ def is_person_shaped_refusal(exc: APIError, *, door: str | None = None) -> bool:
     return False
 
 
-def resolve_error_message(exc: APIError, *, door: str | None = None) -> str:
+def resolve_error_message(
+    exc: APIError, *, door: str | None = None, tasks_surface: bool = False
+) -> str:
     """The user-facing message for an ``APIError``, dispatched on ``code``.
 
     Never branches on the English ``detail`` (``AGENTS.md`` rule 10): prose is not
@@ -576,7 +578,7 @@ def resolve_error_message(exc: APIError, *, door: str | None = None) -> str:
     """
     if is_person_shaped_refusal(exc, door=door):
         return _PERSON_SHAPED_GUIDANCE
-    if exc.code == "plan_upgrade_required" and door is not None:
+    if exc.code == "plan_upgrade_required" and (tasks_surface or door is not None):
         # The shared message enumerates the free-plan AGENT allowlist (reports,
         # emails, health, pending check-ins) — true, and about a different product
         # surface. On a Tasks door it steers the reader somewhere that cannot help.
@@ -651,7 +653,9 @@ def exit_for_tasks_error(exc: APIError, json_mode: bool, *, door: str | None = N
     empty stream with prose on stderr just because the failure was a refusal
     rather than a success.
     """
-    message: str = resolve_error_message(exc, door=door)
+    # `tasks_surface=True` unconditionally: this function is only reachable from a
+    # Tasks command module, and `door` is set by just the three person-shaped ones.
+    message: str = resolve_error_message(exc, door=door, tasks_surface=True)
     code: int = (
         EXIT_NOT_AUTHENTICATED
         if is_person_shaped_refusal(exc, door=door)

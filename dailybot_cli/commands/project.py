@@ -8,13 +8,14 @@ from rich.markup import escape
 from dailybot_cli.api_client import APIError, PaginatedResult
 from dailybot_cli.commands._destructive import preview_then_confirm
 from dailybot_cli.commands._rollups import render_rollup
+from dailybot_cli.commands._writes import report_write
 from dailybot_cli.commands.public_api_helpers import (
     emit_json,
     exit_for_tasks_error,
     refuse_without_person,
     require_auth,
 )
-from dailybot_cli.commands.query_options import build_query_params, query_options
+from dailybot_cli.commands.query_options import build_query_params, query_options, resolve_fetch_all
 from dailybot_cli.config import get_token
 from dailybot_cli.display import (
     console,
@@ -22,7 +23,6 @@ from dailybot_cli.display import (
     print_milestones_table,
     print_pagination_footer,
     print_projects_table,
-    print_success,
     print_tasks_detail_panel,
 )
 
@@ -95,7 +95,7 @@ def project_list(include: tuple[str, ...], json_mode: bool, **flags: Any) -> Non
                 params=spec.params or None,
                 page=spec.page,
                 page_size=spec.page_size,
-                fetch_all=spec.fetch_all,
+                fetch_all=resolve_fetch_all(spec),
                 limit=spec.limit,
             )
     except ValueError as exc:
@@ -162,7 +162,7 @@ def project_updates(json_mode: bool, **flags: Any) -> None:
                 params=spec.params or None,
                 page=spec.page,
                 page_size=spec.page_size,
-                fetch_all=spec.fetch_all,
+                fetch_all=resolve_fetch_all(spec),
                 limit=spec.limit,
             )
     except ValueError as exc:
@@ -185,14 +185,6 @@ def _read_body(value: str) -> str:
     if value == "-":
         return click.get_text_stream("stdin").read().strip()
     return value
-
-
-def _report_write(result: dict[str, Any], message: str) -> None:
-    """Report a write, distinguishing a fresh one from a server-side replay."""
-    if result.get("_idempotency_replayed"):
-        print_success(f"{message} — already applied (the server replayed a previous call).")
-        return
-    print_success(message)
 
 
 @project.command("update-post")
@@ -227,7 +219,7 @@ def project_update_post(project_uuid: str, body: str, json_mode: bool) -> None:
         return
     # No web link: the web app's routes are not published, so one built here
     # would be a guess handed to a human.
-    _report_write(data, "Project update posted")
+    report_write(data, "Project update posted")
 
 
 @project.command("milestones")
@@ -251,7 +243,7 @@ def project_milestones(project_uuid: str | None, json_mode: bool, **flags: Any) 
                 params=spec.params or None,
                 page=spec.page,
                 page_size=spec.page_size,
-                fetch_all=spec.fetch_all,
+                fetch_all=resolve_fetch_all(spec),
                 limit=spec.limit,
             )
     except ValueError as exc:
@@ -307,7 +299,7 @@ def project_milestone_complete(
     if json_mode:
         emit_json(data)
         return
-    _report_write(data, "Milestone completed. Its open tasks stay open and keep their state.")
+    report_write(data, "Milestone completed. Its open tasks stay open and keep their state.")
 
 
 @project.command("milestone-reopen")
@@ -330,7 +322,7 @@ def project_milestone_reopen(project_uuid: str, milestone_uuid: str, json_mode: 
     if json_mode:
         emit_json(data)
         return
-    _report_write(data, "Milestone reopened")
+    report_write(data, "Milestone reopened")
 
 
 def _require_person_for_admin(action: str, *, json_mode: bool) -> None:
@@ -372,7 +364,7 @@ def project_create(
     if json_mode:
         emit_json(data)
         return
-    _report_write(data, f"Created project {present_untrusted(data.get('name') or name)}")
+    report_write(data, f"Created project {present_untrusted(data.get('name') or name)}")
 
 
 @project.command("archive")
@@ -408,4 +400,4 @@ def project_archive(
     if json_mode:
         emit_json(data)
         return
-    _report_write(data, "Project archived")
+    report_write(data, "Project archived")

@@ -7,11 +7,11 @@ import click
 from dailybot_cli.api_client import APIError, PaginatedResult
 from dailybot_cli.commands._destructive import preview_then_confirm
 from dailybot_cli.commands._rollups import render_rollup
+from dailybot_cli.commands._writes import report_write
 from dailybot_cli.commands.project import (
     GOAL_INCLUDE_VALUES,
     _envelope,
     _include_list,
-    _report_write,
     _require_person_for_admin,
 )
 from dailybot_cli.commands.public_api_helpers import (
@@ -19,12 +19,13 @@ from dailybot_cli.commands.public_api_helpers import (
     exit_for_tasks_error,
     require_auth,
 )
-from dailybot_cli.commands.query_options import build_query_params, query_options
+from dailybot_cli.commands.query_options import build_query_params, query_options, resolve_fetch_all
 from dailybot_cli.display import (
     console,
     present_untrusted,
     print_goals_table,
     print_pagination_footer,
+    print_projects_table,
     print_tasks_detail_panel,
 )
 
@@ -75,7 +76,7 @@ def goal_list(include: tuple[str, ...], json_mode: bool, **flags: Any) -> None:
                 params=spec.params or None,
                 page=spec.page,
                 page_size=spec.page_size,
-                fetch_all=spec.fetch_all,
+                fetch_all=resolve_fetch_all(spec),
                 limit=spec.limit,
             )
     except ValueError as exc:
@@ -118,6 +119,14 @@ def goal_get(goal_uuid: str, include: tuple[str, ...], json_mode: bool) -> None:
         return
     print_tasks_detail_panel("Goal", data, _GOAL_FIELDS)
     console.print(f"[bold]Progress[/bold]  {render_rollup(data, 'progress')}")
+    # `--include projects` was accepted, sent, and then rendered nowhere on the human
+    # path — so a caller had no signal the selector had worked. Absent stays absent:
+    # `render_rollup` distinguishes "not requested" from null from a value.
+    if "projects" in data or "project_count" in data:
+        console.print(f"[bold]Projects[/bold]  {render_rollup(data, 'project_count')}")
+        projects: Any = data.get("projects")
+        if isinstance(projects, list) and projects:
+            print_projects_table(projects, rollup=render_rollup)
 
 
 @goal.command("create")
@@ -146,7 +155,7 @@ def goal_create(
     if json_mode:
         emit_json(data)
         return
-    _report_write(data, f"Created goal {present_untrusted(data.get('name') or name)}")
+    report_write(data, f"Created goal {present_untrusted(data.get('name') or name)}")
 
 
 @goal.command("archive")
@@ -182,4 +191,4 @@ def goal_archive(
     if json_mode:
         emit_json(data)
         return
-    _report_write(data, "Goal archived. Its projects were not archived.")
+    report_write(data, "Goal archived. Its projects were not archived.")

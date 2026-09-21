@@ -34,6 +34,7 @@ from dailybot_cli.commands.query_options import (
     date_options,
     paging_options,
     query_options,
+    resolve_fetch_all,
 )
 from dailybot_cli.config import get_token
 from dailybot_cli.display import (
@@ -105,14 +106,21 @@ def _envelope(result: PaginatedResult) -> dict[str, Any]:
     }
 
 
-def _page_kwargs(**flags: Any) -> dict[str, Any]:
-    """Translate the shared query flags into client kwargs."""
+def _page_kwargs(*, walk_pages: bool = False, **flags: Any) -> dict[str, Any]:
+    """Translate the shared query flags into client kwargs.
+
+    ``walk_pages`` follows the decorator the command stacked, and the two must
+    agree or the help lies. A ``query_options`` command declares ``--all`` and
+    therefore keeps the repo-wide default that no paging flag means every page; a
+    ``paging_options`` / ``date_options`` command declares no ``--all``, states in
+    its help that paging is one page per call, and stays bounded.
+    """
     spec = build_query_params(**flags)
     return {
         "params": spec.params or None,
         "page": spec.page,
         "page_size": spec.page_size,
-        "fetch_all": spec.fetch_all,
+        "fetch_all": resolve_fetch_all(spec) if walk_pages else spec.fetch_all,
         "limit": spec.limit,
     }
 
@@ -254,7 +262,9 @@ def tasks_activity(json_mode: bool, **flags: Any) -> None:
     client = require_auth()
     try:
         with console.status("Reading activity..."):
-            result: PaginatedResult = client.list_tasks_activity(**_page_kwargs(**flags))
+            result: PaginatedResult = client.list_tasks_activity(
+                **_page_kwargs(walk_pages=True, **flags)
+            )
     except ValueError as exc:
         raise click.BadParameter(str(exc)) from exc
     except APIError as exc:

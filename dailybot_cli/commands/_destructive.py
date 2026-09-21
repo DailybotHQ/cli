@@ -47,7 +47,7 @@ def preview_then_confirm(
     except APIError as exc:
         message: str = (
             "Could not preview the consequence, so nothing was changed. "
-            f"{resolve_error_message(exc)}"
+            f"{resolve_error_message(exc, tasks_surface=True)}"
         )
         if json_mode:
             # A caller that parses stdout on every exit must not get an empty

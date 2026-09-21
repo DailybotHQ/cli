@@ -915,6 +915,11 @@ as `_idempotency_key` (and is printed on the human path). Capture it and pass it
 that retry safe. "Idempotency is automatic" is only half the sentence; keeping the key is the
 other half.
 
+**A preview carries no idempotency key.** It writes nothing, so there is nothing to make
+idempotent — and returning one would invite a caller to reuse it for the real mutation, whose
+payload differs (`idempotency_key_payload_mismatch`). Only the actual write sends and returns
+a key.
+
 **A timed-out dry run did not write.** `?dry_run=true` creates no rows and no audit events,
 so a preview timeout reports "check your connection and retry" rather than the "may have been
 applied" warning a real write earns. Telling an operator their archive might have happened
@@ -926,6 +931,18 @@ carries it, including under `--json`, because the server reports a replay in the
 have no way to tell a fresh write from a replay — the one fact a retry needs. It is
 underscore-prefixed to mark it as added by the client. Treat every other key in the body as
 the server's own.
+
+### Paging: which commands walk, and which do not
+
+Two contracts, and each command's `--help` states which it follows:
+
+| Decorator | Commands | No paging flag means |
+| --- | --- | --- |
+| `query_options` (declares `--all`) | `board list`, `project list` / `updates` / `milestones`, `goal list`, `tasks activity`, `task comments` | **every page**, as everywhere else in the CLI |
+| `paging_options` / `date_options` (no `--all`) | `task list`, `tasks search` / `inbox` / `mine` / `timeline` | **one page**; `--limit` sizes that page, it does not walk |
+
+The bounded set is deliberate: those doors read a workspace's whole task surface, which has
+no natural ceiling. Follow `next` with `--page` when you need more.
 
 ### Dry run and destructive operations
 

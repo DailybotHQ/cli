@@ -18,12 +18,12 @@ from rich.console import Console
 from rich.markup import escape
 
 from dailybot_cli.api_client import (
-    IDEMPOTENCY_KEY_SENT_KEY,
     TASKS_BULK_MAX_ITEMS,
     APIError,
     PaginatedResult,
 )
 from dailybot_cli.commands._destructive import preview_then_confirm
+from dailybot_cli.commands._writes import report_write
 from dailybot_cli.commands.public_api_helpers import (
     EXIT_USER_ABORTED,
     emit_json,
@@ -36,6 +36,7 @@ from dailybot_cli.commands.query_options import (
     build_query_params,
     paging_options,
     query_options,
+    resolve_fetch_all,
 )
 from dailybot_cli.config import get_token
 from dailybot_cli.display import (
@@ -44,7 +45,6 @@ from dailybot_cli.display import (
     present_untrusted,
     print_error,
     print_pagination_footer,
-    print_success,
     print_task_comments,
     print_task_detail,
     print_tasks_table,
@@ -172,7 +172,7 @@ def task_list(
                 filters=merged or None,
                 page=spec.page,
                 page_size=spec.page_size,
-                fetch_all=spec.fetch_all,
+                fetch_all=spec.fetch_all,  # @paging_options: one page per call, as the help says
                 limit=spec.limit,
             )
     except ValueError as exc:
@@ -220,32 +220,6 @@ def task_get(task_uuid: str, json_mode: bool) -> None:
         emit_json(data)
         return
     print_task_detail(data)
-
-
-def _report_write(result: dict[str, Any], what: str) -> None:
-    """Report a write, distinguishing a fresh one from a server-side replay.
-
-    A replay means the server recognised the idempotency key and returned the
-    ORIGINAL result without performing a new write. Saying "created" there would
-    be a lie the caller may act on.
-
-    The key the client sent is echoed because it is the only way to make a retry
-    safe: re-running the command mints a fresh uuid4, so a caller who does not
-    know the original key cannot reuse it.
-    """
-    if result.get("_idempotency_replayed"):
-        print_success(
-            f"{what} — already applied (the server replayed a previous identical call; "
-            "nothing new was written)."
-        )
-        return
-    print_success(what)
-    key: Any = result.get(IDEMPOTENCY_KEY_SENT_KEY)
-    if key:
-        console.print(
-            f"[dim]Idempotency key: {escape(str(key))} — pass it with --idempotency-key "
-            "to make a retry of this exact call safe for 24h.[/dim]"
-        )
 
 
 def _write_error(exc: APIError, json_mode: bool = False) -> NoReturn:
@@ -317,7 +291,7 @@ def task_create(
     if json_mode:
         emit_json(data)
         return
-    _report_write(data, f"Created {present_untrusted(data.get('title') or title)}")
+    report_write(data, f"Created {present_untrusted(data.get('title') or title)}")
     print_task_detail(data)
 
 
@@ -374,7 +348,7 @@ def task_update(
     if json_mode:
         emit_json(data)
         return
-    _report_write(data, "Task updated")
+    report_write(data, "Task updated")
 
 
 @task.command("move")
@@ -411,7 +385,7 @@ def task_move(
     if json_mode:
         emit_json(data)
         return
-    _report_write(data, "Task moved")
+    report_write(data, "Task moved")
 
 
 @task.command("assign")
@@ -439,7 +413,7 @@ def task_assign(
     if json_mode:
         emit_json(data)
         return
-    _report_write(data, "Task assigned")
+    report_write(data, "Task assigned")
 
 
 def _require_person_for(action: str, *, json_mode: bool) -> None:
@@ -489,7 +463,7 @@ def task_comment(task_uuid: str, body: str, idempotency_key: str | None, json_mo
     if json_mode:
         emit_json(data)
         return
-    _report_write(data, "Comment posted")
+    report_write(data, "Comment posted")
 
 
 @task.command("comments")
@@ -517,7 +491,7 @@ def task_comments(task_uuid: str, json_mode: bool, **flags: Any) -> None:
                 params=spec.params or None,
                 page=spec.page,
                 page_size=spec.page_size,
-                fetch_all=spec.fetch_all,
+                fetch_all=resolve_fetch_all(spec),
                 limit=spec.limit,
             )
     except ValueError as exc:
@@ -557,7 +531,7 @@ def task_link(
     if json_mode:
         emit_json(data)
         return
-    _report_write(data, "Tasks linked")
+    report_write(data, "Tasks linked")
 
 
 @task.command("labels")
@@ -607,7 +581,7 @@ def task_labels(
     if json_mode:
         emit_json(data)
         return
-    _report_write(data, "Labels updated")
+    report_write(data, "Labels updated")
 
 
 @task.group("participants")
@@ -646,7 +620,7 @@ def participants_add(
     if json_mode:
         emit_json(data)
         return
-    _report_write(data, "Participant added")
+    report_write(data, "Participant added")
 
 
 @task.command("archive")
@@ -688,7 +662,7 @@ def task_archive(
     if json_mode:
         emit_json(data)
         return
-    _report_write(data, "Task archived. Restore it with `dailybot task restore`.")
+    report_write(data, "Task archived. Restore it with `dailybot task restore`.")
 
 
 @task.command("delete")
@@ -725,7 +699,7 @@ def task_delete(task_uuid: str, dry_run: bool, assume_yes: bool, json_mode: bool
     if json_mode:
         emit_json(data)
         return
-    _report_write(data, "Task archived (delete is an alias of archive; it is reversible).")
+    report_write(data, "Task archived (delete is an alias of archive; it is reversible).")
 
 
 @task.command("restore")
@@ -752,7 +726,7 @@ def task_restore(task_uuid: str, idempotency_key: str | None, json_mode: bool) -
     if json_mode:
         emit_json(data)
         return
-    _report_write(data, "Task restored")
+    report_write(data, "Task restored")
 
 
 @task.command("bulk")
@@ -842,8 +816,9 @@ def task_bulk(
         # Multi-item calls tolerate partial progress; exiting 0 would hide it.
         raise SystemExit(1 if failed else 0)
 
-    _report_write(
-        data, f"Bulk {operation}: {len(results) - len(failed)} succeeded, {len(failed)} failed"
+    report_write(
+        data,
+        f"Bulk {escape(operation)}: {len(results) - len(failed)} succeeded, {len(failed)} failed",
     )
     for row in failed:
         # Both values are echoed from the caller's own batch file, so both are

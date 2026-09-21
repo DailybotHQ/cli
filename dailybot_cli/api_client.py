@@ -2102,7 +2102,14 @@ class DailyBotClient:
         """
         extra: dict[str, str] | None = None
         sent_key: str | None = None
-        if idempotent:
+        # A `dry_run=true` call writes nothing, so it has nothing to make idempotent —
+        # and returning a key for it invites the caller to reuse that key for the real
+        # mutation, whose payload differs (`idempotency_key_payload_mismatch`).
+        previewing: bool = bool(params) and str((params or {}).get("dry_run", "")).lower() in {
+            "true",
+            "1",
+        }
+        if idempotent and not previewing:
             sent_key = idempotency_key or str(uuid.uuid4())
             extra = {IDEMPOTENCY_KEY_HEADER: sent_key}
         response: httpx.Response = self._request(

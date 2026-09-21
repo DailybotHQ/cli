@@ -13,13 +13,14 @@ import click
 
 from dailybot_cli.api_client import APIError, PaginatedResult
 from dailybot_cli.commands._destructive import preview_then_confirm
+from dailybot_cli.commands._writes import report_write
 from dailybot_cli.commands.public_api_helpers import (
     emit_json,
     exit_for_tasks_error,
     refuse_without_person,
     require_auth,
 )
-from dailybot_cli.commands.query_options import build_query_params, query_options
+from dailybot_cli.commands.query_options import build_query_params, query_options, resolve_fetch_all
 from dailybot_cli.config import get_token
 from dailybot_cli.display import (
     console,
@@ -27,7 +28,6 @@ from dailybot_cli.display import (
     print_board_snapshot,
     print_boards_table,
     print_pagination_footer,
-    print_success,
     print_tasks_detail_panel,
 )
 
@@ -82,7 +82,7 @@ def board_list(json_mode: bool, **flags: Any) -> None:
                 params=spec.params or None,
                 page=spec.page,
                 page_size=spec.page_size,
-                fetch_all=spec.fetch_all,
+                fetch_all=resolve_fetch_all(spec),
                 limit=spec.limit,
             )
     except ValueError as exc:
@@ -170,13 +170,6 @@ def _require_person_for_admin(action: str, *, json_mode: bool) -> None:
         )
 
 
-def _report_write(result: dict[str, Any], message: str) -> None:
-    if result.get("_idempotency_replayed"):
-        print_success(f"{message} — already applied (the server replayed a previous call).")
-        return
-    print_success(message)
-
-
 @board.command("create")
 @click.option("-n", "--name", required=True, help="Board name.")
 @click.option("-d", "--description", default=None, help="Board description.")
@@ -207,7 +200,7 @@ def board_create(
     if json_mode:
         emit_json(data)
         return
-    _report_write(data, f"Created board {present_untrusted(data.get('name') or name)}")
+    report_write(data, f"Created board {present_untrusted(data.get('name') or name)}")
 
 
 @board.command("archive")
@@ -247,7 +240,7 @@ def board_archive(
     if json_mode:
         emit_json(data)
         return
-    _report_write(
+    report_write(
         data,
         "Board archived. Restoring it will NOT restore the tasks that cascaded — "
         "those stay archived and are restored one by one.",
@@ -278,4 +271,4 @@ def board_restore(board_uuid: str, idempotency_key: str | None, json_mode: bool)
     if json_mode:
         emit_json(data)
         return
-    _report_write(data, "Board restored. Cascaded tasks stay archived.")
+    report_write(data, "Board restored. Cascaded tasks stay archived.")
