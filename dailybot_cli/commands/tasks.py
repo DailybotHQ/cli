@@ -209,6 +209,11 @@ def tasks_search(query: str, json_mode: bool, **flags: Any) -> None:
     """Search tasks, boards and projects by text.
 
     \b
+    Paging is one page per call: this command has no `--all`, and `--limit` sizes
+    that single page (server cap 100) rather than walking the list. Follow `next`
+    with `--page` when you need more.
+
+    \b
     Examples:
       dailybot tasks search -q "flaky test"
       dailybot tasks search -q deploy --page-size 5 --json
@@ -439,6 +444,11 @@ def tasks_inbox(json_mode: bool, **flags: Any) -> None:
     has no answer.
 
     \b
+    Paging is one page per call: this command has no `--all`, and `--limit` sizes
+    that single page (server cap 100) rather than walking the list. Follow `next`
+    with `--page` when you need more.
+
+    \b
     Examples:
       dailybot tasks inbox
       dailybot tasks inbox --json
@@ -483,6 +493,11 @@ def tasks_mine(scope: str | None, json_mode: bool, **flags: Any) -> None:
     \b
     Needs a signed-in person: run `dailybot login`. An organization API key is
     refused here, because "my tasks" is defined relative to the calling user.
+
+    \b
+    Paging is one page per call: this command has no `--all`, and `--limit` sizes
+    that single page (server cap 100) rather than walking the list. Follow `next`
+    with `--page` when you need more.
 
     \b
     Examples:

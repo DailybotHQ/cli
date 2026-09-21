@@ -17,7 +17,12 @@ import click
 from rich.console import Console
 from rich.markup import escape
 
-from dailybot_cli.api_client import TASKS_BULK_MAX_ITEMS, APIError, PaginatedResult
+from dailybot_cli.api_client import (
+    IDEMPOTENCY_KEY_SENT_KEY,
+    TASKS_BULK_MAX_ITEMS,
+    APIError,
+    PaginatedResult,
+)
 from dailybot_cli.commands._destructive import preview_then_confirm
 from dailybot_cli.commands.public_api_helpers import (
     EXIT_USER_ABORTED,
@@ -130,6 +135,12 @@ def task_list(
     for it with --include when you want it.
 
     \b
+    Paging is one page per call: this command has no `--all`, and `--limit` sizes
+    that single page (server cap 100) rather than walking the list. Follow `next`
+    with `--page` when you need more — a bounded read is deliberate here, because
+    a workspace's task list has no natural ceiling.
+
+    \b
     Examples:
       dailybot task list --board <board-uuid> --state doing
       dailybot task list --assignee <user-uuid> --include labels --json
@@ -217,6 +228,10 @@ def _report_write(result: dict[str, Any], what: str) -> None:
     A replay means the server recognised the idempotency key and returned the
     ORIGINAL result without performing a new write. Saying "created" there would
     be a lie the caller may act on.
+
+    The key the client sent is echoed because it is the only way to make a retry
+    safe: re-running the command mints a fresh uuid4, so a caller who does not
+    know the original key cannot reuse it.
     """
     if result.get("_idempotency_replayed"):
         print_success(
@@ -225,6 +240,12 @@ def _report_write(result: dict[str, Any], what: str) -> None:
         )
         return
     print_success(what)
+    key: Any = result.get(IDEMPOTENCY_KEY_SENT_KEY)
+    if key:
+        console.print(
+            f"[dim]Idempotency key: {escape(str(key))} — pass it with --idempotency-key "
+            "to make a retry of this exact call safe for 24h.[/dim]"
+        )
 
 
 def _write_error(exc: APIError, json_mode: bool = False) -> NoReturn:
@@ -267,10 +288,12 @@ def task_create(
     """Create a task.
 
     \b
-    An idempotency key is always sent, so a retry that times out cannot create a
-    second task. The server keeps that key for 24 hours: reusing it inside the
-    window replays the original result, and reusing it AFTER the window is a new
-    write that will duplicate.
+    An idempotency key is always sent, and the one used is printed (and returned as
+    `_idempotency_key` under --json). Pass it back with --idempotency-key to make a
+    retry safe: re-running this command without it mints a NEW key, which the server
+    cannot recognise, so a retry after a timeout WOULD create a second task. The
+    server keeps a key for 24 hours — reusing it inside the window replays the
+    original result, and reusing it AFTER the window is a new write that duplicates.
 
     \b
     Examples:

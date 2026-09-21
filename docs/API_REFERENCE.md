@@ -908,6 +908,18 @@ The server keeps an idempotency slot for **24 hours**, keyed on
 - Doors that **ignore** the header are not sent one, and offer no `--idempotency-key` flag:
   `project update-post`, `milestone complete`/`reopen`, task subscription.
 
+**The generated key is surfaced, because otherwise the guarantee is unreachable.** When
+`--idempotency-key` is omitted the client mints a uuid4 — and re-running the command mints a
+*different* one, so a retry after a timeout would duplicate. The key actually sent comes back
+as `_idempotency_key` (and is printed on the human path). Capture it and pass it back to make
+that retry safe. "Idempotency is automatic" is only half the sentence; keeping the key is the
+other half.
+
+**A timed-out dry run did not write.** `?dry_run=true` creates no rows and no audit events,
+so a preview timeout reports "check your connection and retry" rather than the "may have been
+applied" warning a real write earns. Telling an operator their archive might have happened
+when it provably did not sends them into recovery for nothing.
+
 **`_idempotency_replayed` is a CLI annotation, not a server field.** Every Tasks write body
 carries it, including under `--json`, because the server reports a replay in the
 `Idempotency-Replayed` **header** and a caller reading only the JSON body would otherwise

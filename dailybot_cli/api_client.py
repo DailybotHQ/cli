@@ -78,6 +78,7 @@ TASKS_DELTA_MAX_WINDOW_DAYS: int = 7
 # Key surfaced on a write result when the server replayed a previous identical
 # call instead of performing a new one (from IDEMPOTENCY_REPLAYED_HEADER).
 IDEMPOTENCY_REPLAYED_KEY: str = "_idempotency_replayed"
+IDEMPOTENCY_KEY_SENT_KEY: str = "_idempotency_key"
 
 
 def _fallback_detail(response: httpx.Response) -> str:
@@ -455,13 +456,18 @@ class DailyBotClient:
 
         return response
 
-    def _transport_message(self, exc: Exception, *, method: str) -> str:
+    def _transport_message(self, exc: Exception, *, method: str, mutates: bool = True) -> str:
         """Explain a transport failure in terms the reader can act on.
 
         The failure modes are kept distinct because the fixes differ: an
         unreachable host is a connection or a wrong URL, a timeout on a **write**
         may already have been applied, and a malformed URL is a configuration
         problem the user can locate.
+
+        ``mutates`` is False for a POST that provably writes nothing — a destructive
+        **preview** (``?dry_run=true``) is a POST that creates no rows and no audit
+        events. Telling the operator their archive "may have been applied" when it
+        provably was not sends them into recovery for a mutation that never ran.
         """
         host: str = self.api_url
         if isinstance(exc, (httpx.UnsupportedProtocol, httpx.InvalidURL)):
@@ -471,7 +477,7 @@ class DailyBotClient:
                 "`dailybot config`."
             )
         if isinstance(exc, httpx.TimeoutException):
-            if method.upper() in {"POST", "PATCH", "PUT", "DELETE"}:
+            if mutates and method.upper() in {"POST", "PATCH", "PUT", "DELETE"}:
                 return (
                     f"The request to {host} timed out. It **may have been applied** — a "
                     "write that times out is not known to have failed, so check the "
@@ -484,7 +490,7 @@ class DailyBotClient:
         )
 
     def _guard_transport(
-        self, send: Callable[[], httpx.Response], *, method: str
+        self, send: Callable[[], httpx.Response], *, method: str, mutates: bool = True
     ) -> httpx.Response:
         """Run ``send`` and convert any transport failure into a ``TransportError``.
 
@@ -498,7 +504,9 @@ class DailyBotClient:
         try:
             return send()
         except httpx.HTTPError as exc:
-            raise TransportError(self._transport_message(exc, method=method.upper())) from exc
+            raise TransportError(
+                self._transport_message(exc, method=method.upper(), mutates=mutates)
+            ) from exc
 
     def _dispatch_guarded(self, method: str, url: str, **kwargs: Any) -> httpx.Response:
         """`_dispatch_http` with every transport failure converted to a CLI error.
@@ -508,6 +516,12 @@ class DailyBotClient:
         ``httpx.get`` / ``httpx.post`` directly and asserts the routing. The
         guard lives here so the routing contract is untouched.
         """
+        # A `dry_run=true` POST provably writes nothing, so its timeout must not
+        # claim the operation may have been applied.
+        params: Any = kwargs.get("params") or {}
+        mutates: bool = not (
+            isinstance(params, dict) and str(params.get("dry_run")).lower() in {"true", "1"}
+        )
         try:
             return self._dispatch_http(method, url, **kwargs)
         except httpx.HTTPError as exc:
@@ -515,7 +529,9 @@ class DailyBotClient:
             # is the only retry this client has; silently retrying a connection
             # failure would hide an outage from the caller who owns that decision,
             # and could double-post a non-idempotent write.
-            raise TransportError(self._transport_message(exc, method=method.upper())) from exc
+            raise TransportError(
+                self._transport_message(exc, method=method.upper(), mutates=mutates)
+            ) from exc
 
     @staticmethod
     def _dispatch_http(method: str, url: str, **kwargs: Any) -> httpx.Response:
@@ -2085,8 +2101,10 @@ class DailyBotClient:
         sequential default would collide between two agents.
         """
         extra: dict[str, str] | None = None
+        sent_key: str | None = None
         if idempotent:
-            extra = {IDEMPOTENCY_KEY_HEADER: idempotency_key or str(uuid.uuid4())}
+            sent_key = idempotency_key or str(uuid.uuid4())
+            extra = {IDEMPOTENCY_KEY_HEADER: sent_key}
         response: httpx.Response = self._request(
             method, self._tasks_url(path), json=json, params=params, extra_headers=extra
         )
@@ -2094,6 +2112,12 @@ class DailyBotClient:
         replayed: str = str(getattr(response, "headers", {}).get(IDEMPOTENCY_REPLAYED_HEADER, ""))
         if isinstance(result, dict):
             result[IDEMPOTENCY_REPLAYED_KEY] = replayed.lower() == "true"
+            if sent_key is not None:
+                # The generated key has to leave the client, or the safety it buys
+                # is unreachable: re-running the command mints a NEW uuid4, so a
+                # retry after a timeout duplicates. Surfacing it is what makes the
+                # documented "a retry cannot create a second task" true.
+                result[IDEMPOTENCY_KEY_SENT_KEY] = sent_key
         return result
 
     def _tasks_read(self, path: str, *, params: dict[str, Any] | None = None) -> dict[str, Any]:
@@ -2214,7 +2238,12 @@ class DailyBotClient:
         idempotency_key: str | None = None,
         **fields: Any,
     ) -> dict[str, Any]:
-        """POST /v1/tasks/tasks/ (or the board-scoped door). Accepts a key."""
+        """POST /v1/tasks/tasks/ — always this path. Accepts an idempotency key.
+
+        The board-scoped door exists on the server; this client does not use it.
+        `board` travels in the payload, so a caller looking for a path variant here
+        will not find one.
+        """
         payload: dict[str, Any] = {
             "title": title,
             **{k: v for k, v in fields.items() if v is not None},

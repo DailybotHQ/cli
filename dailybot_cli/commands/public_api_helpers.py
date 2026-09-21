@@ -576,6 +576,16 @@ def resolve_error_message(exc: APIError, *, door: str | None = None) -> str:
     """
     if is_person_shaped_refusal(exc, door=door):
         return _PERSON_SHAPED_GUIDANCE
+    if exc.code == "plan_upgrade_required" and door is not None:
+        # The shared message enumerates the free-plan AGENT allowlist (reports,
+        # emails, health, pending check-ins) — true, and about a different product
+        # surface. On a Tasks door it steers the reader somewhere that cannot help.
+        upgrade: Any = (exc.extra or {}).get("upgrade_url")
+        message: str = (
+            "Dailybot Tasks is not available on your organization's current plan. "
+            "This is a plan limit, not a credential or role problem."
+        )
+        return f"{message} Upgrade at: {upgrade}" if upgrade else message
     if exc.code == "guest_not_allowed":
         # The pre-existing message for this code is Labels-specific and stays as it
         # is; here the distinction that matters is WHICH fix applies. A scope
