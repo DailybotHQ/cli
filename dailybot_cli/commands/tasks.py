@@ -22,10 +22,9 @@ from dailybot_cli.api_client import (
     as_query_datetime,
 )
 from dailybot_cli.commands.public_api_helpers import (
-    EXIT_NOT_AUTHENTICATED,
     emit_json,
-    exit_for_api_error,
     exit_for_tasks_error,
+    refuse_without_person,
     require_auth,
 )
 from dailybot_cli.commands.query_options import (
@@ -70,7 +69,7 @@ _PULSE_FIELDS: list[tuple[str, str]] = [
 ]
 
 
-def _require_person(door: str) -> None:
+def _require_person(door: str, *, json_mode: bool) -> None:
     """Refuse a bare API key on a person-shaped door, before spending a request.
 
     The pre-flight is an optimisation; the contract is that the message is ours.
@@ -88,11 +87,11 @@ def _require_person(door: str) -> None:
     # first in that case, so the request WOULD have authenticated as a person.
     # Gating on the key alone refused a valid login.
     if get_token() is None:
-        print_error(
+        refuse_without_person(
             f"`{door}` answers for a signed-in person, and an organization API key has "
-            "nobody to be. Run `dailybot login` and retry."
+            "nobody to be. Run `dailybot login` and retry.",
+            json_mode=json_mode,
         )
-        raise SystemExit(EXIT_NOT_AUTHENTICATED)
 
 
 def _envelope(result: PaginatedResult) -> dict[str, Any]:
@@ -152,7 +151,7 @@ def tasks_status(json_mode: bool) -> None:
         with console.status("Reading the workspace pulse..."):
             data: dict[str, Any] = client.get_tasks_pulse()
     except APIError as exc:
-        exit_for_api_error(exc, json_mode)
+        exit_for_tasks_error(exc, json_mode)
     if json_mode:
         emit_json(data)
         return
@@ -177,7 +176,7 @@ def tasks_entitlements(json_mode: bool) -> None:
         with console.status("Reading entitlements..."):
             data: dict[str, Any] = client.get_tasks_entitlements()
     except APIError as exc:
-        exit_for_api_error(exc, json_mode)
+        exit_for_tasks_error(exc, json_mode)
     if json_mode:
         emit_json(data)
         return
@@ -222,7 +221,7 @@ def tasks_search(query: str, json_mode: bool, **flags: Any) -> None:
     except ValueError as exc:
         raise click.BadParameter(str(exc)) from exc
     except APIError as exc:
-        exit_for_api_error(exc, json_mode)
+        exit_for_tasks_error(exc, json_mode)
     if json_mode:
         emit_json(_envelope(result))
         return
@@ -253,7 +252,7 @@ def tasks_activity(json_mode: bool, **flags: Any) -> None:
     except ValueError as exc:
         raise click.BadParameter(str(exc)) from exc
     except APIError as exc:
-        exit_for_api_error(exc, json_mode)
+        exit_for_tasks_error(exc, json_mode)
     if json_mode:
         emit_json(_envelope(result))
         return
@@ -292,7 +291,7 @@ def tasks_timeline(json_mode: bool, **flags: Any) -> None:
     except ValueError as exc:
         raise click.BadParameter(str(exc)) from exc
     except APIError as exc:
-        exit_for_api_error(exc, json_mode)
+        exit_for_tasks_error(exc, json_mode)
     if json_mode:
         emit_json(_envelope(result))
         return
@@ -353,13 +352,26 @@ def tasks_changes(
             with console.status("Reading the board snapshot for a cursor..."):
                 snapshot: dict[str, Any] = client.get_board_snapshot(board)
         except APIError as exc:
-            exit_for_api_error(exc, json_mode)
+            exit_for_tasks_error(exc, json_mode)
         marker = snapshot.get("delta_cursor")
         if not marker:
-            print_error(
+            # The adjacent branches in this command already honour --json; this one
+            # was left behind, so an agent parsing stdout got an empty stream.
+            message: str = (
                 "The board snapshot carried no `delta_cursor`, so there is nothing to read "
                 "changes from. Pass --cursor explicitly."
             )
+            if json_mode:
+                emit_json(
+                    {
+                        "status": "error",
+                        "code": "delta_cursor_absent",
+                        "detail": message,
+                        "message": message,
+                    }
+                )
+            else:
+                print_error(message)
             raise SystemExit(1)
 
     try:
@@ -377,7 +389,7 @@ def tasks_changes(
                     with console.status("Cursor expired — reading a fresh snapshot..."):
                         fresh: dict[str, Any] = client.get_board_snapshot(board)
                 except APIError as inner:
-                    exit_for_api_error(inner, json_mode)
+                    exit_for_tasks_error(inner, json_mode)
                 if json_mode:
                     emit_json(fresh)
                     return
@@ -403,7 +415,7 @@ def tasks_changes(
             else:
                 print_delta_summary(expiry)
             raise SystemExit(EXIT_DELTA_WINDOW_EXPIRED) from exc
-        exit_for_api_error(exc, json_mode)
+        exit_for_tasks_error(exc, json_mode)
 
     if json_mode:
         emit_json(delta)
@@ -430,7 +442,7 @@ def tasks_inbox(json_mode: bool, **flags: Any) -> None:
       dailybot tasks inbox
       dailybot tasks inbox --json
     """
-    _require_person("tasks inbox")
+    _require_person("tasks inbox", json_mode=json_mode)
     client = require_auth()
     try:
         page: dict[str, Any] = _page_kwargs(**flags)
@@ -476,7 +488,7 @@ def tasks_mine(scope: str | None, json_mode: bool, **flags: Any) -> None:
       dailybot tasks mine
       dailybot tasks mine --scope assigned --json
     """
-    _require_person("tasks mine")
+    _require_person("tasks mine", json_mode=json_mode)
     client = require_auth()
     try:
         page: dict[str, Any] = _page_kwargs(**flags)
@@ -513,7 +525,7 @@ def tasks_counts(json_mode: bool) -> None:
     Examples:
       dailybot tasks counts --json
     """
-    _require_person("tasks counts")
+    _require_person("tasks counts", json_mode=json_mode)
     client = require_auth()
     try:
         with console.status("Counting your tasks..."):

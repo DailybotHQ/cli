@@ -20,11 +20,10 @@ from rich.markup import escape
 from dailybot_cli.api_client import TASKS_BULK_MAX_ITEMS, APIError, PaginatedResult
 from dailybot_cli.commands._destructive import preview_then_confirm
 from dailybot_cli.commands.public_api_helpers import (
-    EXIT_NOT_AUTHENTICATED,
     EXIT_USER_ABORTED,
     emit_json,
-    exit_for_api_error,
     exit_for_tasks_error,
+    refuse_without_person,
     require_auth,
 )
 from dailybot_cli.commands.query_options import (
@@ -168,7 +167,7 @@ def task_list(
     except ValueError as exc:
         raise click.BadParameter(str(exc)) from exc
     except APIError as exc:
-        exit_for_api_error(exc, json_mode)
+        exit_for_tasks_error(exc, json_mode)
 
     if json_mode:
         emit_json(_envelope(result))
@@ -420,7 +419,7 @@ def task_assign(
     _report_write(data, "Task assigned")
 
 
-def _require_person_for(action: str) -> None:
+def _require_person_for(action: str, *, json_mode: bool) -> None:
     """Refuse a key on a person-only door.
 
     Published policy: two writes no organization API key may ever make — changing
@@ -429,11 +428,11 @@ def _require_person_for(action: str) -> None:
     # See tasks.py `_require_person`: gate on the absence of a person token, not
     # on the presence of a key — both can be configured at once.
     if get_token() is None:
-        print_error(
+        refuse_without_person(
             f"`{action}` changes who is notified, and no organization API key may do that — "
-            "there is no person behind it to be accountable. Run `dailybot login` and retry."
+            "there is no person behind it to be accountable. Run `dailybot login` and retry.",
+            json_mode=json_mode,
         )
-        raise SystemExit(EXIT_NOT_AUTHENTICATED)
 
 
 def _read_body(value: str) -> str:
@@ -501,7 +500,7 @@ def task_comments(task_uuid: str, json_mode: bool, **flags: Any) -> None:
     except ValueError as exc:
         raise click.BadParameter(str(exc)) from exc
     except APIError as exc:
-        exit_for_api_error(exc, json_mode)
+        exit_for_tasks_error(exc, json_mode)
     if json_mode:
         emit_json(_envelope(result))
         return
@@ -612,7 +611,7 @@ def participants_add(
     Examples:
       dailybot task participants add <task-uuid> --user <user-uuid>
     """
-    _require_person_for("task participants add")
+    _require_person_for("task participants add", json_mode=json_mode)
     client = require_auth()
     try:
         with console.status("Adding the participant..."):

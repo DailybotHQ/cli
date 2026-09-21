@@ -909,7 +909,7 @@ humans who own them.
 | `dailybot project milestone-reopen <p> <m>` | Reopen a milestone |
 | `dailybot project create --name <n>` | Create a project — **needs `dailybot login`** |
 | `dailybot project archive <uuid>` | Archive a project |
-| `dailybot goal list` | List goals (`--include progress,projects`) |
+| `dailybot goal list` | List goals (`--include` is repeatable: `--include progress --include projects`) |
 | `dailybot goal get <uuid>` | Show one goal |
 | `dailybot goal create --name <n>` | Create a goal — **needs `dailybot login`** |
 | `dailybot goal archive <uuid>` | Archive a goal (its projects are not archived) |

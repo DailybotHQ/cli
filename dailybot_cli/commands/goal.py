@@ -8,7 +8,7 @@ from dailybot_cli.api_client import APIError, PaginatedResult
 from dailybot_cli.commands._destructive import preview_then_confirm
 from dailybot_cli.commands._rollups import render_rollup
 from dailybot_cli.commands.project import (
-    INCLUDE_VALUES,
+    GOAL_INCLUDE_VALUES,
     _envelope,
     _include_list,
     _report_write,
@@ -16,7 +16,6 @@ from dailybot_cli.commands.project import (
 )
 from dailybot_cli.commands.public_api_helpers import (
     emit_json,
-    exit_for_api_error,
     exit_for_tasks_error,
     require_auth,
 )
@@ -46,14 +45,14 @@ def goal() -> None:
 
     \b
     Examples:
-      dailybot goal list --include progress,projects
+      dailybot goal list --include progress --include projects
     """
 
 
 @goal.command("list")
 @click.option(
     "--include",
-    type=click.Choice(INCLUDE_VALUES, case_sensitive=False),
+    type=click.Choice(GOAL_INCLUDE_VALUES, case_sensitive=False),
     multiple=True,
     help="Ask for a roll-up (nothing is included by default).",
 )
@@ -82,7 +81,7 @@ def goal_list(include: tuple[str, ...], json_mode: bool, **flags: Any) -> None:
     except ValueError as exc:
         raise click.BadParameter(str(exc)) from exc
     except APIError as exc:
-        exit_for_api_error(exc, json_mode)
+        exit_for_tasks_error(exc, json_mode)
     if json_mode:
         emit_json(_envelope(result))
         return
@@ -94,7 +93,7 @@ def goal_list(include: tuple[str, ...], json_mode: bool, **flags: Any) -> None:
 @click.argument("goal_uuid")
 @click.option(
     "--include",
-    type=click.Choice(INCLUDE_VALUES, case_sensitive=False),
+    type=click.Choice(GOAL_INCLUDE_VALUES, case_sensitive=False),
     multiple=True,
     help="Ask for a roll-up.",
 )
@@ -135,7 +134,7 @@ def goal_create(
     Examples:
       dailybot goal create --name "Q4 reliability"
     """
-    _require_person_for_admin("goal create")
+    _require_person_for_admin("goal create", json_mode=json_mode)
     client = require_auth()
     try:
         with console.status("Creating the goal..."):

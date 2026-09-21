@@ -842,6 +842,19 @@ server-side conflict the caller must resolve differently and exits **4**
 writes agree; they did not before, and an agent branching on exit 2 for bad input mis-handled
 every Tasks write.
 
+**One envelope for the whole family.** Every Tasks refusal — read, write, and the
+client-side pre-flight that never reaches the server — emits the same shape on stdout under
+`--json`:
+
+```json
+{"status": "error", "code": "not_found", "detail": "…", "message": "…"}
+```
+
+Dispatch on `code`. `status` is always the literal string `"error"`, never an HTTP number,
+so one parser covers the family. The pre-flight refusals use the code the server would have
+used for the same condition (`actor_required`, `insufficient_scope`), so a caller cannot
+tell — and does not need to tell — whether the request was spent.
+
 `400 actor_required` is the exception that proves it: it means "this credential is an
 organization with nobody to be", which is a credential problem wearing a validation status
 code. The client retries it with the alternative credential exactly as it retries a 401 — so

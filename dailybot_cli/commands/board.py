@@ -14,10 +14,9 @@ import click
 from dailybot_cli.api_client import APIError, PaginatedResult
 from dailybot_cli.commands._destructive import preview_then_confirm
 from dailybot_cli.commands.public_api_helpers import (
-    EXIT_NOT_AUTHENTICATED,
     emit_json,
-    exit_for_api_error,
     exit_for_tasks_error,
+    refuse_without_person,
     require_auth,
 )
 from dailybot_cli.commands.query_options import build_query_params, query_options
@@ -27,7 +26,6 @@ from dailybot_cli.display import (
     present_untrusted,
     print_board_snapshot,
     print_boards_table,
-    print_error,
     print_pagination_footer,
     print_success,
     print_tasks_detail_panel,
@@ -90,7 +88,7 @@ def board_list(json_mode: bool, **flags: Any) -> None:
     except ValueError as exc:
         raise click.BadParameter(str(exc)) from exc
     except APIError as exc:
-        exit_for_api_error(exc, json_mode)
+        exit_for_tasks_error(exc, json_mode)
     if json_mode:
         emit_json(_envelope(result))
         return
@@ -152,7 +150,7 @@ def board_snapshot(board_uuid: str, json_mode: bool) -> None:
     print_board_snapshot(data)
 
 
-def _require_person_for_admin(action: str) -> None:
+def _require_person_for_admin(action: str, *, json_mode: bool) -> None:
     """Refuse a key on a door that needs `tasks:admin`.
 
     The scope cannot be granted to an API key at all — the validator refuses to
@@ -163,12 +161,13 @@ def _require_person_for_admin(action: str) -> None:
     """
     # See tasks.py `_require_person`: gate on the absence of a person token.
     if get_token() is None:
-        print_error(
+        refuse_without_person(
             f"`{action}` needs the `tasks:admin` scope, which an organization API key can "
             "never hold — it cannot even be stored on one. Run `dailybot login` and retry "
-            "as a signed-in person."
+            "as a signed-in person.",
+            json_mode=json_mode,
+            admin=True,
         )
-        raise SystemExit(EXIT_NOT_AUTHENTICATED)
 
 
 def _report_write(result: dict[str, Any], message: str) -> None:
@@ -196,7 +195,7 @@ def board_create(
     Examples:
       dailybot board create --name "Design"
     """
-    _require_person_for_admin("board create")
+    _require_person_for_admin("board create", json_mode=json_mode)
     client = require_auth()
     try:
         with console.status("Creating the board..."):

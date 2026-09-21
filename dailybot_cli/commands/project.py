@@ -8,10 +8,9 @@ from dailybot_cli.api_client import APIError, PaginatedResult
 from dailybot_cli.commands._destructive import preview_then_confirm
 from dailybot_cli.commands._rollups import render_rollup
 from dailybot_cli.commands.public_api_helpers import (
-    EXIT_NOT_AUTHENTICATED,
     emit_json,
-    exit_for_api_error,
     exit_for_tasks_error,
+    refuse_without_person,
     require_auth,
 )
 from dailybot_cli.commands.query_options import build_query_params, query_options
@@ -19,7 +18,6 @@ from dailybot_cli.config import get_token
 from dailybot_cli.display import (
     console,
     present_untrusted,
-    print_error,
     print_milestones_table,
     print_pagination_footer,
     print_projects_table,
@@ -27,7 +25,12 @@ from dailybot_cli.display import (
     print_tasks_detail_panel,
 )
 
-INCLUDE_VALUES: tuple[str, ...] = ("progress", "projects")
+# Split deliberately. `projects` is a goal-shaped selector: a project has no
+# projects. Sharing one Choice let `project list --include projects` past Click and
+# onto the wire, where it either 400s or is silently ignored — and a silently
+# ignored selector is the failure mode this whole surface exists to avoid.
+PROJECT_INCLUDE_VALUES: tuple[str, ...] = ("progress",)
+GOAL_INCLUDE_VALUES: tuple[str, ...] = ("progress", "projects")
 
 _PROJECT_FIELDS: list[tuple[str, str]] = [
     ("Name", "name"),
@@ -68,7 +71,7 @@ def project() -> None:
 @project.command("list")
 @click.option(
     "--include",
-    type=click.Choice(INCLUDE_VALUES, case_sensitive=False),
+    type=click.Choice(PROJECT_INCLUDE_VALUES, case_sensitive=False),
     multiple=True,
     help="Ask for a roll-up (nothing is included by default).",
 )
@@ -97,7 +100,7 @@ def project_list(include: tuple[str, ...], json_mode: bool, **flags: Any) -> Non
     except ValueError as exc:
         raise click.BadParameter(str(exc)) from exc
     except APIError as exc:
-        exit_for_api_error(exc, json_mode)
+        exit_for_tasks_error(exc, json_mode)
     if json_mode:
         emit_json(_envelope(result))
         return
@@ -109,7 +112,7 @@ def project_list(include: tuple[str, ...], json_mode: bool, **flags: Any) -> Non
 @click.argument("project_uuid")
 @click.option(
     "--include",
-    type=click.Choice(INCLUDE_VALUES, case_sensitive=False),
+    type=click.Choice(PROJECT_INCLUDE_VALUES, case_sensitive=False),
     multiple=True,
     help="Ask for a roll-up.",
 )
@@ -164,7 +167,7 @@ def project_updates(json_mode: bool, **flags: Any) -> None:
     except ValueError as exc:
         raise click.BadParameter(str(exc)) from exc
     except APIError as exc:
-        exit_for_api_error(exc, json_mode)
+        exit_for_tasks_error(exc, json_mode)
     if json_mode:
         emit_json(_envelope(result))
         return
@@ -253,7 +256,7 @@ def project_milestones(project_uuid: str | None, json_mode: bool, **flags: Any) 
     except ValueError as exc:
         raise click.BadParameter(str(exc)) from exc
     except APIError as exc:
-        exit_for_api_error(exc, json_mode)
+        exit_for_tasks_error(exc, json_mode)
     if json_mode:
         emit_json(_envelope(result))
         return
@@ -329,16 +332,17 @@ def project_milestone_reopen(project_uuid: str, milestone_uuid: str, json_mode: 
     _report_write(data, "Milestone reopened")
 
 
-def _require_person_for_admin(action: str) -> None:
+def _require_person_for_admin(action: str, *, json_mode: bool) -> None:
     """Refuse a key on a `tasks:admin` door — see board.py for the full reasoning."""
     # See tasks.py `_require_person`: gate on the absence of a person token.
     if get_token() is None:
-        print_error(
+        refuse_without_person(
             f"`{action}` needs the `tasks:admin` scope, which an organization API key can "
             "never hold — it cannot even be stored on one. Run `dailybot login` and retry "
-            "as a signed-in person."
+            "as a signed-in person.",
+            json_mode=json_mode,
+            admin=True,
         )
-        raise SystemExit(EXIT_NOT_AUTHENTICATED)
 
 
 @project.command("create")
@@ -355,7 +359,7 @@ def project_create(
     Examples:
       dailybot project create --name "Apollo"
     """
-    _require_person_for_admin("project create")
+    _require_person_for_admin("project create", json_mode=json_mode)
     client = require_auth()
     try:
         with console.status("Creating the project..."):

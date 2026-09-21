@@ -9,7 +9,7 @@ import click
 import questionary
 
 from dailybot_cli.api_client import APIError, DailyBotClient
-from dailybot_cli.config import get_agent_auth, get_org_plan, load_credentials
+from dailybot_cli.config import get_agent_auth, get_org_plan, get_token, load_credentials
 from dailybot_cli.display import error_console, print_error, print_info
 
 # Plan tiers the server treats as "free" (matched case-insensitively). Kept
@@ -514,6 +514,38 @@ _ADMIN_SCOPE_GUIDANCE: str = (
 )
 
 
+# Machine-readable codes for the two client-side preflight refusals. They match
+# what the server would answer for the same condition, so a caller branching on
+# `code` cannot tell whether the request was spent — and does not need to.
+PREFLIGHT_ACTOR_REQUIRED_CODE: str = "actor_required"
+PREFLIGHT_ADMIN_SCOPE_CODE: str = "insufficient_scope"
+
+
+def refuse_without_person(message: str, *, json_mode: bool, admin: bool = False) -> NoReturn:
+    """End a command that a bare API key can never satisfy.
+
+    One helper, four call sites. Each module used to carry its own copy, and every
+    copy ignored ``--json`` — so `dailybot board create --json` with a key-only
+    session exited 3 with **empty stdout** while `exit_for_tasks_error` promised a
+    parseable document on every refusal path. A caller that parses stdout on any
+    non-zero exit read that as a crash rather than a credential problem.
+
+    ``admin`` selects the code the server would have used for the same condition.
+    """
+    if json_mode:
+        emit_json(
+            {
+                "status": "error",
+                "code": (PREFLIGHT_ADMIN_SCOPE_CODE if admin else PREFLIGHT_ACTOR_REQUIRED_CODE),
+                "detail": message,
+                "message": message,
+            }
+        )
+    else:
+        print_error(message)
+    raise SystemExit(EXIT_NOT_AUTHENTICATED)
+
+
 def is_person_shaped_refusal(exc: APIError, *, door: str | None = None) -> bool:
     """Is this refusal the "you are not a person" condition, in either shape?
 
@@ -549,6 +581,15 @@ def resolve_error_message(exc: APIError, *, door: str | None = None) -> str:
     if exc.code == "insufficient_scope":
         required: Any = (exc.extra or {}).get("required_scope")
         if required == "tasks:admin":
+            # The "a key can never hold this" sentence is only true of a key. A
+            # signed-in member hitting the same refusal needs a role, not another
+            # login — telling them to `dailybot login` sends them in a circle.
+            if get_token() is not None:
+                return (
+                    "This action needs the `tasks:admin` scope and your account does not "
+                    "hold it. This is a role limit, not a credential problem — ask an "
+                    "organization admin to grant it. Signing in again will not change it."
+                )
             return _ADMIN_SCOPE_GUIDANCE
         if required:
             return (
