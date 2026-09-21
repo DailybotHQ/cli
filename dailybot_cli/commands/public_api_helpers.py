@@ -568,6 +568,11 @@ def resolve_error_message(exc: APIError, *, door: str | None = None) -> str:
 # on 3 saw a permission error), and a 404 exited 1 (so "invisible" became
 # indistinguishable from a generic failure).
 _TASKS_WRITE_EXIT_BY_STATUS: dict[int, int] = {
+    # 400 is `too_many_items` / `invalid_filter_value`: the caller sent something
+    # the door rejects. `exit_for_api_error` already returns 2 for a 400 on the
+    # read path; leaving it unmapped here made the same refusal exit 1 on a write,
+    # so an agent branching on 2 for bad input mis-handled every Tasks write.
+    400: EXIT_USAGE_ERROR,
     401: EXIT_NOT_AUTHENTICATED,
     402: EXIT_PERMISSION_DENIED,
     403: EXIT_PERMISSION_DENIED,

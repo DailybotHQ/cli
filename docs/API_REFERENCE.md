@@ -830,9 +830,9 @@ Dispatch on `code`, never on the English `detail`.
 | `idempotency_key_payload_mismatch` | same key, different body — use a **new** key | 4 |
 | `idempotency_in_progress` | identical call still running — do not retry | 4 |
 | `delta_window_expired` | cursor older than 7 days — **re-snapshot** | **9** |
-| `too_many_items` | bulk over 100 items | 2 / 4 |
+| `too_many_items` | bulk over 100 items | 2 |
 | `state_in_use` | column has tasks — pass `migrate_to` | 4 |
-| `invalid_filter_value` | a declared parameter's value was rejected | 4 |
+| `invalid_filter_value` | a declared parameter's value was rejected | 2 |
 | *(transport failure — no server response)* | unreachable, timeout, bad URL | **8** |
 
 ### Credential cost — an API key is the expensive one
@@ -892,6 +892,11 @@ Archive doors accept `?dry_run=true` and return:
 
 The dry run writes no rows and no audit events. The CLI previews before every destructive
 call — `--yes` skips the prompt, not the preview — and **aborts if the preview fails**.
+
+Under `--json` the consequence panel is written to **stderr**, not dropped: stdout stays a
+single parseable document (the preview under `--dry-run`, the write result otherwise, and
+an `{"status": "error", …}` envelope when the preview itself fails), while the record of
+what was about to happen survives for whoever reads the terminal.
 
 Archiving a **board** cascade-archives its live tasks, and restoring the board does **not**
 restore them. `task delete` is an alias of archive: reversible, audited as `task.archived`.

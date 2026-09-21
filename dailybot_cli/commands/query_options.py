@@ -144,6 +144,55 @@ def paging_options(func: Callable[..., Any]) -> Callable[..., Any]:
     return func
 
 
+# Footer hint for commands that stack `paging_options`. The default hint names
+# `--all`, which those commands deliberately do not declare, so following it was a
+# Click usage error.
+PAGING_ONLY_MORE_HINT: str = "use --page / --page-size to fetch more"
+
+
+def date_options(func: Callable[..., Any]) -> Callable[..., Any]:
+    """Stack the paging flags plus the date-range flags, but no ``--search``.
+
+    For a door that declares a date window and nothing else. Offering ``--search``
+    there put a flag in ``--help`` that the server silently ignores, which reads to
+    the caller as "the filter matched everything".
+    """
+    options: list[Callable[..., Any]] = [
+        click.option("--page", "-P", type=int, default=None, help="Page number to fetch."),
+        click.option(
+            "--page-size",
+            "-z",
+            "page_size",
+            type=int,
+            default=None,
+            help=f"Items per page (max {MAX_PAGE_SIZE}).",
+        ),
+        click.option(
+            "--limit", "-l", type=int, default=None, help="Stop after collecting N items."
+        ),
+        click.option("--since", "-S", "since", default=None, help="Start date (YYYY-MM-DD)."),
+        click.option("--until", "-U", "until", default=None, help="End date (YYYY-MM-DD)."),
+        click.option(
+            "--date",
+            "-D",
+            "on_date",
+            default=None,
+            help="Single day (YYYY-MM-DD): sets start and end.",
+        ),
+        click.option(
+            "--last-week",
+            "last_week",
+            is_flag=True,
+            default=False,
+            help="Previous Monday-Sunday week.",
+        ),
+        click.option("--today", "today", is_flag=True, default=False, help="Today only."),
+    ]
+    for option in reversed(options):
+        func = option(func)
+    return func
+
+
 def query_options(func: Callable[..., Any]) -> Callable[..., Any]:
     """Stack the shared pagination / search / date-range flags onto a command."""
     options: list[Callable[..., Any]] = [

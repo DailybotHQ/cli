@@ -625,7 +625,16 @@ class DailyBotClient:
             response: httpx.Response = self._send_with_retry(_do_get)
             if response.status_code >= 400:
                 self._handle_response(response)
-            body: Any = response.json()
+            try:
+                body: Any = response.json()
+            except Exception as exc:
+                # Same unreadable-2xx case `_handle_response` guards (a captive
+                # portal, a proxy HTML 200). List reads bypass that helper on the
+                # success path, so without this they surfaced a bare
+                # JSONDecodeError and exited 1 instead of the documented 8.
+                raise TransportError(
+                    f"The server returned an unreadable response: {_fallback_detail(response)}"
+                ) from exc
             if isinstance(body, dict) and "results" in body:
                 collected.extend(body.get("results", []))
                 count = body.get("count", count)

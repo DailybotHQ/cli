@@ -44,10 +44,23 @@ def preview_then_confirm(
         with console.status("Previewing the consequence..."):
             preview: dict[str, Any] = preview_call()
     except APIError as exc:
-        print_error(
+        message: str = (
             "Could not preview the consequence, so nothing was changed. "
             f"{resolve_error_message(exc)}"
         )
+        if json_mode:
+            # A caller that parses stdout on every exit must not get an empty
+            # stream just because the failure happened before the mutation.
+            emit_json(
+                {
+                    "status": "error",
+                    "code": getattr(exc, "code", None),
+                    "detail": exc.detail,
+                    "message": message,
+                }
+            )
+        else:
+            print_error(message)
         raise SystemExit(1) from exc
 
     if json_mode and preview_only:
@@ -55,12 +68,14 @@ def preview_then_confirm(
         # Rich panel forced an agent to scrape formatted output for the counts.
         emit_json(preview)
         return False
-    print_dry_run_consequence(preview)
+    # Under --json the mutation still emits its own JSON document on stdout, so the
+    # panel goes to stderr: the human record survives and `json.loads(stdout)` works.
+    print_dry_run_consequence(preview, to_stderr=json_mode)
     if preview_only:
         return False
     if assume_yes:
         return True
-    if not click.confirm("Proceed?", default=False):
+    if not click.confirm("Proceed?", default=False, err=json_mode):
         print_error("Aborted. Nothing was changed.")
         raise SystemExit(EXIT_USER_ABORTED)
     return True

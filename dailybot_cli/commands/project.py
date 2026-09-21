@@ -9,19 +9,16 @@ from dailybot_cli.commands._destructive import preview_then_confirm
 from dailybot_cli.commands._rollups import render_rollup
 from dailybot_cli.commands.public_api_helpers import (
     EXIT_NOT_AUTHENTICATED,
-    EXIT_USER_ABORTED,
     emit_json,
     exit_for_api_error,
     exit_for_tasks_error,
     require_auth,
-    resolve_error_message,
 )
 from dailybot_cli.commands.query_options import build_query_params, query_options
 from dailybot_cli.config import get_token
 from dailybot_cli.display import (
     console,
     present_untrusted,
-    print_dry_run_consequence,
     print_error,
     print_milestones_table,
     print_pagination_footer,
@@ -285,27 +282,16 @@ def project_milestone_complete(
       dailybot project milestone-complete <project-uuid> <milestone-uuid> --yes
     """
     client = require_auth()
-    try:
-        with console.status("Previewing the consequence..."):
-            preview: dict[str, Any] = client.complete_milestone(
-                project_uuid, milestone_uuid, dry_run=True
-            )
-    except APIError as exc:
-        print_error(
-            f"Could not preview the consequence, so nothing was changed. "
-            f"{resolve_error_message(exc)}"
-        )
-        raise SystemExit(1) from exc
-
-    if json_mode and dry_run:
-        emit_json(preview)
+    # The shared helper, not a private copy: this flow drifted from `task archive`
+    # once already (it kept printing the Rich panel to stdout under `--json`), and a
+    # second copy is a second place for that to happen.
+    if not preview_then_confirm(
+        lambda: client.complete_milestone(project_uuid, milestone_uuid, dry_run=True),
+        assume_yes=assume_yes,
+        preview_only=dry_run,
+        json_mode=json_mode,
+    ):
         return
-    print_dry_run_consequence(preview)
-    if dry_run:
-        return
-    if not assume_yes and not click.confirm("Proceed?", default=False):
-        print_error("Aborted. Nothing was changed.")
-        raise SystemExit(EXIT_USER_ABORTED)
 
     try:
         with console.status("Completing the milestone..."):

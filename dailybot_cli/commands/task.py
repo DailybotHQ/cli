@@ -14,6 +14,7 @@ import json as _json
 from typing import Any, NoReturn
 
 import click
+from rich.markup import escape
 
 from dailybot_cli.api_client import TASKS_BULK_MAX_ITEMS, APIError, PaginatedResult
 from dailybot_cli.commands._destructive import preview_then_confirm
@@ -26,6 +27,7 @@ from dailybot_cli.commands.public_api_helpers import (
     require_auth,
 )
 from dailybot_cli.commands.query_options import (
+    PAGING_ONLY_MORE_HINT,
     build_query_params,
     paging_options,
     query_options,
@@ -170,7 +172,12 @@ def task_list(
         emit_json(_envelope(result))
         return
     print_tasks_table(result.results)
-    print_pagination_footer(len(result.results), result.count, has_more=bool(result.next))
+    print_pagination_footer(
+        len(result.results),
+        result.count,
+        has_more=bool(result.next),
+        more_hint=PAGING_ONLY_MORE_HINT,
+    )
 
 
 @task.command("get")
@@ -773,8 +780,11 @@ def task_bulk(
         )
 
     if not assume_yes:
+        # `--operation` is free-form caller input, so it must be escaped before it
+        # reaches a Rich markup string: `[/bold][red]x` otherwise raises MarkupError
+        # before the HTTP call and the root safety net blames the CLI for a bug.
         console.print(
-            f"About to apply [bold]{click.style(operation, bold=True)}[/bold] to "
+            f"About to apply [bold]{escape(operation)}[/bold] to "
             f"[bold]{len(items)}[/bold] item(s). There is no dry run for bulk."
         )
         if not click.confirm("Proceed?", default=False):
@@ -783,7 +793,7 @@ def task_bulk(
 
     client = require_auth()
     try:
-        with console.status(f"Applying {operation} to {len(items)} item(s)..."):
+        with console.status(f"Applying {escape(operation)} to {len(items)} item(s)..."):
             data: dict[str, Any] = client.bulk_tasks(
                 operation=operation, items=items, idempotency_key=idempotency_key
             )

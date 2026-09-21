@@ -1671,13 +1671,18 @@ def print_delta_summary(delta: dict[str, Any]) -> None:
         console.print(f"[bold]delta_cursor[/bold]  {escape(str(cursor))}")
 
 
-def print_dry_run_consequence(preview: dict[str, Any]) -> None:
+def print_dry_run_consequence(preview: dict[str, Any], *, to_stderr: bool = False) -> None:
     """Render a dry-run preview.
 
     BLAST_RADIUS.md is explicit that the CLI must state the **consequence**, not
     merely ask "are you sure" — so the server's own sentence is the headline and
     the affected counts are shown verbatim. An irreversible operation says so
     unmistakably and is offered no restore path, because there is none.
+
+    ``to_stderr`` keeps the record without breaking the ``--json`` contract: under
+    ``--json`` stdout must be a single parseable document, so the panel moves to
+    stderr rather than disappearing. Losing the record was never an option — the
+    rule above is that the consequence is always shown.
     """
     reversible: bool = bool(preview.get("reversible"))
     operation: str = str(preview.get("operation") or "operation")
@@ -1699,7 +1704,8 @@ def print_dry_run_consequence(preview: dict[str, Any]) -> None:
         lines.append("[bold red]This operation is IRREVERSIBLE.[/bold red]")
         border = "red"
         title = "Dry run — irreversible"
-    console.print(Panel("\n".join(lines), title=title, border_style=border))
+    stream: Console = error_console if to_stderr else console
+    stream.print(Panel("\n".join(lines), title=title, border_style=border))
 
 
 def print_tasks_detail_panel(

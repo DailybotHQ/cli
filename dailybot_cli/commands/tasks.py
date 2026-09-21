@@ -29,7 +29,9 @@ from dailybot_cli.commands.public_api_helpers import (
     require_auth,
 )
 from dailybot_cli.commands.query_options import (
+    PAGING_ONLY_MORE_HINT,
     build_query_params,
+    date_options,
     paging_options,
     query_options,
 )
@@ -225,7 +227,12 @@ def tasks_search(query: str, json_mode: bool, **flags: Any) -> None:
         emit_json(_envelope(result))
         return
     print_tasks_table(result.results)
-    print_pagination_footer(len(result.results), result.count, has_more=bool(result.next))
+    print_pagination_footer(
+        len(result.results),
+        result.count,
+        has_more=bool(result.next),
+        more_hint=PAGING_ONLY_MORE_HINT,
+    )
 
 
 @tasks.command("activity")
@@ -258,8 +265,11 @@ def tasks_activity(json_mode: bool, **flags: Any) -> None:
     print_pagination_footer(len(result.results), result.count, has_more=bool(result.next))
 
 
+# `date_options`, not `query_options`: the timeline door declares a date window and
+# nothing else. `--search` used to appear in `--help` here and was dropped on the
+# way to the wire, so an unfiltered timeline read as "the filter matched everything".
 @tasks.command("timeline")
-@query_options
+@date_options
 @click.option("--json", "json_mode", is_flag=True, help="Emit machine-readable JSON to stdout.")
 def tasks_timeline(json_mode: bool, **flags: Any) -> None:
     """Show a dated view of the workspace.
@@ -291,7 +301,12 @@ def tasks_timeline(json_mode: bool, **flags: Any) -> None:
             f"[dim]{entry.get('date', '')}[/dim] "
             f"{present_untrusted(entry.get('title') or entry.get('summary'), limit=90)}"
         )
-    print_pagination_footer(len(result.results), result.count, has_more=bool(result.next))
+    print_pagination_footer(
+        len(result.results),
+        result.count,
+        has_more=bool(result.next),
+        more_hint=PAGING_ONLY_MORE_HINT,
+    )
 
 
 @tasks.command("changes")
@@ -396,8 +411,11 @@ def tasks_changes(
     print_delta_summary(delta)
 
 
+# `paging_options`, not `query_options`: `me/*` doors silently ignore parameters they
+# do not declare, so an advertised `--search` would round-trip with exit 0 and no
+# filtering — the failure mode that is worse than a refusal.
 @tasks.command("inbox")
-@query_options
+@paging_options
 @click.option("--json", "json_mode", is_flag=True, help="Emit machine-readable JSON to stdout.")
 def tasks_inbox(json_mode: bool, **flags: Any) -> None:
     """Show your Tasks notifications.
@@ -415,8 +433,10 @@ def tasks_inbox(json_mode: bool, **flags: Any) -> None:
     _require_person("tasks inbox")
     client = require_auth()
     try:
+        page: dict[str, Any] = _page_kwargs(**flags)
+        page.pop("params", None)  # paging_options supplies no filter params
         with console.status("Reading your inbox..."):
-            result: PaginatedResult = client.list_tasks_inbox(**_page_kwargs(**flags))
+            result: PaginatedResult = client.list_tasks_inbox(**page)
     except ValueError as exc:
         raise click.BadParameter(str(exc)) from exc
     except APIError as exc:
@@ -426,9 +446,15 @@ def tasks_inbox(json_mode: bool, **flags: Any) -> None:
         return
     for item in result.results:
         console.print(present_untrusted(item.get("title") or item.get("summary"), limit=90))
-    print_pagination_footer(len(result.results), result.count, has_more=bool(result.next))
+    print_pagination_footer(
+        len(result.results),
+        result.count,
+        has_more=bool(result.next),
+        more_hint=PAGING_ONLY_MORE_HINT,
+    )
 
 
+# `paging_options` + `--scope`: `scope` is the only filter `me/tasks/` declares.
 @tasks.command("mine")
 @click.option(
     "--scope",
@@ -436,7 +462,7 @@ def tasks_inbox(json_mode: bool, **flags: Any) -> None:
     default=None,
     help="Narrow to one relationship you have with the task.",
 )
-@query_options
+@paging_options
 @click.option("--json", "json_mode", is_flag=True, help="Emit machine-readable JSON to stdout.")
 def tasks_mine(scope: str | None, json_mode: bool, **flags: Any) -> None:
     """List the tasks that are yours.
@@ -467,7 +493,12 @@ def tasks_mine(scope: str | None, json_mode: bool, **flags: Any) -> None:
         emit_json(_envelope(result))
         return
     print_tasks_table(result.results)
-    print_pagination_footer(len(result.results), result.count, has_more=bool(result.next))
+    print_pagination_footer(
+        len(result.results),
+        result.count,
+        has_more=bool(result.next),
+        more_hint=PAGING_ONLY_MORE_HINT,
+    )
 
 
 @tasks.command("counts")
