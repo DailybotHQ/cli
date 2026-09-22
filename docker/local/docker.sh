@@ -43,6 +43,7 @@ Usage: bash docker.sh <verb> [id]
   satellite.bash {id}     Shell in the satellite
   satellite.stop {id}     Stop satellite
   satellite.rm {id}       Remove satellite
+  satellite.rebuild {id}  Rebuild image (cache on; SATELLITE_NO_CACHE=1 for wipe) and recreate
   satellite.logs {id}     Follow satellite logs
 EOF
 }
@@ -140,6 +141,23 @@ cmd_satellite_rm() {
   docker rm -f "dailybot_clivscodesatellite_${id}" 2>/dev/null || true
 }
 
+cmd_satellite_rebuild() {
+  local id build_args=()
+  id="$(sat_id "${1:-}")"
+  export DEVCONTAINER_INSTANCE_ID="$id"
+  export COMPOSE_PROJECT_NAME="dailybotclilocal_${id}"
+  export HERDR_SSH_HOST_PORT="${HERDR_SSH_HOST_PORT:-$((22900 + id))}"
+  if [ "${SATELLITE_NO_CACHE:-0}" = "1" ]; then
+    build_args=(--no-cache --pull)
+    say "Rebuilding clivscodesatellite #${id} --no-cache --pull"
+  else
+    say "Rebuilding clivscodesatellite #${id} (layer cache on)"
+  fi
+  compose stop clivscodesatellite 2>/dev/null || true
+  compose -f docker-compose.satellite-stable.yaml build ${build_args[@]+"${build_args[@]}"} clivscodesatellite
+  compose -f docker-compose.satellite-stable.yaml up -d --force-recreate --no-deps clivscodesatellite
+}
+
 cmd_satellite_logs() {
   local id
   id="$(sat_id "${1:-}")"
@@ -158,6 +176,7 @@ case "${1:-}" in
   satellite.bash) cmd_satellite_bash "${2:-}" ;;
   satellite.stop) cmd_satellite_stop "${2:-}" ;;
   satellite.rm) cmd_satellite_rm "${2:-}" ;;
+  satellite.rebuild) cmd_satellite_rebuild "${2:-}" ;;
   satellite.logs) cmd_satellite_logs "${2:-}" ;;
   -h|--help|help|"") usage ;;
   *) say "Unknown verb: $1"; usage; exit 1 ;;
