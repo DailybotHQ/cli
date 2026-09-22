@@ -147,17 +147,10 @@ recreate, no build required.
 
 A default image build does not download Claude, Cursor, Codex, Pi, OpenCode,
 Cline, or Grok. Each one installs only when its flag is the exact string
-`true` in `docker/local/cli/.env` (copied from `.env.example`, where every
-flag is `false`). Set one flag, then rebuild:
-
-```bash
-# docker/local/cli/.env
-INSTALL_OPENCODE_CLI=true
-```
-
-```bash
-bash dev.sh rebuild
-```
+`true`. Compose interpolates those flags from `docker/local/.env` (next to
+the compose file; stubs in `docker/local/.env.example` are `false`). The Dev
+Containers plugin and `bash dev.sh rebuild` both read that file. Set a flag,
+then rebuild.
 
 | Flag | CLI |
 |---|---|

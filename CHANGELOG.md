@@ -9,6 +9,197 @@ Do not edit it by hand — your edits will be overwritten on the next release.
 
 <!-- version list -->
 
+## v3.12.0 (2026-09-22)
+
+### Bug Fixes
+
+- **client**: Complete task 17 - surface transport failures as messages instead of tracebacks
+  ([#85](https://github.com/DailybotHQ/cli/pull/85),
+  [`b780762`](https://github.com/DailybotHQ/cli/commit/b780762183be4b6c9971ef293f1ea2c8aac654f8))
+
+- **client**: Keep the idempotency key on an unreadable 2xx too
+  ([#85](https://github.com/DailybotHQ/cli/pull/85),
+  [`b780762`](https://github.com/DailybotHQ/cli/commit/b780762183be4b6c9971ef293f1ea2c8aac654f8))
+
+- **client**: Keep transport failures catchable, and carry the key past a timeout
+  ([#85](https://github.com/DailybotHQ/cli/pull/85),
+  [`b780762`](https://github.com/DailybotHQ/cli/commit/b780762183be4b6c9971ef293f1ea2c8aac654f8))
+
+- **tasks**: Address all 13 findings from the CI AI review
+  ([#85](https://github.com/DailybotHQ/cli/pull/85),
+  [`b780762`](https://github.com/DailybotHQ/cli/commit/b780762183be4b6c9971ef293f1ea2c8aac654f8))
+
+- **tasks**: Address the second round of AI review findings
+  ([#85](https://github.com/DailybotHQ/cli/pull/85),
+  [`b780762`](https://github.com/DailybotHQ/cli/commit/b780762183be4b6c9971ef293f1ea2c8aac654f8))
+
+- **tasks**: Build the idempotency help from IDEMPOTENCY_TTL_HOURS
+  ([#85](https://github.com/DailybotHQ/cli/pull/85),
+  [`b780762`](https://github.com/DailybotHQ/cli/commit/b780762183be4b6c9971ef293f1ea2c8aac654f8))
+
+- **tasks**: Close the eight contract gaps from the fourth AI review
+  ([#85](https://github.com/DailybotHQ/cli/pull/85),
+  [`b780762`](https://github.com/DailybotHQ/cli/commit/b780762183be4b6c9971ef293f1ea2c8aac654f8))
+
+- **tasks**: Diagnose the entitlement gate correctly, and map the kill switch
+  ([#85](https://github.com/DailybotHQ/cli/pull/85),
+  [`b780762`](https://github.com/DailybotHQ/cli/commit/b780762183be4b6c9971ef293f1ea2c8aac654f8))
+
+- **tasks**: Finish the round-4 patterns and align the exit contract
+  ([#85](https://github.com/DailybotHQ/cli/pull/85),
+  [`b780762`](https://github.com/DailybotHQ/cli/commit/b780762183be4b6c9971ef293f1ea2c8aac654f8))
+
+- **tasks**: Make the two paths agree, and finish the escape sweep
+  ([#85](https://github.com/DailybotHQ/cli/pull/85),
+  [`b780762`](https://github.com/DailybotHQ/cli/commit/b780762183be4b6c9971ef293f1ea2c8aac654f8))
+
+- **tasks**: One error envelope, and --json on the client-side refusals
+  ([#85](https://github.com/DailybotHQ/cli/pull/85),
+  [`b780762`](https://github.com/DailybotHQ/cli/commit/b780762183be4b6c9971ef293f1ea2c8aac654f8))
+
+- **tasks**: One write reporter, and make round 8's fixes actually fire
+  ([#85](https://github.com/DailybotHQ/cli/pull/85),
+  [`b780762`](https://github.com/DailybotHQ/cli/commit/b780762183be4b6c9971ef293f1ea2c8aac654f8))
+
+- **tasks**: Refuse long search queries, and finish the round-9 helper
+  ([#85](https://github.com/DailybotHQ/cli/pull/85),
+  [`b780762`](https://github.com/DailybotHQ/cli/commit/b780762183be4b6c9971ef293f1ea2c8aac654f8))
+
+- **tasks**: Surface the idempotency key and stop over-warning on previews
+  ([#85](https://github.com/DailybotHQ/cli/pull/85),
+  [`b780762`](https://github.com/DailybotHQ/cli/commit/b780762183be4b6c9971ef293f1ea2c8aac654f8))
+
+### Chores
+
+- **skills**: Sync the vendored Dailybot pack to v3.14.0
+  ([#85](https://github.com/DailybotHQ/cli/pull/85),
+  [`b780762`](https://github.com/DailybotHQ/cli/commit/b780762183be4b6c9971ef293f1ea2c8aac654f8))
+
+### Code Style
+
+- **tasks**: Apply ruff format to the Tasks surface
+  ([#85](https://github.com/DailybotHQ/cli/pull/85),
+  [`b780762`](https://github.com/DailybotHQ/cli/commit/b780762183be4b6c9971ef293f1ea2c8aac654f8))
+
+### Continuous Integration
+
+- **review**: Switch the PR reviewer from cursor to grok
+  ([#85](https://github.com/DailybotHQ/cli/pull/85),
+  [`b780762`](https://github.com/DailybotHQ/cli/commit/b780762183be4b6c9971ef293f1ea2c8aac654f8))
+
+### Documentation
+
+- **tasks**: Complete task 21 - document the Tasks command surface, credentials and contracts
+  ([#85](https://github.com/DailybotHQ/cli/pull/85),
+  [`b780762`](https://github.com/DailybotHQ/cli/commit/b780762183be4b6c9971ef293f1ea2c8aac654f8))
+
+- **tasks**: Fold in the API team's measured answers
+  ([#85](https://github.com/DailybotHQ/cli/pull/85),
+  [`b780762`](https://github.com/DailybotHQ/cli/commit/b780762183be4b6c9971ef293f1ea2c8aac654f8))
+
+- **tasks**: Give the declined-prompt exit a row agents can branch on
+  ([#85](https://github.com/DailybotHQ/cli/pull/85),
+  [`b780762`](https://github.com/DailybotHQ/cli/commit/b780762183be4b6c9971ef293f1ea2c8aac654f8))
+
+### Features
+
+- **dev**: Add rebuild with Docker cache and optional --no-cache
+  ([#86](https://github.com/DailybotHQ/cli/pull/86),
+  [`f27f1d9`](https://github.com/DailybotHQ/cli/commit/f27f1d9ca956b8fe3e890e70e2c446a3a3511e76))
+
+- **docker**: Add satellite.rebuild for workspace rebuild
+  ([#86](https://github.com/DailybotHQ/cli/pull/86),
+  [`f27f1d9`](https://github.com/DailybotHQ/cli/commit/f27f1d9ca956b8fe3e890e70e2c446a3a3511e76))
+
+- **docker**: Agent-workspace satellite (SSH-only)
+  ([#86](https://github.com/DailybotHQ/cli/pull/86),
+  [`f27f1d9`](https://github.com/DailybotHQ/cli/commit/f27f1d9ca956b8fe3e890e70e2c446a3a3511e76))
+
+- **docker**: Satellite.rebuild for agent workspaces
+  ([#86](https://github.com/DailybotHQ/cli/pull/86),
+  [`f27f1d9`](https://github.com/DailybotHQ/cli/commit/f27f1d9ca956b8fe3e890e70e2c446a3a3511e76))
+
+- **tasks**: Complete task 10 - add project and goal read commands with explicit includes
+  ([#85](https://github.com/DailybotHQ/cli/pull/85),
+  [`b780762`](https://github.com/DailybotHQ/cli/commit/b780762183be4b6c9971ef293f1ea2c8aac654f8))
+
+- **tasks**: Complete task 11 - add task create, update, move and assign with idempotent retries
+  ([#85](https://github.com/DailybotHQ/cli/pull/85),
+  [`b780762`](https://github.com/DailybotHQ/cli/commit/b780762183be4b6c9971ef293f1ea2c8aac654f8))
+
+- **tasks**: Complete task 12 - add task collaboration commands (comments, relations, participants,
+  labels) ([#85](https://github.com/DailybotHQ/cli/pull/85),
+  [`b780762`](https://github.com/DailybotHQ/cli/commit/b780762183be4b6c9971ef293f1ea2c8aac654f8))
+
+- **tasks**: Complete task 13 - add destructive task commands with server-previewed consequences
+  ([#85](https://github.com/DailybotHQ/cli/pull/85),
+  [`b780762`](https://github.com/DailybotHQ/cli/commit/b780762183be4b6c9971ef293f1ea2c8aac654f8))
+
+- **tasks**: Complete task 14 - add task bulk with a required idempotency key and the item cap
+  ([#85](https://github.com/DailybotHQ/cli/pull/85),
+  [`b780762`](https://github.com/DailybotHQ/cli/commit/b780762183be4b6c9971ef293f1ea2c8aac654f8))
+
+- **tasks**: Complete task 15 - add project update-post and the milestone complete verb
+  ([#85](https://github.com/DailybotHQ/cli/pull/85),
+  [`b780762`](https://github.com/DailybotHQ/cli/commit/b780762183be4b6c9971ef293f1ea2c8aac654f8))
+
+- **tasks**: Complete task 16 - add board, project and goal container writes with scope-accurate
+  refusals ([#85](https://github.com/DailybotHQ/cli/pull/85),
+  [`b780762`](https://github.com/DailybotHQ/cli/commit/b780762183be4b6c9971ef293f1ea2c8aac654f8))
+
+- **tasks**: Complete task 2 - add the Tasks HTTP foundation to the API client
+  ([#85](https://github.com/DailybotHQ/cli/pull/85),
+  [`b780762`](https://github.com/DailybotHQ/cli/commit/b780762183be4b6c9971ef293f1ea2c8aac654f8))
+
+- **tasks**: Complete task 3 - dispatch the Tasks error taxonomy on machine-readable codes
+  ([#85](https://github.com/DailybotHQ/cli/pull/85),
+  [`b780762`](https://github.com/DailybotHQ/cli/commit/b780762183be4b6c9971ef293f1ea2c8aac654f8))
+
+- **tasks**: Complete task 4 - add Tasks renderers and the untrusted-content boundary
+  ([#85](https://github.com/DailybotHQ/cli/pull/85),
+  [`b780762`](https://github.com/DailybotHQ/cli/commit/b780762183be4b6c9971ef293f1ea2c8aac654f8))
+
+- **tasks**: Complete task 5 - add the tasks read group (status, entitlements, search, activity,
+  timeline) ([#85](https://github.com/DailybotHQ/cli/pull/85),
+  [`b780762`](https://github.com/DailybotHQ/cli/commit/b780762183be4b6c9971ef293f1ea2c8aac654f8))
+
+- **tasks**: Complete task 6 - add tasks changes with cursor lifecycle and window-expiry handling
+  ([#85](https://github.com/DailybotHQ/cli/pull/85),
+  [`b780762`](https://github.com/DailybotHQ/cli/commit/b780762183be4b6c9971ef293f1ea2c8aac654f8))
+
+- **tasks**: Complete task 7 - add the person-shaped Tasks surface with a single refusal message
+  ([#85](https://github.com/DailybotHQ/cli/pull/85),
+  [`b780762`](https://github.com/DailybotHQ/cli/commit/b780762183be4b6c9971ef293f1ea2c8aac654f8))
+
+- **tasks**: Complete task 8 - add task list and task get
+  ([#85](https://github.com/DailybotHQ/cli/pull/85),
+  [`b780762`](https://github.com/DailybotHQ/cli/commit/b780762183be4b6c9971ef293f1ea2c8aac654f8))
+
+- **tasks**: Complete task 9 - add board list, get and snapshot
+  ([#85](https://github.com/DailybotHQ/cli/pull/85),
+  [`b780762`](https://github.com/DailybotHQ/cli/commit/b780762183be4b6c9971ef293f1ea2c8aac654f8))
+
+- **tasks**: Full Tasks support in the CLI — 43 commands, 19 capabilities
+  ([#85](https://github.com/DailybotHQ/cli/pull/85),
+  [`b780762`](https://github.com/DailybotHQ/cli/commit/b780762183be4b6c9971ef293f1ea2c8aac654f8))
+
+### Performance Improvements
+
+- **tasks**: Complete task 19 - hold the Tasks surface to the documented budgets
+  ([#85](https://github.com/DailybotHQ/cli/pull/85),
+  [`b780762`](https://github.com/DailybotHQ/cli/commit/b780762183be4b6c9971ef293f1ea2c8aac654f8))
+
+### Testing
+
+- **tasks**: Complete task 18 - harden and audit the Tasks surface
+  ([#85](https://github.com/DailybotHQ/cli/pull/85),
+  [`b780762`](https://github.com/DailybotHQ/cli/commit/b780762183be4b6c9971ef293f1ea2c8aac654f8))
+
+- **tasks**: Complete task 20 - comprehensive coverage for the Tasks surface
+  ([#85](https://github.com/DailybotHQ/cli/pull/85),
+  [`b780762`](https://github.com/DailybotHQ/cli/commit/b780762183be4b6c9971ef293f1ea2c8aac654f8))
+
+
 ## v3.11.0 (2026-09-18)
 
 ### Bug Fixes
