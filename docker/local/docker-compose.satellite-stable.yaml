@@ -1,0 +1,6 @@
+# Stable SSH host port for a CLI workspace satellite (no HTTP preview).
+# HERDR_SSH_HOST_PORT must be set (unique per sid, default 22900+N).
+services:
+  clivscodesatellite:
+    ports: !override
+      - '127.0.0.1:${HERDR_SSH_HOST_PORT}:22'
