@@ -32,7 +32,7 @@ while [ -L "$_self" ]; do
 done
 SELF_DIR="$(cd -P "$(dirname "$_self")" && pwd)"
 
-VERBS=" setup up down stop start restart ps logs shell exec build ls config doctor help "
+VERBS=" setup up down stop start restart ps logs shell exec build rebuild ls config doctor help "
 
 # --------------------------------------------------------------------------
 # Argument parsing
@@ -43,6 +43,7 @@ VERB=""
 ALL=0
 WITH_VOLUMES=0
 RECREATE=0
+NO_CACHE=0
 PROJECT_OVERRIDE=""
 ARGS=()
 
@@ -51,6 +52,7 @@ while [ $# -gt 0 ]; do
     --all) ALL=1; shift ;;
     --volumes) WITH_VOLUMES=1; shift ;;
     --recreate) RECREATE=1; shift ;;
+    --no-cache) NO_CACHE=1; shift ;;
     --repo) [ $# -ge 2 ] || die "--repo needs a repository name"; TARGET_REPO="$2"; shift 2 ;;
     --project) [ $# -ge 2 ] || die "--project needs a name"; PROJECT_OVERRIDE="$2"; shift 2 ;;
     -h|--help) VERB="help"; shift ;;
@@ -722,9 +724,42 @@ cmd_exec() {
 cmd_build() {
   fast_check
   write_override
-  local svc=()
+  local svc=() build_args=()
   while IFS= read -r s; do [ -n "$s" ] && svc+=("$s"); done < <(services_or_default)
-  dc build "${svc[@]}"
+  if [ "$NO_CACHE" -eq 1 ]; then
+    build_args=(--no-cache --pull)
+  fi
+  dc build ${build_args[@]+"${build_args[@]}"} "${svc[@]}"
+}
+
+cmd_rebuild() {
+  # Same intent as the Dev Containers plugin "Rebuild and Reopen Container":
+  # stop this repository's services, rebuild their images, and start them
+  # again. Default uses Docker layer cache (fast). Pass --no-cache for a full
+  # wipe of layers + --pull of base images (slow). Scoped to runServices only
+  # — never compose down on the shared project, which would take sibling
+  # repositories with it.
+  fast_check
+  write_override
+  local svc=() build_args=()
+  while IFS= read -r s; do [ -n "$s" ] && svc+=("$s"); done < <(services_or_default)
+  [ "${#svc[@]}" -gt 0 ] || die "no services to rebuild — $DC_FILE declares neither runServices nor service"
+  if [ "$NO_CACHE" -eq 1 ]; then
+    build_args=(--no-cache --pull)
+    note "rebuilding ${svc[*]} (project $PROJECT, --no-cache --pull)"
+  else
+    note "rebuilding ${svc[*]} (project $PROJECT, with build cache)"
+  fi
+  note "stopping and removing current containers"
+  dc rm -sf "${svc[@]}" || true
+  if [ "$NO_CACHE" -eq 1 ]; then
+    note "building images without cache"
+  else
+    note "building images (layer cache enabled)"
+  fi
+  dc build ${build_args[@]+"${build_args[@]}"} "${svc[@]}"
+  note "starting rebuilt containers"
+  dc up -d --force-recreate "${svc[@]}"
 }
 
 cmd_config() {
@@ -829,6 +864,8 @@ Verbs
   shell [service]       shell as the devcontainer's remoteUser, in its workspace
   exec <service> <cmd>  run one command in a service
   build [service]       build images
+  rebuild [service]     rebuild images and recreate containers (cache on by
+                        default; same idea as VS Code "Rebuild and Reopen")
   ls                    repositories this launcher can address, and their state
   config                resolved configuration; writes nothing
   doctor                environment diagnosis; writes nothing
@@ -839,6 +876,8 @@ Flags
   --all                 fan the verb out over every addressable repository
   --project <name>      override the compose project name
   --recreate            with up, recreate containers to apply compose changes
+  --no-cache            with rebuild (or build), ignore Docker layer cache and
+                        pull base images — full wipe, much slower
   --volumes             with down, report named volumes for manual removal
 
 The devcontainer.json "runServices" list is the single source of truth for
@@ -864,6 +903,7 @@ run_one() {
     shell)   cmd_shell ;;
     exec)    cmd_exec ;;
     build)   cmd_build ;;
+    rebuild) cmd_rebuild ;;
     config)  cmd_config ;;
     doctor)  cmd_doctor ;;
     *)       die "unknown verb '$VERB' — run: bash dev.sh help" ;;

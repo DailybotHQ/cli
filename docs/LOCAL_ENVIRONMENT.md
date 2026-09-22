@@ -56,6 +56,7 @@ bash dev.sh down      # stop and remove this repo's containers
 | `shell [service]` | Interactive shell as the devcontainer's `remoteUser`, in its `workspaceFolder`. |
 | `exec <service> <cmd...>` | Run one command in a service. |
 | `build [service]` | Build images. |
+| `rebuild [service]` | Stop this repo's services, rebuild images (**layer cache on** by default), and recreate containers. Same idea as VS Code **Rebuild and Reopen Container**. Pass `--no-cache` for a full wipe (`--no-cache --pull`, slow). Host: `dbdev api rebuild`. |
 | `ls` | Every repository this launcher can address, and how many of each one's services are up. |
 | `config` | The resolved configuration. Writes nothing, starts nothing. |
 | `doctor` | Environment diagnosis. Writes nothing, starts nothing. |
@@ -110,66 +111,36 @@ before you have run `setup`.
 Run `bash dev.sh config` to see exactly what it resolved, including the compose
 project name and which rule produced it.
 
+
+### A change to the image needs a rebuild
+
+`up` starts containers from the image that exists; it does not build one. The
+entrypoint is `COPY`ed into the image, so a change to it — or to the Dockerfile —
+is invisible until you rebuild. The one-step form matches the Dev Containers
+plugin "Rebuild and Reopen Container":
+
+```bash
+bash dev.sh rebuild              # default: layer cache on (fast)
+bash dev.sh rebuild --no-cache   # full wipe + pull base images (slow)
+```
+
+That stops this repository's services, builds their images, and starts them
+again with `--force-recreate`. Cache is on by default so only changed layers
+re-run; `--no-cache` is the full wipe when you need a clean base. The same
+verb is available from the host as `dbdev api rebuild` /
+`dailybot-dev web rebuild [--no-cache]`.
+
+The equivalent three-step form still works when you want the pieces separate:
+
+```bash
+bash dev.sh build && bash dev.sh down && bash dev.sh up
+```
+
+`down` then `up` alone only recreates the container from the *old* image, which
+is why a container can keep the shape it was created with long after the file
+changed. Compose-only changes (ports, volumes, environment) do take effect on a
+recreate, no build required.
+
 ---
 
 ## 5. Ports
-
-Everything is bound to loopback. Nothing is published on all interfaces.
-
-| Host | Container | Purpose |
-|---|---|---|
-| `22031` | `22` | SSH, for reaching the container with Herdr. Loopback only. |
-
-Override the host port with `HERDR_SSH_HOST_PORT` in `docker/local/cli/.env`
-— the file the compose service reads as its `env_file`, and the one
-`.env.example` documents — not in the compose file.
-
-**This table describes what the compose file declares.** A container that is
-already running keeps the mapping it was created with until it is recreated, so
-after any port change `docker ps` can disagree with the table until you run
-`bash dev.sh up --recreate`. Check what a running container actually publishes
-with `bash dev.sh ps`.
-
----
-
-## 6. Troubleshooting
-
-**`local environment not ready ... run: bash dev.sh setup`**
-The fast check found a missing `.env` or a missing docker network. Run `setup`.
-That check only runs for verbs that start containers, and costs about thirty
-milliseconds.
-
-**`cannot resolve the compose project name`**
-The launcher refuses to guess the Compose project name from the directory name,
-because guessing would create a second, parallel set of containers that look
-correct and are not the ones your Dev Container manages. Set
-`COMPOSE_PROJECT_NAME` in `docker/local/.env`, or pass `--project`.
-
-**A container came back different, or an editor feature disappeared**
-`up` defaults to `--no-recreate` precisely so it never silently replaces a
-container the Dev Containers plugin created. If you changed the compose file and
-want it applied, that is what `--recreate` is for.
-
-**Herdr shows `reconnecting`**
-Almost always the container is stopped, not a Herdr fault. Check with
-`bash dev.sh ps`, then `bash dev.sh up`. If the container is up, see the Cursor
-port caveat in section 3.
-
-**Which compose project does a container belong to?**
-
-```bash
-docker ps --format '{{.Names}}\t{{.Label "com.docker.compose.project"}}'
-```
-
-**Never run compose with `--remove-orphans` here.** This container shares a
-compose project with other local development containers, so that flag would
-remove them. `dev.sh` never passes it.
-
----
-
-## 7. What this does not replace
-
-- **The Dev Container workflow.** Fully supported, unchanged, same containers.
-- Nothing — this repository never had a `docker/local/docker.sh`.
-
-This project does **not** require Docker. It is a plain Python package; `pip install -e .` and `pytest` run on the host. The container is contributor tooling for the coding-agent CLIs.
