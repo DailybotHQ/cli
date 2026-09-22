@@ -1,7 +1,7 @@
 name: dailybotplatformlocal
 
 services:
-  clivscode:
+  clivscode: &clivscode
     container_name: dailybot-cli
     init: true
     build:
@@ -43,6 +43,13 @@ services:
       # regardless of which key names they use locally.
       - ${HOME}/.ssh:/home/dev-user/.ssh_host:ro
       - ${HOME}/.gitconfig:/home/dev-user/.gitconfig:ro
+
+  # Agent-workspace satellite (SSH only — CLI has no HTTP preview port).
+  # COMPOSE_PROJECT_NAME=dailybotclilocal_<id> DEVCONTAINER_INSTANCE_ID=<id>
+  clivscodesatellite:
+    <<: *clivscode
+    container_name: dailybot_clivscodesatellite_${DEVCONTAINER_INSTANCE_ID:-1}
+    ports: []
 
 volumes:
   claude_data: {}
