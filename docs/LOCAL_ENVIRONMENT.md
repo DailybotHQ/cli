@@ -143,4 +143,38 @@ recreate, no build required.
 
 ---
 
+## 4.1 Coding CLIs and the editor
+
+A default image build does not download Claude, Cursor, Codex, Pi, OpenCode,
+Cline, or Grok. Each one installs only when its flag is the exact string
+`true` in `docker/local/cli/.env` (copied from `.env.example`, where every
+flag is `false`). Set one flag, then rebuild:
+
+```bash
+# docker/local/cli/.env
+INSTALL_OPENCODE_CLI=true
+```
+
+```bash
+bash dev.sh rebuild
+```
+
+| Flag | CLI |
+|---|---|
+| `INSTALL_CLAUDE_CLI` | Claude Code |
+| `INSTALL_CURSOR_CLI` | Cursor CLI |
+| `INSTALL_CODEX_CLI` | Codex |
+| `INSTALL_PI_CLI` | Pi |
+| `INSTALL_OPENCODE_CLI` | OpenCode |
+| `INSTALL_CLINE_CLI` | Cline |
+| `INSTALL_GROK_CLI` | Grok |
+
+`nvim` for `dev-user` is the full Dailybot mu-vim config. The image clones
+`https://github.com/DailybotHQ/mu-vim.git` into `~/.config/nvim` and runs
+`lua install.lua`, then a headless plugin sync. The binary is the Neovim
+0.11.4 tarball in `~/.local`, ahead of any apt package the installer adds.
+`EDITOR`, `VISUAL`, and `GIT_EDITOR` are `nvim`.
+
+---
+
 ## 5. Ports

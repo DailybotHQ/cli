@@ -71,6 +71,11 @@ HERDR_SSH_HOST_PORT=<a free port on your Mac>
 
 Then point the SSH `Port` at the same value.
 
+On start, the entrypoint prepends `Include ~/.ssh_host/config.d/dailybot-peers`
+to the copied SSH config when that peers file is present, and copies the host
+Herdr catalog from the read-only `~/.herdr_client_host` mount. It does not
+rewrite `HostName`. The Mac config must not Include `dailybot-peers`.
+
 ## Saved machine (unified sidebar)
 
 ```bash

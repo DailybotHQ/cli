@@ -560,6 +560,49 @@ setup_ssh_keys_for_user() {
 setup_ssh_keys_for_user "/home/dev-user"
 chown -R dev-user:dev-user /home/dev-user/.ssh 2>/dev/null || true
 
+# dailybot-herdr-peer-mesh
+install_herdr_peer_mesh() {
+  local home="$1"
+  local user="$2"
+  local ssh_config="${home}/.ssh/config"
+  local include_line='Include ~/.ssh_host/config.d/dailybot-peers'
+  local src="${home}/.herdr_client_host/endpoints.json"
+  local dest_dir="${home}/.local/state/herdr/client"
+  local dest="${dest_dir}/endpoints.json"
+  if [ ! -f "${home}/.ssh_host/config.d/dailybot-peers" ]; then
+    echo "herdr peers: ~/.ssh_host/config.d/dailybot-peers missing; skip include"
+  elif [ -f "${ssh_config}" ]; then
+    if ! grep -qxF "${include_line}" "${ssh_config}"; then
+      local tmp
+      tmp="$(mktemp)"
+      printf '%s\n' "${include_line}" | cat - "${ssh_config}" > "${tmp}"
+      mv "${tmp}" "${ssh_config}"
+      chown "${user}:${user}" "${ssh_config}" 2>/dev/null || true
+      chmod 600 "${ssh_config}" 2>/dev/null || true
+    fi
+  else
+    mkdir -p "${home}/.ssh"
+    printf '%s\n' "${include_line}" > "${ssh_config}"
+    chown -R "${user}:${user}" "${home}/.ssh" 2>/dev/null || true
+    chmod 700 "${home}/.ssh" 2>/dev/null || true
+    chmod 600 "${ssh_config}" 2>/dev/null || true
+  fi
+  if [ ! -f "${src}" ]; then
+    echo "herdr peers: catalog missing at ${src}; skip copy"
+    return 0
+  fi
+  mkdir -p "${dest_dir}"
+  if [ -f "${dest}" ]; then
+    cp -p "${dest}" "${dest}.bak"
+  fi
+  cp -p "${src}" "${dest}"
+  chown -R "${user}:${user}" "${dest_dir}" 2>/dev/null || true
+  chmod 600 "${dest}" 2>/dev/null || true
+}
+
+# Every start, after the SSH config copy. Does not rewrite HostName.
+install_herdr_peer_mesh "/home/dev-user" "dev-user"
+
 # Start sshd so a Herdr client on the host can attach to this container as a
 # saved machine. The compose file publishes container port 22 on
 # 127.0.0.1:${HERDR_SSH_HOST_PORT} — loopback only, never every interface.
