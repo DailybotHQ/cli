@@ -1051,6 +1051,7 @@ Verbs
   config                resolved configuration; writes nothing
   doctor                environment diagnosis; writes nothing
   agents                live machines and agents, refreshed from the Mac catalog
+                        same as: dbdev agents
   help                  this text
 
 Flags
@@ -1089,6 +1090,7 @@ run_one() {
     config)  cmd_config ;;
     doctor)  cmd_doctor ;;
     agents) cmd_herdr_agents ;;
+    dbdev)  cmd_help; exit 0 ;;
     *)       die "unknown verb '$VERB' — run: bash dev.sh help" ;;
   esac
 }

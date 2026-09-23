@@ -663,6 +663,12 @@ EOF
 
 install_herdr_peer_mesh "/home/dev-user" "dev-user"
 
+# Same name as the Mac command. This repo's launcher lists the live agents.
+if [ -f /app/dev.sh ]; then
+  ln -sfn /app/dev.sh /usr/local/bin/dbdev
+  chmod 755 /app/dev.sh 2>/dev/null || true
+fi
+
 # Start sshd so a Herdr client on the host can attach to this container as a
 # saved machine. The compose file publishes container port 22 on
 # 127.0.0.1:${HERDR_SSH_HOST_PORT} — loopback only, never every interface.
