@@ -886,16 +886,13 @@ herdr_trust_peer_keys() {
   return 0
 }
 
-# Copy the read-only Mac catalog over the local Herdr file, then ask every
-# enabled machine for its agents. The mount updates when the Mac catalog
-# changes; Herdr itself only reads the copy, because it also writes that path.
-cmd_herdr_agents() {
-  command -v herdr >/dev/null 2>&1 || die "herdr is not on PATH"
-  command -v python3 >/dev/null 2>&1 || die "python3 is required to read the catalog"
+# Copy the read-only Mac catalog over the local Herdr file, then trust peer
+# keys. ask and agents both need a catalog that already contains the Mac.
+herdr_prepare_mesh() {
   local refresh="${HOME}/.local/bin/herdr-refresh-catalog"
   local src="${HOME}/.herdr_client_host/endpoints.json"
   if [ -x "$refresh" ]; then
-    # A missing Mac catalog is an empty mesh, not a failed listing.
+    # A missing Mac catalog is an empty mesh, not a failed command.
     if [ -f "$src" ]; then
       "$refresh" || die "could not refresh the Herdr catalog from the Mac mount"
     fi
@@ -903,6 +900,15 @@ cmd_herdr_agents() {
     die "catalog mount is present but ${refresh} is missing; restart this container once so the entrypoint installs it"
   fi
   herdr_trust_peer_keys
+}
+
+# Copy the read-only Mac catalog over the local Herdr file, then ask every
+# enabled machine for its agents. The mount updates when the Mac catalog
+# changes; Herdr itself only reads the copy, because it also writes that path.
+cmd_herdr_agents() {
+  command -v herdr >/dev/null 2>&1 || die "herdr is not on PATH"
+  command -v python3 >/dev/null 2>&1 || die "python3 is required to read the catalog"
+  herdr_prepare_mesh
   python3 - <<'PY'
 import json, os, subprocess, sys
 
@@ -1084,6 +1090,7 @@ cmd_herdr_ask() {
   [ $# -ge 1 ] || die "ask needs a prompt"
   local text="$*"
   [ -n "$text" ] || die "ask needs a prompt"
+  herdr_prepare_mesh
   if [ -n "$number" ]; then
     local resolved
     resolved="$(HERDR_ASK_NUMBER="$number" python3 - <<'PY'
