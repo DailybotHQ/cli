@@ -149,7 +149,7 @@ existing `herdr_data` volumes).
 
 ### Finding another agent
 
-`bash dev.sh agents` (inside a container) and `dbdev agents` (on the Mac) print one row per agent. **ID** is the hex machine id. **PANE** (`w5:p2`) is the conversation. A machine with five agents is five rows. The list is live: rerun it. A rebuild does not refresh it.
+`dbdev agents` (inside a container or on the Mac; `bash dev.sh agents` is the same list) prints one row per agent. **ID** is the hex machine id. **PANE** (`w5:p2`) is the conversation. A machine with five agents is five rows. The list is live: rerun it. A rebuild does not refresh it.
 
 ```bash
 herdr --machine <machine id> agent prompt <pane> "Prompt..."

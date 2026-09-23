@@ -85,8 +85,9 @@ on a given container, or edit from the host while Herdr owns the remote.
 
 Herdr setup is a separate, one-time recipe:
 [`HERDR_SSH_SETUP.md`](HERDR_SSH_SETUP.md). To see the agents on the other
-machines, run `bash dev.sh agents` inside this container (or `dbdev agents`
-on the Mac). One row per agent; **ID** is the machine, **PANE** is the
+machines, run `dbdev agents` inside this container. `bash dev.sh agents`
+is the same list. On the Mac, `dbdev agents` prints the same table.
+One row per agent; **ID** is the machine, **PANE** is the
 conversation. Message one with
 `herdr --machine <machine id> agent prompt <pane> "Prompt..."`.
 Rerun the list when you need a fresh view. Contributor tooling only — keep
