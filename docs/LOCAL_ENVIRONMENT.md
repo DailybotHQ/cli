@@ -84,7 +84,14 @@ temporarily own the container's SSH host port, and Herdr will show
 on a given container, or edit from the host while Herdr owns the remote.
 
 Herdr setup is a separate, one-time recipe:
-[`HERDR_SSH_SETUP.md`](HERDR_SSH_SETUP.md).
+[`HERDR_SSH_SETUP.md`](HERDR_SSH_SETUP.md). To see the agents on the other
+machines, run `dbdev agents` inside this container. `bash dev.sh agents`
+is the same list. On the Mac, `dbdev agents` prints the same table.
+One row per agent; **ID** is the machine, **PANE** is the
+conversation. Message one with
+`dbdev ask <#> "Prompt..."`. `#` is the short number from the list you just printed. It changes when agents appear or disappear. **PANE** (`w5:p2`) is the stable address, and `dbdev ask <machine id> <pane> "Prompt..."` still works. Inside a container, `bash dev.sh ask` is the same command. The prompt carries a reply address for the session that sent it. The receiver is allowed to answer, and sends that answer itself without asking a person for permission. A reply keeps the `[dailybot-mesh]` stamp, so the next hop is marked as a reply and is not answered. That is what stops two agents from looping. The answer arrives as a prompt in the sender's pane. A reply uses the stamped machine id and pane, not `#`.
+Rerun the list when you need a fresh view. Contributor tooling only — keep
+it out of the public README and CLI help.
 
 ---
 
@@ -140,6 +147,33 @@ bash dev.sh build && bash dev.sh down && bash dev.sh up
 is why a container can keep the shape it was created with long after the file
 changed. Compose-only changes (ports, volumes, environment) do take effect on a
 recreate, no build required.
+
+---
+
+## 4.1 Coding CLIs and the editor
+
+A default image build does not download Claude, Cursor, Codex, Pi, OpenCode,
+Cline, or Grok. Each one installs only when its flag is the exact string
+`true`. Compose interpolates those flags from `docker/local/.env` (next to
+the compose file; stubs in `docker/local/.env.example` are `false`). The Dev
+Containers plugin and `bash dev.sh rebuild` both read that file. Set a flag,
+then rebuild.
+
+| Flag | CLI |
+|---|---|
+| `INSTALL_CLAUDE_CLI` | Claude Code |
+| `INSTALL_CURSOR_CLI` | Cursor CLI |
+| `INSTALL_CODEX_CLI` | Codex |
+| `INSTALL_PI_CLI` | Pi |
+| `INSTALL_OPENCODE_CLI` | OpenCode |
+| `INSTALL_CLINE_CLI` | Cline |
+| `INSTALL_GROK_CLI` | Grok |
+
+`nvim` for `dev-user` is the full Dailybot mu-vim config. The image clones
+`https://github.com/DailybotHQ/mu-vim.git` into `~/.config/nvim` and runs
+`lua install.lua`, then a headless plugin sync. The binary is the Neovim
+0.12.5 tarball in `~/.local`, ahead of any apt package the installer adds.
+`EDITOR`, `VISUAL`, and `GIT_EDITOR` are `nvim`.
 
 ---
 

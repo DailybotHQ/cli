@@ -10,8 +10,18 @@ services:
       # the context lean (no node_modules, no .git, no AI-CLI persistence dirs).
       context: ../..
       dockerfile: ./docker/local/cli/Dockerfile
+      args:
+        INSTALL_CLAUDE_CLI: ${INSTALL_CLAUDE_CLI:-false}
+        INSTALL_CURSOR_CLI: ${INSTALL_CURSOR_CLI:-false}
+        INSTALL_CODEX_CLI: ${INSTALL_CODEX_CLI:-false}
+        INSTALL_PI_CLI: ${INSTALL_PI_CLI:-false}
+        INSTALL_OPENCODE_CLI: ${INSTALL_OPENCODE_CLI:-false}
+        INSTALL_CLINE_CLI: ${INSTALL_CLINE_CLI:-false}
+        INSTALL_GROK_CLI: ${INSTALL_GROK_CLI:-false}
     working_dir: /workspace
     command: sleep infinity
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     environment:
       - DOCKER_DEV_ENV=vscode
     networks:
@@ -42,6 +52,10 @@ services:
       # the container's writable ~/.ssh. This is portable across team members
       # regardless of which key names they use locally.
       - ${HOME}/.ssh:/home/dev-user/.ssh_host:ro
+      # Host Herdr catalog, read-only. The entrypoint copies endpoints.json
+      # into the container on every start. Do not mount this at the real
+      # Herdr path: a read-write mount would let the container corrupt it.
+      - ${HOME}/.local/state/herdr/client:/home/dev-user/.herdr_client_host:ro
       - ${HOME}/.gitconfig:/home/dev-user/.gitconfig:ro
 
   # Agent-workspace satellite (SSH only — CLI has no HTTP preview port).

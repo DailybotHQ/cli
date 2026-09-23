@@ -1,0 +1,14 @@
+# Agent workspace copy — primary → workspace, minus these paths.
+# .git/ and .env are always copied. Built-in excludes also skip node_modules/,
+# .venv/, __pycache__/, coverage caches, etc.
+#
+# tmp/ holds scratch clones (adr, dwp-probe, nested checkouts). Skip it, but
+# keep the web-app subtree: a more specific include wins over exclude.
+
+seed:
+  enabled: true
+  # More specific than exclude: tmp/ is skipped, this subtree is copied.
+  exclude:
+    - tmp/
+  include:
+    - tmp/repositories/web-app/

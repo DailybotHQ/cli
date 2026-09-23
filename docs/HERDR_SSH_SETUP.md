@@ -71,6 +71,11 @@ HERDR_SSH_HOST_PORT=<a free port on your Mac>
 
 Then point the SSH `Port` at the same value.
 
+On start, the entrypoint prepends `Include ~/.ssh_host/config.d/dailybot-peers`
+to the copied SSH config when that peers file is present, and copies the host
+Herdr catalog from the read-only `~/.herdr_client_host` mount. It does not
+rewrite `HostName`. The Mac config must not Include `dailybot-peers`.
+
 ## Saved machine (unified sidebar)
 
 ```bash
@@ -138,7 +143,23 @@ existing `herdr_data` volumes).
 |------|-------------|
 | `herdr` then sidebar → **Dailybot CLI** | Local + remote agents in one UI |
 | `herdr --remote dailybot-cli` | Full-screen remote only |
+| `bash dev.sh agents` | From inside this container: live machines and the agents on them right now |
+| `dbdev agents` | The same list from the Mac |
 | Nest `--remote` inside a local Herdr pane | Avoid — two sidebars |
+
+### Finding another agent
+
+`dbdev agents` (inside a container or on the Mac; `bash dev.sh agents` is the same list) prints one row per agent. **ID** is the hex machine id. **PANE** (`w5:p2`) is the conversation. A machine with five agents is five rows. The row marked `<- you` is the session that printed the list, and the footer says `you are #N`. The list is live: rerun it. A rebuild does not refresh it.
+
+```bash
+dbdev ask <#> "Prompt..."
+```
+
+`#` is the short number in the first column of the list you just printed. The row marked `<- you` is this session. It changes when agents appear or disappear, so use it only with that list. **PANE** (`w5:p2`) is the stable address. **ID** is the machine. The same prompt with those two columns is `dbdev ask <machine id> <pane> "Prompt..."`. Inside a container, `bash dev.sh ask` is the same command. On the Mac, `dbdev ask` is the same command.
+
+The prompt carries a reply address for the session that sent it. The receiver is allowed to answer, and sends that answer itself without asking a person for permission. A reply keeps the `[dailybot-mesh]` stamp, so the next hop is marked as a reply and is not answered. That is what stops two agents from looping. The answer arrives as a prompt in the sender's pane. A reply uses the stamped machine id and pane, not `#`, because the number is only valid for the list that printed it. A container can answer an agent on the Mac after `dbdev onboard herdr` has published this Mac as the machine `0 - Mac`. From the Core Hub, `bash scripts/host-kit-menu.sh doctor` lists what is already connected.
+
+The listing prints one filled-in example under the table. `no agents` means the machine answered and nobody is running. `unreachable` means SSH did not answer. Contributor tooling only — keep machine ids and ports out of the public README and CLI help.
 
 Phone / Tailscale / Moshi should SSH to the **Mac**, not to `22031`. Herdr
 on the Mac reaches this container.

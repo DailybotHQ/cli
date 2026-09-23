@@ -560,6 +560,128 @@ setup_ssh_keys_for_user() {
 setup_ssh_keys_for_user "/home/dev-user"
 chown -R dev-user:dev-user /home/dev-user/.ssh 2>/dev/null || true
 
+# dailybot-herdr-peer-mesh
+install_herdr_peer_mesh() {
+  local home="$1"
+  local user="$2"
+  local ssh_config="${home}/.ssh/config"
+  local include_line='Include ~/.ssh_host/config.d/dailybot-peers'
+  local src="${home}/.herdr_client_host/endpoints.json"
+  local dest_dir="${home}/.local/state/herdr/client"
+  local dest="${dest_dir}/endpoints.json"
+  if [ ! -f "${home}/.ssh_host/config.d/dailybot-peers" ]; then
+    echo "herdr peers: ~/.ssh_host/config.d/dailybot-peers missing; skip include"
+  elif [ -f "${ssh_config}" ]; then
+    if ! grep -qxF "${include_line}" "${ssh_config}"; then
+      local tmp
+      tmp="$(mktemp)"
+      printf '%s\n' "${include_line}" | cat - "${ssh_config}" > "${tmp}"
+      mv "${tmp}" "${ssh_config}"
+      chown "${user}:${user}" "${ssh_config}" 2>/dev/null || true
+      chmod 600 "${ssh_config}" 2>/dev/null || true
+    fi
+  else
+    mkdir -p "${home}/.ssh"
+    printf '%s\n' "${include_line}" > "${ssh_config}"
+    chown -R "${user}:${user}" "${home}/.ssh" 2>/dev/null || true
+    chmod 700 "${home}/.ssh" 2>/dev/null || true
+    chmod 600 "${ssh_config}" 2>/dev/null || true
+  fi
+  # Herdr writes endpoints.json, so the Mac catalog stays on a read-only mount
+  # and this copy is what Herdr reads. Refresh it before every agent listing
+  # so a machine created on the Mac shows up without a container restart.
+  # The mount is the source; a container must not write back to it.
+  # A missing catalog must not skip host-key trust below.
+  # dailybot-herdr-refresh-catalog
+  mkdir -p "${home}/.local/bin"
+  cat > "${home}/.local/bin/herdr-refresh-catalog" <<'EOF'
+#!/bin/sh
+src="${HOME}/.herdr_client_host/endpoints.json"
+dest="${HOME}/.local/state/herdr/client/endpoints.json"
+if [ ! -f "$src" ]; then
+  echo "herdr peers: catalog missing at $src" >&2
+  exit 1
+fi
+mkdir -p "$(dirname "$dest")"
+if [ -f "$dest" ] && cmp -s "$src" "$dest"; then
+  exit 0
+fi
+if [ -f "$dest" ]; then
+  cp -p "$dest" "${dest}.bak"
+fi
+cp -p "$src" "$dest"
+chmod 600 "$dest" 2>/dev/null || true
+EOF
+  chown "${user}:${user}" "${home}/.local/bin/herdr-refresh-catalog"
+  chmod 755 "${home}/.local/bin/herdr-refresh-catalog"
+  if [ ! -f "${src}" ]; then
+    echo "herdr peers: catalog missing at ${src}; skip copy"
+  else
+    mkdir -p "${dest_dir}"
+    if [ -f "${dest}" ]; then
+      cp -p "${dest}" "${dest}.bak"
+    fi
+    cp -p "${src}" "${dest}"
+    chown -R "${user}:${user}" "${dest_dir}" 2>/dev/null || true
+    chmod 600 "${dest}" 2>/dev/null || true
+  fi
+  # Peers connect as host.docker.internal:<port>. The copied known_hosts only
+  # has 127.0.0.1 from the Mac, so the first agent prompt dies on strict
+  # checking. ssh-keyscan does not answer on these published ports, so accept
+  # the key the same way a first SSH does. A peer that is down is skipped.
+  if [ -f "${home}/.ssh_host/config.d/dailybot-peers" ]; then
+    local known="${home}/.ssh/known_hosts"
+    touch "${known}"
+    chown "${user}:${user}" "${known}" 2>/dev/null || true
+    awk '
+      /^Host / { host=$2; port="" }
+      /^[[:space:]]*Port / && host != "" { port=$2 }
+      host != "" && port != "" {
+        printf "%s %s\n", host, port
+        host=""; port=""
+      }
+    ' "${home}/.ssh_host/config.d/dailybot-peers" | while read -r peer_host peer_port; do
+      # Host is an SSH alias. known_hosts stores [host.docker.internal]:port.
+      case "${peer_port}" in
+        ''|*[!0-9]*) continue ;;
+      esac
+      # Primaries 22022-22032 (22032 is the Mac). Satellites 22400-22999.
+      case "${peer_port}" in
+        2202[2-9]|2203[0-2]|22[4-9][0-9][0-9]) ;;
+        *) continue ;;
+      esac
+      if ssh-keygen -F "[host.docker.internal]:${peer_port}" -f "${known}" >/dev/null 2>&1; then
+        continue
+      fi
+      # Dial the gateway directly. The peers file is host-mounted; never
+      # interpolate its Host alias into a shell string.
+      su -s /bin/bash "${user}" -c "ssh -o BatchMode=yes -o StrictHostKeyChecking=accept-new -o ConnectTimeout=4 -o PreferredAuthentications=publickey -p ${peer_port} host.docker.internal true" >/dev/null 2>&1 || true
+    done
+    chmod 600 "${known}" 2>/dev/null || true
+  fi
+}
+
+install_herdr_peer_mesh "/home/dev-user" "dev-user"
+
+# Same name as the Mac command. This repo's launcher lists the live agents.
+# This repo's workspace is /workspace, not /app. Link whichever is mounted.
+_dbdev_src=""
+if [ -f /workspace/dev.sh ]; then
+  _dbdev_src=/workspace/dev.sh
+elif [ -f /app/dev.sh ]; then
+  _dbdev_src=/app/dev.sh
+fi
+if [ -n "$_dbdev_src" ]; then
+  # The entrypoint may already be dev-user. /usr/local/bin is root-owned.
+  if [ "$(id -u)" = "0" ]; then
+    ln -sfn "$_dbdev_src" /usr/local/bin/dbdev
+  else
+    sudo ln -sfn "$_dbdev_src" /usr/local/bin/dbdev
+  fi
+  chmod 755 "$_dbdev_src" 2>/dev/null || true
+fi
+unset _dbdev_src
+
 # Start sshd so a Herdr client on the host can attach to this container as a
 # saved machine. The compose file publishes container port 22 on
 # 127.0.0.1:${HERDR_SSH_HOST_PORT} — loopback only, never every interface.
