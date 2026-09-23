@@ -664,15 +664,23 @@ EOF
 install_herdr_peer_mesh "/home/dev-user" "dev-user"
 
 # Same name as the Mac command. This repo's launcher lists the live agents.
-if [ -f /app/dev.sh ]; then
+# This repo's workspace is /workspace, not /app. Link whichever is mounted.
+_dbdev_src=""
+if [ -f /workspace/dev.sh ]; then
+  _dbdev_src=/workspace/dev.sh
+elif [ -f /app/dev.sh ]; then
+  _dbdev_src=/app/dev.sh
+fi
+if [ -n "$_dbdev_src" ]; then
   # The entrypoint may already be dev-user. /usr/local/bin is root-owned.
   if [ "$(id -u)" = "0" ]; then
-    ln -sfn /app/dev.sh /usr/local/bin/dbdev
+    ln -sfn "$_dbdev_src" /usr/local/bin/dbdev
   else
-    sudo ln -sfn /app/dev.sh /usr/local/bin/dbdev
+    sudo ln -sfn "$_dbdev_src" /usr/local/bin/dbdev
   fi
-  chmod 755 /app/dev.sh 2>/dev/null || true
+  chmod 755 "$_dbdev_src" 2>/dev/null || true
 fi
+unset _dbdev_src
 
 # Start sshd so a Herdr client on the host can attach to this container as a
 # saved machine. The compose file publishes container port 22 on
