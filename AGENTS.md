@@ -137,15 +137,15 @@ contributor tooling only: it ships nothing to users of the CLI, and every
 command above still runs on the host without it. See
 [`docs/LOCAL_ENVIRONMENT.md`](docs/LOCAL_ENVIRONMENT.md).
 
-**Discover other Herdr agents** only from that contributor container, with `dbdev agents`. `bash dev.sh agents` is the same list. On the Mac, `dbdev agents` prints the same table. The table is live: rerun it, do not rebuild to refresh it. One row is one agent. **ID** is the machine id (hex). **PANE** (`w5:p2`) is that conversation. Five agents on one machine are five rows. Talk to one with:
+**Discover other Herdr agents** only from that contributor container, with `dbdev agents`. `bash dev.sh agents` is the same list. On the Mac, `dbdev agents` prints the same table. The table is live: rerun it, do not rebuild to refresh it. One row is one agent. **ID** is the machine id (hex). **PANE** (`w5:p2`) is that conversation. Five agents on one machine are five rows. The row marked `<- you` is the session that printed the list, and the footer says `you are #N`. Talk to one with:
 
 ```bash
 dbdev ask <#> "Prompt..."
 ```
 
-`#` is the short number in the first column of the list you just printed. It changes when agents appear or disappear, so use it only with that list. **PANE** (`w5:p2`) is the stable address. **ID** is the machine. The same prompt with those two columns is `dbdev ask <machine id> <pane> "Prompt..."`. Inside a container, `bash dev.sh ask` is the same command. On the Mac, `dbdev ask` is the same command.
+`#` is the short number in the first column of the list you just printed. The row marked `<- you` is this session. It changes when agents appear or disappear, so use it only with that list. **PANE** (`w5:p2`) is the stable address. **ID** is the machine. The same prompt with those two columns is `dbdev ask <machine id> <pane> "Prompt..."`. Inside a container, `bash dev.sh ask` is the same command. On the Mac, `dbdev ask` is the same command.
 
-The prompt carries a reply address for the session that sent it. The receiver answers only when the request needs an answer. A message that already has the `[dailybot-mesh]` stamp is never answered, so two agents do not loop. The answer arrives as a prompt in the sender's pane. A reply uses the stamped machine id and pane, not `#`, because the number is only valid for the list that printed it. A container can answer an agent on the Mac after `dbdev onboard herdr` has published this Mac as the machine `0 - Mac`. From the Core Hub, `bash scripts/host-kit-menu.sh doctor` lists what is already connected.
+The prompt carries a reply address for the session that sent it. The receiver is allowed to answer, and sends that answer itself without asking a person for permission. A message that already has the `[dailybot-mesh]` stamp is a reply and is never answered, so two agents do not loop. The answer arrives as a prompt in the sender's pane. A reply uses the stamped machine id and pane, not `#`, because the number is only valid for the list that printed it. A container can answer an agent on the Mac after `dbdev onboard herdr` has published this Mac as the machine `0 - Mac`. From the Core Hub, `bash scripts/host-kit-menu.sh doctor` lists what is already connected.
 
 The listing prints one filled-in example under the table. `no agents` means the machine answered and nobody is running. `unreachable` means SSH did not answer. Procedure: [`docs/HERDR_SSH_SETUP.md`](docs/HERDR_SSH_SETUP.md). This stays in contributor docs. Do not add machine ids, ports, or this command to the public README, `--help`, or any string the CLI prints for users.
 

@@ -954,6 +954,48 @@ def agents_for(machine_id):
         return None, ["agent list had no agents array"]
     return found, None
 
+def here():
+    # pane current is this process's own pane. Pair it with the machine
+    # whose catalog lists that exact terminal, so a repeated pane id on
+    # another machine is not marked as this session.
+    try:
+        raw = subprocess.run(
+            ["herdr", "pane", "current"],
+            capture_output=True, text=True, timeout=8,
+        )
+    except subprocess.TimeoutExpired:
+        return "", ""
+    if raw.returncode != 0 or not raw.stdout.strip():
+        return "", ""
+    try:
+        pane = ((json.loads(raw.stdout).get("result") or {}).get("pane") or {})
+    except json.JSONDecodeError:
+        return "", ""
+    pane_id = str(pane.get("pane_id") or "")
+    terminal_id = str(pane.get("terminal_id") or "")
+    if not pane_id:
+        return "", ""
+    for machine in machines():
+        if not machine.get("enabled"):
+            continue
+        mid = str(machine.get("id") or "")
+        if not mid:
+            continue
+        found, err = agents_for(mid)
+        if err is not None or not found:
+            continue
+        for agent in found:
+            if not isinstance(agent, dict):
+                continue
+            if str(agent.get("pane_id") or "") != pane_id:
+                continue
+            if terminal_id and str(agent.get("terminal_id") or "") != terminal_id:
+                continue
+            return mid, pane_id
+    return "", pane_id
+
+self_machine, self_pane = here()
+
 rows = []
 for machine in machines():
     if not machine.get("enabled"):
@@ -1002,40 +1044,52 @@ state_color = {
 }
 shown = []
 number = 0
+you = None
 for label, mid, name, pane, state, title in rows:
     if pane != "-":
         number += 1
         short = str(number)
     else:
         short = "-"
-    shown.append((short, clean(label), mid, name, pane, state, title[:36]))
+    mine = bool(self_machine) and mid == self_machine and pane == self_pane
+    if mine:
+        you = short
+    shown.append((short, clean(label), mid, name, pane, state, title[:36], mine))
 
 headers = ("#", "MACHINE", "ID", "AGENT", "PANE", "STATE", "TITLE")
 widths = [len(h) for h in headers]
 for row in shown:
-    for i, cell in enumerate(row):
+    for i, cell in enumerate(row[:7]):
         if i == 6:
             continue
         widths[i] = max(widths[i], len(cell))
 
-def line(cells, color_state=None):
+def line(cells, color_state=None, mine=False):
     parts = []
     for i, cell in enumerate(cells):
         text = cell.ljust(widths[i]) if i < 6 else cell
         if i == 5 and color_state:
             text = paint(state_color.get(color_state, "0"), text)
         parts.append(text)
-    return "  " + "  ".join(parts).rstrip()
+    body = "  " + "  ".join(parts).rstrip()
+    if mine:
+        body = paint("1;32", body) + "  <- you"
+    return body
 
+if you:
+    print(paint("1;32", "  you are #%s. That row is this session." % you))
+else:
+    print("  this session is not a row in the list.")
+print()
 print(paint("1", line(headers)))
 print("  " + "  ".join("-" * w for w in widths))
 if not shown:
     print("  (no enabled machines)")
 else:
     for row in shown:
-        print(line(row, row[5]))
+        print(line(row[:7], row[5], row[7]))
 
-example = next((row for row in shown if row[0] != "-"), None)
+example = next((row for row in shown if row[0] != "-" and not row[7]), None)
 print()
 print("  # is the short id from this list. PANE is the stable address.")
 print("  bash dev.sh ask <#> \"Prompt...\"")
@@ -1047,9 +1101,9 @@ PY
 
 # Send one prompt and stamp where the reply should go.
 #
-# The stamp is a return address, not an order to answer. The receiver replies
-# only when the request needs an answer, and never replies to a message that
-# already carries a stamp. That is what stops two agents from talking forever.
+# The stamp is permission and a return address. The receiver sends the answer
+# itself, without asking a person. A message that already carries a stamp is
+# a reply, so it is never answered. That is what stops two agents from looping.
 #
 # A reply lands on the Herdr machine that sent the prompt. On the Mac that
 # machine is dailybot-mac (127.0.0.1:22032). Inside a container it is that
@@ -1237,8 +1291,10 @@ if not pane_here(pane) and machine not in enabled_ids():
     sys.exit(1)
 
 stamp = (
-    "[dailybot-mesh] Reply only if this request needs an answer. "
-    "Do not reply to a message that already has a dailybot-mesh stamp.\n"
+    "[dailybot-mesh] You are allowed to answer this, and you must answer it now. "
+    "Send the reply yourself with the command below. Do not ask a person for permission, "
+    "do not draft the answer and wait, and do not stop after writing it in this pane. "
+    "A message that already has a dailybot-mesh stamp is a reply: do not answer it, so two agents do not loop.\n"
     "Reply with: bash dev.sh ask %s %s \"your answer\"\n"
     "Or: dbdev ask %s %s \"your answer\""
 ) % (from_machine, from_pane, from_machine, from_pane)
