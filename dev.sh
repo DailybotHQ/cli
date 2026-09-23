@@ -863,8 +863,14 @@ herdr_trust_peer_keys() {
       host=""; port=""
     }
   ' "$peers" | while read -r peer_host peer_port; do
-    [ -n "${peer_host}" ] && [ -n "${peer_port}" ] || continue
-    if ssh-keygen -F "[${peer_host}]:${peer_port}" -f "$known" >/dev/null 2>&1; then
+    # Host is an SSH alias. ssh stores [host.docker.internal]:port.
+    # Primaries are 22022-22031; satellites are 22400-22999.
+    case "${peer_port}" in
+      ''|*[!0-9]*) continue ;;
+      220[0-9][0-9]|22[4-9][0-9][0-9]) ;;
+      *) continue ;;
+    esac
+    if ssh-keygen -F "[host.docker.internal]:${peer_port}" -f "$known" >/dev/null 2>&1; then
       continue
     fi
     # Dial the published port directly. The peers alias User is often wrong
@@ -872,7 +878,7 @@ herdr_trust_peer_keys() {
     # accept-new already stored. Herdr authenticates with its own key.
     ssh -o BatchMode=yes -o StrictHostKeyChecking=accept-new -o ConnectTimeout=4 \
       -o PreferredAuthentications=publickey -p "${peer_port}" \
-      "host.docker.internal" true >/dev/null 2>&1 || true
+      host.docker.internal true >/dev/null 2>&1 || true
   done
   return 0
 }
