@@ -1093,7 +1093,6 @@ run_one() {
     config)  cmd_config ;;
     doctor)  cmd_doctor ;;
     agents) cmd_herdr_agents ;;
-    dbdev)  cmd_help; exit 0 ;;
     *)       die "unknown verb '$VERB' — run: bash dev.sh help" ;;
   esac
 }
