@@ -871,11 +871,14 @@ herdr_trust_peer_keys() {
       *) continue ;;
     esac
     if ssh-keygen -F "[host.docker.internal]:${peer_port}" -f "$known" >/dev/null 2>&1; then
-      continue
+      if ssh-keygen -F "[host.docker.internal]:${peer_port}" -f "$known" 2>/dev/null | grep -q 'ssh-ed25519'; then
+        continue
+      fi
     fi
     # Dial the published port directly. The peers alias User is often wrong
     # for this container, and a publickey refusal must not hide the key that
     # accept-new already stored. Herdr authenticates with its own key.
+    # Herdr's client wants the ED25519 key. accept-new stores it.
     ssh -o BatchMode=yes -o StrictHostKeyChecking=accept-new -o ConnectTimeout=4 \
       -o PreferredAuthentications=publickey -p "${peer_port}" \
       host.docker.internal true >/dev/null 2>&1 || true
