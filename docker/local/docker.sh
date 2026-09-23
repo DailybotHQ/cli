@@ -7,7 +7,13 @@
 set -eo pipefail
 
 db_ws_root() {
-  printf '%s\n' "${DAILYBOT_WORKSPACES_ROOT:-$HOME/.dailybot-ws/workspaces}"
+  local root="${DAILYBOT_WORKSPACES_ROOT:-$HOME/.dailybot-ws/workspaces}"
+  local old="$HOME/.dailybot-dev/workspaces"
+  if [ -z "${DAILYBOT_WORKSPACES_ROOT:-}" ] && [ ! -e "$root" ] && [ -d "$old" ]; then
+    mkdir -p "$(dirname "$root")"
+    mv "$old" "$root"
+  fi
+  printf '%s\n' "$root"
 }
 
 ROOT_DOCKER="$(cd "$(dirname "$0")" && pwd)"

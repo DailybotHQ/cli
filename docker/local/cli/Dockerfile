@@ -246,7 +246,8 @@ RUN ARCH="$(uname -m)" \
     && test "$(command -v nvim)" = /home/dev-user/.local/bin/nvim \
     && nvim --version | head -n 1 | grep -q "${NVIM_VERSION}"
 
-# Pin Dailybot mu-vim. A tag or a full commit. Changing this busts the clone
+# Pin Dailybot mu-vim. A release tag only: the check below requires
+# git describe --tags --exact-match. Changing this busts the clone
 # layer, so the next rebuild installs that release instead of a cached main.
 ARG MU_VIM_REF=v0.7.0
 # Full Dailybot mu-vim. install.lua prompts: custom directory No, extras blank
