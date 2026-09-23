@@ -7,7 +7,7 @@
 set -eo pipefail
 
 db_ws_root() {
-  printf '%s\n' "${DAILYBOT_WORKSPACES_ROOT:-$HOME/.dailybot-dev/workspaces}"
+  printf '%s\n' "${DAILYBOT_WORKSPACES_ROOT:-$HOME/.dailybot-ws/workspaces}"
 }
 
 ROOT_DOCKER="$(cd "$(dirname "$0")" && pwd)"

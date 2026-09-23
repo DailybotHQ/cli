@@ -13,20 +13,17 @@ LABEL maintainer="developers@dailybot.com"
 SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 
 # One apt layer for this image. Later RUN steps must not call apt-get update.
-# The GitHub CLI keyring is added in this same RUN so `gh` does not need a
-# second index download. mu-vim's install.lua may still update if a package
-# is missing; listing its known packages here makes that update a no-op.
+# python:slim has no curl, so this RUN cannot fetch a keyring first.
+# mu-vim's install.lua may still update if a package is missing; listing its
+# known packages here makes that update a no-op.
 # Do not install the neovim apt package: remoteUser gets the official tarball.
-RUN curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg | dd of=/usr/share/keyrings/githubcli-archive-keyring.gpg \
-    && chmod go+r /usr/share/keyrings/githubcli-archive-keyring.gpg \
-    && echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" | tee /etc/apt/sources.list.d/github-cli.list > /dev/null \
-    && apt-get update && apt-get install --no-install-recommends -y \
+# gh is the official release tarball below. Debian trixie's sqv rejects the
+# GitHub CLI apt repo key.
+RUN apt-get update && apt-get install --no-install-recommends -y \
     # Essential tools
     sudo git bash-completion nano ssh openssh-server curl gnupg ca-certificates \
     # Build tools (for native npm packages)
     build-essential \
-    # GitHub CLI (system-wide; usable by all users)
-    gh \
     # mu-vim / editor helpers (lua5.4 runs install.lua; rg and fd are required)
     lua5.4 ripgrep fd-find \
     python3-neovim luarocks \
@@ -42,7 +39,17 @@ RUN curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg | d
     # them into the persisted volume instead. Anything openssh-server's own
     # postinst left behind is removed for the same reason.
     && mkdir -p /var/run/sshd \
-    && rm -f /etc/ssh/ssh_host_* \
+    && rm -f /etc/ssh/ssh_host_*
+
+# GitHub CLI from the official release tarball. The apt repo fails signature
+# verification on Debian trixie (sqv). curl is already installed above.
+ARG GH_VERSION=2.83.2
+RUN GH_ARCH="$(dpkg --print-architecture)" \
+    && curl -fsSL "https://github.com/cli/cli/releases/download/v${GH_VERSION}/gh_${GH_VERSION}_linux_${GH_ARCH}.tar.gz" -o /tmp/gh.tar.gz \
+    && tar -xzf /tmp/gh.tar.gz -C /tmp \
+    && install -m 0755 "/tmp/gh_${GH_VERSION}_linux_${GH_ARCH}/bin/gh" /usr/local/bin/gh \
+    && rm -rf /tmp/gh.tar.gz "/tmp/gh_${GH_VERSION}_linux_${GH_ARCH}" \
+    && gh --version \
     # Drop-in only — do not redefine Subsystem sftp (already in Debian sshd_config)
     && printf '%s\n' \
         'PasswordAuthentication no' \
@@ -76,7 +83,7 @@ RUN curl -fsSL https://deb.nodesource.com/setup_24.x | bash - \
 
 # The CLIs installed by their own installers below land in these directories.
 # PATH must name them before those RUN steps verify the binaries.
-ENV PATH="/home/dev-user/.local/bin:/home/dev-user/.cursor/bin:/home/dev-user/.opencode/bin:/home/dev-user/.grok/bin:${PATH}"
+ENV PATH="/home/dev-user/.local/share/pnpm/bin:/home/dev-user/.local/bin:/home/dev-user/.cursor/bin:/home/dev-user/.opencode/bin:/home/dev-user/.grok/bin:${PATH}"
 
 # ENV alone is not enough. A LOGIN shell (`bash -l`, which is what `docker exec`
 # and most editors use) sources /etc/profile, and Debian's /etc/profile REPLACES
@@ -86,7 +93,7 @@ ENV PATH="/home/dev-user/.local/bin:/home/dev-user/.cursor/bin:/home/dev-user/.o
 RUN printf '%s\n' \
         '# Added by the Dockerfile: /etc/profile resets PATH, so re-add the' \
         '# directories the AI CLI installers write into.' \
-        'for d in "$HOME/.local/bin" "$HOME/.cursor/bin" "$HOME/.opencode/bin" "$HOME/.grok/bin"; do' \
+        'for d in "$HOME/.local/share/pnpm/bin" "$HOME/.local/bin" "$HOME/.cursor/bin" "$HOME/.opencode/bin" "$HOME/.grok/bin"; do' \
         '    case ":$PATH:" in' \
         '        *":$d:"*) ;;' \
         '        *) [ -d "$d" ] && PATH="$d:$PATH" ;;' \
@@ -204,10 +211,16 @@ RUN git config --global init.defaultBranch main \
         > /home/dev-user/.config/herdr/config.toml \
     && herdr --version \
     && rm -rf /home/dev-user/.claude /home/dev-user/.claude.json
+USER root
+# Herdr's Mac client starts the remote server over a non-login SSH session.
+# That PATH is only /usr/local/bin:/usr/bin:/bin, so ~/.local/bin/herdr is
+# invisible and the client stays on "reconnecting".
+RUN ln -sfn /home/dev-user/.local/bin/herdr /usr/local/bin/herdr
+USER dev-user
 
 # Official Neovim 0.11.4 into ~/.local, ahead of any apt nvim the installer
 # may add. ~/.local/bin is already first on PATH.
-ARG NVIM_VERSION=0.11.4
+ARG NVIM_VERSION=0.12.5
 RUN ARCH="$(uname -m)" \
     && case "$ARCH" in \
          x86_64) NVIM_ARCH=x86_64 ;; \
@@ -224,17 +237,29 @@ RUN ARCH="$(uname -m)" \
     && test "$(command -v nvim)" = /home/dev-user/.local/bin/nvim \
     && nvim --version | head -n 1 | grep -q "${NVIM_VERSION}"
 
+# Pin Dailybot mu-vim. A tag or a full commit. Changing this busts the clone
+# layer, so the next rebuild installs that release instead of a cached main.
+ARG MU_VIM_REF=v0.6.0
 # Full Dailybot mu-vim. install.lua prompts: custom directory No, extras blank
-# (keeps the checked defaults). No TTY, so the widgets take EOF as those defaults.
-# Passwordless sudo is already in place so the script's sudo -v succeeds.
-# The script may apt-get update for anything still missing; that is upstream.
-RUN git clone --depth 1 https://github.com/DailybotHQ/mu-vim.git /home/dev-user/.config/nvim \
+# (keeps the checked defaults). Drive those answers on stdin. Passwordless sudo
+# is already in place so the script's sudo -v succeeds. Plugin sync must finish
+# inside the image: +Pckr sync exits before clones land.
+RUN GIT_CONFIG_GLOBAL=/dev/null GIT_CONFIG_SYSTEM=/dev/null \
+    git clone https://github.com/DailybotHQ/mu-vim.git /home/dev-user/.config/nvim \
     && cd /home/dev-user/.config/nvim \
-    && printf '\n\n' | lua install.lua \
+    && git checkout --detach "${MU_VIM_REF}" \
+    && test "$(git describe --tags --exact-match HEAD)" = "${MU_VIM_REF}" \
+    && printf 'n\n\n' | lua install.lua \
     && test -f /home/dev-user/.config/nvim/init.lua \
     && test -f /home/dev-user/.local/share/nvim/mu-vim-installed \
     && test -d /home/dev-user/.local/share/nvim/pckr/pckr.nvim \
-    && nvim --headless "+Pckr sync" "+qa" \
+    && GIT_CONFIG_GLOBAL=/dev/null GIT_CONFIG_SYSTEM=/dev/null \
+       nvim --headless "+lua require('pckr.actions').sync()" "+sleep 120" "+qa!" \
+    && python3 -c 'import os,sys; pack=os.path.expanduser("~/.local/share/nvim/site/pack/pckr/opt"); required=("alpha-nvim","nvim-cmp","mason.nvim"); missing=[]; \
+assert os.path.isdir(pack), "pckr opt dir missing: "+pack; \
+[(missing.append(name) if not [e for e in os.listdir(os.path.join(pack,name)) if e!=".git"] else None) for name in sorted(os.listdir(pack)) if os.path.isdir(os.path.join(pack,name))]; \
+[missing.append(name+" (absent)") for name in required if not os.path.isdir(os.path.join(pack,name))]; \
+sys.exit("plugin sync left empty clones: "+", ".join(missing)) if missing else print("plugin sync complete")' \
     && test "$(command -v nvim)" = /home/dev-user/.local/bin/nvim
 USER root
 
