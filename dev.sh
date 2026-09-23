@@ -32,7 +32,7 @@ while [ -L "$_self" ]; do
 done
 SELF_DIR="$(cd -P "$(dirname "$_self")" && pwd)"
 
-VERBS=" setup up down stop start restart ps logs shell exec build rebuild ls config doctor help "
+VERBS=" setup up down stop start restart ps logs shell exec build rebuild ls config doctor agents help "
 
 # --------------------------------------------------------------------------
 # Argument parsing
@@ -847,6 +847,169 @@ cmd_ls() {
   done
 }
 
+# Herdr dials peers with strict checking and ignores the peers-file
+# accept-new. A machine created after this container started has no key in
+# known_hosts, so trust it once here before asking for agents.
+herdr_trust_peer_keys() {
+  local peers="${HOME}/.ssh_host/config.d/dailybot-peers"
+  local known="${HOME}/.ssh/known_hosts"
+  [ -f "$peers" ] || return 0
+  touch "$known"
+  awk '
+    /^Host / { host=$2; port="" }
+    /^[[:space:]]*Port / && host != "" { port=$2 }
+    host != "" && port != "" {
+      printf "%s %s\n", host, port
+      host=""; port=""
+    }
+  ' "$peers" | while read -r peer_host peer_port; do
+    [ -n "${peer_host}" ] && [ -n "${peer_port}" ] || continue
+    if ssh-keygen -F "[${peer_host}]:${peer_port}" -f "$known" >/dev/null 2>&1; then
+      continue
+    fi
+    # Dial the published port directly. The peers alias User is often wrong
+    # for this container, and a publickey refusal must not hide the key that
+    # accept-new already stored. Herdr authenticates with its own key.
+    ssh -o BatchMode=yes -o StrictHostKeyChecking=accept-new -o ConnectTimeout=4 \
+      -o PreferredAuthentications=publickey -p "${peer_port}" \
+      "host.docker.internal" true >/dev/null 2>&1 || true
+  done
+  return 0
+}
+
+# Copy the read-only Mac catalog over the local Herdr file, then ask every
+# enabled machine for its agents. The mount updates when the Mac catalog
+# changes; Herdr itself only reads the copy, because it also writes that path.
+cmd_herdr_agents() {
+  command -v herdr >/dev/null 2>&1 || die "herdr is not on PATH"
+  command -v python3 >/dev/null 2>&1 || die "python3 is required to read the catalog"
+  local refresh="${HOME}/.local/bin/herdr-refresh-catalog"
+  local src="${HOME}/.herdr_client_host/endpoints.json"
+  if [ -x "$refresh" ]; then
+    "$refresh" || die "could not refresh the Herdr catalog from the Mac mount"
+  elif [ -f "$src" ]; then
+    die "catalog mount is present but ${refresh} is missing; restart this container once so the entrypoint installs it"
+  fi
+  herdr_trust_peer_keys
+  python3 - <<'PY'
+import json, os, subprocess, sys
+
+def machines():
+    raw = subprocess.run(["herdr", "machine", "list", "--json"], capture_output=True, text=True)
+    if raw.returncode != 0:
+        sys.stderr.write(raw.stderr or "herdr machine list failed\n")
+        sys.exit(raw.returncode or 1)
+    try:
+        data = json.loads(raw.stdout or "[]")
+    except json.JSONDecodeError:
+        sys.stderr.write("herdr machine list did not return JSON\n")
+        sys.exit(1)
+    if not isinstance(data, list):
+        sys.stderr.write("herdr machine list JSON was not a list\n")
+        sys.exit(1)
+    return [m for m in data if isinstance(m, dict)]
+
+def agents_for(machine_id):
+    raw = subprocess.run(
+        ["herdr", "--machine", machine_id, "agent", "list"],
+        capture_output=True, text=True, timeout=12,
+    )
+    if raw.returncode != 0 or not raw.stdout.strip():
+        return None, (raw.stderr or "no answer").strip().splitlines()[-1:] or ["no answer"]
+    try:
+        payload = json.loads(raw.stdout)
+    except json.JSONDecodeError:
+        return None, ["agent list was not JSON"]
+    result = payload.get("result") if isinstance(payload, dict) else None
+    found = result.get("agents") if isinstance(result, dict) else None
+    if not isinstance(found, list):
+        return None, ["agent list had no agents array"]
+    return found, None
+
+rows = []
+for machine in machines():
+    if not machine.get("enabled"):
+        continue
+    label = str(machine.get("label") or "").replace("\t", " ")
+    target = str(machine.get("target") or "")
+    mid = str(machine.get("id") or "")
+    if not mid:
+        continue
+    found, err = agents_for(mid)
+    if err is not None:
+        rows.append((label, mid, "-", "-", "unreachable", ""))
+        continue
+    if not found:
+        rows.append((label, mid, "-", "-", "no agents", ""))
+        continue
+    for agent in found:
+        if not isinstance(agent, dict):
+            continue
+        rows.append((
+            label,
+            mid,
+            str(agent.get("agent") or "-"),
+            str(agent.get("pane_id") or "-"),
+            str(agent.get("agent_status") or "-"),
+            str(agent.get("terminal_title_stripped") or "").replace("\n", " "),
+        ))
+
+def clean(label):
+    text = label.strip()
+    if len(text) > 3 and text[0].isdigit() and " - " in text[:6]:
+        text = text.split(" - ", 1)[1]
+    return text
+
+def paint(code, text):
+    if not sys.stdout.isatty() or os.environ.get("NO_COLOR"):
+        return text
+    return "\033[%sm%s\033[0m" % (code, text)
+
+state_color = {
+    "idle": "32",
+    "working": "33",
+    "blocked": "31",
+    "done": "36",
+    "unreachable": "90",
+    "no agents": "90",
+}
+shown = []
+for label, mid, name, pane, state, title in rows:
+    shown.append((clean(label), mid, name, pane, state, title[:36]))
+
+headers = ("MACHINE", "ID", "AGENT", "PANE", "STATE", "TITLE")
+widths = [len(h) for h in headers]
+for row in shown:
+    for i, cell in enumerate(row):
+        if i == 5:
+            continue
+        widths[i] = max(widths[i], len(cell))
+
+def line(cells, color_state=None):
+    parts = []
+    for i, cell in enumerate(cells):
+        text = cell.ljust(widths[i]) if i < 5 else cell
+        if i == 4 and color_state:
+            text = paint(state_color.get(color_state, "0"), text)
+        parts.append(text)
+    return "  " + "  ".join(parts).rstrip()
+
+print(paint("1", line(headers)))
+print("  " + "  ".join("-" * w for w in widths))
+if not shown:
+    print("  (no enabled machines)")
+else:
+    for row in shown:
+        print(line(row, row[4]))
+
+example = next((row for row in shown if row[3] != "-"), None)
+print()
+print("  herdr --machine <machine id> agent prompt <pane> \"Prompt...\"")
+if example:
+    print("  herdr --machine %s agent prompt %s \"Prompt...\"" % (example[1], example[3]))
+PY
+}
+
 cmd_help() {
   cat <<'USAGE'
 dev.sh — start this repository's dev containers without VS Code.
@@ -869,6 +1032,7 @@ Verbs
   ls                    repositories this launcher can address, and their state
   config                resolved configuration; writes nothing
   doctor                environment diagnosis; writes nothing
+  agents                live machines and agents, refreshed from the Mac catalog
   help                  this text
 
 Flags
@@ -906,6 +1070,7 @@ run_one() {
     rebuild) cmd_rebuild ;;
     config)  cmd_config ;;
     doctor)  cmd_doctor ;;
+    agents) cmd_herdr_agents ;;
     *)       die "unknown verb '$VERB' — run: bash dev.sh help" ;;
   esac
 }

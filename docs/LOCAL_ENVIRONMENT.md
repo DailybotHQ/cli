@@ -84,7 +84,13 @@ temporarily own the container's SSH host port, and Herdr will show
 on a given container, or edit from the host while Herdr owns the remote.
 
 Herdr setup is a separate, one-time recipe:
-[`HERDR_SSH_SETUP.md`](HERDR_SSH_SETUP.md).
+[`HERDR_SSH_SETUP.md`](HERDR_SSH_SETUP.md). To see the agents on the other
+machines, run `bash dev.sh agents` inside this container (or `dbdev agents`
+on the Mac). One row per agent; **ID** is the machine, **PANE** is the
+conversation. Message one with
+`herdr --machine <machine id> agent prompt <pane> "Prompt..."`.
+Rerun the list when you need a fresh view. Contributor tooling only — keep
+it out of the public README and CLI help.
 
 ---
 
@@ -165,7 +171,7 @@ then rebuild.
 `nvim` for `dev-user` is the full Dailybot mu-vim config. The image clones
 `https://github.com/DailybotHQ/mu-vim.git` into `~/.config/nvim` and runs
 `lua install.lua`, then a headless plugin sync. The binary is the Neovim
-0.11.4 tarball in `~/.local`, ahead of any apt package the installer adds.
+0.12.5 tarball in `~/.local`, ahead of any apt package the installer adds.
 `EDITOR`, `VISUAL`, and `GIT_EDITOR` are `nvim`.
 
 ---

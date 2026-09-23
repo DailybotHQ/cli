@@ -227,7 +227,7 @@ USER root
 RUN ln -sfn /home/dev-user/.local/bin/herdr /usr/local/bin/herdr
 USER dev-user
 
-# Official Neovim 0.11.4 into ~/.local, ahead of any apt nvim the installer
+# Official Neovim 0.12.5 into ~/.local, ahead of any apt nvim the installer
 # may add. ~/.local/bin is already first on PATH.
 ARG NVIM_VERSION=0.12.5
 RUN ARCH="$(uname -m)" \

@@ -587,17 +587,44 @@ install_herdr_peer_mesh() {
     chmod 700 "${home}/.ssh" 2>/dev/null || true
     chmod 600 "${ssh_config}" 2>/dev/null || true
   fi
+  # Herdr writes endpoints.json, so the Mac catalog stays on a read-only mount
+  # and this copy is what Herdr reads. Refresh it before every agent listing
+  # so a machine created on the Mac shows up without a container restart.
+  # The mount is the source; a container must not write back to it.
+  # A missing catalog must not skip host-key trust below.
+  # dailybot-herdr-refresh-catalog
+  mkdir -p "${home}/.local/bin"
+  cat > "${home}/.local/bin/herdr-refresh-catalog" <<'EOF'
+#!/bin/sh
+src="${HOME}/.herdr_client_host/endpoints.json"
+dest="${HOME}/.local/state/herdr/client/endpoints.json"
+if [ ! -f "$src" ]; then
+  echo "herdr peers: catalog missing at $src" >&2
+  exit 1
+fi
+mkdir -p "$(dirname "$dest")"
+if [ -f "$dest" ] && cmp -s "$src" "$dest"; then
+  exit 0
+fi
+if [ -f "$dest" ]; then
+  cp -p "$dest" "${dest}.bak"
+fi
+cp -p "$src" "$dest"
+chmod 600 "$dest" 2>/dev/null || true
+EOF
+  chown "${user}:${user}" "${home}/.local/bin/herdr-refresh-catalog"
+  chmod 755 "${home}/.local/bin/herdr-refresh-catalog"
   if [ ! -f "${src}" ]; then
     echo "herdr peers: catalog missing at ${src}; skip copy"
-    return 0
+  else
+    mkdir -p "${dest_dir}"
+    if [ -f "${dest}" ]; then
+      cp -p "${dest}" "${dest}.bak"
+    fi
+    cp -p "${src}" "${dest}"
+    chown -R "${user}:${user}" "${dest_dir}" 2>/dev/null || true
+    chmod 600 "${dest}" 2>/dev/null || true
   fi
-  mkdir -p "${dest_dir}"
-  if [ -f "${dest}" ]; then
-    cp -p "${dest}" "${dest}.bak"
-  fi
-  cp -p "${src}" "${dest}"
-  chown -R "${user}:${user}" "${dest_dir}" 2>/dev/null || true
-  chmod 600 "${dest}" 2>/dev/null || true
   # Peers connect as host.docker.internal:<port>. The copied known_hosts only
   # has 127.0.0.1 from the Mac, so the first agent prompt dies on strict
   # checking. ssh-keyscan does not answer on these published ports, so accept
@@ -614,17 +641,25 @@ install_herdr_peer_mesh() {
         host=""; port=""
       }
     ' "${home}/.ssh_host/config.d/dailybot-peers" | while read -r peer_host peer_port; do
-      [ -n "${peer_host}" ] && [ -n "${peer_port}" ] || continue
-      if ssh-keygen -F "[${peer_host}]:${peer_port}" -f "${known}" >/dev/null 2>&1; then
+      # Host is an SSH alias. known_hosts stores [host.docker.internal]:port.
+      case "${peer_port}" in
+        ''|*[!0-9]*) continue ;;
+      esac
+      case "${peer_port}" in
+        220[0-9][0-9]) ;;
+        *) continue ;;
+      esac
+      if ssh-keygen -F "[host.docker.internal]:${peer_port}" -f "${known}" >/dev/null 2>&1; then
         continue
       fi
-      su -s /bin/bash "${user}" -c "ssh -o BatchMode=yes -o StrictHostKeyChecking=accept-new -o ConnectTimeout=4 -p ${peer_port} ${peer_host} true" >/dev/null 2>&1 || true
+      # Dial the gateway directly. The peers file is host-mounted; never
+      # interpolate its Host alias into a shell string.
+      su -s /bin/bash "${user}" -c "ssh -o BatchMode=yes -o StrictHostKeyChecking=accept-new -o ConnectTimeout=4 -o PreferredAuthentications=publickey -p ${peer_port} host.docker.internal true" >/dev/null 2>&1 || true
     done
     chmod 600 "${known}" 2>/dev/null || true
   fi
 }
 
-# Every start, after the SSH config copy. Does not rewrite HostName.
 install_herdr_peer_mesh "/home/dev-user" "dev-user"
 
 # Start sshd so a Herdr client on the host can attach to this container as a

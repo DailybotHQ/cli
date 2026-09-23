@@ -18,6 +18,8 @@ git status -s               # any uncommitted noise?
 
 If `python3 --version` reports `< 3.10`, ask the user how they'd like to proceed (`pyenv install 3.12`, `uv venv --python 3.12`, etc.) before doing anything else.
 
+Contributors inside the optional container discover the other Herdr agents with `bash dev.sh agents` (on the Mac: `dbdev agents`). One row per agent. **ID** is the machine, **PANE** is the conversation. Message one with `herdr --machine <machine id> agent prompt <pane> "Prompt..."`. Contributor tooling only — keep it out of public CLI help.
+
 ## Step 2 — Install the Package
 
 ```bash

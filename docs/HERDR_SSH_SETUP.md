@@ -143,7 +143,19 @@ existing `herdr_data` volumes).
 |------|-------------|
 | `herdr` then sidebar → **Dailybot CLI** | Local + remote agents in one UI |
 | `herdr --remote dailybot-cli` | Full-screen remote only |
+| `bash dev.sh agents` | From inside this container: live machines and the agents on them right now |
+| `dbdev agents` | The same list from the Mac |
 | Nest `--remote` inside a local Herdr pane | Avoid — two sidebars |
+
+### Finding another agent
+
+`bash dev.sh agents` (inside a container) and `dbdev agents` (on the Mac) print one row per agent. **ID** is the hex machine id. **PANE** (`w5:p2`) is the conversation. A machine with five agents is five rows. The list is live: rerun it. A rebuild does not refresh it.
+
+```bash
+herdr --machine <machine id> agent prompt <pane> "Prompt..."
+```
+
+The listing prints one filled-in example under the table. `no agents` means the machine answered and nobody is running. `unreachable` means SSH did not answer. Contributor tooling only — keep machine ids and ports out of the public README and CLI help.
 
 Phone / Tailscale / Moshi should SSH to the **Mac**, not to `22031`. Herdr
 on the Mac reaches this container.
