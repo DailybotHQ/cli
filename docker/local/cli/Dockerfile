@@ -137,6 +137,10 @@ RUN pip install --no-cache-dir pipx \
 # Coding-agent CLIs. Each flag defaults false. Only the exact string "true"
 # installs. A skipped flag is its own RUN so flipping one does not rebuild apt.
 # Herdr is not one of these flags: the container still needs it to be a machine.
+#
+# Native installers follow $HOME. This image is still root here, so they would
+# land in /root/.local/bin and `claudex` would report "command not found" for
+# dev-user. npm -g stays as root: that binary is already on the default PATH.
 ARG INSTALL_CLAUDE_CLI=false
 ARG INSTALL_CURSOR_CLI=false
 ARG INSTALL_CODEX_CLI=false
@@ -147,13 +151,18 @@ ARG INSTALL_GROK_CLI=false
 
 # Pi is installed with --ignore-scripts: its postinstall fetches a platform
 # binary that is not needed here and fails the build on some architectures.
-RUN if [ "${INSTALL_CLAUDE_CLI}" = "true" ]; then curl -fsSL https://claude.ai/install.sh | bash; else echo "INSTALL_CLAUDE_CLI is not true; skip"; fi
-RUN if [ "${INSTALL_CURSOR_CLI}" = "true" ]; then curl -fsSL https://cursor.com/install | bash; else echo "INSTALL_CURSOR_CLI is not true; skip"; fi
 RUN if [ "${INSTALL_CODEX_CLI}" = "true" ]; then npm install -g @openai/codex; else echo "INSTALL_CODEX_CLI is not true; skip"; fi
 RUN if [ "${INSTALL_PI_CLI}" = "true" ]; then npm install -g --ignore-scripts @earendil-works/pi-coding-agent; else echo "INSTALL_PI_CLI is not true; skip"; fi
-RUN if [ "${INSTALL_OPENCODE_CLI}" = "true" ]; then curl -fsSL https://opencode.ai/install | bash -s -- --no-modify-path; else echo "INSTALL_OPENCODE_CLI is not true; skip"; fi
 RUN if [ "${INSTALL_CLINE_CLI}" = "true" ]; then npm install -g cline; else echo "INSTALL_CLINE_CLI is not true; skip"; fi
-RUN if [ "${INSTALL_GROK_CLI}" = "true" ]; then curl -fsSL https://x.ai/cli/install.sh | GROK_BIN_DIR=/home/dev-user/.local/bin GROK_CHANNEL=stable bash; else echo "INSTALL_GROK_CLI is not true; skip"; fi
+
+USER dev-user
+RUN if [ "${INSTALL_CLAUDE_CLI}" = "true" ]; then curl -fsSL https://claude.ai/install.sh | bash; else echo "INSTALL_CLAUDE_CLI is not true; skip"; fi \
+    && if [ "${INSTALL_CLAUDE_CLI}" = "true" ]; then test -x /home/dev-user/.local/bin/claude; fi
+RUN if [ "${INSTALL_CURSOR_CLI}" = "true" ]; then curl -fsSL https://cursor.com/install | bash; else echo "INSTALL_CURSOR_CLI is not true; skip"; fi
+RUN if [ "${INSTALL_OPENCODE_CLI}" = "true" ]; then curl -fsSL https://opencode.ai/install | bash -s -- --no-modify-path; else echo "INSTALL_OPENCODE_CLI is not true; skip"; fi
+RUN if [ "${INSTALL_GROK_CLI}" = "true" ]; then curl -fsSL https://x.ai/cli/install.sh | GROK_BIN_DIR=/home/dev-user/.local/bin GROK_CHANNEL=stable bash; else echo "INSTALL_GROK_CLI is not true; skip"; fi \
+    && if [ "${INSTALL_GROK_CLI}" = "true" ]; then test -x /home/dev-user/.local/bin/grok; fi
+USER root
 
 # Default terminal editor. nvim is the user-local tarball, not the apt package.
 ENV EDITOR=nvim
