@@ -864,10 +864,10 @@ herdr_trust_peer_keys() {
     }
   ' "$peers" | while read -r peer_host peer_port; do
     # Host is an SSH alias. ssh stores [host.docker.internal]:port.
-    # Primaries are 22022-22031; satellites are 22400-22999.
+    # Primaries 22022-22032 (22032 is the Mac); satellites 22400-22999.
     case "${peer_port}" in
       ''|*[!0-9]*) continue ;;
-      220[0-9][0-9]|22[4-9][0-9][0-9]) ;;
+      2202[2-9]|2203[0-2]|22[4-9][0-9][0-9]) ;;
       *) continue ;;
     esac
     if ssh-keygen -F "[host.docker.internal]:${peer_port}" -f "$known" >/dev/null 2>&1; then
