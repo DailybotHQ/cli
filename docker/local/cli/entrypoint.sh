@@ -665,7 +665,12 @@ install_herdr_peer_mesh "/home/dev-user" "dev-user"
 
 # Same name as the Mac command. This repo's launcher lists the live agents.
 if [ -f /app/dev.sh ]; then
-  ln -sfn /app/dev.sh /usr/local/bin/dbdev
+  # The entrypoint may already be dev-user. /usr/local/bin is root-owned.
+  if [ "$(id -u)" = "0" ]; then
+    ln -sfn /app/dev.sh /usr/local/bin/dbdev
+  else
+    sudo ln -sfn /app/dev.sh /usr/local/bin/dbdev
+  fi
   chmod 755 /app/dev.sh 2>/dev/null || true
 fi
 
