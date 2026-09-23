@@ -67,7 +67,8 @@ cmd_satellite_up() {
   id="$(sat_id "${1:-}")"
   export DEVCONTAINER_INSTANCE_ID="$id"
   export COMPOSE_PROJECT_NAME="dailybotclilocal_${id}"
-  export HERDR_SSH_HOST_PORT="${HERDR_SSH_HOST_PORT:-$((22900 + id))}"
+  # The primary port in docker/local/.env must not pin every satellite.
+  export HERDR_SSH_HOST_PORT="$((22900 + id))"
   say "Starting clivscodesatellite #${id} SSH :${HERDR_SSH_HOST_PORT}"
   if docker ps --format '{{.Names}}' | grep -qx "dailybot_clivscodesatellite_${id}"; then
     say "CLI satellite already running — leave it"
@@ -81,7 +82,7 @@ cmd_satellite_focus() {
   id="$(sat_id "${1:-}")"
   export DEVCONTAINER_INSTANCE_ID="$id"
   export COMPOSE_PROJECT_NAME="dailybotclilocal_${id}"
-  export HERDR_SSH_HOST_PORT="${HERDR_SSH_HOST_PORT:-$((22900 + id))}"
+  export HERDR_SSH_HOST_PORT="$((22900 + id))"
   if ! docker ps --format '{{.Names}}' | grep -qx "dailybot_clivscodesatellite_${id}"; then
     compose -f docker-compose.satellite-stable.yaml up -d --no-deps clivscodesatellite
   else
@@ -146,7 +147,7 @@ cmd_satellite_rebuild() {
   id="$(sat_id "${1:-}")"
   export DEVCONTAINER_INSTANCE_ID="$id"
   export COMPOSE_PROJECT_NAME="dailybotclilocal_${id}"
-  export HERDR_SSH_HOST_PORT="${HERDR_SSH_HOST_PORT:-$((22900 + id))}"
+  export HERDR_SSH_HOST_PORT="$((22900 + id))"
   if [ "${SATELLITE_NO_CACHE:-0}" = "1" ]; then
     build_args=(--no-cache --pull)
     say "Rebuilding clivscodesatellite #${id} --no-cache --pull"

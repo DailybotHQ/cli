@@ -892,7 +892,10 @@ cmd_herdr_agents() {
   local refresh="${HOME}/.local/bin/herdr-refresh-catalog"
   local src="${HOME}/.herdr_client_host/endpoints.json"
   if [ -x "$refresh" ]; then
-    "$refresh" || die "could not refresh the Herdr catalog from the Mac mount"
+    # A missing Mac catalog is an empty mesh, not a failed listing.
+    if [ -f "$src" ]; then
+      "$refresh" || die "could not refresh the Herdr catalog from the Mac mount"
+    fi
   elif [ -f "$src" ]; then
     die "catalog mount is present but ${refresh} is missing; restart this container once so the entrypoint installs it"
   fi
@@ -901,7 +904,14 @@ cmd_herdr_agents() {
 import json, os, subprocess, sys
 
 def machines():
-    raw = subprocess.run(["herdr", "machine", "list", "--json"], capture_output=True, text=True)
+    try:
+        raw = subprocess.run(
+            ["herdr", "machine", "list", "--json"],
+            capture_output=True, text=True, timeout=12,
+        )
+    except subprocess.TimeoutExpired:
+        sys.stderr.write("herdr machine list timed out\n")
+        sys.exit(1)
     if raw.returncode != 0:
         sys.stderr.write(raw.stderr or "herdr machine list failed\n")
         sys.exit(raw.returncode or 1)
@@ -916,10 +926,13 @@ def machines():
     return [m for m in data if isinstance(m, dict)]
 
 def agents_for(machine_id):
-    raw = subprocess.run(
-        ["herdr", "--machine", machine_id, "agent", "list"],
-        capture_output=True, text=True, timeout=12,
-    )
+    try:
+        raw = subprocess.run(
+            ["herdr", "--machine", machine_id, "agent", "list", "--json"],
+            capture_output=True, text=True, timeout=12,
+        )
+    except subprocess.TimeoutExpired:
+        return None, ["timed out"]
     if raw.returncode != 0 or not raw.stdout.strip():
         return None, (raw.stderr or "no answer").strip().splitlines()[-1:] or ["no answer"]
     try:
@@ -937,7 +950,6 @@ for machine in machines():
     if not machine.get("enabled"):
         continue
     label = str(machine.get("label") or "").replace("\t", " ")
-    target = str(machine.get("target") or "")
     mid = str(machine.get("id") or "")
     if not mid:
         continue
