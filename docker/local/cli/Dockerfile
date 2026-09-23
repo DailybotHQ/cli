@@ -239,7 +239,7 @@ RUN ARCH="$(uname -m)" \
 
 # Pin Dailybot mu-vim. A tag or a full commit. Changing this busts the clone
 # layer, so the next rebuild installs that release instead of a cached main.
-ARG MU_VIM_REF=v0.6.0
+ARG MU_VIM_REF=v0.7.0
 # Full Dailybot mu-vim. install.lua prompts: custom directory No, extras blank
 # (keeps the checked defaults). Drive those answers on stdin. Passwordless sudo
 # is already in place so the script's sudo -v succeeds. Plugin sync must finish
