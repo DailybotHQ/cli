@@ -928,7 +928,7 @@ def machines():
 def agents_for(machine_id):
     try:
         raw = subprocess.run(
-            ["herdr", "--machine", machine_id, "agent", "list", "--json"],
+            ["herdr", "--machine", machine_id, "agent", "list"],
             capture_output=True, text=True, timeout=12,
         )
     except subprocess.TimeoutExpired:
