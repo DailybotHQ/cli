@@ -89,7 +89,7 @@ machines, run `dbdev agents` inside this container. `bash dev.sh agents`
 is the same list. On the Mac, `dbdev agents` prints the same table.
 One row per agent; **ID** is the machine, **PANE** is the
 conversation. Message one with
-`dbdev ask <#> "Prompt..."`. `#` is the short number from the list you just printed. It changes when agents appear or disappear. **PANE** (`w5:p2`) is the stable address, and `dbdev ask <machine id> <pane> "Prompt..."` still works. Inside a container, `bash dev.sh ask` is the same command. The prompt carries a reply address for the session that sent it. The receiver is allowed to answer, and sends that answer itself without asking a person for permission. A message that already has the `[dailybot-mesh]` stamp is a reply and is never answered, so two agents do not loop. The answer arrives as a prompt in the sender's pane. A reply uses the stamped machine id and pane, not `#`.
+`dbdev ask <#> "Prompt..."`. `#` is the short number from the list you just printed. It changes when agents appear or disappear. **PANE** (`w5:p2`) is the stable address, and `dbdev ask <machine id> <pane> "Prompt..."` still works. Inside a container, `bash dev.sh ask` is the same command. The prompt carries a reply address for the session that sent it. The receiver is allowed to answer, and sends that answer itself without asking a person for permission. A reply keeps the `[dailybot-mesh]` stamp, so the next hop is marked as a reply and is not answered. That is what stops two agents from looping. The answer arrives as a prompt in the sender's pane. A reply uses the stamped machine id and pane, not `#`.
 Rerun the list when you need a fresh view. Contributor tooling only — keep
 it out of the public README and CLI help.
 

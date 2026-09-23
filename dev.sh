@@ -1091,8 +1091,9 @@ PY
 # Send one prompt and stamp where the reply should go.
 #
 # The stamp is permission and a return address. The receiver sends the answer
-# itself, without asking a person. A message that already carries a stamp is
-# a reply, so it is never answered. That is what stops two agents from looping.
+# itself, and keeps the stamp in that command so the answer is marked as a
+# reply. A reply carries a stamp that says not to answer it. That is what
+# stops two agents from looping.
 #
 # A reply lands on the Herdr machine that sent the prompt. On the Mac that
 # machine is dailybot-mac (127.0.0.1:22032). Inside a container it is that
@@ -1279,20 +1280,23 @@ if not pane_here(pane) and machine not in enabled_ids():
     sys.stderr.write("machine %s is not an enabled Herdr machine\n" % machine)
     sys.exit(1)
 
-# A reply already carries a stamp. Leave it unmarked so the receiver does
-# not get a second order to answer, which would fight the loop guard.
+# A body that already has the stamp is a reply. Mark it as a reply so the
+# sender sees the answer, and does not get a second order to answer.
 if "[dailybot-mesh]" in text:
-    body = text.rstrip()
+    stamp = (
+        "[dailybot-mesh] This is the reply. Do not answer it.\n"
+        "The conversation stops here."
+    )
 else:
     stamp = (
         "[dailybot-mesh] You are allowed to answer this, and you must answer it now. "
         "Send the reply yourself with the command below. Do not ask a person for permission, "
         "do not draft the answer and wait, and do not stop after writing it in this pane. "
-        "A message that already has a dailybot-mesh stamp is a reply: do not answer it, so two agents do not loop.\n"
-        "Reply with: bash dev.sh ask %s %s \"your answer\"\n"
-        "Or: dbdev ask %s %s \"your answer\""
+        "Keep the dailybot-mesh stamp in that command, so your answer is marked as a reply and the conversation stops.\n"
+        "Reply with: bash dev.sh ask %s %s \"[dailybot-mesh] your answer\"\n"
+        "Or: dbdev ask %s %s \"[dailybot-mesh] your answer\""
     ) % (from_machine, from_pane, from_machine, from_pane)
-    body = text.rstrip() + "\n\n" + stamp
+body = text.rstrip() + "\n\n" + stamp
 
 sent = run(["herdr", "--machine", machine, "agent", "prompt", pane, body], 20)
 sys.stdout.write(sent.stdout or "")
