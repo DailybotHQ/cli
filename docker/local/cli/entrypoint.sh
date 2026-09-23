@@ -598,6 +598,30 @@ install_herdr_peer_mesh() {
   cp -p "${src}" "${dest}"
   chown -R "${user}:${user}" "${dest_dir}" 2>/dev/null || true
   chmod 600 "${dest}" 2>/dev/null || true
+  # Peers connect as host.docker.internal:<port>. The copied known_hosts only
+  # has 127.0.0.1 from the Mac, so the first agent prompt dies on strict
+  # checking. ssh-keyscan does not answer on these published ports, so accept
+  # the key the same way a first SSH does. A peer that is down is skipped.
+  if [ -f "${home}/.ssh_host/config.d/dailybot-peers" ]; then
+    local known="${home}/.ssh/known_hosts"
+    touch "${known}"
+    chown "${user}:${user}" "${known}" 2>/dev/null || true
+    awk '
+      /^Host / { host=$2; port="" }
+      /^[[:space:]]*Port / && host != "" { port=$2 }
+      host != "" && port != "" {
+        printf "%s %s\n", host, port
+        host=""; port=""
+      }
+    ' "${home}/.ssh_host/config.d/dailybot-peers" | while read -r peer_host peer_port; do
+      [ -n "${peer_host}" ] && [ -n "${peer_port}" ] || continue
+      if ssh-keygen -F "[${peer_host}]:${peer_port}" -f "${known}" >/dev/null 2>&1; then
+        continue
+      fi
+      su -s /bin/bash "${user}" -c "ssh -o BatchMode=yes -o StrictHostKeyChecking=accept-new -o ConnectTimeout=4 -p ${peer_port} ${peer_host} true" >/dev/null 2>&1 || true
+    done
+    chmod 600 "${known}" 2>/dev/null || true
+  fi
 }
 
 # Every start, after the SSH config copy. Does not rewrite HostName.
