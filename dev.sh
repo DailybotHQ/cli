@@ -954,10 +954,9 @@ def agents_for(machine_id):
         return None, ["agent list had no agents array"]
     return found, None
 
-def here():
-    # pane current is this process's own pane. Pair it with the machine
-    # whose catalog lists that exact terminal, so a repeated pane id on
-    # another machine is not marked as this session.
+def current_pane():
+    # pane current is this process's own pane. The table loop matches it
+    # against the agents it already fetched, so each machine is asked once.
     try:
         raw = subprocess.run(
             ["herdr", "pane", "current"],
@@ -971,30 +970,10 @@ def here():
         pane = ((json.loads(raw.stdout).get("result") or {}).get("pane") or {})
     except json.JSONDecodeError:
         return "", ""
-    pane_id = str(pane.get("pane_id") or "")
-    terminal_id = str(pane.get("terminal_id") or "")
-    if not pane_id:
-        return "", ""
-    for machine in machines():
-        if not machine.get("enabled"):
-            continue
-        mid = str(machine.get("id") or "")
-        if not mid:
-            continue
-        found, err = agents_for(mid)
-        if err is not None or not found:
-            continue
-        for agent in found:
-            if not isinstance(agent, dict):
-                continue
-            if str(agent.get("pane_id") or "") != pane_id:
-                continue
-            if terminal_id and str(agent.get("terminal_id") or "") != terminal_id:
-                continue
-            return mid, pane_id
-    return "", pane_id
+    return str(pane.get("pane_id") or ""), str(pane.get("terminal_id") or "")
 
-self_machine, self_pane = here()
+self_pane, self_terminal = current_pane()
+self_machine = ""
 
 rows = []
 for machine in machines():
@@ -1006,21 +985,31 @@ for machine in machines():
         continue
     found, err = agents_for(mid)
     if err is not None:
-        rows.append((label, mid, "-", "-", "unreachable", ""))
+        rows.append((label, mid, "-", "-", "unreachable", "", ""))
         continue
     if not found:
-        rows.append((label, mid, "-", "-", "no agents", ""))
+        rows.append((label, mid, "-", "-", "no agents", "", ""))
         continue
     for agent in found:
         if not isinstance(agent, dict):
             continue
+        pane_id = str(agent.get("pane_id") or "-")
+        terminal_id = str(agent.get("terminal_id") or "")
+        if (
+            not self_machine
+            and self_pane
+            and pane_id == self_pane
+            and (not self_terminal or terminal_id == self_terminal)
+        ):
+            self_machine = mid
         rows.append((
             label,
             mid,
             str(agent.get("agent") or "-"),
-            str(agent.get("pane_id") or "-"),
+            pane_id,
             str(agent.get("agent_status") or "-"),
             str(agent.get("terminal_title_stripped") or "").replace("\n", " "),
+            terminal_id,
         ))
 
 def clean(label):
@@ -1045,7 +1034,7 @@ state_color = {
 shown = []
 number = 0
 you = None
-for label, mid, name, pane, state, title in rows:
+for label, mid, name, pane, state, title, _terminal in rows:
     if pane != "-":
         number += 1
         short = str(number)
@@ -1290,15 +1279,20 @@ if not pane_here(pane) and machine not in enabled_ids():
     sys.stderr.write("machine %s is not an enabled Herdr machine\n" % machine)
     sys.exit(1)
 
-stamp = (
-    "[dailybot-mesh] You are allowed to answer this, and you must answer it now. "
-    "Send the reply yourself with the command below. Do not ask a person for permission, "
-    "do not draft the answer and wait, and do not stop after writing it in this pane. "
-    "A message that already has a dailybot-mesh stamp is a reply: do not answer it, so two agents do not loop.\n"
-    "Reply with: bash dev.sh ask %s %s \"your answer\"\n"
-    "Or: dbdev ask %s %s \"your answer\""
-) % (from_machine, from_pane, from_machine, from_pane)
-body = text.rstrip() + "\n\n" + stamp
+# A reply already carries a stamp. Leave it unmarked so the receiver does
+# not get a second order to answer, which would fight the loop guard.
+if "[dailybot-mesh]" in text:
+    body = text.rstrip()
+else:
+    stamp = (
+        "[dailybot-mesh] You are allowed to answer this, and you must answer it now. "
+        "Send the reply yourself with the command below. Do not ask a person for permission, "
+        "do not draft the answer and wait, and do not stop after writing it in this pane. "
+        "A message that already has a dailybot-mesh stamp is a reply: do not answer it, so two agents do not loop.\n"
+        "Reply with: bash dev.sh ask %s %s \"your answer\"\n"
+        "Or: dbdev ask %s %s \"your answer\""
+    ) % (from_machine, from_pane, from_machine, from_pane)
+    body = text.rstrip() + "\n\n" + stamp
 
 sent = run(["herdr", "--machine", machine, "agent", "prompt", pane, body], 20)
 sys.stdout.write(sent.stdout or "")
