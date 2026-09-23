@@ -89,7 +89,7 @@ machines, run `dbdev agents` inside this container. `bash dev.sh agents`
 is the same list. On the Mac, `dbdev agents` prints the same table.
 One row per agent; **ID** is the machine, **PANE** is the
 conversation. Message one with
-`herdr --machine <machine id> agent prompt <pane> "Prompt..."`.
+`dbdev ask <#> "Prompt..."`. `#` is the short number from the list you just printed. It changes when agents appear or disappear. **PANE** (`w5:p2`) is the stable address, and `dbdev ask <machine id> <pane> "Prompt..."` still works. Inside a container, `bash dev.sh ask` is the same command. The prompt carries a reply address for the session that sent it. The receiver answers only when the request needs an answer, and never answers a message that already has the `[dailybot-mesh]` stamp, so two agents do not loop. The answer arrives as a prompt in the sender's pane. A reply uses the stamped machine id and pane, not `#`.
 Rerun the list when you need a fresh view. Contributor tooling only — keep
 it out of the public README and CLI help.
 

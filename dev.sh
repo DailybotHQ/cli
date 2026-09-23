@@ -32,7 +32,7 @@ while [ -L "$_self" ]; do
 done
 SELF_DIR="$(cd -P "$(dirname "$_self")" && pwd)"
 
-VERBS=" setup up down stop start restart ps logs shell exec build rebuild ls config doctor agents help "
+VERBS=" setup up down stop start restart ps logs shell exec build rebuild ls config doctor agents ask help "
 
 # --------------------------------------------------------------------------
 # Argument parsing
@@ -995,22 +995,28 @@ state_color = {
     "no agents": "90",
 }
 shown = []
+number = 0
 for label, mid, name, pane, state, title in rows:
-    shown.append((clean(label), mid, name, pane, state, title[:36]))
+    if pane != "-":
+        number += 1
+        short = str(number)
+    else:
+        short = "-"
+    shown.append((short, clean(label), mid, name, pane, state, title[:36]))
 
-headers = ("MACHINE", "ID", "AGENT", "PANE", "STATE", "TITLE")
+headers = ("#", "MACHINE", "ID", "AGENT", "PANE", "STATE", "TITLE")
 widths = [len(h) for h in headers]
 for row in shown:
     for i, cell in enumerate(row):
-        if i == 5:
+        if i == 6:
             continue
         widths[i] = max(widths[i], len(cell))
 
 def line(cells, color_state=None):
     parts = []
     for i, cell in enumerate(cells):
-        text = cell.ljust(widths[i]) if i < 5 else cell
-        if i == 4 and color_state:
+        text = cell.ljust(widths[i]) if i < 6 else cell
+        if i == 5 and color_state:
             text = paint(state_color.get(color_state, "0"), text)
         parts.append(text)
     return "  " + "  ".join(parts).rstrip()
@@ -1021,13 +1027,223 @@ if not shown:
     print("  (no enabled machines)")
 else:
     for row in shown:
-        print(line(row, row[4]))
+        print(line(row, row[5]))
 
-example = next((row for row in shown if row[3] != "-"), None)
+example = next((row for row in shown if row[0] != "-"), None)
 print()
-print("  herdr --machine <machine id> agent prompt <pane> \"Prompt...\"")
+print("  # is the short id from this list. PANE is the stable address.")
+print("  bash dev.sh ask <#> \"Prompt...\"")
+print("  bash dev.sh ask <machine id> <pane> \"Prompt...\"")
 if example:
-    print("  herdr --machine %s agent prompt %s \"Prompt...\"" % (example[1], example[3]))
+    print("  bash dev.sh ask %s \"Prompt...\"" % example[0])
+PY
+}
+
+# Send one prompt and stamp where the reply should go.
+#
+# The stamp is a return address, not an order to answer. The receiver replies
+# only when the request needs an answer, and never replies to a message that
+# already carries a stamp. That is what stops two agents from talking forever.
+#
+# A reply lands on the Herdr machine that sent the prompt. On the Mac that
+# machine is dailybot-mac (127.0.0.1:22032). Inside a container it is that
+# container's own pane. Pass --from <machine-id> <pane> only when this session
+# has no pane of its own.
+cmd_herdr_ask() {
+  local from_machine="" from_pane=""
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      --from)
+        [ $# -ge 3 ] || die "ask --from needs <machine-id> <pane>"
+        from_machine="$2"
+        from_pane="$3"
+        shift 3
+        ;;
+      --)
+        shift
+        break
+        ;;
+      -*)
+        die "unknown ask flag '$1'"
+        ;;
+      *)
+        break
+        ;;
+    esac
+  done
+  local machine="" pane="" number=""
+  if [[ "${1:-}" =~ ^[0-9]+$ ]]; then
+    number="$1"
+    shift
+  else
+    [ $# -ge 3 ] || die "ask needs <#> \"prompt\", or <machine-id> <pane> \"prompt\""
+    machine="$1"
+    pane="$2"
+    shift 2
+  fi
+  [ $# -ge 1 ] || die "ask needs a prompt"
+  local text="$*"
+  [ -n "$text" ] || die "ask needs a prompt"
+  if [ -n "$number" ]; then
+    local resolved
+    resolved="$(HERDR_ASK_NUMBER="$number" python3 - <<'PY'
+import json, os, subprocess, sys
+want = int(os.environ["HERDR_ASK_NUMBER"])
+raw = subprocess.run(["herdr", "machine", "list", "--json"], capture_output=True, text=True, timeout=12)
+if raw.returncode != 0:
+    sys.stderr.write(raw.stderr or "herdr machine list failed\n")
+    sys.exit(1)
+machines = json.loads(raw.stdout or "[]")
+n = 0
+for machine in machines if isinstance(machines, list) else []:
+    if not isinstance(machine, dict) or not machine.get("enabled") or not machine.get("id"):
+        continue
+    listed = subprocess.run(["herdr", "--machine", str(machine["id"]), "agent", "list"], capture_output=True, text=True, timeout=12)
+    if listed.returncode != 0 or not listed.stdout.strip():
+        continue
+    try:
+        payload = json.loads(listed.stdout)
+    except json.JSONDecodeError:
+        continue
+    agents = ((payload.get("result") or {}).get("agents") if isinstance(payload, dict) else None) or []
+    if not isinstance(agents, list):
+        continue
+    for agent in agents:
+        if not isinstance(agent, dict) or not agent.get("pane_id"):
+            continue
+        n += 1
+        if n == want:
+            print("%s %s" % (machine["id"], agent["pane_id"]))
+            sys.exit(0)
+sys.stderr.write("no agent #%s in the current list; run: bash dev.sh agents\n" % want)
+sys.exit(1)
+PY
+)" || die "could not resolve agent #$number"
+    machine="${resolved%% *}"
+    pane="${resolved##* }"
+  fi
+  case "$machine" in
+    ""|*[!0-9a-fA-F]*) die "machine id must be the hex id from: bash dev.sh agents" ;;
+  esac
+  case "$pane" in
+    w*:p*) ;;
+    *) die "pane must look like w5:p2 (the PANE column from: bash dev.sh agents)" ;;
+  esac
+  case "$from_pane" in
+    ""|w*:p*) ;;
+    *) die "--from pane must look like w5:p2" ;;
+  esac
+  case "$from_machine" in
+    ""|*[!0-9a-fA-F]*)
+      [ -z "$from_machine" ] || die "--from machine id must be hex"
+      ;;
+  esac
+
+  command -v herdr >/dev/null 2>&1 || die "herdr is not on PATH"
+  command -v python3 >/dev/null 2>&1 || die "python3 is required"
+
+  HERDR_ASK_MACHINE="$machine" \
+  HERDR_ASK_PANE="$pane" \
+  HERDR_ASK_TEXT="$text" \
+  HERDR_ASK_FROM_MACHINE="$from_machine" \
+  HERDR_ASK_FROM_PANE="$from_pane" \
+  python3 - <<'PY'
+import json, os, subprocess, sys
+
+machine = os.environ["HERDR_ASK_MACHINE"]
+pane = os.environ["HERDR_ASK_PANE"]
+text = os.environ["HERDR_ASK_TEXT"]
+from_machine = os.environ.get("HERDR_ASK_FROM_MACHINE") or ""
+from_pane = os.environ.get("HERDR_ASK_FROM_PANE") or ""
+
+def run(args, timeout):
+    try:
+        return subprocess.run(args, capture_output=True, text=True, timeout=timeout)
+    except subprocess.TimeoutExpired:
+        sys.stderr.write("herdr timed out: %s\n" % " ".join(args[:4]))
+        sys.exit(1)
+
+def pane_here(pane_id):
+    raw = run(["herdr", "pane", "get", pane_id], 8)
+    if raw.returncode != 0:
+        return False
+    try:
+        payload = json.loads(raw.stdout or "{}")
+    except json.JSONDecodeError:
+        return False
+    found = ((payload.get("result") or {}).get("pane") or {}).get("pane_id")
+    return found == pane_id
+
+def enabled_ids():
+    raw = run(["herdr", "machine", "list", "--json"], 12)
+    if raw.returncode != 0:
+        sys.stderr.write(raw.stderr or "herdr machine list failed\n")
+        sys.exit(raw.returncode or 1)
+    try:
+        data = json.loads(raw.stdout or "[]")
+    except json.JSONDecodeError:
+        sys.stderr.write("herdr machine list did not return JSON\n")
+        sys.exit(1)
+    ids = []
+    for item in data if isinstance(data, list) else []:
+        if isinstance(item, dict) and item.get("enabled") and item.get("id"):
+            ids.append(str(item["id"]))
+    return ids
+
+if not from_machine or not from_pane:
+    current = run(["herdr", "pane", "current"], 8)
+    if current.returncode != 0:
+        sys.stderr.write("could not read the current pane; pass --from <machine-id> <pane>\n")
+        sys.exit(1)
+    try:
+        from_pane = str(((json.loads(current.stdout).get("result") or {}).get("pane") or {}).get("pane_id") or "")
+    except json.JSONDecodeError:
+        from_pane = ""
+    if not from_pane:
+        sys.stderr.write("this session has no pane id; pass --from <machine-id> <pane>\n")
+        sys.exit(1)
+    for candidate in enabled_ids():
+        probe = run(["herdr", "--machine", candidate, "pane", "get", from_pane], 8)
+        if probe.returncode != 0:
+            continue
+        try:
+            found = ((json.loads(probe.stdout or "{}").get("result") or {}).get("pane") or {}).get("pane_id")
+        except json.JSONDecodeError:
+            continue
+        if found == from_pane:
+            from_machine = candidate
+            break
+    if not from_machine:
+        sys.stderr.write(
+            "this session is not on a reachable Herdr machine, so a reply cannot come back here.\n"
+            "Run ask from inside a container, or pass --from <machine-id> <pane>\n"
+            "of a pane that bash dev.sh agents lists.\n"
+        )
+        sys.exit(1)
+
+if from_machine == machine and from_pane == pane:
+    sys.stderr.write("refusing to ask a pane to reply to itself\n")
+    sys.exit(1)
+
+if not pane_here(pane) and machine not in enabled_ids():
+    sys.stderr.write("machine %s is not an enabled Herdr machine\n" % machine)
+    sys.exit(1)
+
+stamp = (
+    "[dailybot-mesh] Reply only if this request needs an answer. "
+    "Do not reply to a message that already has a dailybot-mesh stamp.\n"
+    "Reply with: bash dev.sh ask %s %s \"your answer\"\n"
+    "Or: dbdev ask %s %s \"your answer\""
+) % (from_machine, from_pane, from_machine, from_pane)
+body = text.rstrip() + "\n\n" + stamp
+
+sent = run(["herdr", "--machine", machine, "agent", "prompt", pane, body], 20)
+sys.stdout.write(sent.stdout or "")
+sys.stderr.write(sent.stderr or "")
+if sent.returncode != 0:
+    sys.exit(sent.returncode)
+print("asked %s %s" % (machine, pane))
+print("reply address: bash dev.sh ask %s %s \"...\"" % (from_machine, from_pane))
 PY
 }
 
@@ -1055,6 +1271,8 @@ Verbs
   doctor                environment diagnosis; writes nothing
   agents                live machines and agents, refreshed from the Mac catalog
                         same as: dbdev agents
+  ask <#> "..."         send agent # a prompt plus your reply address
+                        ask <id> <pane> "..." is the same, using the table columns
   help                  this text
 
 Flags
@@ -1093,6 +1311,7 @@ run_one() {
     config)  cmd_config ;;
     doctor)  cmd_doctor ;;
     agents) cmd_herdr_agents ;;
+    ask)    cmd_herdr_ask "${ARGS[@]+"${ARGS[@]}"}" ;;
     *)       die "unknown verb '$VERB' — run: bash dev.sh help" ;;
   esac
 }

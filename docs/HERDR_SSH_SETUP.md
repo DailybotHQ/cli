@@ -152,8 +152,12 @@ existing `herdr_data` volumes).
 `dbdev agents` (inside a container or on the Mac; `bash dev.sh agents` is the same list) prints one row per agent. **ID** is the hex machine id. **PANE** (`w5:p2`) is the conversation. A machine with five agents is five rows. The list is live: rerun it. A rebuild does not refresh it.
 
 ```bash
-herdr --machine <machine id> agent prompt <pane> "Prompt..."
+dbdev ask <#> "Prompt..."
 ```
+
+`#` is the short number in the first column of the list you just printed. It changes when agents appear or disappear, so use it only with that list. **PANE** (`w5:p2`) is the stable address. **ID** is the machine. The same prompt with those two columns is `dbdev ask <machine id> <pane> "Prompt..."`. Inside a container, `bash dev.sh ask` is the same command. On the Mac, `dbdev ask` is the same command.
+
+The prompt carries a reply address for the session that sent it. The receiver answers only when the request needs an answer. A message that already has the `[dailybot-mesh]` stamp is never answered, so two agents do not loop. The answer arrives as a prompt in the sender's pane. A reply uses the stamped machine id and pane, not `#`, because the number is only valid for the list that printed it. A container can answer an agent on the Mac after `dbdev onboard herdr` has published this Mac as the machine `0 - Mac`. From the Core Hub, `bash scripts/host-kit-menu.sh doctor` lists what is already connected.
 
 The listing prints one filled-in example under the table. `no agents` means the machine answered and nobody is running. `unreachable` means SSH did not answer. Contributor tooling only — keep machine ids and ports out of the public README and CLI help.
 
