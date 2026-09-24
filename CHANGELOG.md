@@ -9,6 +9,133 @@ Do not edit it by hand — your edits will be overwritten on the next release.
 
 <!-- version list -->
 
+## v3.13.0 (2026-09-24)
+
+### Bug Fixes
+
+- **devcontainer**: Ask each machine once and do not stamp a reply
+  ([#87](https://github.com/DailybotHQ/cli/pull/87),
+  [`6c532d0`](https://github.com/DailybotHQ/cli/commit/6c532d0daf6a90d158635226359483aabd7e5335))
+
+- **devcontainer**: Drop the unreachable dbdev verb
+  ([#87](https://github.com/DailybotHQ/cli/pull/87),
+  [`6c532d0`](https://github.com/DailybotHQ/cli/commit/6c532d0daf6a90d158635226359483aabd7e5335))
+
+- **devcontainer**: Give each CLI satellite its own Herdr port
+  ([#87](https://github.com/DailybotHQ/cli/pull/87),
+  [`6c532d0`](https://github.com/DailybotHQ/cli/commit/6c532d0daf6a90d158635226359483aabd7e5335))
+
+- **devcontainer**: Install native CLIs as dev-user
+  ([#87](https://github.com/DailybotHQ/cli/pull/87),
+  [`6c532d0`](https://github.com/DailybotHQ/cli/commit/6c532d0daf6a90d158635226359483aabd7e5335))
+
+- **devcontainer**: Keep an existing workspace folder on first use
+  ([#87](https://github.com/DailybotHQ/cli/pull/87),
+  [`6c532d0`](https://github.com/DailybotHQ/cli/commit/6c532d0daf6a90d158635226359483aabd7e5335))
+
+- **devcontainer**: Link dbdev to the mounted workspace
+  ([#87](https://github.com/DailybotHQ/cli/pull/87),
+  [`6c532d0`](https://github.com/DailybotHQ/cli/commit/6c532d0daf6a90d158635226359483aabd7e5335))
+
+- **devcontainer**: Link dbdev when the entrypoint is not root
+  ([#87](https://github.com/DailybotHQ/cli/pull/87),
+  [`6c532d0`](https://github.com/DailybotHQ/cli/commit/6c532d0daf6a90d158635226359483aabd7e5335))
+
+- **devcontainer**: Mark a mesh answer as a reply ([#87](https://github.com/DailybotHQ/cli/pull/87),
+  [`6c532d0`](https://github.com/DailybotHQ/cli/commit/6c532d0daf6a90d158635226359483aabd7e5335))
+
+- **devcontainer**: Refresh the catalog before asking another agent
+  ([#87](https://github.com/DailybotHQ/cli/pull/87),
+  [`6c532d0`](https://github.com/DailybotHQ/cli/commit/6c532d0daf6a90d158635226359483aabd7e5335))
+
+- **devcontainer**: Stop passing --json to herdr agent list
+  ([#87](https://github.com/DailybotHQ/cli/pull/87),
+  [`6c532d0`](https://github.com/DailybotHQ/cli/commit/6c532d0daf6a90d158635226359483aabd7e5335))
+
+- **devcontainer**: Trust a new peer key before listing agents
+  ([#87](https://github.com/DailybotHQ/cli/pull/87),
+  [`6c532d0`](https://github.com/DailybotHQ/cli/commit/6c532d0daf6a90d158635226359483aabd7e5335))
+
+- **devcontainer**: Trust Herdr peer host keys on container start
+  ([#87](https://github.com/DailybotHQ/cli/pull/87),
+  [`6c532d0`](https://github.com/DailybotHQ/cli/commit/6c532d0daf6a90d158635226359483aabd7e5335))
+
+- **devcontainer**: Trust only the mesh ports, including the Mac
+  ([#87](https://github.com/DailybotHQ/cli/pull/87),
+  [`6c532d0`](https://github.com/DailybotHQ/cli/commit/6c532d0daf6a90d158635226359483aabd7e5335))
+
+- **devcontainer**: Trust satellite Herdr ports from the CLI container
+  ([#87](https://github.com/DailybotHQ/cli/pull/87),
+  [`6c532d0`](https://github.com/DailybotHQ/cli/commit/6c532d0daf6a90d158635226359483aabd7e5335))
+
+### Chores
+
+- **devcontainer**: Pin mu-vim v0.7.0 ([#87](https://github.com/DailybotHQ/cli/pull/87),
+  [`6c532d0`](https://github.com/DailybotHQ/cli/commit/6c532d0daf6a90d158635226359483aabd7e5335))
+
+### Documentation
+
+- Clarify Herdr layout boot path and start-panes wording
+  ([#88](https://github.com/DailybotHQ/cli/pull/88),
+  [`e0dff7e`](https://github.com/DailybotHQ/cli/commit/e0dff7e2334784edf03ecd9d248769cb72b77057))
+
+- Document standard Herdr layout (Home · Editor · Development · Agents)
+  ([#88](https://github.com/DailybotHQ/cli/pull/88),
+  [`e0dff7e`](https://github.com/DailybotHQ/cli/commit/e0dff7e2334784edf03ecd9d248769cb72b77057))
+
+- Reconcile Herdr layout section with SSH attach path
+  ([#88](https://github.com/DailybotHQ/cli/pull/88),
+  [`e0dff7e`](https://github.com/DailybotHQ/cli/commit/e0dff7e2334784edf03ecd9d248769cb72b77057))
+
+- Standard Herdr layout (Home · Editor · Development · Agents)
+  ([#88](https://github.com/DailybotHQ/cli/pull/88),
+  [`e0dff7e`](https://github.com/DailybotHQ/cli/commit/e0dff7e2334784edf03ecd9d248769cb72b77057))
+
+- **devcontainer**: Document dbdev agents inside every container
+  ([#87](https://github.com/DailybotHQ/cli/pull/87),
+  [`6c532d0`](https://github.com/DailybotHQ/cli/commit/6c532d0daf6a90d158635226359483aabd7e5335))
+
+### Features
+
+- Neovim 0.12.5 editor stack and workspace seed ([#87](https://github.com/DailybotHQ/cli/pull/87),
+  [`6c532d0`](https://github.com/DailybotHQ/cli/commit/6c532d0daf6a90d158635226359483aabd7e5335))
+
+- **dev**: Add rebuild with Docker cache and optional --no-cache
+  ([#87](https://github.com/DailybotHQ/cli/pull/87),
+  [`6c532d0`](https://github.com/DailybotHQ/cli/commit/6c532d0daf6a90d158635226359483aabd7e5335))
+
+- **devcontainer**: Let agents ask each other from the agent list
+  ([#87](https://github.com/DailybotHQ/cli/pull/87),
+  [`6c532d0`](https://github.com/DailybotHQ/cli/commit/6c532d0daf6a90d158635226359483aabd7e5335))
+
+- **devcontainer**: List live Herdr agents without shell injection
+  ([#87](https://github.com/DailybotHQ/cli/pull/87),
+  [`6c532d0`](https://github.com/DailybotHQ/cli/commit/6c532d0daf6a90d158635226359483aabd7e5335))
+
+- **devcontainer**: Make dbdev agents work inside the container
+  ([#87](https://github.com/DailybotHQ/cli/pull/87),
+  [`6c532d0`](https://github.com/DailybotHQ/cli/commit/6c532d0daf6a90d158635226359483aabd7e5335))
+
+- **devcontainer**: Mark this session in the agent list
+  ([#87](https://github.com/DailybotHQ/cli/pull/87),
+  [`6c532d0`](https://github.com/DailybotHQ/cli/commit/6c532d0daf6a90d158635226359483aabd7e5335))
+
+- **devcontainer**: Pin Neovim 0.12.5 and seed without tmp
+  ([#87](https://github.com/DailybotHQ/cli/pull/87),
+  [`6c532d0`](https://github.com/DailybotHQ/cli/commit/6c532d0daf6a90d158635226359483aabd7e5335))
+
+- **docker**: Add satellite.rebuild for workspace rebuild
+  ([#87](https://github.com/DailybotHQ/cli/pull/87),
+  [`6c532d0`](https://github.com/DailybotHQ/cli/commit/6c532d0daf6a90d158635226359483aabd7e5335))
+
+- **docker**: Agent-workspace satellite (SSH-only)
+  ([#87](https://github.com/DailybotHQ/cli/pull/87),
+  [`6c532d0`](https://github.com/DailybotHQ/cli/commit/6c532d0daf6a90d158635226359483aabd7e5335))
+
+- **docker**: Gate coding CLIs and install mu-vim ([#87](https://github.com/DailybotHQ/cli/pull/87),
+  [`6c532d0`](https://github.com/DailybotHQ/cli/commit/6c532d0daf6a90d158635226359483aabd7e5335))
+
+
 ## v3.12.0 (2026-09-22)
 
 ### Bug Fixes
