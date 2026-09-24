@@ -188,7 +188,48 @@ Host-only (not in git): `~/.ssh/config`, `~/.ssh/known_hosts`,
 `~/.config/herdr/config.toml`, `~/.local/state/herdr/client/endpoints.json`.
 
 
+## Standard Herdr layout (primary and workspace)
+
+The coding-agent host kit applies this **sidebar layout** when you start a
+machine with **`dbdev <alias> up`** (primary) or **`dbdev workspace start`**
+(satellite). Bare `bash dev.sh up` plus a manual Herdr attach does **not**
+create these four sidebar entries — only the host-kit paths above do.
+(`dbdev` is the short name for `dailybot-dev` on the Mac.)
+
+Sidebar order (top → bottom):
+
+1. **Home** — idle shell at that machine's container cwd (see table)
+2. **Editor** — idle shell at the same cwd
+3. **Development** — tab `Development`, two columns:
+   - **server** — process panes (see table)
+   - **tests** — idle shell for running tests by hand on every repo
+4. **Agents** — 2×2 quadrant (`a1` TL, `a2` TR, `a3` BL, `a4` BR)
+
+| Repo (`dbdev` alias) | Home / Editor cwd | Development **server** pane(s) |
+|------|-------------------|----------------------------|
+| api-services (`api`) | `/app` | `django`, `celery`, `flower` stacked |
+| web-app (`web`) | `/code/js` | `server` (runs vite when host-kit start-panes is on) |
+| chatbot-functions (`chatbot`) | `/home/node/app` | `server` (idle shell) |
+| dailybot.com (`site`) | `/app` | `server` (runs `pnpm dev` when host-kit start-panes is on) |
+| discord-gateway (`discord`) | `/app` | `server` (idle shell) |
+| cli (`cli`) | `/workspace` | `server` (idle shell) |
+
+Server processes start only when host-kit is invoked with `--start-panes`, or
+when `DAILYBOT_WORKSPACE_START_PANES=1` is set in `~/.config/coding-agent-kit/env`.
+That flag is **not** an argument to vite or `pnpm`.
+Stock Herdr shells named `~` / `app` / old `Home (~)` are closed when the
+layout is created.
+
+Implementation lives in the **Core Hub** coding-agent host kit:
+`repositories/coding-agent-host-kit/lib/workspace.sh`
+(`ws_herdr_boot_standard_layout`); primary path is `dbdev <alias> up` →
+`herdr_boot_primary_panes`.
+
+
 ## Starting the container
+
+For the standard Herdr sidebar layout (Home · Editor · Development · Agents), start with `dbdev cli up` (or `dbdev workspace start` on a satellite) instead of bare `dev.sh up` + manual attach — see **Standard Herdr layout** above.
+
 
 Nothing here requires Cursor. From the repository root:
 
