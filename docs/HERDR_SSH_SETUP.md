@@ -190,30 +190,37 @@ Host-only (not in git): `~/.ssh/config`, `~/.ssh/known_hosts`,
 
 ## Standard Herdr layout (primary and workspace)
 
-After `dbdev <alias> up` on a primary, or `dbdev workspace start` on a
-satellite, the coding-agent host kit opens four Herdr workspaces in this
-sidebar order (top → bottom):
+The coding-agent host kit applies this sidebar layout when you start a machine
+with **`dbdev <alias> up`** (primary) or **`dbdev workspace start`** (satellite).
+Bare `bash dev.sh up` plus a manual Herdr attach does **not** create these
+workspaces — only the host-kit paths above do.
+
+Sidebar order (top → bottom):
 
 1. **Home** — idle shell at this repo's container cwd
 2. **Editor** — idle shell at the same cwd
-3. **Development** — tab `Development`, two columns: **server** | **tests**
+3. **Development** — tab `Development`, two columns:
+   - **server** — process panes (see table)
+   - **tests** — idle shell for running tests by hand on every repo
 4. **Agents** — 2×2 quadrant (`a1` TL, `a2` TR, `a3` BL, `a4` BR)
 
-| Repo | Home / Editor cwd | Development server pane(s) |
+| Repo (`dbdev` alias) | Home / Editor cwd | Development **server** pane(s) |
 |------|-------------------|----------------------------|
-| API | `/app` | `django`, `celery`, `flower` stacked |
-| Web | `/code/js` | `server` (vite with `--start-panes`) |
-| Chatbot | `/home/node/app` | `server` (idle shell) |
-| Site | `/app` | `server` (`pnpm dev` with `--start-panes`) |
-| Discord | `/app` | `server` (idle shell) |
-| CLI | `/workspace` | `server` (idle shell) |
+| api-services (`api`) | `/app` | `django`, `celery`, `flower` stacked |
+| web-app (`web`) | `/code/js` | `server` (runs vite when host-kit start-panes is on) |
+| chatbot-functions (`chatbot`) | `/home/node/app` | `server` (idle shell) |
+| dailybot.com (`site`) | `/app` | `server` (runs `pnpm dev` when host-kit start-panes is on) |
+| discord-gateway (`discord`) | `/app` | `server` (idle shell) |
+| cli (`cli`) | `/workspace` | `server` (idle shell; layout needs host-kit `dbdev cli up`) |
 
-Server processes start only with `--start-panes` or
-`DAILYBOT_WORKSPACE_START_PANES=1` in `~/.config/coding-agent-kit/env`.
+Server processes start only when host-kit is invoked with `--start-panes`, or
+when `DAILYBOT_WORKSPACE_START_PANES=1` is set in `~/.config/coding-agent-kit/env`.
+That flag is **not** an argument to vite or `pnpm`.
 Stock Herdr shells named `~` / `app` / old `Home (~)` are closed when the
 layout is created. Implementation: host kit `lib/workspace.sh`
 (`ws_herdr_boot_standard_layout`); primary path is `dbdev <alias> up` →
 `herdr_boot_primary_panes`.
+
 
 ## Starting the container
 
