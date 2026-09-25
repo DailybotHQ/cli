@@ -222,3 +222,80 @@ class TestBoardMemberAddTakesATeam:
         ) as post:
             real.add_board_member(BOARD, None, team_uuid=self.TEAM)
         assert post.call_args.kwargs["json"] == {"team_uuid": self.TEAM}
+
+
+class TestConfirmPromptIsNeutralized:
+    def test_the_prompt_text_carries_no_control_characters(self) -> None:
+        import click as _click
+
+        from dailybot_cli.commands._destructive import confirm_without_preview
+
+        with patch.object(_click, "confirm", return_value=True) as confirm:
+            confirm_without_preview(f"delete comment ENG-1{CLEAR}‮", assume_yes=False, dry_run=False)
+        prompt: str = confirm.call_args.args[0]
+        assert "\x1b" not in prompt and "‮" not in prompt
+
+
+class TestViewSavePreconditionExits:
+    @pytest.mark.parametrize(("status", "exit_code"), [(412, 4), (428, 2)])
+    def test_if_match_refusals_have_documented_exits(self, status: int, exit_code: int) -> None:
+        from dailybot_cli.commands.public_api_helpers import tasks_write_exit_code
+
+        assert tasks_write_exit_code(APIError(status, "x", code="precondition_failed")) == exit_code
+
+
+class TestRawUploadContentType:
+    def test_a_raw_body_never_keeps_the_json_content_type(self) -> None:
+        client: DailyBotClient = DailyBotClient(api_url=API_URL, token="test-token")
+        with patch("dailybot_cli.api_client.httpx.put", return_value=_response()) as put:
+            client._request("PUT", f"{API_URL}/v1/tasks/x/", content=b"\x00\x01")
+        headers: dict[str, str] = dict(put.call_args.kwargs["headers"])
+        assert headers.get("Content-Type") != "application/json"
+
+
+class TestApiDownloadAsksForIdentity:
+    def test_the_api_stream_requests_an_uncompressed_body(self) -> None:
+        client: DailyBotClient = DailyBotClient(api_url=API_URL, token="test-token")
+        with patch(
+            "dailybot_cli.api_client.httpx.stream", return_value=_stream(chunks=[b"x"])
+        ) as stream:
+            client.download_attachment("ENG-1", ATT)
+        assert dict(stream.call_args.kwargs["headers"]).get("Accept-Encoding") == "identity"
+
+
+class TestBoardPinsResolveKeys:
+    def test_unstar_by_board_key_finds_the_pin_by_uuid(self) -> None:
+        client: MagicMock = MagicMock(spec=DailyBotClient)
+        client.get_board.return_value = {"uuid": BOARD, "key": "ENG"}
+        client.list_favorites.return_value = [
+            {"uuid": "f-1", "target_type": "board", "target_uuid": BOARD}
+        ]
+        with (
+            patch("dailybot_cli.commands.board.require_auth", return_value=client),
+            patch("dailybot_cli.commands._favorites.get_token", return_value="tok"),
+        ):
+            result = CliRunner().invoke(cli, ["board", "unstar", "ENG", "--json"])
+        assert result.exit_code == 0, result.output
+        client.delete_favorite.assert_called_once_with("f-1")
+
+    def test_star_by_board_key_sends_the_uuid(self) -> None:
+        client: MagicMock = MagicMock(spec=DailyBotClient)
+        client.get_board.return_value = {"uuid": BOARD, "key": "ENG"}
+        client.add_favorite.return_value = {"uuid": "f-1", "rank": 1}
+        with (
+            patch("dailybot_cli.commands.board.require_auth", return_value=client),
+            patch("dailybot_cli.commands._favorites.get_token", return_value="tok"),
+        ):
+            result = CliRunner().invoke(cli, ["board", "star", "ENG", "--json"])
+        assert result.exit_code == 0, result.output
+        assert client.add_favorite.call_args.kwargs["target_uuid"] == BOARD
+
+    def test_a_uuid_is_not_resolved(self) -> None:
+        client: MagicMock = MagicMock(spec=DailyBotClient)
+        client.add_favorite.return_value = {"uuid": "f-1", "rank": 1}
+        with (
+            patch("dailybot_cli.commands.board.require_auth", return_value=client),
+            patch("dailybot_cli.commands._favorites.get_token", return_value="tok"),
+        ):
+            CliRunner().invoke(cli, ["board", "star", BOARD, "--json"])
+        client.get_board.assert_not_called()

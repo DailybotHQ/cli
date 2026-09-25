@@ -26,7 +26,13 @@ from dailybot_cli.commands.public_api_helpers import (
     resolve_error_message,
     tasks_write_exit_code,
 )
-from dailybot_cli.display import console, print_dry_run_consequence, print_error, safe_text
+from dailybot_cli.display import (
+    console,
+    plain_text,
+    print_dry_run_consequence,
+    print_error,
+    safe_text,
+)
 
 
 def _is_preview(payload: Any) -> bool:
@@ -161,7 +167,9 @@ def confirm_without_preview(
         return False
     if assume_yes:
         return True
-    if not click.confirm(f"{consequence} Proceed?", default=False, err=json_mode):
+    # click.confirm writes the prompt as-is (not through Rich), so the ids embedded in
+    # the sentence are neutralized here: a person must read exactly what will happen.
+    if not click.confirm(f"{plain_text(consequence)} Proceed?", default=False, err=json_mode):
         aborted: str = "Aborted. Nothing was changed."
         if json_mode:
             emit_json(

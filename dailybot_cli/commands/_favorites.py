@@ -4,6 +4,7 @@ Favorites belong to a person, so every door here is person-only. Only boards and
 saved views can be pinned — projects and goals cannot.
 """
 
+import re
 from typing import Any
 
 from dailybot_cli.api_client import APIError, DailyBotClient
@@ -39,9 +40,23 @@ def require_person_for_views(action: str, *, json_mode: bool) -> None:
         )
 
 
+_UUID_RE: re.Pattern[str] = re.compile(
+    r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$", re.IGNORECASE
+)
+
+
+def _resolve_target(client: DailyBotClient, target_type: str, target: str) -> str:
+    """The uuid a pin refers to. A board may be named by its key (`ENG`); pins store uuids."""
+    if target_type != "board" or _UUID_RE.match(target):
+        return target
+    board: dict[str, Any] = client.get_board(target)
+    return str(board.get("uuid") or target)
+
+
 def star(client: DailyBotClient, target_type: str, target_uuid: str, *, json_mode: bool) -> None:
     """Pin a board or view. Pinning something already pinned returns the existing pin."""
     try:
+        target_uuid = _resolve_target(client, target_type, target_uuid)
         with console.status("Pinning..."):
             data: dict[str, Any] = client.add_favorite(
                 target_type=target_type, target_uuid=target_uuid
@@ -57,6 +72,7 @@ def star(client: DailyBotClient, target_type: str, target_uuid: str, *, json_mod
 def unstar(client: DailyBotClient, target_type: str, target_uuid: str, *, json_mode: bool) -> None:
     """Unpin a board or view. The pin id is looked up; unpinning an unpinned target is a no-op."""
     try:
+        target_uuid = _resolve_target(client, target_type, target_uuid)
         with console.status("Finding the pin..."):
             pins: list[dict[str, Any]] = rows_of(client.list_favorites())
         match: list[dict[str, Any]] = [

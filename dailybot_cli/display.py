@@ -1577,6 +1577,11 @@ def _neutralize(text: str) -> str:
     return "".join(out)
 
 
+def plain_text(value: Any) -> str:
+    """Server text for a plain (non-Rich) prompt: control characters neutralized."""
+    return _neutralize(str(value))
+
+
 def safe_text(value: Any) -> str:
     """Server text that is not quoted as data (keys, codes, counts): neutralized and escaped."""
     return escape(_neutralize(str(value)))

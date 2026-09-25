@@ -729,6 +729,10 @@ _TASKS_WRITE_EXIT_BY_STATUS: dict[int, int] = {
     403: EXIT_PERMISSION_DENIED,
     404: EXIT_NOT_FOUND,
     409: EXIT_PERMISSION_DENIED,
+    # Saved-view saves: 412 means the views changed since the ETag was read (re-read,
+    # then decide), 428 means no If-Match was sent (a malformed call).
+    412: EXIT_PERMISSION_DENIED,
+    428: EXIT_USAGE_ERROR,
     429: EXIT_RATE_LIMITED,
     # The writes kill switch. It is transient by design, so it shares the exit code
     # that already means "back off and retry" rather than the one that means

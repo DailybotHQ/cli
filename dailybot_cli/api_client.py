@@ -505,9 +505,10 @@ class DailyBotClient:
         the retry is transparent to callers and to test mocks alike.
         """
         headers: dict[str, str] = self._headers()
-        if files is not None:
-            # A multipart body sets its own Content-Type (with the boundary);
-            # the JSON default would make the server misread it.
+        if files is not None or content is not None:
+            # A multipart body sets its own Content-Type (with the boundary), and a raw
+            # body carries the caller's (`extra_headers`); the JSON default would make
+            # the server misread either.
             headers.pop("Content-Type", None)
         if extra_headers:
             headers.update(extra_headers)
@@ -3044,7 +3045,8 @@ class DailyBotClient:
             with httpx.stream(
                 "GET",
                 url,
-                headers=headers,
+                # Uncompressed, so the running count is the real size.
+                headers={**headers, "Accept-Encoding": "identity"},
                 timeout=ATTACHMENT_TRANSFER_TIMEOUT_SECS,
                 follow_redirects=False,
             ) as response:
