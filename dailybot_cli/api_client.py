@@ -533,7 +533,9 @@ class DailyBotClient:
             alt: dict[str, str] | None = self._alt_auth_headers()
             if alt is not None:
                 retry_headers: dict[str, str] = dict(alt)
-                if files is not None:
+                if files is not None or content is not None:
+                    # Same rule as the first attempt: multipart and raw bodies never
+                    # carry the JSON default.
                     retry_headers.pop("Content-Type", None)
                 if extra_headers:
                     retry_headers.update(extra_headers)

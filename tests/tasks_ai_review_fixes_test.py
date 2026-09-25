@@ -299,3 +299,18 @@ class TestBoardPinsResolveKeys:
         ):
             CliRunner().invoke(cli, ["board", "star", BOARD, "--json"])
         client.get_board.assert_not_called()
+
+
+class TestRetryKeepsTheRawContentType:
+    def test_the_alt_credential_retry_does_not_reintroduce_json(self) -> None:
+        client: DailyBotClient = DailyBotClient(
+            api_url=API_URL, token="test-token", api_key="test-key"
+        )
+        with patch(
+            "dailybot_cli.api_client.httpx.put",
+            side_effect=[_response(status=401), _response()],
+        ) as put:
+            client._request("PUT", f"{API_URL}/v1/tasks/x/", content=b"\x00\x01")
+        assert put.call_count == 2
+        for call in put.call_args_list:
+            assert dict(call.kwargs["headers"]).get("Content-Type") != "application/json"
