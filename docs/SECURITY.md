@@ -170,9 +170,12 @@ the transport draws a hard line (`DailyBotClient.upload_attachment_bytes`):
 - Size is checked before any request (25 MiB; 5 MiB on the captioned one-request door).
 
 `task attachment get` follows at most **one** redirect from the API to storage, without
-credentials; a second redirect is refused. It never overwrites an existing file unless
-`--force` is passed, never derives the output path from server data, and writes nothing when
-the download fails.
+credentials; a second redirect is refused, and a refusal from storage is reported as storage's
+(`attachment_download_failed`), never as a session problem. Downloads over the attachment
+size cap are refused. The output path is never derived from server data. Without `--force`
+the file is created exclusively (`O_EXCL`) and a symlink is never followed (`O_NOFOLLOW`), so a
+file or link that appears during the download is left alone; nothing is written when the
+download fails, and an unwritable path is a clear error rather than a crash.
 
 ## OTP Handling
 
