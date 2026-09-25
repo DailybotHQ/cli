@@ -147,8 +147,11 @@ says so (`"previewed_by": "client"` under `--json`).
 - **A preview that fails aborts.** Not knowing the blast radius is not permission to proceed.
 - An irreversible operation is marked as such and offered no restore path.
 - `task delete` is an alias of archive and says so; it never claims data was destroyed.
-- Bulk has no dry run; its blast radius is bounded by the server's 100-item cap, which the
-  CLI enforces before sending.
+- Bulk previews through the server's own dry run (`task bulk --dry-run`): the batch is run and
+  rolled back, so the changes and refusals shown are real, and nothing is written. The dry run
+  sends no Idempotency-Key — which is also why a server that predates it refuses the call
+  (`idempotency_key_required`) instead of applying it. The 100-item cap is enforced before
+  sending.
 
 ## Attachments — Tasks
 

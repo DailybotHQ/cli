@@ -32,6 +32,7 @@ from dailybot_cli.commands._beta import mark_beta
 from dailybot_cli.commands._destructive import confirm_without_preview, preview_then_confirm
 from dailybot_cli.commands._writes import IDEMPOTENCY_TTL_HOURS, named, report_write
 from dailybot_cli.commands.public_api_helpers import (
+    EXIT_USAGE_ERROR,
     EXIT_USER_ABORTED,
     emit_json,
     exit_for_tasks_error,
@@ -50,6 +51,7 @@ from dailybot_cli.config import get_token
 from dailybot_cli.display import (
     console,
     error_console,
+    print_bulk_preview,
     print_deprecation,
     print_error,
     print_pagination_footer,
@@ -111,6 +113,21 @@ DUPLICATE_FIELDS: tuple[str, ...] = (
     "owner",
     "start_date",
     "due_date",
+)
+
+# Operations `/v1/tasks/tasks/bulk/` declares. `delete` is the alias of archive.
+BULK_OPERATIONS: tuple[str, ...] = (
+    "create",
+    "move",
+    "update",
+    "archive",
+    "restore",
+    "set_labels",
+    "set_owner",
+    "set_priority",
+    "set_due_date",
+    "set_parent",
+    "delete",
 )
 
 PARTICIPANT_ROLES: tuple[str, ...] = ("participant", "watcher")
@@ -1640,8 +1657,54 @@ def task_restore(task_uuid: str, idempotency_key: str | None, json_mode: bool) -
     report_write(data, "Task restored")
 
 
+def _bulk_preview(operation: str, items: list[Any], board: str | None, json_mode: bool) -> None:
+    """Show what a bulk call would do, via the server's run-and-roll-back dry run."""
+    client = require_auth()
+    try:
+        with console.status(f"Previewing {escape(operation)} on {len(items)} item(s)..."):
+            preview: dict[str, Any] = client.bulk_tasks(
+                operation=operation, items=items, board=board, dry_run=True
+            )
+    except APIError as exc:
+        if exc.code == "idempotency_key_required":
+            # A server that predates the dry run treated this as a real bulk and refused
+            # it for want of a key — which is exactly why nothing was written.
+            message: str = (
+                "This server cannot preview a bulk call yet (it has no bulk dry run), so "
+                "nothing was sent for real and nothing changed. Run without --dry-run to "
+                "apply, after checking the batch yourself."
+            )
+            if json_mode:
+                emit_json(
+                    {
+                        "status": "error",
+                        "code": "bulk_dry_run_unsupported",
+                        "detail": exc.detail,
+                        "message": message,
+                    }
+                )
+            else:
+                print_error(message)
+            raise SystemExit(EXIT_USAGE_ERROR) from exc
+        _write_error(exc, json_mode)
+    refused: list[Any] = [r for r in preview.get("refused") or [] if isinstance(r, dict)]
+    if json_mode:
+        emit_json(preview)
+    else:
+        print_bulk_preview(preview)
+    if refused:
+        # The real call would fail for these items; an agent branching on the exit
+        # must see that without parsing the preview.
+        raise SystemExit(1)
+
+
 @task.command("bulk")
-@click.option("--operation", required=True, help="Operation to apply to every item.")
+@click.option(
+    "--operation",
+    required=True,
+    type=click.Choice(BULK_OPERATIONS),
+    help="Operation to apply to every item.",
+)
 @click.option(
     "-f",
     "--file",
@@ -1650,31 +1713,45 @@ def task_restore(task_uuid: str, idempotency_key: str | None, json_mode: bool) -
     type=click.File("r"),
     help="JSON file with the item list, or `-` for stdin.",
 )
+@click.option(
+    "--board",
+    default=None,
+    help="Board (uuid or key) every created task lands on. Required for --operation create.",
+)
+@click.option(
+    "--dry-run",
+    is_flag=True,
+    help="Run the batch on the server and roll it back: shows each change, writes nothing.",
+)
 @click.option("--idempotency-key", default=None, help="Reuse a key to make a retry safe.")
 @click.option("-y", "--yes", "assume_yes", is_flag=True, help="Skip the confirmation.")
 @click.option("--json", "json_mode", is_flag=True, help="Emit machine-readable JSON to stdout.")
 def task_bulk(
-    operation: str, batch_file: Any, idempotency_key: str | None, assume_yes: bool, json_mode: bool
+    operation: str,
+    batch_file: Any,
+    board: str | None,
+    dry_run: bool,
+    idempotency_key: str | None,
+    assume_yes: bool,
+    json_mode: bool,
 ) -> None:
-    """Apply one operation to many tasks in a single call.
+    """Apply one operation to up to 100 tasks in a single call.
 
     \b
-    This is the only door that REQUIRES an idempotency key, so one is always sent:
-    a batch that times out can be retried without applying twice. A replay returns
-    the original result and writes once.
+    Preview first with --dry-run: the server runs the whole batch and rolls it back,
+    so the changes and refusals it shows are the real ones, and nothing is written.
+    A preview that predicts refusals exits 1.
 
     \b
-    There is NO dry run for bulk. The blast radius is bounded instead by the
-    server's cap of 100 items per call, which this command enforces before
-    sending.
-
-    \b
-    The item shape is the contract's, not a bespoke format.
+    The real call always sends an idempotency key, so a batch that times out can be
+    retried without applying twice. Items follow the contract: `{"task": "ENG-142",
+    ...}` for most operations, `{"title": ...}` for create (with --board).
 
     \b
     Examples:
-      dailybot task bulk --operation archive -f batch.json --yes
-      echo '[{"uuid":"..."}]' | dailybot task bulk --operation archive -f - --json
+      dailybot task bulk --operation set_owner -f batch.json --dry-run
+      dailybot task bulk --operation create --board ENG -f todo.json --yes --json
+      echo '[{"task":"ENG-142"}]' | dailybot task bulk --operation archive -f - --json
     """
     try:
         items: Any = _json.load(batch_file)
@@ -1687,19 +1764,21 @@ def task_bulk(
             f"{len(items)} items exceeds the server cap of {TASKS_BULK_MAX_ITEMS} per call. "
             "Split the batch and send it in chunks."
         )
+    if operation == "create" and not board:
+        raise click.UsageError("--operation create needs --board: every task lands on one board.")
+
+    if dry_run:
+        _bulk_preview(operation, items, board, json_mode)
+        return
 
     if not assume_yes:
-        # `--operation` is free-form caller input, so it must be escaped before it
-        # reaches a Rich markup string: `[/bold][red]x` otherwise raises MarkupError
-        # before the HTTP call and the root safety net blames the CLI for a bug.
-        #
-        # Under --json the warning and the prompt go to stderr, exactly as
-        # `_destructive.preview_then_confirm` does: stdout must stay a single
-        # parseable document, and the record of what was about to happen must survive.
+        # `--operation` is validated, but items echo caller input, so the notice is
+        # escaped markup either way. Under --json it goes to stderr so stdout stays one
+        # parseable document, exactly as `_destructive.preview_then_confirm` does.
         notice: Console = error_console if json_mode else console
         notice.print(
             f"About to apply [bold]{escape(operation)}[/bold] to "
-            f"[bold]{len(items)}[/bold] item(s). There is no dry run for bulk."
+            f"[bold]{len(items)}[/bold] item(s). Preview it first with --dry-run."
         )
         if not click.confirm("Proceed?", default=False, err=json_mode):
             aborted: str = "Aborted. Nothing was changed."
@@ -1720,7 +1799,7 @@ def task_bulk(
     try:
         with console.status(f"Applying {escape(operation)} to {len(items)} item(s)..."):
             data: dict[str, Any] = client.bulk_tasks(
-                operation=operation, items=items, idempotency_key=idempotency_key
+                operation=operation, items=items, board=board, idempotency_key=idempotency_key
             )
     except APIError as exc:
         _write_error(exc, json_mode)
@@ -1747,7 +1826,7 @@ def task_bulk(
         # untrusted for markup purposes — the same footgun as `--operation`, except
         # this one fires *after* the success line has already printed.
         console.print(
-            f"  [red]failed[/red] {escape(str(row.get('uuid', '?')))} "
+            f"  [red]failed[/red] {escape(str(row.get('task') or row.get('uuid') or '?'))} "
             f"[dim]{escape(str(row.get('code', '')))}[/dim]"
         )
     if failed:

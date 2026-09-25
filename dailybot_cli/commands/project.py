@@ -156,7 +156,7 @@ def project_get(project_uuid: str, include: tuple[str, ...], json_mode: bool) ->
 
 
 @project.command("updates")
-@click.argument("project_uuid", metavar="[PROJECT]", required=False)
+@click.argument("project_uuid", metavar="PROJECT", required=False)
 @query_options
 @click.option("--json", "json_mode", is_flag=True, help="Emit machine-readable JSON to stdout.")
 def project_updates(project_uuid: str | None, json_mode: bool, **flags: Any) -> None:

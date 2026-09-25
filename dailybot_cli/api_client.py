@@ -2575,20 +2575,33 @@ class DailyBotClient:
         return self._tasks_write("POST", f"tasks/{task_uuid}/subscription/", idempotent=False)
 
     def bulk_tasks(
-        self, *, operation: str, items: list[dict[str, Any]], idempotency_key: str | None = None
+        self,
+        *,
+        operation: str,
+        items: list[dict[str, Any]],
+        board: str | None = None,
+        dry_run: bool = False,
+        idempotency_key: str | None = None,
     ) -> dict[str, Any]:
         """POST /v1/tasks/tasks/bulk/ — the ONE door that REQUIRES a key.
 
-        Without the header the server answers ``400 idempotency_key_required``,
-        so this method always sends one.
+        Without the header the server answers ``400 idempotency_key_required``, so
+        the real call always sends one. ``dry_run`` asks the server to run the batch
+        and roll it back (API R5): no key is sent, and nothing is written. `create`
+        needs the target ``board`` at the top of the body.
         """
-        return self._tasks_write(
+        payload: dict[str, Any] = {"operation": operation, "items": items}
+        if board is not None:
+            payload["board"] = board
+        result: dict[str, Any] = self._tasks_write(
             "POST",
             "tasks/bulk/",
-            json={"operation": operation, "items": items},
+            json=payload,
+            params={"dry_run": "true"} if dry_run else None,
             idempotent=True,
             idempotency_key=idempotency_key,
         )
+        return result
 
     # --- Collaboration ---
 

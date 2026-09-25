@@ -119,6 +119,7 @@ tests/                       # pytest suite (file naming: *_test.py)
 ├── task_collaboration_test.py # comments edit/delete, relations, participants, watch, mute
 ├── task_structure_test.py  # children, duplicate, events, activity
 ├── tasks_attachments_test.py # attachments: upload host boundary, redirects, size cap
+├── tasks_bulk_dry_run_test.py # bulk --dry-run (R5) and bulk contract fixes
 ├── board_commands_test.py   # `board` group (reads + container writes)
 ├── board_admin_test.py      # `board` administration (states, members, labels, views)
 ├── project_goal_commands_test.py  # `project` + `goal`

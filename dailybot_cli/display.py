@@ -1776,6 +1776,41 @@ def print_tasks_rows(
     console.print(table)
 
 
+def print_bulk_preview(preview: dict[str, Any]) -> None:
+    """Render a bulk dry run: the consequence, each change, and what would be refused."""
+    console.print(
+        Panel(
+            escape(str(preview.get("consequence") or "")),
+            title="Dry run. Nothing was changed.",
+            border_style="yellow",
+        )
+    )
+    rows: list[dict[str, Any]] = [r for r in preview.get("items") or [] if isinstance(r, dict)]
+    if rows:
+        table: Table = Table(title="Would change")
+        for header in ("#", "Task", "Field", "From", "To"):
+            table.add_column(header)
+        for row in rows:
+            changes: Any = row.get("changes") or {}
+            for field, change in changes.items() if isinstance(changes, dict) else []:
+                before: Any = change.get("from") if isinstance(change, dict) else None
+                after: Any = change.get("to") if isinstance(change, dict) else None
+                table.add_row(
+                    str(row.get("index", "")),
+                    escape(str(row.get("key") or row.get("task") or "")),
+                    escape(str(field)),
+                    present_untrusted(before),
+                    present_untrusted(after),
+                )
+        console.print(table)
+    refused: list[dict[str, Any]] = [r for r in preview.get("refused") or [] if isinstance(r, dict)]
+    for row in refused:
+        console.print(
+            f"  [red]would be refused[/red] item {escape(str(row.get('index', '?')))}: "
+            f"{escape(str(row.get('code', '')))} {present_untrusted(row.get('detail'))}"
+        )
+
+
 def print_boards_table(boards: list[dict[str, Any]]) -> None:
     """Render a board list. Keys and uuids are trusted; names are not."""
     if not boards:

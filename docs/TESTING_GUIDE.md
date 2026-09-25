@@ -63,6 +63,7 @@ tests/
 ├── task_collaboration_test.py    # comments edit/delete, relations, participants, watch, mute
 ├── task_structure_test.py         # children, duplicate, events, activity; delegation absent
 ├── tasks_attachments_test.py      # attach/list/get/delete; credential + redirect boundary
+├── tasks_bulk_dry_run_test.py     # bulk --dry-run (R5), create --board, declared operations
 ├── board_commands_test.py         # `board` group: reads + container writes
 ├── board_admin_test.py           # `board` administration: states, members, labels, views
 ├── project_goal_commands_test.py  # `project` + `goal`: reads, roll-ups, updates, milestones

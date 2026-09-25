@@ -905,7 +905,7 @@ humans who own them.
 | `dailybot task archive <uuid>` | Archive a task. Previews the consequence first; reversible |
 | `dailybot task delete <uuid>` | Alias of archive — nothing is destroyed |
 | `dailybot task restore <uuid>` | Restore an archived task |
-| `dailybot task bulk --operation <op> -f <file>` | One operation over many tasks. Max **100** items; no dry run |
+| `dailybot task bulk --operation <op> -f <file>` | One operation over up to **100** tasks (`create` needs `--board`). `--dry-run` runs it on the server and rolls it back: real changes and refusals, nothing written |
 | `dailybot board list` | List boards |
 | `dailybot board get <uuid>` | Board metadata |
 | `dailybot board tasks <uuid>` | The tasks on one board, one page per call |

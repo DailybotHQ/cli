@@ -133,6 +133,10 @@ ERROR_CODE_MESSAGES: dict[str, str] = {
         "The download pointed at an unexpected place, so it was not followed and nothing "
         "was written. Try again, or download it from the web app."
     ),
+    "bulk_dry_run_unsupported": (
+        "This server cannot preview a bulk call yet, so nothing was sent for real and "
+        "nothing changed. Check the batch yourself and run it without --dry-run."
+    ),
     "column_too_large": (
         "That column holds too many tasks to return in one read. List them page by page "
         "with `dailybot board tasks <board>`."
@@ -548,6 +552,7 @@ TASKS_ERROR_CODES: frozenset[str] = frozenset(
         "attachment_upload_failed",
         "attachment_download_redirected",
         "column_too_large",
+        "bulk_dry_run_unsupported",
     }
 )
 
