@@ -108,6 +108,35 @@ ERROR_CODE_MESSAGES: dict[str, str] = {
         "`dailybot board state restore`. `dailybot board states <board> --include-archived` "
         "lists the columns."
     ),
+    # Attachments
+    "attachment_too_large": (
+        "That file is larger than this server accepts (the limit is in the refusal: 25 MiB "
+        "with object storage, 5 MiB without). Compress or split it and attach again."
+    ),
+    "attachment_storage_unavailable": (
+        "This server has no file storage configured, so it cannot accept attachments right "
+        "now. Nothing was uploaded; try again later or attach from the web app."
+    ),
+    "attachment_upload_redirected": (
+        "The storage target answered with a redirect, which this CLI never follows for an "
+        "upload. Nothing was confirmed; run the command again for a fresh upload target."
+    ),
+    "attachment_upload_target_refused": (
+        "The server returned an upload target that is not https, so the file was not sent. "
+        "Nothing was confirmed; report this to support@dailybot.com."
+    ),
+    "attachment_upload_failed": (
+        "Storage refused the upload, so the attachment was not confirmed. Run the command "
+        "again; a new upload target is issued each time."
+    ),
+    "attachment_download_redirected": (
+        "The download pointed at an unexpected place, so it was not followed and nothing "
+        "was written. Try again, or download it from the web app."
+    ),
+    "column_too_large": (
+        "That column holds too many tasks to return in one read. List them page by page "
+        "with `dailybot board tasks <board>`."
+    ),
     # Delta
     "delta_window_expired": (
         "That cursor is older than the server's 7-day delta window and will never be "
@@ -512,6 +541,13 @@ TASKS_ERROR_CODES: frozenset[str] = frozenset(
         "state_in_use",
         "delta_window_expired",
         "not_found",
+        "attachment_too_large",
+        "attachment_storage_unavailable",
+        "attachment_upload_redirected",
+        "attachment_upload_target_refused",
+        "attachment_upload_failed",
+        "attachment_download_redirected",
+        "column_too_large",
     }
 )
 

@@ -6,6 +6,7 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Any
+from urllib.parse import urljoin, urlsplit
 
 import httpx
 
@@ -19,6 +20,12 @@ from dailybot_cli.config import (
 
 _MAX_LIST_PAGES: int = 50  # safety cap for paginated list endpoints
 LONG_TIMEOUT_SECS: float = 120.0  # AI-processing endpoints (ask, submit_update)
+
+# Task attachments. The presigned (object storage) door accepts up to 25 MiB; the
+# one-request multipart door is capped by the server's request ceiling (5 MiB).
+ATTACHMENT_MAX_SIZE_BYTES: int = 25 * 1024 * 1024
+ATTACHMENT_MULTIPART_MAX_BYTES: int = 5 * 1024 * 1024
+ATTACHMENT_TRANSFER_TIMEOUT_SECS: float = LONG_TIMEOUT_SECS
 
 # HTTP status codes that trigger the alt-credential auth retry. 401 is the
 # standards-compliant "credentials rejected" answer; 403 is what many
@@ -432,6 +439,9 @@ class DailyBotClient:
         params: dict[str, Any] | None = None,
         timeout: float | None = None,
         extra_headers: dict[str, str] | None = None,
+        content: bytes | None = None,
+        files: dict[str, Any] | None = None,
+        data: dict[str, Any] | None = None,
     ) -> httpx.Response:
         """Execute a user-scoped authenticated request with alt-credential retry.
 
@@ -456,6 +466,10 @@ class DailyBotClient:
         the retry is transparent to callers and to test mocks alike.
         """
         headers: dict[str, str] = self._headers()
+        if files is not None:
+            # A multipart body sets its own Content-Type (with the boundary);
+            # the JSON default would make the server misread it.
+            headers.pop("Content-Type", None)
         if extra_headers:
             headers.update(extra_headers)
         kwargs: dict[str, Any] = {
@@ -466,6 +480,12 @@ class DailyBotClient:
             kwargs["params"] = params
         if json is not None:
             kwargs["json"] = json
+        if content is not None:
+            kwargs["content"] = content
+        if files is not None:
+            kwargs["files"] = files
+        if data is not None:
+            kwargs["data"] = data
 
         response: httpx.Response = self._dispatch_guarded(method, url, **kwargs)
 
@@ -473,6 +493,8 @@ class DailyBotClient:
             alt: dict[str, str] | None = self._alt_auth_headers()
             if alt is not None:
                 retry_headers: dict[str, str] = dict(alt)
+                if files is not None:
+                    retry_headers.pop("Content-Type", None)
                 if extra_headers:
                     retry_headers.update(extra_headers)
                 kwargs["headers"] = retry_headers
@@ -2622,6 +2644,169 @@ class DailyBotClient:
     def unsubscribe_task(self, task_uuid: str) -> Any:
         """DELETE /v1/tasks/tasks/<uuid>/subscription/ — person-only; stop watching."""
         return self._tasks_write("DELETE", f"tasks/{task_uuid}/subscription/")
+
+    # --- Attachments ---
+
+    def _is_api_origin(self, url: str) -> bool:
+        """True only when `url` has exactly the configured API's scheme, host and port.
+
+        A prefix or suffix comparison would let `api.example.com.evil.example`
+        through; comparing the parsed origin does not.
+        """
+        target = urlsplit(url)
+        api = urlsplit(self.api_url)
+        return (target.scheme, target.hostname, target.port) == (
+            api.scheme,
+            api.hostname,
+            api.port,
+        )
+
+    def _absolute(self, url: str) -> str:
+        """Resolve a relative target against the API origin."""
+        return urljoin(self.api_url.rstrip("/") + "/", url)
+
+    def _may_send_to_foreign(self, url: str) -> bool:
+        """A foreign target must be https, unless the API itself is plain http (local dev)."""
+        return urlsplit(url).scheme == "https" or urlsplit(self.api_url).scheme == "http"
+
+    def presign_attachment(
+        self, task_uuid: str, *, filename: str, content_type: str, size: int
+    ) -> dict[str, Any]:
+        """POST …/attachments/presign/ — reserve an attachment and get an upload target."""
+        result: dict[str, Any] = self._tasks_write(
+            "POST",
+            f"tasks/{task_uuid}/attachments/presign/",
+            json={"filename": filename, "content_type": content_type, "size": size},
+        )
+        return result
+
+    def upload_attachment_bytes(self, presign: dict[str, Any], data: bytes) -> Any:
+        """Send the bytes to the presign's target. Credentials never leave the API origin.
+
+        * Same origin (the `…/content/` fallback, or a relative URL): an ordinary
+          authenticated request, with the presign's headers on top.
+        * Any other host (object storage): a bare request carrying ONLY the
+          presign's headers — no `Authorization`, no `X-API-KEY` — that never
+          follows a redirect. A 3xx is refused rather than re-sent anywhere.
+        """
+        url: str = self._absolute(str(presign.get("upload_url") or ""))
+        method: str = str(presign.get("method") or "PUT").upper()
+        headers: dict[str, str] = {
+            str(k): str(v) for k, v in (presign.get("headers") or {}).items()
+        }
+        if self._is_api_origin(url):
+            return self._handle_response(
+                self._request(
+                    method,
+                    url,
+                    content=data,
+                    extra_headers=headers,
+                    timeout=ATTACHMENT_TRANSFER_TIMEOUT_SECS,
+                )
+            )
+        if not self._may_send_to_foreign(url):
+            # Not the caller's input and not retryable: the server handed back a
+            # target this client will not send a file to. 502 keeps it off the
+            # "bad input" (2) and "back off" (6) exits.
+            raise APIError(
+                502,
+                "The upload target is not https, so the file was not sent.",
+                code="attachment_upload_target_refused",
+            )
+        try:
+            response: httpx.Response = httpx.request(
+                method,
+                url,
+                content=data,
+                headers=headers,
+                timeout=ATTACHMENT_TRANSFER_TIMEOUT_SECS,
+                follow_redirects=False,
+            )
+        except httpx.HTTPError as exc:
+            raise TransportError(f"Could not upload the file to storage: {exc}") from exc
+        if 300 <= response.status_code < 400:
+            raise APIError(
+                response.status_code,
+                "The storage target answered with a redirect; it was not followed.",
+                code="attachment_upload_redirected",
+            )
+        if response.status_code >= 400:
+            raise APIError(
+                response.status_code,
+                f"Storage refused the upload (HTTP {response.status_code}).",
+                code="attachment_upload_failed",
+            )
+        return {}
+
+    def confirm_attachment(self, task_uuid: str, attachment_uuid: str) -> dict[str, Any]:
+        """POST …/attachments/<uuid>/confirm/ — mark the uploaded attachment ready."""
+        result: dict[str, Any] = self._tasks_write(
+            "POST", f"tasks/{task_uuid}/attachments/{attachment_uuid}/confirm/"
+        )
+        return result
+
+    def upload_attachment_multipart(
+        self,
+        task_uuid: str,
+        *,
+        filename: str,
+        content_type: str,
+        data: bytes,
+        caption: str | None = None,
+    ) -> dict[str, Any]:
+        """POST …/attachments/ as multipart — one request, ≤5 MiB, the door that stores a caption."""
+        return self._handle_response(
+            self._request(
+                "POST",
+                self._tasks_url(f"tasks/{task_uuid}/attachments/"),
+                files={"file": (filename, data, content_type)},
+                data={"caption": caption} if caption else None,
+                timeout=ATTACHMENT_TRANSFER_TIMEOUT_SECS,
+            )
+        )
+
+    def list_task_attachments(self, task_uuid: str) -> Any:
+        """GET /v1/tasks/tasks/<uuid>/attachments/."""
+        return self._tasks_read(f"tasks/{task_uuid}/attachments/")
+
+    def delete_task_attachment(self, task_uuid: str, attachment_uuid: str) -> Any:
+        """DELETE …/attachments/<uuid>/ — also removes the stored object when unshared."""
+        return self._tasks_write("DELETE", f"tasks/{task_uuid}/attachments/{attachment_uuid}/")
+
+    def download_attachment(self, task_uuid: str, attachment_uuid: str) -> bytes:
+        """GET …/attachments/<uuid>/content/ — the bytes.
+
+        The API may answer 3xx to a signed storage URL. That hop is followed ONCE,
+        without credentials and without following any further redirect.
+        """
+        response: httpx.Response = self._request(
+            "GET",
+            self._tasks_url(f"tasks/{task_uuid}/attachments/{attachment_uuid}/content/"),
+            timeout=ATTACHMENT_TRANSFER_TIMEOUT_SECS,
+        )
+        if 300 <= response.status_code < 400:
+            location: str = self._absolute(str(response.headers.get("Location") or ""))
+            if self._is_api_origin(location) or not self._may_send_to_foreign(location):
+                raise APIError(
+                    response.status_code,
+                    "The download redirect pointed somewhere it should not; not followed.",
+                    code="attachment_download_redirected",
+                )
+            try:
+                response = httpx.get(
+                    location, timeout=ATTACHMENT_TRANSFER_TIMEOUT_SECS, follow_redirects=False
+                )
+            except httpx.HTTPError as exc:
+                raise TransportError(f"Could not download the file from storage: {exc}") from exc
+            if 300 <= response.status_code < 400:
+                raise APIError(
+                    response.status_code,
+                    "Storage answered with a second redirect; it was not followed.",
+                    code="attachment_download_redirected",
+                )
+        if response.status_code >= 400:
+            self._handle_response(response)
+        return bytes(response.content)
 
     def list_task_children(self, task_uuid: str) -> Any:
         """GET /v1/tasks/tasks/<uuid>/children/ — the task's direct sub-tasks."""

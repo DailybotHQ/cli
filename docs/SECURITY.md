@@ -129,9 +129,17 @@ would both mislead the user and disclose that the object exists.
 
 ## Destructive Operations — Tasks
 
-No destructive Tasks command acts without the server's own statement of what it will do.
-`commands/_destructive.preview_then_confirm()` fetches `?dry_run=true`, renders the
-consequence, the affected counts and the restore path, and only then asks.
+Where the server offers a preview, no destructive Tasks command acts without the server's
+own statement of what it will do. `commands/_destructive.preview_then_confirm()` fetches
+`?dry_run=true`, renders the consequence, the affected counts and the restore path, and only
+then asks. That covers the archives (task, board, project, goal, column) and milestone
+completion.
+
+Some destructive doors have no server-side preview: removing a board member or a task
+participant, unlinking a relation, deleting a comment or an attachment. Those go through
+`commands/_destructive.confirm_without_preview()`, which states the one thing the CLI knows —
+the exact act — asks, and never pretends to more. Their `--dry-run` sends **nothing** and
+says so (`"previewed_by": "client"` under `--json`).
 
 - `--yes` skips the **prompt**, never the preview. The record of what was about to happen
   is the point, and the flag is advisory anyway: the server bounds blast radius per call.
@@ -141,6 +149,27 @@ consequence, the affected counts and the restore path, and only then asks.
 - `task delete` is an alias of archive and says so; it never claims data was destroyed.
 - Bulk has no dry run; its blast radius is bounded by the server's 100-item cap, which the
   CLI enforces before sending.
+
+## Attachments — Tasks
+
+`task attach` reserves an upload target (`…/attachments/presign/`), sends the bytes there and
+confirms. The target is chosen by the server and may be object storage on another host, so
+the transport draws a hard line (`DailyBotClient.upload_attachment_bytes`):
+
+- **Dailybot credentials never leave the API origin.** The origin is compared as parsed
+  scheme + host + port, so a lookalike such as `api.example.com.evil.example` is foreign.
+  A foreign target gets a bare request carrying only the headers the presign returned — no
+  `Authorization`, no `X-API-KEY`. Only the same-origin `…/content/` fallback is authenticated.
+- **No redirects on upload.** A 3xx from the target is an error; nothing is re-sent anywhere
+  and the attachment is not confirmed.
+- **https only** for a foreign target, unless the configured API URL is itself plain `http`
+  (local development).
+- Size is checked before any request (25 MiB; 5 MiB on the captioned one-request door).
+
+`task attachment get` follows at most **one** redirect from the API to storage, without
+credentials; a second redirect is refused. It never overwrites an existing file unless
+`--force` is passed, never derives the output path from server data, and writes nothing when
+the download fails.
 
 ## OTP Handling
 
