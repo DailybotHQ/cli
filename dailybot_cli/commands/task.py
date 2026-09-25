@@ -1203,24 +1203,35 @@ def task_children(task_uuid: str, json_mode: bool) -> None:
     multiple=True,
     help="Fields to copy (repeatable). Default: title, description and labels.",
 )
+@click.option(
+    "--idempotency-key",
+    default=None,
+    help="Reuse a key to make a retry safe. Generated automatically when omitted.",
+)
 @click.option("--json", "json_mode", is_flag=True, help="Emit machine-readable JSON to stdout.")
-def task_duplicate(task_uuid: str, include: tuple[str, ...], json_mode: bool) -> None:
+def task_duplicate(
+    task_uuid: str, include: tuple[str, ...], idempotency_key: str | None, json_mode: bool
+) -> None:
     """Copy a task into the same column, with a new key.
 
     \b
-    This door takes no idempotency key: running the command twice makes two
-    copies. Check the result before retrying after a timeout.
+    An idempotency key is always sent and printed (`_idempotency_key` under --json).
+    Pass it back with --idempotency-key when retrying after a timeout: the server
+    then returns the same copy instead of making a second one.
 
     \b
     Examples:
       dailybot task duplicate ENG-142
       dailybot task duplicate ENG-142 --include title --include owner --include due_date --json
+      dailybot task duplicate ENG-142 --idempotency-key copy-eng-142
     """
     client = require_auth()
     try:
         with console.status("Duplicating the task..."):
             data: dict[str, Any] = client.duplicate_task(
-                task_uuid, include=list(include) if include else None
+                task_uuid,
+                include=list(include) if include else None,
+                idempotency_key=idempotency_key,
             )
     except APIError as exc:
         _write_error(exc, json_mode)

@@ -74,14 +74,20 @@ class TestWire:
         assert get.call_args.args[0] == f"{BASE}{TASK}/activity/"
         assert get.call_args.kwargs["params"]["type"] == "task.moved"
 
-    def test_duplicate_defaults_to_an_empty_body_and_no_key(self, real: DailyBotClient) -> None:
+    def test_duplicate_defaults_to_an_empty_body_and_sends_a_key(
+        self, real: DailyBotClient
+    ) -> None:
+        # R13: the door honours Idempotency-Key, so a retry after a timeout replays
+        # the same copy instead of making a second one.
         with patch(
             "dailybot_cli.api_client.httpx.post", return_value=_response({"key": "ENG-143"}, 201)
         ) as post:
-            real.duplicate_task(TASK)
+            result: Any = real.duplicate_task(TASK, idempotency_key="dup-12345678")
         assert post.call_args.args[0] == f"{BASE}{TASK}/duplicate/"
         assert post.call_args.kwargs["json"] == {}
-        assert IDEMPOTENCY_KEY_HEADER not in dict(post.call_args.kwargs.get("headers") or {})
+        headers: dict[str, str] = dict(post.call_args.kwargs.get("headers") or {})
+        assert headers[IDEMPOTENCY_KEY_HEADER] == "dup-12345678"
+        assert result["_idempotency_key"] == "dup-12345678"
 
     def test_duplicate_sends_include(self, real: DailyBotClient) -> None:
         with patch("dailybot_cli.api_client.httpx.post", return_value=_response({}, 201)) as post:
@@ -118,13 +124,16 @@ class TestDuplicate:
             ["task", "duplicate", TASK, "--include", "title", "--include", "due_date", "--json"],
         )
         assert result.exit_code == 0, result.output
-        assert client.duplicate_task.call_args.kwargs == {"include": ["title", "due_date"]}
+        assert client.duplicate_task.call_args.kwargs == {
+            "include": ["title", "due_date"],
+            "idempotency_key": None,
+        }
 
     def test_no_include_lets_the_server_default(self, runner: CliRunner, client: MagicMock) -> None:
         client.duplicate_task.return_value = {"key": "ENG-143"}
         result = _invoke(runner, client, ["task", "duplicate", TASK])
         assert result.exit_code == 0, result.output
-        assert client.duplicate_task.call_args.kwargs == {"include": None}
+        assert client.duplicate_task.call_args.kwargs == {"include": None, "idempotency_key": None}
         assert "ENG-143" in result.output
 
     def test_an_unknown_field_is_a_usage_error(self, runner: CliRunner, client: MagicMock) -> None:
@@ -132,9 +141,15 @@ class TestDuplicate:
         assert result.exit_code == EXIT_USAGE_ERROR
         client.duplicate_task.assert_not_called()
 
-    def test_help_warns_a_retry_makes_a_second_copy(self, runner: CliRunner) -> None:
-        output: str = " ".join(runner.invoke(cli, ["task", "duplicate", "--help"]).output.split())
-        assert "two copies" in output
+    def test_a_key_can_be_reused_for_a_safe_retry(
+        self, runner: CliRunner, client: MagicMock
+    ) -> None:
+        client.duplicate_task.return_value = {"key": "ENG-143", "_idempotency_key": "k-12345678"}
+        result = _invoke(
+            runner, client, ["task", "duplicate", TASK, "--idempotency-key", "k-12345678"]
+        )
+        assert result.exit_code == 0, result.output
+        assert client.duplicate_task.call_args.kwargs["idempotency_key"] == "k-12345678"
 
 
 class TestEventsAndActivity:

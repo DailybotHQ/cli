@@ -2825,15 +2825,24 @@ class DailyBotClient:
         """
         return self._tasks_list(f"tasks/{task_uuid}/activity/", params=params, **page)
 
-    def duplicate_task(self, task_uuid: str, *, include: list[str] | None = None) -> Any:
-        """POST /v1/tasks/tasks/<uuid>/duplicate/ — a copy in the same column. No key accepted.
+    def duplicate_task(
+        self,
+        task_uuid: str,
+        *,
+        include: list[str] | None = None,
+        idempotency_key: str | None = None,
+    ) -> Any:
+        """POST /v1/tasks/tasks/<uuid>/duplicate/ — a copy in the same column; accepts a key.
 
-        With no `include` the server copies title, description and labels.
+        With no `include` the server copies title, description and labels. A replay
+        with the same key returns the same copy rather than making a second one.
         """
         return self._tasks_write(
             "POST",
             f"tasks/{task_uuid}/duplicate/",
             json={"include": include} if include else {},
+            idempotent=True,
+            idempotency_key=idempotency_key,
         )
 
     def list_task_relations(self, task_uuid: str) -> Any:

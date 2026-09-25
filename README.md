@@ -897,7 +897,7 @@ humans who own them.
 | `dailybot task relations <task>` · `task unlink <task> <relation>` | List links (direction included) / remove one; `unlink` confirms and has `--dry-run` |
 | `dailybot task comment-edit\|comment-delete <task> <comment>` | Edit (`-` reads stdin) or delete a comment; delete blanks the text and keeps the entry |
 | `dailybot task children <task>` · `task events <task>` · `task activity <task>` | Sub-tasks, raw event history, and the readable activity feed (`--updated-since`, `--type`) |
-| `dailybot task duplicate <task>` | Copy into the same column (`--include` picks fields). No idempotency key: a retry makes a second copy |
+| `dailybot task duplicate <task>` | Copy into the same column (`--include` picks fields); sends an idempotency key so a retry returns the same copy |
 | `dailybot task attach <task> <file>` | Attach a file (≤25 MiB; `--caption` uses the one-request door, ≤5 MiB). Credentials never go to the storage host |
 | `dailybot task attachments <task>` · `task attachment get <task> <id> -o <path>` · `task attachment delete` | List, download (never overwrites without `--force`) or delete attachments |
 | `dailybot task archive <uuid>` | Archive a task. Previews the consequence first; reversible |
