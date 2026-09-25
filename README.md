@@ -883,7 +883,7 @@ humans who own them.
 | `dailybot tasks cursor [--now \| --set <time>]` | Your "read up to here" mark for the activity feed — **needs `dailybot login`** |
 | `dailybot tasks favorites` | Your pinned boards and saved views — **needs `dailybot login`** |
 | `dailybot tasks view get\|update\|delete\|star\|unstar <view>` | One saved view by uuid: read, edit (`--view-mode`, `--group-by`, `--filters-file`…), delete, pin — **needs `dailybot login`** |
-| `dailybot tasks mine` | Tasks that are yours (`--scope`) — **needs `dailybot login`** |
+| `dailybot tasks mine` | Tasks that are yours (`--scope owned\|participating\|involved`) — **needs `dailybot login`** |
 | `dailybot tasks counts` | Your task counts by bucket — **needs `dailybot login`** |
 | `dailybot task list` | List tasks (`--board`, `--state`, `--owner` — repeatable, `me` / `unowned`, `--label`, `--sort <field\|-field>`, `--has-dates`, `--include`) |
 | `dailybot task get <task>` | Show one task — every `<task>` accepts a key (`ENG-142`) or a uuid |
@@ -941,7 +941,7 @@ humans who own them.
 | `dailybot project milestone-create\|milestone-update\|milestone-delete` | Dated milestones; delete retires it (tasks keep pointing at it) |
 | `dailybot project archive <uuid>` | Archive a project |
 | `dailybot goal list` | List goals (`--include` is repeatable: `--include progress --include projects`) |
-| `dailybot goal get <uuid>` | Show one goal |
+| `dailybot goal get <uuid>` | Show one goal, with its progress and linked projects (always included) |
 | `dailybot goal create --name <n> --period-start <d> --period-end <d>` | Create a goal (a dated commitment) — **needs `dailybot login`** |
 | `dailybot goal update <uuid>` | Name, period, owner, team, and the declared `--status` (not_started, on_track, at_risk, off_track, achieved, missed) |
 | `dailybot goal restore <uuid>` | Restore an archived goal |

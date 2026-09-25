@@ -49,6 +49,7 @@ from dailybot_cli.display import (
     present_untrusted,
     print_board_snapshot,
     print_delta_summary,
+    print_deprecation,
     print_error,
     print_info,
     print_pagination_footer,
@@ -67,7 +68,27 @@ EXIT_DELTA_WINDOW_EXPIRED: int = 9
 # parameters but still refuses a declared one whose value it cannot read
 # (MEASURED_ANSWERS.md §3), so the CLI validates client-side and spends no round
 # trip on input it can reject itself.
-MY_TASKS_SCOPES: tuple[str, ...] = ("assigned", "created", "participating", "subscribed")
+# The `scope` values GET /v1/tasks/me/tasks/ accepts; anything else is a 400.
+# `involved` = owned, participating or created by you. `owned` is the server default.
+MY_TASKS_SCOPES: tuple[str, ...] = ("owned", "participating", "involved")
+# The name this CLI once used for `owned`; kept working, hidden from help.
+_MY_TASKS_SCOPE_ALIASES: dict[str, str] = {"assigned": "owned"}
+
+
+def _parse_scope(_ctx: click.Context, _param: click.Parameter, value: str | None) -> str | None:
+    """Accept a declared scope (or the deprecated `assigned`); refuse the rest locally."""
+    if value is None:
+        return None
+    lowered: str = value.lower()
+    if lowered in _MY_TASKS_SCOPE_ALIASES:
+        print_deprecation(f"`--scope {lowered}` is deprecated; use `--scope owned`.")
+        return _MY_TASKS_SCOPE_ALIASES[lowered]
+    if lowered not in MY_TASKS_SCOPES:
+        raise click.BadParameter(
+            f"{value!r} is not a scope. Use one of: {', '.join(MY_TASKS_SCOPES)}."
+        )
+    return lowered
+
 
 # The bands `tasks status` asks the pulse for, all in its one request.
 PULSE_BANDS: tuple[str, ...] = ("projects", "attention", "activity", "goal_progress")
@@ -289,22 +310,36 @@ def tasks_search(query: str, json_mode: bool, **flags: Any) -> None:
 
 
 @tasks.command("activity")
+@click.option(
+    "--updated-since",
+    "updated_since",
+    default=None,
+    help="Only activity after this ISO-8601 time (e.g. your `tasks cursor` mark).",
+)
 @query_options
 @click.option("--json", "json_mode", is_flag=True, help="Emit machine-readable JSON to stdout.")
-def tasks_activity(json_mode: bool, **flags: Any) -> None:
+def tasks_activity(updated_since: str | None, json_mode: bool, **flags: Any) -> None:
     """Show the workspace activity feed — the catch-up read after an absence.
+
+    \b
+    Pair --updated-since with `dailybot tasks cursor`: read your mark, read what is
+    newer, then `dailybot tasks cursor --now`.
 
     \b
     Examples:
       dailybot tasks activity --last-week
-      dailybot tasks activity --json
+      dailybot tasks activity --updated-since 2026-09-25T09:00:00Z --json
     """
     client = require_auth()
     try:
+        page: dict[str, Any] = _page_kwargs(walk_pages=True, **flags)
+        if updated_since:
+            page["params"] = {
+                **(page.get("params") or {}),
+                "updated_since": as_query_datetime(updated_since),
+            }
         with console.status("Reading activity..."):
-            result: PaginatedResult = client.list_tasks_activity(
-                **_page_kwargs(walk_pages=True, **flags)
-            )
+            result: PaginatedResult = client.list_tasks_activity(**page)
     except ValueError as exc:
         raise click.BadParameter(str(exc)) from exc
     except APIError as exc:
@@ -884,9 +919,11 @@ def tasks_view_unstar(view_uuid: str, json_mode: bool) -> None:
 @tasks.command("mine")
 @click.option(
     "--scope",
-    type=click.Choice(MY_TASKS_SCOPES, case_sensitive=False),
     default=None,
-    help="Narrow to one relationship you have with the task.",
+    metavar="[owned|participating|involved]",
+    callback=_parse_scope,
+    help="owned (default): you are the owner · participating: you are on the card · "
+    "involved: owned, participating or created by you.",
 )
 @paging_options
 @click.option("--json", "json_mode", is_flag=True, help="Emit machine-readable JSON to stdout.")
@@ -905,7 +942,7 @@ def tasks_mine(scope: str | None, json_mode: bool, **flags: Any) -> None:
     \b
     Examples:
       dailybot tasks mine
-      dailybot tasks mine --scope assigned --json
+      dailybot tasks mine --scope involved --json
     """
     _require_person("tasks mine", json_mode=json_mode)
     client = require_auth()

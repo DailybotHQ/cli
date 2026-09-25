@@ -219,3 +219,20 @@ class TestMentionables:
         )
         assert result.exit_code == EXIT_NOT_AUTHENTICATED
         client.list_board_mentionables.assert_not_called()
+
+
+class TestWorkspaceActivitySince:
+    def test_updated_since_reaches_the_feed(self, runner: CliRunner, client: MagicMock) -> None:
+        from dailybot_cli.api_client import PaginatedResult
+
+        client.list_tasks_activity.return_value = PaginatedResult(
+            results=[], count=0, next=None, previous=None
+        )
+        result = _invoke(
+            runner,
+            client,
+            ["tasks", "activity", "--updated-since", "2026-09-25T09:00:00Z", "--json"],
+        )
+        assert result.exit_code == 0, result.output
+        params: dict[str, Any] = client.list_tasks_activity.call_args.kwargs["params"]
+        assert params["updated_since"].startswith("2026-09-25T09:00:00")

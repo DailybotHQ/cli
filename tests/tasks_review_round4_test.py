@@ -275,8 +275,8 @@ class TestDoorsOnlyAdvertiseFiltersTheyCarry:
             patch("dailybot_cli.commands.tasks.require_auth", return_value=client),
             patch("dailybot_cli.commands.tasks.get_token", return_value="bearer"),
         ):
-            runner.invoke(cli, ["tasks", "mine", "--scope", "assigned"])
-        assert client.list_my_tasks.call_args[1]["params"] == {"scope": "assigned"}
+            runner.invoke(cli, ["tasks", "mine", "--scope", "involved"])
+        assert client.list_my_tasks.call_args[1]["params"] == {"scope": "involved"}
 
 
 class TestListReadsAreCoveredByTheTransportNet:

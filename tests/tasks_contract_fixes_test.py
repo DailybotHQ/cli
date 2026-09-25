@@ -361,3 +361,60 @@ class TestBoardCreateHasNoDescription:
 
     def test_help_does_not_offer_description(self, runner: CliRunner) -> None:
         assert "--description" not in runner.invoke(cli, ["board", "create", "--help"]).output
+
+
+# ---------------------------------------------------------------------------
+# tasks mine --scope and goal get (found by the developer-portal agent)
+# ---------------------------------------------------------------------------
+
+
+class TestMyTasksScope:
+    @pytest.mark.parametrize(
+        ("given", "sent"),
+        [("owned", "owned"), ("participating", "participating"), ("involved", "involved"),
+         ("assigned", "owned")],
+    )  # fmt: skip
+    def test_the_scope_on_the_wire(
+        self, runner: CliRunner, real: DailyBotClient, given: str, sent: str
+    ) -> None:
+        envelope: dict[str, Any] = {"count": 0, "next": None, "previous": None, "results": []}
+        with patch("dailybot_cli.api_client.httpx.get", return_value=_response(envelope)) as get:
+            result = _invoke(runner, real, ["tasks", "mine", "--scope", given, "--json"], "tasks")
+        assert result.exit_code == 0, result.output
+        assert get.call_args.args[0] == f"{BASE}me/tasks/"
+        assert get.call_args.kwargs["params"]["scope"] == sent
+
+    @pytest.mark.parametrize("scope", ["created", "subscribed", "everything"])
+    def test_undeclared_scopes_never_reach_the_server(
+        self, runner: CliRunner, real: DailyBotClient, scope: str
+    ) -> None:
+        with patch("dailybot_cli.api_client.httpx.get") as get:
+            result = _invoke(runner, real, ["tasks", "mine", "--scope", scope], "tasks")
+        assert result.exit_code == EXIT_USAGE_ERROR
+        get.assert_not_called()
+
+    def test_help_lists_the_declared_scopes_only(self, runner: CliRunner) -> None:
+        output: str = runner.invoke(cli, ["tasks", "mine", "--help"]).output
+        assert "owned|participating|involved" in output
+        assert "assigned" not in output
+
+
+class TestGoalGetSendsNoInclude:
+    def test_the_detail_read_sends_no_include(
+        self, runner: CliRunner, real: DailyBotClient
+    ) -> None:
+        goal: dict[str, Any] = {"uuid": "g-1", "name": "Q4", "progress": None, "projects": []}
+        with patch("dailybot_cli.api_client.httpx.get", return_value=_response(goal)) as get:
+            result = _invoke(
+                runner, real, ["goal", "get", "g-1", "--include", "progress", "--json"], "goal"
+            )
+        assert result.exit_code == 0, result.output
+        assert get.call_args.args[0] == f"{BASE}goals/g-1/"
+        assert not get.call_args.kwargs.get("params")
+        assert "has no effect" in result.stderr
+
+    def test_help_does_not_offer_include(self, runner: CliRunner) -> None:
+        # The prose may point at `goal list --include`; no option line may offer it.
+        output: str = runner.invoke(cli, ["goal", "get", "--help"]).output
+        options: str = output.split("Options:", 1)[1]
+        assert "--include" not in options

@@ -24,6 +24,7 @@ from dailybot_cli.commands.public_api_helpers import (
 from dailybot_cli.commands.query_options import build_query_params, query_options, resolve_fetch_all
 from dailybot_cli.display import (
     console,
+    print_deprecation,
     print_goals_table,
     print_pagination_footer,
     print_projects_table,
@@ -96,25 +97,29 @@ def goal_list(include: tuple[str, ...], json_mode: bool, **flags: Any) -> None:
 
 
 @goal.command("get")
-@click.argument("goal_uuid")
-@click.option(
-    "--include",
-    type=click.Choice(GOAL_INCLUDE_VALUES, case_sensitive=False),
-    multiple=True,
-    help="Ask for a roll-up.",
-)
+@click.argument("goal_uuid", metavar="GOAL")
+# The detail door ALWAYS returns progress, projects and project_count and ignores
+# `include`, so the flag is kept only so existing scripts do not break.
+@click.option("--include", multiple=True, hidden=True)
 @click.option("--json", "json_mode", is_flag=True, help="Emit machine-readable JSON to stdout.")
 def goal_get(goal_uuid: str, include: tuple[str, ...], json_mode: bool) -> None:
-    """Show one goal.
+    """Show one goal, with its progress and linked projects.
+
+    \b
+    The detail always carries progress, projects and project_count; `--include` is
+    only needed on `goal list`.
 
     \b
     Examples:
-      dailybot goal get <goal-uuid> --include progress
+      dailybot goal get <goal-uuid>
+      dailybot goal get <goal-uuid> --json
     """
+    if include:
+        print_deprecation("`goal get --include` has no effect: the detail always includes them.")
     client = require_auth()
     try:
         with console.status("Reading the goal..."):
-            data: dict[str, Any] = client.get_goal(goal_uuid, include=_include_list(include))
+            data: dict[str, Any] = client.get_goal(goal_uuid)
     except APIError as exc:
         # Isolation is 404-not-403: routed through the shared mapper so the exit
         # code and the --json payload match the documented table.
