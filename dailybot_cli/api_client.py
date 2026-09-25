@@ -2519,7 +2519,7 @@ class DailyBotClient:
         )
 
     def subscribe_task(self, task_uuid: str) -> dict[str, Any]:
-        """POST /v1/tasks/tasks/<uuid>/subscription/ — key IGNORED by the server."""
+        """POST /v1/tasks/tasks/<uuid>/subscription/ — person-only; no key accepted."""
         return self._tasks_write("POST", f"tasks/{task_uuid}/subscription/", idempotent=False)
 
     def bulk_tasks(
@@ -2583,16 +2583,63 @@ class DailyBotClient:
         )
 
     def add_task_participant(
-        self, task_uuid: str, *, user_uuid: str, idempotency_key: str | None = None
+        self,
+        task_uuid: str,
+        *,
+        user_uuid: str,
+        role: str | None = None,
+        is_muted: bool | None = None,
+        idempotency_key: str | None = None,
     ) -> dict[str, Any]:
-        """POST /v1/tasks/tasks/<uuid>/participants/ — person-only; accepts a key."""
-        return self._tasks_write(
+        """POST /v1/tasks/tasks/<uuid>/participants/ — person-only; accepts a key.
+
+        The same door sets `role` (participant or watcher) and `is_muted`: posting
+        yourself with `is_muted` is how a mute is recorded, and the row is kept.
+        Posting someone already on the card answers 200 with their row.
+        """
+        payload: dict[str, Any] = {"user_uuid": user_uuid}
+        if role is not None:
+            payload["role"] = role
+        if is_muted is not None:
+            payload["is_muted"] = is_muted
+        result: dict[str, Any] = self._tasks_write(
             "POST",
             f"tasks/{task_uuid}/participants/",
-            json={"user_uuid": user_uuid},
+            json=payload,
             idempotent=True,
             idempotency_key=idempotency_key,
         )
+        return result
+
+    def list_task_participants(self, task_uuid: str) -> Any:
+        """GET /v1/tasks/tasks/<uuid>/participants/ — who is on the card, and watchers."""
+        return self._tasks_read(f"tasks/{task_uuid}/participants/")
+
+    def remove_task_participant(self, task_uuid: str, user_uuid: str) -> Any:
+        """DELETE …/participants/<user>/ — person-only. Leaving is not muting."""
+        return self._tasks_write("DELETE", f"tasks/{task_uuid}/participants/{user_uuid}/")
+
+    def unsubscribe_task(self, task_uuid: str) -> Any:
+        """DELETE /v1/tasks/tasks/<uuid>/subscription/ — person-only; stop watching."""
+        return self._tasks_write("DELETE", f"tasks/{task_uuid}/subscription/")
+
+    def list_task_relations(self, task_uuid: str) -> Any:
+        """GET /v1/tasks/tasks/<uuid>/relations/ — links to other tasks, with direction."""
+        return self._tasks_read(f"tasks/{task_uuid}/relations/")
+
+    def delete_task_relation(self, task_uuid: str, relation_uuid: str) -> Any:
+        """DELETE …/relations/<uuid>/ — unlink two tasks; no key accepted."""
+        return self._tasks_write("DELETE", f"tasks/{task_uuid}/relations/{relation_uuid}/")
+
+    def update_task_comment(self, task_uuid: str, comment_uuid: str, *, body: str) -> Any:
+        """PATCH …/comments/<uuid>/ — edit; `edited_at` is set. No key accepted."""
+        return self._tasks_write(
+            "PATCH", f"tasks/{task_uuid}/comments/{comment_uuid}/", json={"body": body}
+        )
+
+    def delete_task_comment(self, task_uuid: str, comment_uuid: str) -> Any:
+        """DELETE …/comments/<uuid>/ — a soft delete: the row survives, the body is blanked."""
+        return self._tasks_write("DELETE", f"tasks/{task_uuid}/comments/{comment_uuid}/")
 
     # --- Projects, goals, milestones ---
 

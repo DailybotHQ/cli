@@ -24,7 +24,7 @@ from dailybot_cli.api_client import (
     PaginatedResult,
 )
 from dailybot_cli.commands._beta import mark_beta
-from dailybot_cli.commands._destructive import preview_then_confirm
+from dailybot_cli.commands._destructive import confirm_without_preview, preview_then_confirm
 from dailybot_cli.commands._writes import IDEMPOTENCY_TTL_HOURS, named, report_write
 from dailybot_cli.commands.public_api_helpers import (
     EXIT_USER_ABORTED,
@@ -48,8 +48,10 @@ from dailybot_cli.display import (
     print_deprecation,
     print_error,
     print_pagination_footer,
+    print_success,
     print_task_comments,
     print_task_detail,
+    print_tasks_rows,
     print_tasks_table,
 )
 
@@ -93,6 +95,8 @@ PRIORITY_TYPE: click.IntRange = click.IntRange(min=1, max=5)
 
 # Relation types the contract declares. `relates-to` (the spelling this CLI's help
 # once taught) is accepted and normalised, so an old script keeps working.
+PARTICIPANT_ROLES: tuple[str, ...] = ("participant", "watcher")
+
 RELATION_TYPES: tuple[str, ...] = ("blocks", "relates_to", "duplicates")
 
 # A column's fixed meaning. `move/` takes a state uuid only, so a name or one of
@@ -805,10 +809,16 @@ def task_participants() -> None:
 @task_participants.command("add")
 @click.argument("task_uuid", metavar="TASK")
 @click.option("--user", required=True, help="User uuid to add as a participant.")
+@click.option(
+    "--role",
+    type=click.Choice(PARTICIPANT_ROLES),
+    default=None,
+    help="`participant` is on the card (default); `watcher` follows it without being on it.",
+)
 @click.option("--idempotency-key", default=None, help="Reuse a key to make a retry safe.")
 @click.option("--json", "json_mode", is_flag=True, help="Emit machine-readable JSON to stdout.")
 def participants_add(
-    task_uuid: str, user: str, idempotency_key: str | None, json_mode: bool
+    task_uuid: str, user: str, role: str | None, idempotency_key: str | None, json_mode: bool
 ) -> None:
     """Add a participant to a task.
 
@@ -821,7 +831,7 @@ def participants_add(
     try:
         with console.status("Adding the participant..."):
             data: dict[str, Any] = client.add_task_participant(
-                task_uuid, user_uuid=user, idempotency_key=idempotency_key
+                task_uuid, user_uuid=user, role=role, idempotency_key=idempotency_key
             )
     except APIError as exc:
         _write_error(exc, json_mode)
@@ -829,6 +839,312 @@ def participants_add(
         emit_json(data)
         return
     report_write(data, "Participant added")
+
+
+_PARTICIPANT_COLUMNS: list[tuple[str, str, bool]] = [
+    ("Name", "member.name", False),
+    ("Role", "role", True),
+    ("Source", "source", True),
+    ("Muted", "is_muted", True),
+    ("User UUID", "member.uuid", True),
+]
+_RELATION_COLUMNS: list[tuple[str, str, bool]] = [
+    ("Relation", "relation_type", True),
+    ("Direction", "direction", True),
+    ("Task", "other_task.key", True),
+    ("Title", "other_task.title", False),
+    ("Relation UUID", "uuid", True),
+]
+
+
+@task_participants.command("list")
+@click.argument("task_uuid", metavar="TASK")
+@click.option("--json", "json_mode", is_flag=True, help="Emit machine-readable JSON to stdout.")
+def participants_list(task_uuid: str, json_mode: bool) -> None:
+    """List who is on a task and who watches it.
+
+    \b
+    The owner and the creator are not repeated as rows unless they muted the card.
+
+    \b
+    Examples:
+      dailybot task participants list ENG-142
+      dailybot task participants list ENG-142 --json
+    """
+    client = require_auth()
+    try:
+        with console.status("Reading the participants..."):
+            data: Any = client.list_task_participants(task_uuid)
+    except APIError as exc:
+        _write_error(exc, json_mode)
+    if json_mode:
+        emit_json(data)
+        return
+    print_tasks_rows(
+        "Participants", rows_of(data), _PARTICIPANT_COLUMNS, empty="Nobody else is on this task."
+    )
+
+
+@task_participants.command("remove")
+@click.argument("task_uuid", metavar="TASK")
+@click.argument("user_uuid", metavar="USER")
+@click.option("--dry-run", is_flag=True, help="Say what would happen and send nothing.")
+@click.option("-y", "--yes", "assume_yes", is_flag=True, help="Skip the confirmation.")
+@click.option("--json", "json_mode", is_flag=True, help="Emit machine-readable JSON to stdout.")
+def participants_remove(
+    task_uuid: str, user_uuid: str, dry_run: bool, assume_yes: bool, json_mode: bool
+) -> None:
+    """Take someone off a task. To stay on it quietly, use `task mute` instead.
+
+    \b
+    Examples:
+      dailybot task participants remove ENG-142 <user-uuid> --dry-run
+      dailybot task participants remove ENG-142 <user-uuid> --yes
+    """
+    _require_person_for("task participants remove", json_mode=json_mode)
+    if not confirm_without_preview(
+        f"take user {user_uuid} off task {task_uuid}; they stop being notified about it.",
+        assume_yes=assume_yes,
+        dry_run=dry_run,
+        json_mode=json_mode,
+    ):
+        return
+    client = require_auth()
+    try:
+        with console.status("Removing the participant..."):
+            client.remove_task_participant(task_uuid, user_uuid)
+    except APIError as exc:
+        _write_error(exc, json_mode)
+    if json_mode:
+        emit_json({"removed": True, "task": task_uuid, "user": user_uuid})
+        return
+    print_success("Participant removed.")
+
+
+def _set_own_mute(task_uuid: str, muted: bool, json_mode: bool) -> None:
+    """Record the caller's mute on a task: POST participants/ for yourself with `is_muted`."""
+    action: str = "task mute" if muted else "task unmute"
+    _require_person_for(action, json_mode=json_mode)
+    client = require_auth()
+    try:
+        with console.status("Reading who you are..."):
+            me: dict[str, Any] = client.get_me()
+        my_uuid: Any = me.get("uuid")
+        if not my_uuid:
+            raise click.ClickException("Could not tell who you are from `dailybot me`.")
+        with console.status("Muting the task..." if muted else "Unmuting the task..."):
+            data: dict[str, Any] = client.add_task_participant(
+                task_uuid, user_uuid=str(my_uuid), is_muted=muted
+            )
+    except APIError as exc:
+        _write_error(exc, json_mode)
+    if json_mode:
+        emit_json(data)
+        return
+    report_write(data, "Muted — you stay on the task." if muted else "Unmuted.")
+
+
+@task.command("mute")
+@click.argument("task_uuid", metavar="TASK")
+@click.option("--json", "json_mode", is_flag=True, help="Emit machine-readable JSON to stdout.")
+def task_mute(task_uuid: str, json_mode: bool) -> None:
+    """Stop notifications from a task while staying on it. Needs `dailybot login`.
+
+    \b
+    Examples:
+      dailybot task mute ENG-142
+    """
+    _set_own_mute(task_uuid, True, json_mode)
+
+
+@task.command("unmute")
+@click.argument("task_uuid", metavar="TASK")
+@click.option("--json", "json_mode", is_flag=True, help="Emit machine-readable JSON to stdout.")
+def task_unmute(task_uuid: str, json_mode: bool) -> None:
+    """Resume notifications from a task you muted. Needs `dailybot login`.
+
+    \b
+    Examples:
+      dailybot task unmute ENG-142
+    """
+    _set_own_mute(task_uuid, False, json_mode)
+
+
+@task.command("watch")
+@click.argument("task_uuid", metavar="TASK")
+@click.option("--json", "json_mode", is_flag=True, help="Emit machine-readable JSON to stdout.")
+def task_watch(task_uuid: str, json_mode: bool) -> None:
+    """Follow a task's notifications without being on it. Needs `dailybot login`.
+
+    \b
+    Watching is private: nobody is told you started following the task.
+
+    \b
+    Examples:
+      dailybot task watch ENG-142
+    """
+    _require_person_for("task watch", json_mode=json_mode)
+    client = require_auth()
+    try:
+        with console.status("Watching the task..."):
+            data: dict[str, Any] = client.subscribe_task(task_uuid)
+    except APIError as exc:
+        _write_error(exc, json_mode)
+    if json_mode:
+        emit_json(data)
+        return
+    print_success("Watching.")
+
+
+@task.command("unwatch")
+@click.argument("task_uuid", metavar="TASK")
+@click.option("--json", "json_mode", is_flag=True, help="Emit machine-readable JSON to stdout.")
+def task_unwatch(task_uuid: str, json_mode: bool) -> None:
+    """Stop following a task. Needs `dailybot login`.
+
+    \b
+    Examples:
+      dailybot task unwatch ENG-142
+    """
+    _require_person_for("task unwatch", json_mode=json_mode)
+    client = require_auth()
+    try:
+        with console.status("Unwatching the task..."):
+            client.unsubscribe_task(task_uuid)
+    except APIError as exc:
+        _write_error(exc, json_mode)
+    if json_mode:
+        emit_json({"subscribed": False, "task": task_uuid})
+        return
+    print_success("No longer watching.")
+
+
+@task.command("relations")
+@click.argument("task_uuid", metavar="TASK")
+@click.option("--json", "json_mode", is_flag=True, help="Emit machine-readable JSON to stdout.")
+def task_relations(task_uuid: str, json_mode: bool) -> None:
+    """List a task's links to other tasks.
+
+    \b
+    `blocks` + `incoming` is what "blocked by" means. Unlink with the relation
+    uuid shown here: `dailybot task unlink <task> <relation-uuid>`.
+
+    \b
+    Examples:
+      dailybot task relations ENG-142
+      dailybot task relations ENG-142 --json
+    """
+    client = require_auth()
+    try:
+        with console.status("Reading the relations..."):
+            data: Any = client.list_task_relations(task_uuid)
+    except APIError as exc:
+        _write_error(exc, json_mode)
+    if json_mode:
+        emit_json(data)
+        return
+    print_tasks_rows("Relations", rows_of(data), _RELATION_COLUMNS, empty="No linked tasks.")
+
+
+@task.command("unlink")
+@click.argument("task_uuid", metavar="TASK")
+@click.argument("relation_uuid", metavar="RELATION")
+@click.option("--dry-run", is_flag=True, help="Say what would happen and send nothing.")
+@click.option("-y", "--yes", "assume_yes", is_flag=True, help="Skip the confirmation.")
+@click.option("--json", "json_mode", is_flag=True, help="Emit machine-readable JSON to stdout.")
+def task_unlink(
+    task_uuid: str, relation_uuid: str, dry_run: bool, assume_yes: bool, json_mode: bool
+) -> None:
+    """Remove a link between two tasks. Recreate it with `task link`.
+
+    \b
+    Examples:
+      dailybot task unlink ENG-142 <relation-uuid> --dry-run
+      dailybot task unlink ENG-142 <relation-uuid> --yes
+    """
+    if not confirm_without_preview(
+        f"remove relation {relation_uuid} from task {task_uuid}.",
+        assume_yes=assume_yes,
+        dry_run=dry_run,
+        json_mode=json_mode,
+    ):
+        return
+    client = require_auth()
+    try:
+        with console.status("Unlinking..."):
+            client.delete_task_relation(task_uuid, relation_uuid)
+    except APIError as exc:
+        _write_error(exc, json_mode)
+    if json_mode:
+        emit_json({"unlinked": True, "task": task_uuid, "relation": relation_uuid})
+        return
+    print_success("Unlinked.")
+
+
+@task.command("comment-edit")
+@click.argument("task_uuid", metavar="TASK")
+@click.argument("comment_uuid", metavar="COMMENT")
+@click.argument("body")
+@click.option("--json", "json_mode", is_flag=True, help="Emit machine-readable JSON to stdout.")
+def task_comment_edit(task_uuid: str, comment_uuid: str, body: str, json_mode: bool) -> None:
+    """Replace a comment's text. `-` reads the new body from stdin.
+
+    \b
+    Mention somebody with `<@DB@{user-uuid}>`. The comment is marked edited.
+
+    \b
+    Examples:
+      dailybot task comment-edit ENG-142 <comment-uuid> "Deployed to staging and prod"
+      echo "corrected note" | dailybot task comment-edit ENG-142 <comment-uuid> -
+    """
+    text: str = _read_body(body)
+    if not text:
+        raise click.UsageError("The new comment body is empty.")
+    client = require_auth()
+    try:
+        with console.status("Editing the comment..."):
+            data: dict[str, Any] = client.update_task_comment(task_uuid, comment_uuid, body=text)
+    except APIError as exc:
+        _write_error(exc, json_mode)
+    if json_mode:
+        emit_json(data)
+        return
+    report_write(data, "Comment edited")
+
+
+@task.command("comment-delete")
+@click.argument("task_uuid", metavar="TASK")
+@click.argument("comment_uuid", metavar="COMMENT")
+@click.option("--dry-run", is_flag=True, help="Say what would happen and send nothing.")
+@click.option("-y", "--yes", "assume_yes", is_flag=True, help="Skip the confirmation.")
+@click.option("--json", "json_mode", is_flag=True, help="Emit machine-readable JSON to stdout.")
+def task_comment_delete(
+    task_uuid: str, comment_uuid: str, dry_run: bool, assume_yes: bool, json_mode: bool
+) -> None:
+    """Delete a comment. Its text is blanked; the entry stays so history resolves.
+
+    \b
+    Examples:
+      dailybot task comment-delete ENG-142 <comment-uuid> --dry-run
+      dailybot task comment-delete ENG-142 <comment-uuid> --yes
+    """
+    if not confirm_without_preview(
+        f"delete comment {comment_uuid} on task {task_uuid}; its text cannot be recovered.",
+        assume_yes=assume_yes,
+        dry_run=dry_run,
+        json_mode=json_mode,
+    ):
+        return
+    client = require_auth()
+    try:
+        with console.status("Deleting the comment..."):
+            client.delete_task_comment(task_uuid, comment_uuid)
+    except APIError as exc:
+        _write_error(exc, json_mode)
+    if json_mode:
+        emit_json({"deleted": True, "task": task_uuid, "comment": comment_uuid})
+        return
+    print_success("Comment deleted.")
 
 
 @task.command("archive")

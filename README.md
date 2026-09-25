@@ -891,7 +891,11 @@ humans who own them.
 | `dailybot task comments <uuid>` | List a task's comments |
 | `dailybot task link <a> <b> --type <rel>` | Relate two tasks (`blocks`, `relates_to`, `duplicates`) |
 | `dailybot task labels <uuid> --mode add\|remove\|replace` | Change a task's labels |
-| `dailybot task participants add <uuid> --user <u>` | Add a participant — **needs `dailybot login`** |
+| `dailybot task participants add\|list\|remove <task>` | Who is on a task (`--role participant\|watcher`); add/remove **need `dailybot login`** |
+| `dailybot task watch\|unwatch <task>` | Follow a task privately — **needs `dailybot login`** |
+| `dailybot task mute\|unmute <task>` | Silence a task and stay on it (leaving is `participants remove`) — **needs `dailybot login`** |
+| `dailybot task relations <task>` · `task unlink <task> <relation>` | List links (direction included) / remove one; `unlink` confirms and has `--dry-run` |
+| `dailybot task comment-edit\|comment-delete <task> <comment>` | Edit (`-` reads stdin) or delete a comment; delete blanks the text and keeps the entry |
 | `dailybot task archive <uuid>` | Archive a task. Previews the consequence first; reversible |
 | `dailybot task delete <uuid>` | Alias of archive — nothing is destroyed |
 | `dailybot task restore <uuid>` | Restore an archived task |
