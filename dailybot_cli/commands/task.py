@@ -22,6 +22,7 @@ from dailybot_cli.api_client import (
     APIError,
     PaginatedResult,
 )
+from dailybot_cli.commands._beta import mark_beta
 from dailybot_cli.commands._destructive import preview_then_confirm
 from dailybot_cli.commands._writes import IDEMPOTENCY_TTL_HOURS, named, report_write
 from dailybot_cli.commands.public_api_helpers import (
@@ -73,6 +74,31 @@ OWNER_HELP: str = "Owner: a user uuid, or `me`."
 OWNER_FILTER_HELP: str = (
     "Only tasks owned by this user (uuid, `me` or `unassigned`). Repeat to OR several."
 )
+# The values `/v1/tasks/tasks/` accepts for `sort`; a leading `-` sorts descending.
+TASK_SORT_FIELDS: tuple[str, ...] = (
+    "rank",
+    "priority",
+    "due_date",
+    "updated_at",
+    "created_at",
+    "completed_at",
+)
+
+
+def _parse_sort(_ctx: click.Context, _param: click.Parameter, value: str | None) -> str | None:
+    """Accept `field` or `-field` for a declared sort field; say what is allowed otherwise."""
+    if value is None:
+        return None
+    field: str = value[1:] if value.startswith("-") else value
+    if field not in TASK_SORT_FIELDS:
+        allowed: str = ", ".join(TASK_SORT_FIELDS)
+        raise click.BadParameter(
+            f"{value!r} is not a sort field. Use one of: {allowed} "
+            "(prefix with - for descending, e.g. -updated_at)."
+        )
+    return value
+
+
 ASSIGNEE_DEPRECATION: str = "`--assignee` is deprecated; use `--owner` (same value)."
 ASSIGN_DEPRECATION: str = (
     "`dailybot task assign` is deprecated; use `dailybot task set-owner <task> <user|me>`."
@@ -105,8 +131,15 @@ def task() -> None:
     \b
     Examples:
       dailybot task list --board <board-uuid>
-      dailybot task get <task-uuid>
+      dailybot task get ENG-142
+
+    \b
+    TASK is a task key (ENG-142) or a uuid. The API resolves both, including a key
+    retired by a board rename.
     """
+
+
+mark_beta(task)
 
 
 @task.command("list")
@@ -115,6 +148,13 @@ def task() -> None:
 @click.option("--owner", "owners", multiple=True, help=OWNER_FILTER_HELP)
 @click.option("--assignee", "assignees", multiple=True, hidden=True, help=ASSIGNEE_DEPRECATION)
 @click.option("--label", default=None, help="Only tasks carrying this label.")
+@click.option(
+    "--sort",
+    default=None,
+    callback=_parse_sort,
+    help="Order by rank, priority, due_date, updated_at, created_at or completed_at; "
+    "prefix with - for descending.",
+)
 @click.option(
     "--has-dates/--no-has-dates",
     "has_dates",
@@ -138,6 +178,7 @@ def task_list(
     owners: tuple[str, ...],
     assignees: tuple[str, ...],
     label: str | None,
+    sort: str | None,
     has_dates: bool | None,
     include: tuple[str, ...],
     json_mode: bool,
@@ -160,6 +201,7 @@ def task_list(
     Examples:
       dailybot task list --board <board-uuid> --state doing
       dailybot task list --owner me --owner unassigned --include labels --json
+      dailybot task list --sort -updated_at --limit 10
     """
     client = require_auth()
     filters: dict[str, Any] = {}
@@ -174,6 +216,8 @@ def task_list(
         filters["owner"] = owner_values
     if label:
         filters["label"] = label
+    if sort:
+        filters["sort"] = sort
     if has_dates is not None:
         filters["has_dates"] = has_dates
     if include:
@@ -212,7 +256,7 @@ def task_list(
 
 
 @task.command("get")
-@click.argument("task_uuid")
+@click.argument("task_uuid", metavar="TASK")
 @click.option("--json", "json_mode", is_flag=True, help="Emit machine-readable JSON to stdout.")
 def task_get(task_uuid: str, json_mode: bool) -> None:
     """Show one task.
@@ -223,8 +267,8 @@ def task_get(task_uuid: str, json_mode: bool) -> None:
 
     \b
     Examples:
-      dailybot task get <task-uuid>
-      dailybot task get <task-uuid> --json
+      dailybot task get ENG-142
+      dailybot task get ENG-142 --json
     """
     client = require_auth()
     try:
@@ -319,7 +363,7 @@ def task_create(
 
 
 @task.command("update")
-@click.argument("task_uuid")
+@click.argument("task_uuid", metavar="TASK")
 @click.option("-t", "--title", default=None, help="New title.")
 @click.option("-d", "--description", default=None, help="New description.")
 @click.option("--state", default=None, help="New workflow state.")
@@ -347,8 +391,8 @@ def task_update(
 
     \b
     Examples:
-      dailybot task update <task-uuid> --state done
-      dailybot task update <task-uuid> -t "Clearer title" --json
+      dailybot task update ENG-142 --state done
+      dailybot task update ENG-142 -t "Clearer title" --json
     """
     fields: dict[str, Any] = {
         "title": title,
@@ -378,7 +422,7 @@ def task_update(
 
 
 @task.command("move")
-@click.argument("task_uuid")
+@click.argument("task_uuid", metavar="TASK")
 @click.option("--state", default=None, help="Target workflow state (column).")
 @click.option("--board", default=None, help="Target board.")
 @click.option("--idempotency-key", default=None, help="Reuse a key to make a retry safe.")
@@ -394,8 +438,8 @@ def task_move(
 
     \b
     Examples:
-      dailybot task move <task-uuid> --state done
-      dailybot task move <task-uuid> --board <board-uuid>
+      dailybot task move ENG-142 --state done
+      dailybot task move ENG-142 --board <board-uuid>
     """
     if state is None and board is None:
         raise click.UsageError("Pass --state or --board (or both) to say where it should go.")
@@ -446,7 +490,7 @@ def task_set_owner(task_ref: str, owner: str, idempotency_key: str | None, json_
     \b
     Examples:
       dailybot task set-owner ENG-142 me
-      dailybot task set-owner <task-uuid> <user-uuid> --json
+      dailybot task set-owner ENG-142 <user-uuid> --json
     """
     _set_owner(task_ref, owner, idempotency_key, json_mode)
 
@@ -491,7 +535,7 @@ def _read_body(value: str) -> str:
 
 
 @task.command("comment")
-@click.argument("task_uuid")
+@click.argument("task_uuid", metavar="TASK")
 @click.argument("body")
 @click.option("--idempotency-key", default=None, help="Reuse a key to make a retry safe.")
 @click.option("--json", "json_mode", is_flag=True, help="Emit machine-readable JSON to stdout.")
@@ -500,8 +544,8 @@ def task_comment(task_uuid: str, body: str, idempotency_key: str | None, json_mo
 
     \b
     Examples:
-      dailybot task comment <task-uuid> "Deployed to staging"
-      echo "long note" | dailybot task comment <task-uuid> -
+      dailybot task comment ENG-142 "Deployed to staging"
+      echo "long note" | dailybot task comment ENG-142 -
     """
     client = require_auth()
     try:
@@ -518,7 +562,7 @@ def task_comment(task_uuid: str, body: str, idempotency_key: str | None, json_mo
 
 
 @task.command("comments")
-@click.argument("task_uuid")
+@click.argument("task_uuid", metavar="TASK")
 @query_options
 @click.option("--json", "json_mode", is_flag=True, help="Emit machine-readable JSON to stdout.")
 def task_comments(task_uuid: str, json_mode: bool, **flags: Any) -> None:
@@ -531,7 +575,7 @@ def task_comments(task_uuid: str, json_mode: bool, **flags: Any) -> None:
 
     \b
     Examples:
-      dailybot task comments <task-uuid>
+      dailybot task comments ENG-142
     """
     client = require_auth()
     try:
@@ -557,8 +601,8 @@ def task_comments(task_uuid: str, json_mode: bool, **flags: Any) -> None:
 
 
 @task.command("link")
-@click.argument("task_uuid")
-@click.argument("other_uuid")
+@click.argument("task_uuid", metavar="TASK")
+@click.argument("other_uuid", metavar="OTHER_TASK")
 @click.option("--type", "relation", required=True, help="Relation type, e.g. blocks / relates-to.")
 @click.option("--idempotency-key", default=None, help="Reuse a key to make a retry safe.")
 @click.option("--json", "json_mode", is_flag=True, help="Emit machine-readable JSON to stdout.")
@@ -569,7 +613,7 @@ def task_link(
 
     \b
     Examples:
-      dailybot task link <task-uuid> <other-uuid> --type blocks
+      dailybot task link ENG-142 ENG-99 --type blocks
     """
     client = require_auth()
     try:
@@ -586,7 +630,7 @@ def task_link(
 
 
 @task.command("labels")
-@click.argument("task_uuid")
+@click.argument("task_uuid", metavar="TASK")
 @click.option(
     "--mode",
     type=click.Choice(LABEL_MODES, case_sensitive=False),
@@ -612,8 +656,8 @@ def task_labels(
 
     \b
     Examples:
-      dailybot task labels <task-uuid> --mode add --label <label-uuid>
-      dailybot task labels <task-uuid> --mode replace --label a,b
+      dailybot task labels ENG-142 --mode add --label <label-uuid>
+      dailybot task labels ENG-142 --mode replace --label a,b
     """
     resolved: list[str] = []
     for raw in labels:
@@ -646,7 +690,7 @@ def task_participants() -> None:
 
 
 @task_participants.command("add")
-@click.argument("task_uuid")
+@click.argument("task_uuid", metavar="TASK")
 @click.option("--user", required=True, help="User uuid to add as a participant.")
 @click.option("--idempotency-key", default=None, help="Reuse a key to make a retry safe.")
 @click.option("--json", "json_mode", is_flag=True, help="Emit machine-readable JSON to stdout.")
@@ -657,7 +701,7 @@ def participants_add(
 
     \b
     Examples:
-      dailybot task participants add <task-uuid> --user <user-uuid>
+      dailybot task participants add ENG-142 --user <user-uuid>
     """
     _require_person_for("task participants add", json_mode=json_mode)
     client = require_auth()
@@ -675,7 +719,7 @@ def participants_add(
 
 
 @task.command("archive")
-@click.argument("task_uuid")
+@click.argument("task_uuid", metavar="TASK")
 @click.option("--dry-run", is_flag=True, help="Show the consequence and exit without acting.")
 @click.option("-y", "--yes", "assume_yes", is_flag=True, help="Skip the prompt (still previews).")
 @click.option("--idempotency-key", default=None, help="Reuse a key to make a retry safe.")
@@ -692,8 +736,8 @@ def task_archive(
 
     \b
     Examples:
-      dailybot task archive <task-uuid> --dry-run
-      dailybot task archive <task-uuid> --yes
+      dailybot task archive ENG-142 --dry-run
+      dailybot task archive ENG-142 --yes
     """
     client = require_auth()
     if not preview_then_confirm(
@@ -717,7 +761,7 @@ def task_archive(
 
 
 @task.command("delete")
-@click.argument("task_uuid")
+@click.argument("task_uuid", metavar="TASK")
 @click.option("--dry-run", is_flag=True, help="Show the consequence and exit without acting.")
 @click.option("-y", "--yes", "assume_yes", is_flag=True, help="Skip the prompt (still previews).")
 @click.option("--idempotency-key", default=None, help="Reuse a key to make a retry safe.")
@@ -738,7 +782,7 @@ def task_delete(
 
     \b
     Examples:
-      dailybot task delete <task-uuid> --dry-run
+      dailybot task delete ENG-142 --dry-run
     """
     client = require_auth()
     if not preview_then_confirm(
@@ -765,7 +809,7 @@ def task_delete(
 
 
 @task.command("restore")
-@click.argument("task_uuid")
+@click.argument("task_uuid", metavar="TASK")
 @click.option("--idempotency-key", default=None, help="Reuse a key to make a retry safe.")
 @click.option("--json", "json_mode", is_flag=True, help="Emit machine-readable JSON to stdout.")
 def task_restore(task_uuid: str, idempotency_key: str | None, json_mode: bool) -> None:
@@ -777,7 +821,7 @@ def task_restore(task_uuid: str, idempotency_key: str | None, json_mode: bool) -
 
     \b
     Examples:
-      dailybot task restore <task-uuid>
+      dailybot task restore ENG-142
     """
     client = require_auth()
     try:

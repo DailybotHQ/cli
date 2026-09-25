@@ -861,6 +861,8 @@ Replies to agent emails land as messages retrievable via `dailybot agent message
 
 ### Tasks
 
+> **Beta** — Tasks is in beta. Everything under `/tasks` in the web app, the CLI and agent skill commands for projects, goals, boards and tasks, and the `/v1/tasks/` public API may change before general availability. Want to try it with your team? Write to **support@dailybot.com**.
+
 Projects, boards and tasks. Two groups: **`dailybot tasks`** answers questions about the
 workspace, **`dailybot task`** reads or changes one task.
 
@@ -875,12 +877,12 @@ humans who own them.
 | `dailybot tasks search -q <text>` | Search tasks, boards and projects |
 | `dailybot tasks activity` | Activity feed — the catch-up read after an absence |
 | `dailybot tasks timeline` | Dated view of the workspace |
-| `dailybot tasks changes <board>` | What changed since a cursor. **One read per call**; exits 9 if the cursor expired (`--resync` re-snapshots) |
+| `dailybot tasks changes <board>` | What changed since a cursor (`--cursor`, or `--updated-since <iso>`). **One read per call**; exits 9 if the cursor expired (`--resync` re-snapshots) |
 | `dailybot tasks inbox` | Your Tasks notifications — **needs `dailybot login`** |
 | `dailybot tasks mine` | Tasks that are yours (`--scope`) — **needs `dailybot login`** |
 | `dailybot tasks counts` | Your task counts by bucket — **needs `dailybot login`** |
-| `dailybot task list` | List tasks (`--board`, `--state`, `--owner` — repeatable, `me` / `unassigned`, `--label`, `--has-dates`, `--include`) |
-| `dailybot task get <uuid>` | Show one task |
+| `dailybot task list` | List tasks (`--board`, `--state`, `--owner` — repeatable, `me` / `unassigned`, `--label`, `--sort <field\|-field>`, `--has-dates`, `--include`) |
+| `dailybot task get <task>` | Show one task — every `<task>` accepts a key (`ENG-142`) or a uuid |
 | `dailybot task create --title <t>` | Create a task (`--owner <user\|me>`); sends an idempotency key so a retry cannot duplicate |
 | `dailybot task update <uuid>` | Change fields — partial update, never an overwrite |
 | `dailybot task move <uuid>` | Move to another column (`--state`) or board (`--board`) |
@@ -896,6 +898,7 @@ humans who own them.
 | `dailybot task bulk --operation <op> -f <file>` | One operation over many tasks. Max **100** items; no dry run |
 | `dailybot board list` | List boards |
 | `dailybot board get <uuid>` | Board metadata |
+| `dailybot board tasks <uuid>` | The tasks on one board, one page per call |
 | `dailybot board snapshot <uuid>` | The whole board in one request; carries the `delta_cursor` that `tasks changes` consumes |
 | `dailybot board create --name <n>` | Create a board — **needs `dailybot login`** |
 | `dailybot board archive <uuid>` | Archive a board. **Cascade-archives its live tasks**, and restoring does not bring them back |

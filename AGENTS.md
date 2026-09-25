@@ -70,14 +70,15 @@ dailybot_cli/                # Source package
     │                        #   search / activity / timeline / changes (delta) /
     │                        #   inbox / mine / counts (the last three need a person)
     ├── task.py              # `task` group: object-level — list / get / create / update /
-    │                        #   move / assign / comment(s) / link / labels / participants /
+    │                        #   move / set-owner / comment(s) / link / labels / participants /
     │                        #   archive / delete / restore / bulk
-    ├── board.py             # `board` group: list / get / snapshot / create / archive / restore
+    ├── board.py             # `board` group: list / get / tasks / snapshot / create / archive / restore
     ├── project.py           # `project` group: list / get / updates / update-post /
     │                        #   milestones / milestone-complete / milestone-reopen /
     │                        #   create / archive
     ├── goal.py              # `goal` group: list / get / create / archive
     ├── _rollups.py          # absent vs null vs zero for roll-up fields (AD-01)
+    ├── _beta.py             # Tasks Beta notice (group help + status line)
     ├── _destructive.py      # shared preview-then-confirm for destructive Tasks doors
     ├── _writes.py           # one write reporter: replay, idempotency key, escaping
     ├── team.py              # `team` group: list / get (server-scoped by role)
@@ -109,6 +110,7 @@ tests/                       # pytest suite (file naming: *_test.py)
 ├── tasks_person_shaped_test.py  # person-only Tasks doors
 ├── task_commands_test.py    # `task` group (reads, writes, collaboration, bulk, archive)
 ├── tasks_owner_wire_test.py # owner vocabulary — exact wire (no assignee/executor)
+├── tasks_beta_ergonomics_test.py # KEY-n, --sort, board tasks, exit codes, Beta notice
 ├── board_commands_test.py   # `board` group (reads + container writes)
 ├── project_goal_commands_test.py  # `project` + `goal`
 ├── tasks_display_test.py    # Tasks renderers + untrusted-content presenter

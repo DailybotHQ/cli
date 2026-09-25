@@ -43,7 +43,9 @@ EXIT_USAGE_ERROR: int = 2
 EXIT_NOT_AUTHENTICATED: int = 3
 EXIT_PERMISSION_DENIED: int = 4
 EXIT_NOT_FOUND: int = 5
-EXIT_QUOTA_EXHAUSTED: int = 5
+# Its own code: sharing 5 with EXIT_NOT_FOUND made "quota spent" indistinguishable
+# from "no such object" for any caller branching on the exit status.
+EXIT_QUOTA_EXHAUSTED: int = 10
 EXIT_RATE_LIMITED: int = 6
 EXIT_USER_ABORTED: int = 7
 

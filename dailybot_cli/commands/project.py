@@ -6,6 +6,7 @@ import click
 from rich.markup import escape
 
 from dailybot_cli.api_client import APIError, PaginatedResult
+from dailybot_cli.commands._beta import mark_beta
 from dailybot_cli.commands._destructive import preview_then_confirm
 from dailybot_cli.commands._rollups import render_rollup
 from dailybot_cli.commands._writes import named, report_write
@@ -67,6 +68,9 @@ def project() -> None:
       dailybot project list --include progress
       dailybot project updates
     """
+
+
+mark_beta(project)
 
 
 @project.command("list")

@@ -5,6 +5,7 @@ from typing import Any
 import click
 
 from dailybot_cli.api_client import APIError, PaginatedResult
+from dailybot_cli.commands._beta import mark_beta
 from dailybot_cli.commands._destructive import preview_then_confirm
 from dailybot_cli.commands._rollups import render_rollup
 from dailybot_cli.commands._writes import named, report_write
@@ -47,6 +48,9 @@ def goal() -> None:
     Examples:
       dailybot goal list --include progress --include projects
     """
+
+
+mark_beta(goal)
 
 
 @goal.command("list")

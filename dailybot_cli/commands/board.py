@@ -12,6 +12,7 @@ from typing import Any
 import click
 
 from dailybot_cli.api_client import APIError, PaginatedResult
+from dailybot_cli.commands._beta import mark_beta
 from dailybot_cli.commands._destructive import preview_then_confirm
 from dailybot_cli.commands._writes import named, report_write
 from dailybot_cli.commands.public_api_helpers import (
@@ -20,7 +21,13 @@ from dailybot_cli.commands.public_api_helpers import (
     refuse_without_person,
     require_auth,
 )
-from dailybot_cli.commands.query_options import build_query_params, query_options, resolve_fetch_all
+from dailybot_cli.commands.query_options import (
+    PAGING_ONLY_MORE_HINT,
+    build_query_params,
+    paging_options,
+    query_options,
+    resolve_fetch_all,
+)
 from dailybot_cli.config import get_token
 from dailybot_cli.display import (
     console,
@@ -28,6 +35,7 @@ from dailybot_cli.display import (
     print_boards_table,
     print_pagination_footer,
     print_tasks_detail_panel,
+    print_tasks_table,
 )
 
 _BOARD_FIELDS: list[tuple[str, str]] = [
@@ -60,6 +68,9 @@ def board() -> None:
       dailybot board list
       dailybot board snapshot <board-uuid>
     """
+
+
+mark_beta(board)
 
 
 @board.command("list")
@@ -117,6 +128,49 @@ def board_get(board_uuid: str, json_mode: bool) -> None:
         emit_json(data)
         return
     print_tasks_detail_panel("Board", data, _BOARD_FIELDS)
+
+
+@board.command("tasks")
+@click.argument("board_uuid", metavar="BOARD")
+@paging_options
+@click.option("--json", "json_mode", is_flag=True, help="Emit machine-readable JSON to stdout.")
+def board_tasks(board_uuid: str, json_mode: bool, **flags: Any) -> None:
+    """List the tasks on one board.
+
+    \b
+    One page per call, like `task list`: follow `next` with --page. For the whole
+    board in a single request (columns included), use `board snapshot`.
+
+    \b
+    Examples:
+      dailybot board tasks <board-uuid>
+      dailybot board tasks <board-uuid> --page 2 --json
+    """
+    client = require_auth()
+    try:
+        spec = build_query_params(**flags)
+        with console.status("Reading the board's tasks..."):
+            result: PaginatedResult = client.list_board_tasks(
+                board_uuid,
+                page=spec.page,
+                page_size=spec.page_size,
+                fetch_all=spec.fetch_all,
+                limit=spec.limit,
+            )
+    except ValueError as exc:
+        raise click.BadParameter(str(exc)) from exc
+    except APIError as exc:
+        exit_for_tasks_error(exc, json_mode)
+    if json_mode:
+        emit_json(_envelope(result))
+        return
+    print_tasks_table(result.results)
+    print_pagination_footer(
+        len(result.results),
+        result.count,
+        has_more=bool(result.next),
+        more_hint=PAGING_ONLY_MORE_HINT,
+    )
 
 
 @board.command("snapshot")

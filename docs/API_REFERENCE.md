@@ -397,9 +397,10 @@ All user-scoped commands (`checkin`, `form`, `kudos`, `user`, `team`, `workflow`
 | `2` | `EXIT_USAGE_ERROR` | Invalid input / 400 from server |
 | `3` | `EXIT_NOT_AUTHENTICATED` | Not logged in |
 | `4` | `EXIT_PERMISSION_DENIED` | Forbidden, self-kudos, daily limit, `final_state_locked` |
-| `5` | `EXIT_NOT_FOUND` / `EXIT_QUOTA_EXHAUSTED` | 404 from server, or form quota (402) |
+| `5` | `EXIT_NOT_FOUND` | 404 from server |
 | `6` | `EXIT_RATE_LIMITED` | Rate limited (429) |
 | `7` | `EXIT_USER_ABORTED` | Confirmation declined |
+| `10` | `EXIT_QUOTA_EXHAUSTED` | Form response quota exhausted (402). Was `5` before 3.14, which made it indistinguishable from not-found |
 
 `--json` output for any 4xx includes `error`, `status`, and (when present) `code` + `detail` — pattern-match on `code` rather than prose.
 
@@ -822,6 +823,36 @@ This is the most confusing thing about the family, so it is a table rather than 
 
 The last row holds **even for an organization admin's own key** — verified against a live
 instance. CLI messages therefore blame the *credential kind*, never the user's role.
+
+### Stable JSON shapes (Beta contract)
+
+Tasks is in Beta, but the CLI's machine output is a contract you can script against:
+
+- **Every list command** (`task list`, `board list`, `board tasks`, `tasks search`,
+  `tasks activity`, `tasks inbox`, `tasks mine`, `project list`, `goal list`, …) emits exactly
+  `{"count": <int|null>, "next": <url|null>, "previous": <url|null>, "results": [ … ]}` under
+  `--json`. Follow `next` with `--page`; `count` may be `null` when the server does not total.
+- **Every single-object command** emits the server's object unchanged, plus — on writes that
+  send one — `_idempotency_key` and `_idempotency_replayed`.
+- **Every refusal** emits the error envelope below and exits with the code in the table.
+- Human-only decoration (the Beta notice, spinners, deprecation notes) never reaches `--json`
+  stdout; deprecation notes go to stderr.
+
+### Exit codes (Tasks family)
+
+| Code | Meaning |
+| --- | --- |
+| `0` | success |
+| `1` | unexpected failure |
+| `2` | the caller's input was refused (400, bad flag value) |
+| `3` | credential problem, or a person-only door reached with an API key |
+| `4` | refused — permission, role, plan, or a conflict (402/403/409) |
+| `5` | not found — invisible or nonexistent |
+| `6` | back off and retry (429, 503 read-only switch) |
+| `7` | a human declined the confirmation |
+| `8` | transport failure — no server response |
+| `9` | delta cursor expired — re-snapshot |
+| `10` | quota exhausted (user-scoped doors only; Tasks never uses it) |
 
 ### Error codes
 

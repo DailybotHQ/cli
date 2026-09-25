@@ -2275,6 +2275,12 @@ class DailyBotClient:
         """GET /v1/tasks/boards/."""
         return self._tasks_list("boards/", **page)
 
+    def list_board_tasks(
+        self, board_uuid: str, *, filters: dict[str, Any] | None = None, **page: Any
+    ) -> PaginatedResult:
+        """GET /v1/tasks/boards/<uuid>/tasks/ — one board's tasks, paginated."""
+        return self._tasks_list(f"boards/{board_uuid}/tasks/", params=filters, **page)
+
     def get_board(self, board_uuid: str) -> dict[str, Any]:
         """GET /v1/tasks/boards/<uuid>/."""
         return self._tasks_read(f"boards/{board_uuid}/")

@@ -201,6 +201,20 @@ has verbs operating on a different noun (e.g. `form delete` removes a *response*
 pick distinct verbs for the definition-level actions (`form archive`,
 `checkin config`, `checkin archive`) instead of overloading the existing verb.
 
+### Tasks vocabulary and addressing
+
+The Tasks groups (`tasks`, `task`, `board`, `project`, `goal`) follow one vocabulary, and a
+new command must too:
+
+- **owner**, never assignee — `--owner` / `task set-owner`. `executor` is read-only.
+- **state** for a task's column, never status. A goal's `status` is the one correct use.
+- **archive / restore**, never delete — `task delete` exists only as an honest alias of archive.
+- A task argument is `TASK` (`metavar="TASK"`): a key (`ENG-142`) or a uuid. The API resolves
+  both, so never validate it as a uuid client-side.
+- A renamed flag or verb stays as a **hidden** alias that maps to the new wire and prints a
+  deprecation note through `display.print_deprecation` (stderr, so `--json` stays clean).
+- Every group calls `_beta.mark_beta(group)` so the Beta notice tops its `--help`.
+
 ### File-or-flag-or-interactive input
 
 For structured input (e.g. a list of questions), offer three parallel paths that

@@ -22,6 +22,7 @@ from dailybot_cli.api_client import (
     PaginatedResult,
     as_query_datetime,
 )
+from dailybot_cli.commands._beta import BETA_STATUS_LINE, mark_beta
 from dailybot_cli.commands.public_api_helpers import (
     emit_json,
     exit_for_tasks_error,
@@ -44,6 +45,7 @@ from dailybot_cli.display import (
     print_board_snapshot,
     print_delta_summary,
     print_error,
+    print_info,
     print_pagination_footer,
     print_success,
     print_tasks_detail_panel,
@@ -141,6 +143,9 @@ def tasks() -> None:
     """
 
 
+mark_beta(tasks)
+
+
 @tasks.command("status")
 @click.option("--json", "json_mode", is_flag=True, help="Emit machine-readable JSON to stdout.")
 def tasks_status(json_mode: bool) -> None:
@@ -165,6 +170,7 @@ def tasks_status(json_mode: bool) -> None:
         emit_json(data)
         return
     print_tasks_detail_panel("Tasks pulse", data, _PULSE_FIELDS)
+    print_info(BETA_STATUS_LINE)
 
 
 @tasks.command("entitlements")
@@ -327,7 +333,15 @@ def tasks_timeline(json_mode: bool, **flags: Any) -> None:
 @tasks.command("changes")
 @click.argument("board")
 @click.option("--cursor", default=None, help="Resume from this delta cursor (from a snapshot).")
-@click.option("--since", default=None, help="ISO-8601 timestamp to read changes since.")
+@click.option(
+    "--updated-since",
+    "updated_since",
+    default=None,
+    help="ISO-8601 timestamp to read changes since.",
+)
+# `--since` mirrors the server's deprecated alias of `updated_since`; kept hidden
+# so existing scripts keep working while help teaches the current name.
+@click.option("--since", default=None, hidden=True, help="Deprecated alias of --updated-since.")
 @click.option(
     "--resync",
     is_flag=True,
@@ -335,7 +349,12 @@ def tasks_timeline(json_mode: bool, **flags: Any) -> None:
 )
 @click.option("--json", "json_mode", is_flag=True, help="Emit machine-readable JSON to stdout.")
 def tasks_changes(
-    board: str, cursor: str | None, since: str | None, resync: bool, json_mode: bool
+    board: str,
+    cursor: str | None,
+    updated_since: str | None,
+    since: str | None,
+    resync: bool,
+    json_mode: bool,
 ) -> None:
     """Read what changed on a board since a cursor.
 
@@ -361,7 +380,7 @@ def tasks_changes(
       dailybot tasks changes <board-uuid> --resync
     """
     client = require_auth()
-    marker: str | None = cursor or since
+    marker: str | None = cursor or updated_since or since
 
     if marker is None:
         try:
