@@ -53,6 +53,7 @@ def _page(
 
 _PREVIEW: dict[str, Any] = {
     "operation": "archive",
+    "dry_run": True,
     "reversible": True,
     "restore_path": "dailybot task restore <uuid>",
     "consequence": "Archives the task and its 3 subtasks.",
@@ -180,19 +181,21 @@ class TestBulkOperationIsNotMarkup:
     net then told the user the CLI had a bug.
     """
 
-    def test_markup_shaped_operation_reaches_the_api(
+    def test_markup_shaped_operation_is_a_usage_error_not_a_crash(
         self, runner: CliRunner, client: MagicMock, tmp_path: Any
     ) -> None:
+        # `--operation` is now validated against the contract's list, so a
+        # markup-shaped value is refused as input — and still never crashes Rich.
         batch = tmp_path / "b.json"
-        batch.write_text('[{"uuid": "t-1"}]')
-        client.bulk_tasks.return_value = {"results": [{"uuid": "t-1", "status": "ok"}]}
+        batch.write_text('[{"task": "t-1"}]')
         with patch("dailybot_cli.commands.task.require_auth", return_value=client):
             result = runner.invoke(
                 cli,
                 ["task", "bulk", "--operation", "[/bold][red]x", "-f", str(batch), "--yes"],
             )
         assert "Unexpected error" not in result.stderr
-        assert client.bulk_tasks.call_args[1]["operation"] == "[/bold][red]x"
+        assert result.exit_code == 2
+        client.bulk_tasks.assert_not_called()
 
     def test_the_confirmation_prompt_survives_markup(
         self, runner: CliRunner, client: MagicMock, tmp_path: Any
@@ -273,8 +276,8 @@ class TestDoorsOnlyAdvertiseFiltersTheyCarry:
             patch("dailybot_cli.commands.tasks.require_auth", return_value=client),
             patch("dailybot_cli.commands.tasks.get_token", return_value="bearer"),
         ):
-            runner.invoke(cli, ["tasks", "mine", "--scope", "assigned"])
-        assert client.list_my_tasks.call_args[1]["params"] == {"scope": "assigned"}
+            runner.invoke(cli, ["tasks", "mine", "--scope", "involved"])
+        assert client.list_my_tasks.call_args[1]["params"] == {"scope": "involved"}
 
 
 class TestListReadsAreCoveredByTheTransportNet:

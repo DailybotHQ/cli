@@ -269,11 +269,21 @@ class TestNoDuplicatedServerCeiling:
 class TestDocumentationMatchesTheCode:
     """Finding 11: the credential table listed a command that does not exist."""
 
-    def test_participants_remove_is_not_documented(self) -> None:
+    def test_a_documented_participants_remove_exists(self) -> None:
         import pathlib
 
+        from click.testing import CliRunner
+
+        from dailybot_cli.main import cli
+
+        # The finding was a doc naming a command the CLI lacked. PR3 of the Tasks
+        # Beta built `task participants remove`, so the guard now runs the other
+        # way: whatever the docs name must actually be there.
         repo: pathlib.Path = pathlib.Path(__file__).resolve().parent.parent
-        for doc in ("docs/API_REFERENCE.md", "README.md"):
-            text: str = (repo / doc).read_text()
-            assert "participants add/remove" not in text
-            assert "participants remove" not in text
+        documented: bool = any(
+            "participants" in (repo / doc).read_text() and "remove" in (repo / doc).read_text()
+            for doc in ("docs/API_REFERENCE.md", "README.md")
+        )
+        assert documented
+        result = CliRunner().invoke(cli, ["task", "participants", "remove", "--help"])
+        assert result.exit_code == 0

@@ -111,7 +111,20 @@ class TestEveryCreateSurfacesItsKey:
         [
             (["board", "create", "-n", "B"], "board", "create_board"),
             (["project", "create", "-n", "P"], "project", "create_project"),
-            (["goal", "create", "-n", "G"], "goal", "create_goal"),
+            (
+                [
+                    "goal",
+                    "create",
+                    "-n",
+                    "G",
+                    "--period-start",
+                    "2026-10-01",
+                    "--period-end",
+                    "2026-12-31",
+                ],
+                "goal",
+                "create_goal",
+            ),
             (["task", "create", "-t", "T"], "task", "create_task"),
         ],
     )
@@ -195,7 +208,6 @@ class TestPagingDefaultFollowsTheDecorator:
             (["board", "list"], "board", "list_boards"),
             (["project", "list"], "project", "list_projects"),
             (["goal", "list"], "goal", "list_goals"),
-            (["tasks", "activity"], "tasks", "list_tasks_activity"),
             (["project", "milestones"], "project", "list_milestones"),
             (["task", "comments", "t-1"], "task", "list_task_comments"),
         ],
@@ -265,7 +277,21 @@ class TestUntrustedTextIsEscapedExactlyOnce:
         [
             (["board", "create", "-n", "x[y]"], "board", "create_board", "name"),
             (["project", "create", "-n", "x[y]"], "project", "create_project", "name"),
-            (["goal", "create", "-n", "x[y]"], "goal", "create_goal", "name"),
+            (
+                [
+                    "goal",
+                    "create",
+                    "-n",
+                    "x[y]",
+                    "--period-start",
+                    "2026-10-01",
+                    "--period-end",
+                    "2026-12-31",
+                ],
+                "goal",
+                "create_goal",
+                "name",
+            ),
             (["task", "create", "-t", "x[y]"], "task", "create_task", "title"),
         ],
     )

@@ -55,9 +55,27 @@ tests/
 ├── tasks_commands_test.py         # `tasks` group: status/entitlements/search/activity/timeline
 ├── tasks_delta_test.py            # `tasks changes`: cursor lifecycle, window expiry
 ├── tasks_person_shaped_test.py    # inbox / mine / counts: person-only refusals
+├── tasks_catchup_test.py         # pulse bands, inbox read/unread, activity cursor, mentionables
 ├── task_commands_test.py          # `task` group: reads, writes, collaboration, bulk, archive
+├── tasks_owner_wire_test.py      # owner vocabulary: exact query/body on the wire (P0 guard)
+├── tasks_beta_ergonomics_test.py # KEY-n args, --sort, board tasks, --updated-since, exit codes, Beta
+├── tasks_contract_fixes_test.py  # commands corrected against the write contract (exact wire)
+├── task_collaboration_test.py    # comments edit/delete, relations, participants, watch, mute
+├── task_structure_test.py         # children, duplicate, events, activity; delegation absent
+├── tasks_attachments_test.py      # attach/list/get/delete; credential + redirect boundary
+├── tasks_bulk_dry_run_test.py     # bulk --dry-run (server preview), create --board, declared operations
+├── tasks_path_safety_test.py     # path identifiers, no Bearer→key replay on Tasks 403, next links pinned
+├── tasks_terminal_safety_test.py # control chars neutralized, preview shape, local file limits
+├── tasks_key_refusal_sweep_test.py # every admin / person-only door refuses a key before the request
+├── tasks_parent_attachments_test.py # attachments on comments, projects and goals (5 MiB, admin doors)
+├── tasks_ai_review_fixes_test.py # AI review round 1: bulk preview shape, ETag grammar, ports, streamed download
+├── tasks_inbox_filters_test.py # inbox --mentioned / --type on the list and the unread badge
+├── tasks_favorites_views_test.py  # board/view star|unstar (R3a), saved view get/update/delete (R3d)
+├── tasks_ergonomics_sweep_test.py # walks every Tasks command: --json, example, TASK metavar, --dry-run
 ├── board_commands_test.py         # `board` group: reads + container writes
+├── board_admin_test.py           # `board` administration: states, members, labels, views
 ├── project_goal_commands_test.py  # `project` + `goal`: reads, roll-ups, updates, milestones
+├── project_goal_admin_test.py    # project update/restore/members/views/milestones; goal update/link
 ├── tasks_display_test.py          # Tasks renderers + the untrusted-content presenter
 ├── tasks_error_taxonomy_test.py   # Tasks error codes and credential guidance
 ├── tasks_security_test.py         # injection boundary, isolation, destructive paths

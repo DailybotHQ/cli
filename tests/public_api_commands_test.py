@@ -565,7 +565,7 @@ class TestFormCommand:
                 "--yes",
             ],
         )
-        assert result.exit_code == 5
+        assert result.exit_code == 10  # EXIT_QUOTA_EXHAUSTED, distinct from not-found (5)
 
     @patch("dailybot_cli.commands.public_api_helpers.get_agent_auth")
     @patch("dailybot_cli.commands.public_api_helpers.DailyBotClient")

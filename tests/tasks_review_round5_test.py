@@ -147,7 +147,7 @@ class TestBulkHonoursTheJsonStreamContract:
                 ["task", "bulk", "--operation", "archive", "-f", batch, "--json"],
                 input="y\n",
             )
-        assert "There is no dry run for bulk" in result.stderr
+        assert "Preview it first with --dry-run" in result.stderr
 
     def test_without_json_the_warning_stays_on_stdout(
         self, runner: CliRunner, client: MagicMock, batch: str
@@ -157,7 +157,7 @@ class TestBulkHonoursTheJsonStreamContract:
             result = runner.invoke(
                 cli, ["task", "bulk", "--operation", "archive", "-f", batch], input="y\n"
             )
-        assert "There is no dry run for bulk" in result.stdout
+        assert "Preview it first with --dry-run" in result.stdout
 
 
 class TestFailedPreviewUsesTheDocumentedExit:

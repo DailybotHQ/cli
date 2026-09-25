@@ -27,7 +27,12 @@ def _page(rows: list[dict[str, Any]] | None = None) -> PaginatedResult:
 
 
 def _invoke(runner: CliRunner, client: MagicMock, args: list[str]) -> Any:
-    with patch("dailybot_cli.commands.board.require_auth", return_value=client):
+    # A signed-in person: board structure changes are `tasks:admin` doors, which
+    # refuse an organization API key before any request.
+    with (
+        patch("dailybot_cli.commands.board.require_auth", return_value=client),
+        patch("dailybot_cli.commands.board.get_token", return_value="tok"),
+    ):
         return runner.invoke(cli, args)
 
 
@@ -114,8 +119,9 @@ class TestTheSnapshotDeltaSeam:
 
 
 class TestDeferredDoors:
-    @pytest.mark.parametrize("sub", ["mentionables", "visit", "views"])
-    def test_phase_two_doors_are_not_built(self, runner: CliRunner, sub: str) -> None:
+    # `visit` is a signed exclusion: a UI ordering signal, not an agent act.
+    @pytest.mark.parametrize("sub", ["visit"])
+    def test_deferred_doors_are_not_built(self, runner: CliRunner, sub: str) -> None:
         # Recorded as deferred in the task log, not silently half-built.
         assert sub not in runner.invoke(cli, ["board", "--help"]).output
 
@@ -185,6 +191,7 @@ class TestGuestIsDistinctFromScope:
 
 _BOARD_PREVIEW: dict[str, Any] = {
     "operation": "board.archive",
+    "dry_run": True,
     "reversible": True,
     "restore_path": "/v1/tasks/boards/b-1/restore/",
     "consequence": "Archives the board and cascade-archives 12 live tasks.",

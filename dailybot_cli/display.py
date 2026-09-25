@@ -5,8 +5,10 @@ Messages passed to the print_* helpers routinely carry server-controlled text
 tag, so every such message is escaped before interpolation.
 """
 
+import unicodedata
 from typing import Any
 
+import click
 from rich.console import Console
 from rich.markdown import Markdown
 from rich.markup import escape
@@ -39,6 +41,16 @@ def print_warning(message: str) -> None:
 def print_info(message: str) -> None:
     """Print an info message."""
     console.print(f"[dim]{escape(message)}[/dim]")
+
+
+def print_raw_value(value: str) -> None:
+    """Print one bare value for a shell variable: no styling, no wrapping, stdout."""
+    click.echo(value)
+
+
+def print_deprecation(message: str) -> None:
+    """Print a deprecation note to stderr, so `--json` stdout stays parseable."""
+    error_console.print(f"[bold yellow]Deprecated:[/bold yellow] {escape(message)}")
 
 
 def print_kudos_table(kudos: list[dict[str, Any]]) -> None:
@@ -1544,6 +1556,37 @@ UNTRUSTED_CELL_LIMIT: int = 60
 _EMPTY_PLACEHOLDER: str = "—"
 
 
+def _neutralize(text: str) -> str:
+    """Make control and format characters visible instead of letting them act.
+
+    Rich escapes its own markup but passes ANSI / OSC escape sequences, bidi
+    overrides and zero-width characters straight to the terminal. In a title or a
+    preview's consequence they could clear the screen, overwrite the line a person
+    reads before answering "Proceed?", or plant a hyperlink. Whitespace controls
+    become a space so a cell stays one line; every other Cc / Cf character is
+    shown as its `\\uXXXX` code.
+    """
+    out: list[str] = []
+    for char in text:
+        if char in "\n\r\t\v\f":
+            out.append(" ")
+        elif unicodedata.category(char) in ("Cc", "Cf"):
+            out.append(f"\\u{ord(char):04x}")
+        else:
+            out.append(char)
+    return "".join(out)
+
+
+def plain_text(value: Any) -> str:
+    """Server text for a plain (non-Rich) prompt: control characters neutralized."""
+    return _neutralize(str(value))
+
+
+def safe_text(value: Any) -> str:
+    """Server text that is not quoted as data (keys, codes, counts): neutralized and escaped."""
+    return escape(_neutralize(str(value)))
+
+
 def present_untrusted(value: Any, *, limit: int | None = None) -> str:
     """Render a user-authored string as visibly quoted, escaped data.
 
@@ -1561,11 +1604,13 @@ def present_untrusted(value: Any, *, limit: int | None = None) -> str:
     """
     if value is None or value == "":
         return _EMPTY_PLACEHOLDER
-    text: str = str(value)
+    text: str = _neutralize(str(value))
     cap: int = limit if limit is not None else UNTRUSTED_CELL_LIMIT
     if len(text) > cap:
         text = text[: cap - 1] + "\u2026"
-    return f'"{escape(text)}"'
+    # An embedded quote would close the data boundary early and let the rest read
+    # as a sentence addressed to the reader.
+    return '"' + escape(text.replace('"', '\\"')) + '"'
 
 
 def _state_name(task: dict[str, Any]) -> str:
@@ -1589,7 +1634,7 @@ def print_tasks_table(tasks: list[dict[str, Any]]) -> None:
         owner: Any = task.get("executor") or task.get("owner") or {}
         owner_name: Any = owner.get("full_name") if isinstance(owner, dict) else owner
         table.add_row(
-            str(task.get("key") or task.get("uuid") or ""),
+            safe_text(task.get("key") or task.get("uuid") or ""),
             present_untrusted(task.get("title")),
             _state_name(task),
             present_untrusted(owner_name, limit=20),
@@ -1606,11 +1651,11 @@ def print_task_detail(task: dict[str, Any]) -> None:
     """
     uuid_value: str = str(task.get("uuid") or "")
     lines: list[str] = [
-        f"[bold]Key[/bold]        {escape(str(task.get('key') or '—'))}",
+        f"[bold]Key[/bold]        {safe_text(task.get('key') or '—')}",
         f"[bold]Title[/bold]      {present_untrusted(task.get('title'), limit=200)}",
         f"[bold]State[/bold]      {_state_name(task)}",
-        f"[bold]UUID[/bold]       {escape(uuid_value)}",
-        f"[bold]API link[/bold]   /v1/tasks/tasks/{escape(uuid_value)}/",
+        f"[bold]UUID[/bold]       {safe_text(uuid_value)}",
+        f"[bold]API link[/bold]   /v1/tasks/tasks/{safe_text(uuid_value)}/",
     ]
     description: Any = task.get("description")
     if description:
@@ -1626,19 +1671,34 @@ def print_board_snapshot(snapshot: dict[str, Any]) -> None:
     copyably, and next to the command that consumes it.
     """
     groups: Any = snapshot.get("groups") or []
-    table: Table = Table(title="Board snapshot")
+    board: Any = snapshot.get("board") if isinstance(snapshot.get("board"), dict) else {}
+    title: str = "Board snapshot"
+    if board.get("key"):
+        title = f"Board snapshot — {safe_text(board.get('key'))}"
+    table: Table = Table(title=title)
     table.add_column("Column", style="cyan", no_wrap=True)
+    table.add_column("Category", no_wrap=True)
     table.add_column("Tasks", justify="right", no_wrap=True)
     for group in groups:
         if not isinstance(group, dict):
             continue
         items: Any = group.get("tasks") or []
-        table.add_row(present_untrusted(group.get("name"), limit=24), str(len(items)))
+        shown: int = len(items) if isinstance(items, list) else 0
+        # `task_count` is the column's true total; the page carries at most 50 cards.
+        total: Any = group.get("task_count")
+        count: str = str(total if isinstance(total, int) else shown)
+        if group.get("has_more") and isinstance(total, int) and total > shown:
+            count += f" (+{total - shown} more)"
+        table.add_row(
+            present_untrusted(group.get("name"), limit=24),
+            safe_text(group.get("category") or ""),
+            count,
+        )
     console.print(table)
     cursor: Any = snapshot.get("delta_cursor")
     if cursor:
         console.print(
-            f"[bold]delta_cursor[/bold]  {escape(str(cursor))}\n"
+            f"[bold]delta_cursor[/bold]  {safe_text(cursor)}\n"
             "[dim]Pass it to `dailybot tasks changes` to read only what changed since.[/dim]"
         )
 
@@ -1668,7 +1728,7 @@ def print_delta_summary(delta: dict[str, Any]) -> None:
     )
     cursor: Any = delta.get("delta_cursor")
     if cursor:
-        console.print(f"[bold]delta_cursor[/bold]  {escape(str(cursor))}")
+        console.print(f"[bold]delta_cursor[/bold]  {safe_text(cursor)}")
 
 
 def print_dry_run_consequence(preview: dict[str, Any], *, to_stderr: bool = False) -> None:
@@ -1686,18 +1746,18 @@ def print_dry_run_consequence(preview: dict[str, Any], *, to_stderr: bool = Fals
     """
     reversible: bool = bool(preview.get("reversible"))
     operation: str = str(preview.get("operation") or "operation")
-    lines: list[str] = [f"[bold]Operation[/bold]  {escape(operation)}"]
+    lines: list[str] = [f"[bold]Operation[/bold]  {safe_text(operation)}"]
     consequence: Any = preview.get("consequence")
     if consequence:
-        lines.append(f"\n{escape(str(consequence))}\n")
+        lines.append(f"\n{safe_text(consequence)}\n")
     affects: Any = preview.get("affects")
     if isinstance(affects, dict) and affects:
-        detail: str = "  ".join(f"{escape(str(k))}={escape(str(v))}" for k, v in affects.items())
+        detail: str = "  ".join(f"{safe_text(k)}={safe_text(v)}" for k, v in affects.items())
         lines.append(f"[bold]Affects[/bold]    {detail}")
     if reversible:
         restore: Any = preview.get("restore_path")
         if restore:
-            lines.append(f"[bold]Restore[/bold]    {escape(str(restore))}")
+            lines.append(f"[bold]Restore[/bold]    {safe_text(restore)}")
         border: str = "yellow"
         title: str = "Dry run — reversible"
     else:
@@ -1726,6 +1786,80 @@ def print_tasks_detail_panel(
     print_detail_panel(title, safe, fields)
 
 
+def _dig(row: dict[str, Any], path: str) -> Any:
+    """Read a dotted path (`user.name`) from a row; a missing hop is None."""
+    value: Any = row
+    for part in path.split("."):
+        value = value.get(part) if isinstance(value, dict) else None
+    return value
+
+
+def print_tasks_rows(
+    title: str,
+    rows: list[dict[str, Any]],
+    columns: list[tuple[str, str, bool]],
+    *,
+    empty: str,
+) -> None:
+    """Render Tasks rows as a table.
+
+    Each column is ``(header, dotted field path, trusted)``. Identifiers the server
+    mints (keys, uuids, roles) are trusted; anything a person typed goes through
+    ``present_untrusted`` so it renders as data, never as markup.
+    """
+    if not rows:
+        print_info(empty)
+        return
+    table: Table = Table(title=title)
+    for header, _path, trusted in columns:
+        table.add_column(header, no_wrap=trusted)
+    for row in rows:
+        cells: list[str] = []
+        for _header, path, trusted in columns:
+            value: Any = _dig(row, path)
+            if trusted:
+                cells.append("" if value is None else safe_text(value))
+            else:
+                cells.append(present_untrusted(value))
+        table.add_row(*cells)
+    console.print(table)
+
+
+def print_bulk_preview(preview: dict[str, Any]) -> None:
+    """Render a bulk dry run: the consequence, each change, and what would be refused."""
+    console.print(
+        Panel(
+            safe_text(preview.get("consequence") or ""),
+            title="Dry run. Nothing was changed.",
+            border_style="yellow",
+        )
+    )
+    rows: list[dict[str, Any]] = [r for r in preview.get("items") or [] if isinstance(r, dict)]
+    if rows:
+        table: Table = Table(title="Would change")
+        for header in ("#", "Task", "Field", "From", "To"):
+            table.add_column(header)
+        for row in rows:
+            changes: Any = row.get("changes") or {}
+            for field, change in changes.items() if isinstance(changes, dict) else []:
+                before: Any = change.get("from") if isinstance(change, dict) else None
+                after: Any = change.get("to") if isinstance(change, dict) else None
+                table.add_row(
+                    str(row.get("index", "")),
+                    safe_text(row.get("key") or row.get("task") or ""),
+                    safe_text(field),
+                    present_untrusted(before),
+                    present_untrusted(after),
+                )
+        console.print(table)
+    refused: list[dict[str, Any]] = [r for r in preview.get("refused") or [] if isinstance(r, dict)]
+    for row in refused:
+        console.print(
+            f"  [red]would be refused[/red] item {safe_text(row.get('index', '?'))}: "
+            f"{safe_text(row.get('code', ''))} {present_untrusted(row.get('detail'))}"
+        )
+
+
 def print_boards_table(boards: list[dict[str, Any]]) -> None:
     """Render a board list. Keys and uuids are trusted; names are not."""
     if not boards:
@@ -1737,9 +1871,9 @@ def print_boards_table(boards: list[dict[str, Any]]) -> None:
     table.add_column("UUID", no_wrap=True)
     for row in boards:
         table.add_row(
-            str(row.get("key") or ""),
+            safe_text(row.get("key") or ""),
             present_untrusted(row.get("name")),
-            str(row.get("uuid") or ""),
+            safe_text(row.get("uuid") or ""),
         )
     console.print(table)
 
@@ -1757,7 +1891,7 @@ def print_projects_table(projects: list[dict[str, Any]], *, rollup: Any = None) 
         table.add_row(
             present_untrusted(row.get("name")),
             rollup(row, "progress") if rollup else "",
-            str(row.get("uuid") or ""),
+            safe_text(row.get("uuid") or ""),
         )
     console.print(table)
 
@@ -1777,7 +1911,7 @@ def print_goals_table(goals: list[dict[str, Any]], *, rollup: Any = None) -> Non
             present_untrusted(row.get("name")),
             rollup(row, "progress") if rollup else "",
             rollup(row, "project_count") if rollup else "",
-            str(row.get("uuid") or ""),
+            safe_text(row.get("uuid") or ""),
         )
     console.print(table)
 
@@ -1797,9 +1931,34 @@ def print_milestones_table(milestones: list[dict[str, Any]], *, rollup: Any = No
             present_untrusted(row.get("name")),
             present_untrusted(row.get("status"), limit=16),
             rollup(row, "open_task_count") if rollup else "",
-            str(row.get("uuid") or ""),
+            safe_text(row.get("uuid") or ""),
         )
     console.print(table)
+
+
+def _threaded(comments: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Each root comment followed by its replies, in list order.
+
+    A reply whose root is not in this page is kept, at the end, so nothing is lost.
+    """
+    roots: list[dict[str, Any]] = [c for c in comments if not c.get("parent_comment")]
+    root_ids: set[str] = {str(c.get("uuid")) for c in roots}
+    replies: dict[str, list[dict[str, Any]]] = {}
+    orphans: list[dict[str, Any]] = []
+    for comment in comments:
+        parent: Any = comment.get("parent_comment")
+        if not parent:
+            continue
+        parent_id: str = str(parent.get("uuid") if isinstance(parent, dict) else parent)
+        if parent_id in root_ids:
+            replies.setdefault(parent_id, []).append(comment)
+        else:
+            orphans.append(comment)
+    ordered: list[dict[str, Any]] = []
+    for root in roots:
+        ordered.append(root)
+        ordered.extend(replies.get(str(root.get("uuid")), []))
+    return ordered + orphans
 
 
 def print_task_comments(comments: list[dict[str, Any]]) -> None:
@@ -1814,10 +1973,12 @@ def print_task_comments(comments: list[dict[str, Any]]) -> None:
     if not comments:
         print_info("No comments.")
         return
-    for comment in comments:
+    for comment in _threaded(comments):
         author: Any = comment.get("author") or {}
         author_name: Any = author.get("full_name") if isinstance(author, dict) else author
         attribution: str = present_untrusted(author_name, limit=24)
         if comment.get("provenance") == "typed":
             attribution += " [dim](typed by a person)[/dim]"
-        console.print(f"{attribution}: {present_untrusted(comment.get('body'), limit=400)}")
+        # A reply names its thread's root in `parent_comment`; `_threaded` put it there.
+        thread: str = "  ↳ " if comment.get("parent_comment") else ""
+        console.print(f"{thread}{attribution}: {present_untrusted(comment.get('body'), limit=400)}")

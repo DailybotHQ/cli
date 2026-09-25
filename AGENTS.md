@@ -68,16 +68,22 @@ dailybot_cli/                # Source package
     │                        #   stop / dismiss (agent harness lifecycle hooks)
     ├── tasks.py             # `tasks` group: workspace-level — status / entitlements /
     │                        #   search / activity / timeline / changes (delta) /
-    │                        #   inbox / mine / counts (the last three need a person)
+    │                        #   inbox / inbox-read / inbox-read-all / inbox-unread / cursor /
+    │                        #   mine / counts (inbox, cursor, mine and counts need a person)
     ├── task.py              # `task` group: object-level — list / get / create / update /
-    │                        #   move / assign / comment(s) / link / labels / participants /
+    │                        #   move / set-owner / comment(s) / comment-edit / comment-delete /
+    │                        #   link / relations / unlink / labels / participants / watch / mute /
+    │                        #   children / duplicate / events / activity / attach / attachment(s) /
     │                        #   archive / delete / restore / bulk
-    ├── board.py             # `board` group: list / get / snapshot / create / archive / restore
-    ├── project.py           # `project` group: list / get / updates / update-post /
-    │                        #   milestones / milestone-complete / milestone-reopen /
-    │                        #   create / archive
-    ├── goal.py              # `goal` group: list / get / create / archive
+    ├── board.py             # `board` group: list / get / tasks / snapshot / create / archive / restore
+    ├── project.py           # `project` group: list / get / create / update / restore / archive /
+    │                        #   updates / update-post / members / member / views / view /
+    │                        #   milestones / milestone-create|update|delete|complete|reopen
+    ├── goal.py              # `goal` group: list / get / create / update / restore / archive / link / unlink
     ├── _rollups.py          # absent vs null vs zero for roll-up fields (AD-01)
+    ├── _beta.py             # Tasks Beta notice (group help + status line)
+    ├── _favorites.py        # pin/unpin boards and views (person-only), shared by board + tasks
+    ├── _attachments.py      # attach / list / get / delete flows shared by task, comment, project, goal
     ├── _destructive.py      # shared preview-then-confirm for destructive Tasks doors
     ├── _writes.py           # one write reporter: replay, idempotency key, escaping
     ├── team.py              # `team` group: list / get (server-scoped by role)
@@ -107,9 +113,27 @@ tests/                       # pytest suite (file naming: *_test.py)
 ├── tasks_commands_test.py   # `tasks` group reads
 ├── tasks_delta_test.py      # `tasks changes` cursor lifecycle + window expiry
 ├── tasks_person_shaped_test.py  # person-only Tasks doors
+├── tasks_catchup_test.py    # pulse bands, inbox read, activity cursor, mentionables
 ├── task_commands_test.py    # `task` group (reads, writes, collaboration, bulk, archive)
+├── tasks_owner_wire_test.py # owner vocabulary — exact wire (no assignee/executor)
+├── tasks_beta_ergonomics_test.py # KEY-n, --sort, board tasks, exit codes, Beta notice
+├── tasks_contract_fixes_test.py # goal period, move-board, state names, priority, relation types
+├── task_collaboration_test.py # comments edit/delete, relations, participants, watch, mute
+├── task_structure_test.py  # children, duplicate, events, activity
+├── tasks_attachments_test.py # attachments: upload host boundary, redirects, size cap
+├── tasks_bulk_dry_run_test.py # bulk --dry-run (server preview) and bulk contract fixes
+├── tasks_path_safety_test.py # path identifiers, no Bearer→key replay, next links pinned
+├── tasks_terminal_safety_test.py # control chars neutralized, preview shape, local file limits
+├── tasks_key_refusal_sweep_test.py # every admin / person-only door refuses a key pre-request
+├── tasks_parent_attachments_test.py # attachments on comments, projects and goals
+├── tasks_ai_review_fixes_test.py # AI review round 1: bulk preview shape, ETag grammar, ports, streamed download
+├── tasks_inbox_filters_test.py # inbox --mentioned / --type on the list and the unread badge
+├── tasks_favorites_views_test.py # favorites + single saved views
+├── tasks_ergonomics_sweep_test.py # the Beta ergonomics bar on every Tasks command
 ├── board_commands_test.py   # `board` group (reads + container writes)
+├── board_admin_test.py      # `board` administration (states, members, labels, views)
 ├── project_goal_commands_test.py  # `project` + `goal`
+├── project_goal_admin_test.py # project + goal administration
 ├── tasks_display_test.py    # Tasks renderers + untrusted-content presenter
 ├── tasks_error_taxonomy_test.py   # Tasks error codes + credential guidance
 ├── tasks_security_test.py   # injection boundary, isolation, destructive paths

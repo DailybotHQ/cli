@@ -173,7 +173,7 @@ class TestDeltaAndVolumeCodes:
         assert "100" in ERROR_CODE_MESSAGES["too_many_items"]
 
     def test_state_in_use_names_migrate_to(self) -> None:
-        assert "migrate_to" in ERROR_CODE_MESSAGES["state_in_use"]
+        assert "--migrate-to" in ERROR_CODE_MESSAGES["state_in_use"]
 
 
 class TestAuthTaxonomy:
@@ -204,3 +204,28 @@ class TestExistingBehaviourUnchanged:
     def test_resolve_falls_back_to_the_server_detail_for_an_unknown_code(self) -> None:
         exc = APIError(status_code=418, detail="Server said something new.", code="brand_new_code")
         assert resolve_error_message(exc) == "Server said something new."
+
+
+class TestKeyWithoutTasksScopes:
+    """New API keys hold no Tasks scopes; the refusal must say how to get them."""
+
+    def _refusal(self, required: str | None) -> APIError:
+        extra: dict[str, str] = {"required_scope": required} if required else {}
+        return APIError(status_code=403, detail="x", code="insufficient_scope", extra=extra)
+
+    @pytest.mark.parametrize("required", ["tasks:read", "tasks:write", None])
+    def test_a_key_is_told_it_has_no_tasks_scopes(self, required: str | None) -> None:
+        from unittest.mock import patch
+
+        with patch("dailybot_cli.commands.public_api_helpers.get_token", return_value=None):
+            message: str = resolve_error_message(self._refusal(required), tasks_surface=True)
+        assert "API key has no Tasks scopes" in message
+        assert "support@dailybot.com" in message
+
+    def test_a_signed_in_person_is_not_told_about_keys(self) -> None:
+        from unittest.mock import patch
+
+        with patch("dailybot_cli.commands.public_api_helpers.get_token", return_value="tok"):
+            message: str = resolve_error_message(self._refusal("tasks:read"), tasks_surface=True)
+        assert "API key" not in message
+        assert "tasks:read" in message

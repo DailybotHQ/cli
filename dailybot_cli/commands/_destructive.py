@@ -15,7 +15,7 @@ Three rules, each closing a distinct hole:
 """
 
 from collections.abc import Callable
-from typing import Any
+from typing import Any, NoReturn
 
 import click
 
@@ -26,7 +26,47 @@ from dailybot_cli.commands.public_api_helpers import (
     resolve_error_message,
     tasks_write_exit_code,
 )
-from dailybot_cli.display import console, print_dry_run_consequence, print_error
+from dailybot_cli.display import (
+    console,
+    plain_text,
+    print_dry_run_consequence,
+    print_error,
+    safe_text,
+)
+
+
+def _is_preview(payload: Any) -> bool:
+    """True for a dry-run preview document, False for a mutated object."""
+    if not isinstance(payload, dict):
+        return False
+    # The contract publishes every `?dry_run=true` answer as a DryRunPreview (or a
+    # BulkPreview) carrying `dry_run: true`. A 2xx without it means the server did
+    # not honour the dry run.
+    return payload.get("dry_run") is True
+
+
+def report_preview_not_honoured(json_mode: bool) -> NoReturn:
+    """Stop: the server answered a dry run with a result, so it may have acted.
+
+    Rendering that answer as a preview (or confirming and sending the real call as
+    well) would hide that a change may already have happened.
+    """
+    unexpected: str = (
+        "The server answered with a result instead of a preview, so the change may "
+        "already have been applied. Nothing more was sent; check the object's state."
+    )
+    if json_mode:
+        emit_json(
+            {
+                "status": "error",
+                "code": "preview_not_honoured",
+                "detail": unexpected,
+                "message": unexpected,
+            }
+        )
+    else:
+        print_error(unexpected)
+    raise SystemExit(1)
 
 
 def preview_then_confirm(
@@ -67,6 +107,9 @@ def preview_then_confirm(
         # "5 → skip, 1 → alert" pages on every already-archived object.
         raise SystemExit(tasks_write_exit_code(exc)) from exc
 
+    if not _is_preview(preview):
+        report_preview_not_honoured(json_mode)
+
     if json_mode and preview_only:
         # --dry-run --json must emit the blast radius as data. Printing only the
         # Rich panel forced an agent to scrape formatted output for the counts.
@@ -92,6 +135,45 @@ def preview_then_confirm(
                     "detail": aborted,
                     "message": aborted,
                 }
+            )
+        else:
+            print_error(aborted)
+        raise SystemExit(EXIT_USER_ABORTED)
+    return True
+
+
+def confirm_without_preview(
+    consequence: str,
+    *,
+    assume_yes: bool,
+    dry_run: bool,
+    json_mode: bool = False,
+) -> bool:
+    """Confirm a destructive write on a door that has no server-side dry run.
+
+    The CLI cannot ask the server for the blast radius here, so it states the one
+    thing it does know — the exact act — and never pretends to more. `--dry-run`
+    prints that sentence and sends nothing; `--yes` skips the prompt. Returns True
+    when the caller should proceed.
+    """
+    if dry_run:
+        if json_mode:
+            emit_json({"dry_run": True, "consequence": consequence, "previewed_by": "client"})
+        else:
+            # The sentence embeds caller-supplied ids, so it is data for Rich, never markup.
+            console.print(
+                f"[bold]Dry run[/bold] — nothing was changed. Would: {safe_text(consequence)}"
+            )
+        return False
+    if assume_yes:
+        return True
+    # click.confirm writes the prompt as-is (not through Rich), so the ids embedded in
+    # the sentence are neutralized here: a person must read exactly what will happen.
+    if not click.confirm(f"{plain_text(consequence)} Proceed?", default=False, err=json_mode):
+        aborted: str = "Aborted. Nothing was changed."
+        if json_mode:
+            emit_json(
+                {"status": "error", "code": "user_aborted", "detail": aborted, "message": aborted}
             )
         else:
             print_error(aborted)

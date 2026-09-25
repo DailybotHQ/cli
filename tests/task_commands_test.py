@@ -248,14 +248,21 @@ class TestTaskUpdate:
 
 class TestTaskMoveAndAssign:
     def test_move_to_a_state_uses_the_move_door(self, runner: CliRunner, client: MagicMock) -> None:
+        # A column name is resolved to its uuid against the task's board first.
+        client.get_task.return_value = {"uuid": "t-1", "board": "b-1"}
+        client.list_board_states.return_value = [
+            {"uuid": "s-done", "name": "Done", "category": "done", "position": 3}
+        ]
         client.move_task.return_value = {"uuid": "t-1", "_idempotency_replayed": False}
         _invoke(runner, client, ["task", "move", "t-1", "--state", "done"])
-        assert client.move_task.call_args[1]["state"] == "done"
+        assert client.move_task.call_args[1]["state"] == "s-done"
 
-    def test_assign_uses_patch(self, runner: CliRunner, client: MagicMock) -> None:
+    def test_assign_alias_writes_owner(self, runner: CliRunner, client: MagicMock) -> None:
+        # `executor` is read-only on the wire; the accountable person is `owner`.
         client.update_task.return_value = {"uuid": "t-1", "_idempotency_replayed": False}
         _invoke(runner, client, ["task", "assign", "t-1", "--to", "u-1"])
-        assert client.update_task.call_args[1]["executor"] == "u-1"
+        assert client.update_task.call_args[1]["owner"] == "u-1"
+        assert "executor" not in client.update_task.call_args[1]
 
 
 # ---------------------------------------------------------------------------
@@ -428,6 +435,7 @@ class TestIrreversibleIsMarked:
     def test_no_restore_path_is_offered(self, runner: CliRunner, client: MagicMock) -> None:
         hard: dict[str, Any] = {
             "operation": "task.purge",
+            "dry_run": True,
             "reversible": False,
             "consequence": "Removes it for good.",
             "_idempotency_replayed": False,
@@ -442,7 +450,9 @@ class TestStateInUse:
     def test_it_names_migrate_to(self, runner: CliRunner, client: MagicMock) -> None:
         client.archive_task.side_effect = APIError(409, "in use", code="state_in_use")
         result = _invoke(runner, client, ["task", "archive", "t-1", "--yes"])
-        assert "migrate_to" in result.output
+        collapsed: str = " ".join(result.output.split())
+        assert "--migrate-to" in collapsed
+        assert "board state restore" in collapsed
 
 
 class TestRestore:
@@ -573,6 +583,8 @@ class TestBulkConfirmation:
 
 
 class TestBulkHelp:
-    def test_it_states_there_is_no_dry_run(self, runner: CliRunner) -> None:
+    def test_it_offers_the_server_dry_run(self, runner: CliRunner) -> None:
+        # The API has a real bulk preview; the help now teaches it.
         out: str = runner.invoke(cli, ["task", "bulk", "--help"]).output.lower()
-        assert "no dry run" in out or "no dry-run" in out
+        assert "--dry-run" in out
+        assert "rolls it back" in " ".join(out.split())

@@ -93,7 +93,9 @@ ENV PATH="/home/dev-user/.local/share/pnpm/bin:/home/dev-user/.local/bin:/home/d
 RUN printf '%s\n' \
         '# Added by the Dockerfile: /etc/profile resets PATH, so re-add the' \
         '# directories the AI CLI installers write into.' \
-        'for d in "$HOME/.local/share/pnpm/bin" "$HOME/.local/bin" "$HOME/.cursor/bin" "$HOME/.opencode/bin" "$HOME/.grok/bin"; do' \
+        '# /usr/local/bin holds npm -g globals (Codex). Debian /etc/profile' \
+        '# resets PATH and drops the image ENV entry on login shells.' \
+        'for d in "/usr/local/bin" "$HOME/.local/share/pnpm/bin" "$HOME/.local/bin" "$HOME/.cursor/bin" "$HOME/.opencode/bin" "$HOME/.grok/bin"; do' \
         '    case ":$PATH:" in' \
         '        *":$d:"*) ;;' \
         '        *) [ -d "$d" ] && PATH="$d:$PATH" ;;' \

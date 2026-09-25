@@ -43,7 +43,7 @@ def real_client() -> DailyBotClient:
     return DailyBotClient(api_url="http://t.example.com", token="t", api_key="k")
 
 
-_PREVIEW: dict[str, Any] = {"operation": "task.archive", "reversible": True}
+_PREVIEW: dict[str, Any] = {"operation": "task.archive", "dry_run": True, "reversible": True}
 
 
 class TestTheKeyHintNamesAFlagTheCommandHas:
@@ -163,7 +163,21 @@ class TestOneConstantAndNoDeadHelpers:
         [
             (["board", "create", "-n", "B"], "board", "create_board", "name"),
             (["project", "create", "-n", "P"], "project", "create_project", "name"),
-            (["goal", "create", "-n", "G"], "goal", "create_goal", "name"),
+            (
+                [
+                    "goal",
+                    "create",
+                    "-n",
+                    "G",
+                    "--period-start",
+                    "2026-10-01",
+                    "--period-end",
+                    "2026-12-31",
+                ],
+                "goal",
+                "create_goal",
+                "name",
+            ),
             (["task", "create", "-t", "T"], "task", "create_task", "title"),
         ],
     )

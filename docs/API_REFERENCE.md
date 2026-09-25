@@ -397,9 +397,10 @@ All user-scoped commands (`checkin`, `form`, `kudos`, `user`, `team`, `workflow`
 | `2` | `EXIT_USAGE_ERROR` | Invalid input / 400 from server |
 | `3` | `EXIT_NOT_AUTHENTICATED` | Not logged in |
 | `4` | `EXIT_PERMISSION_DENIED` | Forbidden, self-kudos, daily limit, `final_state_locked` |
-| `5` | `EXIT_NOT_FOUND` / `EXIT_QUOTA_EXHAUSTED` | 404 from server, or form quota (402) |
+| `5` | `EXIT_NOT_FOUND` | 404 from server |
 | `6` | `EXIT_RATE_LIMITED` | Rate limited (429) |
 | `7` | `EXIT_USER_ABORTED` | Confirmation declined |
+| `10` | `EXIT_QUOTA_EXHAUSTED` | Form response quota exhausted (402). Was `5` before 3.14, which made it indistinguishable from not-found |
 
 `--json` output for any 4xx includes `error`, `status`, and (when present) `code` + `detail` — pattern-match on `code` rather than prose.
 
@@ -792,6 +793,15 @@ key, where the wording would be misleading).
 Projects, boards, tasks, goals and milestones. Two CLI groups serve it: `dailybot tasks`
 (workspace-level) and `dailybot task` (object-level).
 
+### Owner, not assignee
+
+The accountable person on a task is its **owner**. On the wire that is the `owner` list
+filter on `GET /v1/tasks/tasks/` (repeatable and OR-ed: a user uuid, `me`, or `unowned`)
+and the `owner` body field on create / PATCH (a user uuid or `me`). The strict list door
+refuses `assignee` with `invalid_filter_value`, and `executor` — who is actually doing the
+work, a person or an agent — is **read-only**: a write carrying it is refused. The CLI keeps
+`--assignee` and `task assign --to` as hidden, deprecated aliases that send `owner`.
+
 ### Which verbs need a signed-in person
 
 This is the most confusing thing about the family, so it is a table rather than prose.
@@ -800,19 +810,52 @@ This is the most confusing thing about the family, so it is a table rather than 
 | --- | --- | --- |
 | pulse, entitlements, search, activity, timeline | — | organization-scoped reads |
 | board list / get / snapshot / delta | — | organization-scoped reads |
-| task list / get / create / update / move / assign | — | organization-scoped writes |
+| task list / get / create / update / move / set-owner | — | organization-scoped writes |
 | comments, relations, labels, bulk | — | organization-scoped writes |
 | project & goal reads, `project updates`, `update-post` | — | organization-scoped |
 | milestones list / complete / reopen | — | organization-scoped |
-| — | `tasks mine`, `tasks counts`, `tasks inbox`, `me/recents`, `me/activity-cursor` | **person-shaped**: a key is an organization with nobody to be, so "my X" has no answer |
-| — | `task participants add` | published policy: no key may change **who is notified** |
-| — | board/project **member** writes | published policy: no key may change **who can see** |
-| — | `board create`, `project create`, `goal create` | need `tasks:admin`, which **cannot be stored on a key at all** |
+| — | `tasks mine`, `tasks counts`, `tasks inbox` / `inbox-read` / `inbox-read-all` / `inbox-unread`, `tasks cursor`, `board mentionables`, `board star` / `unstar`, `tasks favorites`, `tasks view …` | **person-shaped**: a key is an organization with nobody to be, so "my X" has no answer |
+| — | `task participants list` / `add` / `remove`, `task watch` / `unwatch`, `task mute` / `unmute` | published policy: no key may change or reveal **who is notified** |
+| — | `project members` (list), `board views` / `view save`, `project views` / `view save`, `board labels` / `label create` | published policy: no key may reveal **who can see**; views and label usage belong to a person |
+| — | **every structure change**: `board create` / `update` / `archive` / `restore`, `board state create` / `update` / `archive` / `restore` / `reorder`, `board member add` / `remove`, `project create` / `update` / `archive` / `restore`, `project member add` / `remove`, `goal create` / `update` / `archive` / `restore` / `link` / `unlink` | need `tasks:admin`, which **cannot be stored on a key at all**. The CLI refuses a key before the request and exits 4 (`insufficient_scope`), exactly as the server's 403 would |
 | — | label CRUD, `boards/{id}/labels/` | a product decision, still open: `usage_count` sums a per-person visibility predicate, so it has no correct value for a key |
 | — | `boards/{id}/mentionables/` | **person-shaped by definition** — it answers "who may *this viewer* address". For an assignee picker on a key, use the org roster (`dailybot user list`) or board members |
 
-The last row holds **even for an organization admin's own key** — verified against a live
-instance. CLI messages therefore blame the *credential kind*, never the user's role.
+The server answers a key on any of these doors with `403 insufficient_scope`. That holds
+**even for an organization admin's own key**; it was verified against a live instance. `board mentionables` rows carry
+`uuid`, `name`, `handle`, `avatar_url`, `has_photo` and `kind`, but no email.
+
+CLI messages therefore blame the *credential kind*, never the user's role.
+
+### Stable JSON shapes (Beta contract)
+
+Tasks is in Beta, but the CLI's machine output is a contract you can script against:
+
+- **Every list command** (`task list`, `board list`, `board tasks`, `tasks search`,
+  `tasks activity`, `tasks inbox`, `tasks mine`, `project list`, `goal list`, …) emits exactly
+  `{"count": <int|null>, "next": <url|null>, "previous": <url|null>, "results": [ … ]}` under
+  `--json`. Follow `next` with `--page`; `count` may be `null` when the server does not total.
+- **Every single-object command** emits the server's object unchanged, plus — on writes that
+  send one — `_idempotency_key` and `_idempotency_replayed`.
+- **Every refusal** emits the error envelope below and exits with the code in the table.
+- Human-only decoration (the Beta notice, spinners, deprecation notes) never reaches `--json`
+  stdout; deprecation notes go to stderr.
+
+### Exit codes (Tasks family)
+
+| Code | Meaning |
+| --- | --- |
+| `0` | success |
+| `1` | unexpected failure |
+| `2` | the caller's input was refused (400, bad flag value) |
+| `3` | credential problem, or a person-only door reached with an API key |
+| `4` | refused — permission, role, plan, or a conflict (402/403/409) |
+| `5` | not found — invisible or nonexistent |
+| `6` | back off and retry (429, 503 read-only switch) |
+| `7` | a human declined the confirmation |
+| `8` | transport failure — no server response |
+| `9` | delta cursor expired — re-snapshot |
+| `10` | quota exhausted (user-scoped doors only; Tasks never uses it) |
 
 ### Error codes
 
@@ -822,6 +865,7 @@ Dispatch on `code`, never on the English `detail`.
 | --- | --- | --- |
 | `actor_required` / `insufficient_scope` on a person-shaped door | needs a signed-in person | 3 |
 | `insufficient_scope` with `required_scope: tasks:admin` | a key can never hold it | 4 |
+| `insufficient_scope` on an organization API key (other scopes) | **new keys hold no Tasks scopes** — an admin grants them to the key (or write to support@dailybot.com); `dailybot login` works for your own account | 4 |
 | `guest_not_allowed` | role limit — not a credential problem | 4 |
 | `credential_absent` / `_malformed` / `_expired`, `invalid_credentials`, `token_not_valid` | credential problem | 3 |
 | `not_found` | **invisible or nonexistent — never "forbidden"** | 5 |
@@ -832,8 +876,17 @@ Dispatch on `code`, never on the English `detail`.
 | `idempotency_key_payload_mismatch` | same key, different body — use a **new** key | 4 |
 | `idempotency_in_progress` | identical call still running — do not retry | 4 |
 | `delta_window_expired` | cursor older than 7 days — **re-snapshot** | **9** |
+| `attachment_too_large` | file over the server's limit (25 MiB for a task upload through storage; 5 MiB for a captioned task upload and for every comment, project and goal attachment) | 2 |
+| `attachment_storage_unavailable` | the server has no file storage configured | 6 |
+| `attachment_upload_redirected` / `attachment_upload_failed` | the storage target redirected or refused — never followed, never confirmed | 1 |
+| `attachment_upload_target_refused` | the server handed back a non-https foreign target; the file was not sent | 1 |
+| `attachment_download_redirected` | a download redirect pointed somewhere unexpected; nothing written | 1 |
+| `invalid_identifier` | a TASK / uuid argument contained `/`, `..`, `?`, `#`, `%` or a space; refused before any request | 2 |
+| `invalid_etag` | an ETag or `--if-match` value that is not a quoted entity tag; refused before it is printed or sent | 2 (argument) / 1 (server header) |
+| `preview_not_honoured` | a `--dry-run` answer without `dry_run: true`: the server may have applied the change; nothing more was sent | 1 |
+| `column_too_large` | a column too big to return in one read — page with `board tasks` | 4 |
 | `too_many_items` | bulk over 100 items | 2 |
-| `state_in_use` | column has tasks; the server wants `migrate_to` so they are **moved**, which the CLI cannot send yet — use the web app. Archiving them in bulk is not a substitute | 4 |
+| `state_in_use` | the column still holds live tasks — re-run `board state archive` with `--migrate-to <state>` so they move first | 4 |
 | `invalid_filter_value` | a declared parameter's value was rejected | 2 |
 | `user_aborted` | a human declined the confirmation — **stop**; never re-run with `--yes` | **7** |
 | *(transport failure — no server response)* | unreachable, timeout, bad URL | **8** |
@@ -940,8 +993,14 @@ The server keeps an idempotency slot for **24 hours**, keyed on
   **"Key required" in the capability table means the *header*, not the credential:**
   confirmed by the API team, bulk serves a session JWT, a CLI Bearer token and an
   organization API key alike. The CLI correctly does not refuse a Bearer token.
-- Doors that **ignore** the header are not sent one, and offer no `--idempotency-key` flag:
-  `project update-post`, `milestone complete`/`reopen`, task subscription.
+- The CLI sends the header exactly where the published contract accepts it (27 endpoints,
+  including `project update-post`, `milestone complete` / `reopen`, `task duplicate`,
+  board / project / goal creates and updates, board member add, and pins). Doors that do
+  **not** accept it are sent none and offer no `--idempotency-key` flag — among them column
+  edits, milestone create / update, goal update / restore / link, comment edits, task
+  subscription (`watch`), cross-board moves (`move --board`) and every DELETE. A retry of those
+  after a timeout can repeat the write: check the state first. The table-driven test in
+  `tests/tasks_coverage_test.py` keeps this list and the code in step.
 
 **The generated key is surfaced, because otherwise the guarantee is unreachable.** When
 `--idempotency-key` is omitted the client mints a uuid4 — and re-running the command mints a
@@ -1000,7 +1059,7 @@ what was about to happen survives for whoever reads the terminal.
 
 Archiving a **board** cascade-archives its live tasks, and restoring the board does **not**
 restore them. `task delete` is an alias of archive: reversible, audited as `task.archived`.
-Bulk has **no** dry run; its blast radius is bounded by the 100-item cap.
+Bulk has a real server-side dry run (`task bulk --dry-run`): the same body, run and rolled back, with no Idempotency-Key and no notifications. Its blast radius is also bounded by the 100-item cap.
 
 ### The delta cursor lifecycle
 

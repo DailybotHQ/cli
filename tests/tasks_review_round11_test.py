@@ -53,7 +53,7 @@ def real_client() -> DailyBotClient:
     return DailyBotClient(api_url="http://t.example.com", token="t", api_key="k")
 
 
-_PREVIEW: dict[str, Any] = {"operation": "task.archive", "reversible": True}
+_PREVIEW: dict[str, Any] = {"operation": "task.archive", "dry_run": True, "reversible": True}
 
 
 def _emitted(stdout: str) -> dict[str, Any]:
@@ -251,9 +251,11 @@ class TestRecoveryAdviceNamesSomethingThatExists:
     looking for the flag before concluding the message was wrong.
     """
 
-    def test_the_message_does_not_promise_a_flag(self) -> None:
+    def test_the_message_names_the_flag_that_now_exists(self) -> None:
+        # PR2 of the Tasks Beta built `board state archive --migrate-to`, so the
+        # advice points at it — and the test below proves the flag is declared.
         message: str = ERROR_CODE_MESSAGES["state_in_use"]
-        assert "cannot send" in message or "cannot do" in message
+        assert "--migrate-to" in message
 
     def test_the_documented_tables_list_the_abort(self) -> None:
         import pathlib
@@ -266,7 +268,7 @@ class TestRecoveryAdviceNamesSomethingThatExists:
         assert "user_aborted" in table
         assert "--yes" in table
 
-    def test_no_command_declares_migrate_to(self) -> None:
+    def test_the_advised_flag_is_declared_by_a_command(self) -> None:
         import pathlib
 
         repo: pathlib.Path = pathlib.Path(__file__).resolve().parent.parent
@@ -275,8 +277,9 @@ class TestRecoveryAdviceNamesSomethingThatExists:
             for path in (repo / "dailybot_cli").rglob("*.py")
             if "--migrate-to" in path.read_text()
         ]
-        # If this ever becomes non-empty, the message above should change back.
-        assert declared == [], declared
+        # Advice must name something that exists: if this ever empties, the message
+        # above has to stop promising the flag.
+        assert "dailybot_cli/commands/board.py" in declared, declared
 
 
 class TestAnUnreadableSuccessAlsoCarriesTheKey:

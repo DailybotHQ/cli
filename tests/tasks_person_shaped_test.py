@@ -124,10 +124,20 @@ class TestClientSideFilterValidation:
         assert result.exit_code == 2
         client.list_my_tasks.assert_not_called()
 
-    def test_a_valid_scope_value_is_forwarded(self, runner: CliRunner, client: MagicMock) -> None:
+    @pytest.mark.parametrize("scope", ["owned", "participating", "involved"])
+    def test_a_valid_scope_value_is_forwarded(
+        self, runner: CliRunner, client: MagicMock, scope: str
+    ) -> None:
+        client.list_my_tasks.return_value = _page()
+        _invoke(runner, client, ["tasks", "mine", "--scope", scope])
+        assert client.list_my_tasks.call_args[1]["params"]["scope"] == scope
+
+    def test_the_old_assigned_scope_is_sent_as_owned(
+        self, runner: CliRunner, client: MagicMock
+    ) -> None:
         client.list_my_tasks.return_value = _page()
         _invoke(runner, client, ["tasks", "mine", "--scope", "assigned"])
-        assert client.list_my_tasks.call_args[1]["params"]["scope"] == "assigned"
+        assert client.list_my_tasks.call_args[1]["params"]["scope"] == "owned"
 
 
 class TestUntrustedRendering:

@@ -43,7 +43,9 @@ EXIT_USAGE_ERROR: int = 2
 EXIT_NOT_AUTHENTICATED: int = 3
 EXIT_PERMISSION_DENIED: int = 4
 EXIT_NOT_FOUND: int = 5
-EXIT_QUOTA_EXHAUSTED: int = 5
+# Its own code: sharing 5 with EXIT_NOT_FOUND made "quota spent" indistinguishable
+# from "no such object" for any caller branching on the exit status.
+EXIT_QUOTA_EXHAUSTED: int = 10
 EXIT_RATE_LIMITED: int = 6
 EXIT_USER_ABORTED: int = 7
 
@@ -93,17 +95,68 @@ ERROR_CODE_MESSAGES: dict[str, str] = {
     # Validation and volume
     "insufficient_scope": ("Your credential does not hold the scope this action needs."),
     "invalid_filter_value": "A filter value was rejected by the server.",
+    "invalid_identifier": (
+        "Not a valid identifier. Pass a task key such as ENG-142 or a uuid; slashes, "
+        "dots and query characters are not allowed."
+    ),
+    "invalid_etag": (
+        "That ETag is not a valid entity tag. Use the exact value `views --etag` printed "
+        '(quoted, e.g. "abc123"), or pass --fetch-etag.'
+    ),
+    "preview_not_honoured": (
+        "The server answered with a result instead of a preview, so the change may "
+        "already have been applied. Check the object's state before doing anything else."
+    ),
     "too_many_items": (
         "Too many items in one call. The server caps a bulk payload at 100 items — "
         "split the batch and send it in chunks."
     ),
     "state_in_use": (
-        # The recovery the server names is `migrate_to`, and no command on this "
-        # surface can send it. Telling the operator to pass a flag that does not "
-        # exist is worse than telling them the CLI cannot do it.
-        "That column still has tasks on it, so it cannot be archived. The server needs a "
-        "`migrate_to` column to move them to, which this CLI cannot send yet — move or "
-        "archive the tasks first, or make the change from the Dailybot web app."
+        # Two doors answer this code: retiring a column that still holds cards, and
+        # restoring a task whose column was retired meanwhile. Name both remedies.
+        "The column involved is in use or retired. To retire a column that still holds "
+        "tasks, re-run `dailybot board state archive` with `--migrate-to <state-uuid>`; to "
+        "restore a task whose column was retired, restore the column first with "
+        "`dailybot board state restore`. `dailybot board states <board> --include-archived` "
+        "lists the columns."
+    ),
+    # Attachments
+    "attachment_too_large": (
+        "That file is larger than this server accepts: 25 MiB for a task attachment with "
+        "object storage, 5 MiB for a captioned task upload and for any comment, project "
+        "or goal attachment. Compress or split it and attach again."
+    ),
+    "attachment_storage_unavailable": (
+        "This server has no file storage configured, so it cannot accept attachments right "
+        "now. Nothing was uploaded; try again later or attach from the web app."
+    ),
+    "attachment_upload_redirected": (
+        "The storage target answered with a redirect, which this CLI never follows for an "
+        "upload. Nothing was confirmed; run the command again for a fresh upload target."
+    ),
+    "attachment_upload_target_refused": (
+        "The server returned an upload target that is not https, so the file was not sent. "
+        "Nothing was confirmed; report this to support@dailybot.com."
+    ),
+    "attachment_upload_failed": (
+        "Storage refused the upload, so the attachment was not confirmed. Run the command "
+        "again; a new upload target is issued each time."
+    ),
+    "attachment_download_failed": (
+        "Storage refused the download, so nothing was written. The signed link may have "
+        "expired: run the command again for a fresh one."
+    ),
+    "attachment_download_redirected": (
+        "The download pointed at an unexpected place, so it was not followed and nothing "
+        "was written. Try again, or download it from the web app."
+    ),
+    "bulk_dry_run_unsupported": (
+        "This server cannot preview a bulk call yet, so nothing was sent for real and "
+        "nothing changed. Check the batch yourself and run it without --dry-run."
+    ),
+    "column_too_large": (
+        "That column holds too many tasks to return in one read. List them page by page "
+        "with `dailybot board tasks <board>`."
     ),
     # Delta
     "delta_window_expired": (
@@ -509,6 +562,15 @@ TASKS_ERROR_CODES: frozenset[str] = frozenset(
         "state_in_use",
         "delta_window_expired",
         "not_found",
+        "attachment_too_large",
+        "attachment_storage_unavailable",
+        "attachment_upload_redirected",
+        "attachment_upload_target_refused",
+        "attachment_upload_failed",
+        "attachment_download_redirected",
+        "attachment_download_failed",
+        "column_too_large",
+        "bulk_dry_run_unsupported",
     }
 )
 
@@ -577,6 +639,15 @@ def is_person_shaped_refusal(exc: APIError, *, door: str | None = None) -> bool:
     return False
 
 
+# New organization API keys start with no Tasks scopes; they are granted to the key
+# itself. Said once here so every Tasks refusal on a key reads the same.
+_KEY_WITHOUT_TASKS_SCOPES_GUIDANCE: str = (
+    "This API key has no Tasks scopes for this action{scope} — new keys start with none. "
+    "Ask an organization admin to grant Tasks scopes to the key, or write to "
+    "support@dailybot.com. Signing in with `dailybot login` also works for your own account."
+)
+
+
 def resolve_error_message(
     exc: APIError, *, door: str | None = None, tasks_surface: bool = False
 ) -> str:
@@ -625,6 +696,11 @@ def resolve_error_message(
                     "organization admin to grant it. Signing in again will not change it."
                 )
             return _ADMIN_SCOPE_GUIDANCE
+        if tasks_surface and get_token() is None:
+            # No person is signed in, so the credential is an organization API key —
+            # and a new key holds no Tasks scopes at all until they are granted to it.
+            scope: str = f" (it needs `{required}`)" if required else ""
+            return _KEY_WITHOUT_TASKS_SCOPES_GUIDANCE.format(scope=scope)
         if required:
             return (
                 f"Your credential is missing the `{required}` scope. Scopes do not nest — "
@@ -653,6 +729,10 @@ _TASKS_WRITE_EXIT_BY_STATUS: dict[int, int] = {
     403: EXIT_PERMISSION_DENIED,
     404: EXIT_NOT_FOUND,
     409: EXIT_PERMISSION_DENIED,
+    # Saved-view saves: 412 means the views changed since the ETag was read (re-read,
+    # then decide), 428 means no If-Match was sent (a malformed call).
+    412: EXIT_PERMISSION_DENIED,
+    428: EXIT_USAGE_ERROR,
     429: EXIT_RATE_LIMITED,
     # The writes kill switch. It is transient by design, so it shares the exit code
     # that already means "back off and retry" rather than the one that means
@@ -666,6 +746,33 @@ _TASKS_WRITE_EXIT_BY_STATUS: dict[int, int] = {
 def tasks_write_exit_code(exc: APIError) -> int:
     """Exit code for a Tasks write refusal, matching the documented table."""
     return _TASKS_WRITE_EXIT_BY_STATUS.get(exc.status_code, 1)
+
+
+# Ceiling on a JSON input file (`-f` batch, views, filters). The largest real
+# payload is a 100-item bulk batch, far below this; the cap exists so `-f /dev/zero`
+# or a runaway pipe ends as an error instead of exhausting memory.
+MAX_JSON_INPUT_CHARS: int = 5 * 1024 * 1024
+
+
+def load_json_input(handle: Any) -> Any:
+    """Parse a JSON input file, reading no more than `MAX_JSON_INPUT_CHARS`.
+
+    Raises ``ValueError`` (the callers' existing JSON-error path) when the input
+    is too large or not JSON.
+    """
+    text: str = handle.read(MAX_JSON_INPUT_CHARS + 1)
+    if len(text) > MAX_JSON_INPUT_CHARS:
+        raise ValueError(f"the input is larger than {MAX_JSON_INPUT_CHARS // (1024 * 1024)} MiB")
+    return json.loads(text)
+
+
+def rows_of(data: Any) -> list[dict[str, Any]]:
+    """The rows of a Tasks collection, whether it arrives as a list or a paginated envelope."""
+    if isinstance(data, list):
+        return [row for row in data if isinstance(row, dict)]
+    if isinstance(data, dict) and isinstance(data.get("results"), list):
+        return [row for row in data["results"] if isinstance(row, dict)]
+    return []
 
 
 def exit_for_tasks_error(exc: APIError, json_mode: bool, *, door: str | None = None) -> NoReturn:

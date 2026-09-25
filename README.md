@@ -861,8 +861,16 @@ Replies to agent emails land as messages retrievable via `dailybot agent message
 
 ### Tasks
 
+> **Beta** — Tasks is in beta. Everything under `/tasks` in the web app, the CLI and agent skill commands for projects, goals, boards and tasks, and the `/v1/tasks/` public API may change before general availability. Want to try it with your team? Write to **support@dailybot.com**.
+
 Projects, boards and tasks. Two groups: **`dailybot tasks`** answers questions about the
 workspace, **`dailybot task`** reads or changes one task.
+
+**Structure changes need a signed-in organization admin.** Creating, updating, archiving or
+restoring boards, columns, projects and goals, board and project membership, and linking
+goals to projects all need the `tasks:admin` scope, which an organization API key can never
+hold. With only `DAILYBOT_API_KEY` those commands stop before sending anything; run
+`dailybot login` first.
 
 The command an agent should reach for first is **`dailybot project update-post`** — it is
 how the team sees what was done. An agent that moves tasks silently is invisible to the
@@ -870,49 +878,84 @@ humans who own them.
 
 | Command | Description |
 |---------|-------------|
-| `dailybot tasks status` | Workspace pulse — open / overdue / blocked counts in one request |
+| `dailybot tasks status` | Workspace pulse in one request — counts, your unread inbox, projects, what needs attention, recent activity, goal progress |
 | `dailybot tasks entitlements` | What the plan allows (board limit, Labels); always answers 200 |
 | `dailybot tasks search -q <text>` | Search tasks, boards and projects |
-| `dailybot tasks activity` | Activity feed — the catch-up read after an absence |
+| `dailybot tasks activity` | Activity feed, one page per call — filter by time (`--since`/`--until`, `--today`, `--last-week`) and `--type`, `--actor`, `--project`, `--board`, `--task` |
 | `dailybot tasks timeline` | Dated view of the workspace |
-| `dailybot tasks changes <board>` | What changed since a cursor. **One read per call**; exits 9 if the cursor expired (`--resync` re-snapshots) |
-| `dailybot tasks inbox` | Your Tasks notifications — **needs `dailybot login`** |
-| `dailybot tasks mine` | Tasks that are yours (`--scope`) — **needs `dailybot login`** |
+| `dailybot tasks changes <board>` | What changed since a cursor (`--cursor`, or `--updated-since <iso>`). **One read per call**; exits 9 if the cursor expired (`--resync` re-snapshots) |
+| `dailybot tasks inbox` | Your Tasks notifications (`--mentioned` for mentions only, `--type <event>`) — **needs `dailybot login`** |
+| `dailybot tasks inbox-read <item>` · `inbox-read-all` · `inbox-unread` | Catch up on the inbox (reading an item also reads everything older). `inbox-unread` takes the same `--mentioned` / `--type` filters, so each badge matches its tab — **needs `dailybot login`** |
+| `dailybot tasks cursor [--now \| --set <time>]` | Your "read up to here" mark for the activity feed — **needs `dailybot login`** |
+| `dailybot tasks favorites` | Your pinned boards and saved views — **needs `dailybot login`** |
+| `dailybot tasks view get\|update\|delete\|star\|unstar <view>` | One saved view by uuid: read, edit (`--view-mode`, `--group-by`, `--filters-file`…), delete, pin — **needs `dailybot login`** |
+| `dailybot tasks mine` | Tasks that are yours (`--scope owned\|participating\|involved`) — **needs `dailybot login`** |
 | `dailybot tasks counts` | Your task counts by bucket — **needs `dailybot login`** |
-| `dailybot task list` | List tasks (`--board`, `--state`, `--assignee`, `--label`, `--has-dates`, `--include`) |
-| `dailybot task get <uuid>` | Show one task |
-| `dailybot task create --title <t>` | Create a task; sends an idempotency key so a retry cannot duplicate |
-| `dailybot task update <uuid>` | Change fields — partial update, never an overwrite |
-| `dailybot task move <uuid>` | Move to another column (`--state`) or board (`--board`) |
-| `dailybot task assign <uuid> --to <user>` | Assign a task |
+| `dailybot task list` | List tasks (`--board`, `--state`, `--owner` — repeatable, `me` / `unowned`, `--label`, `--sort <field\|-field>`, `--has-dates`, `--include`) |
+| `dailybot task get <task>` | Show one task — every `<task>` accepts a key (`ENG-142`) or a uuid |
+| `dailybot task create --title <t>` | Create a task (`--owner <user\|me>`, `--priority 1-5`); sends an idempotency key so a retry cannot duplicate |
+| `dailybot task update <task>` | Change fields — partial update, never an overwrite (`--priority` is 1 urgent … 5 none) |
+| `dailybot task move <task>` | Move to another column (`--state` takes a name, a category like `done`, or a uuid) or board (`--board`) |
+| `dailybot task set-owner <task> <user\|me>` | Set the task's owner — the accountable person (`task assign --to` still works, deprecated) |
 | `dailybot task comment <uuid> <body>` | Comment (`-` reads the body from stdin) |
 | `dailybot task comments <uuid>` | List a task's comments |
-| `dailybot task link <a> <b> --type <rel>` | Relate two tasks |
+| `dailybot task link <a> <b> --type <rel>` | Relate two tasks (`blocks`, `relates_to`, `duplicates`) |
 | `dailybot task labels <uuid> --mode add\|remove\|replace` | Change a task's labels |
-| `dailybot task participants add <uuid> --user <u>` | Add a participant — **needs `dailybot login`** |
+| `dailybot task participants add\|list\|remove <task>` | Who is on a task (`--role participant\|watcher`); add/remove **need `dailybot login`** |
+| `dailybot task watch\|unwatch <task>` | Follow a task privately — **needs `dailybot login`** |
+| `dailybot task mute\|unmute <task>` | Silence a task and stay on it (leaving is `participants remove`) — **needs `dailybot login`** |
+| `dailybot task relations <task>` · `task unlink <task> <relation>` | List links (direction included) / remove one; `unlink` confirms and has `--dry-run` |
+| `dailybot task comment-edit\|comment-delete <task> <comment>` | Edit (`-` reads stdin) or delete a comment; delete blanks the text and keeps the entry |
+| `dailybot task children <task>` · `task events <task>` · `task activity <task>` | Sub-tasks, raw event history, and the readable activity feed (`--updated-since`, `--type`) |
+| `dailybot task duplicate <task>` | Copy into the same column (`--include` picks fields); sends an idempotency key so a retry returns the same copy |
+| `dailybot task attach <task> <file>` | Attach a file (≤25 MiB; `--caption` uses a single-request upload, ≤5 MiB). Credentials never go to the storage host |
+| `dailybot task attachments <task>` · `task attachment get <task> <id> -o <path>` · `task attachment delete` | List, download (never overwrites without `--force`) or delete attachments |
+| `dailybot task comment-attach <task> <comment> <file>` · `task comment-attachments` · `task comment-attachment get\|delete` | Files on a comment (≤5 MiB, one request). Only the comment's author can attach |
 | `dailybot task archive <uuid>` | Archive a task. Previews the consequence first; reversible |
 | `dailybot task delete <uuid>` | Alias of archive — nothing is destroyed |
 | `dailybot task restore <uuid>` | Restore an archived task |
-| `dailybot task bulk --operation <op> -f <file>` | One operation over many tasks. Max **100** items; no dry run |
+| `dailybot task bulk --operation <op> -f <file>` | One operation over up to **100** tasks (`create` needs `--board`). `--dry-run` runs it on the server and rolls it back: real changes and refusals, nothing written |
 | `dailybot board list` | List boards |
 | `dailybot board get <uuid>` | Board metadata |
+| `dailybot board tasks <uuid>` | The tasks on one board, one page per call |
+| `dailybot board star\|unstar <uuid>` | Pin a board to your favorites (projects and goals cannot be pinned) — **needs `dailybot login`** |
+| `dailybot board mentionables <uuid> [-q name]` | Who you can @mention, with the `<@DB@{uuid}>` token to write — **needs `dailybot login`** |
+| `dailybot board states <uuid>` | The board's columns, left to right (`--include-archived` for retired ones) |
+| `dailybot board members <uuid>` | Who can see the board, and their role |
+| `dailybot board labels <uuid>` | Labels available on the board — **needs `dailybot login`** |
+| `dailybot board views <uuid>` | Your saved views on the board, plus the ETag a save needs (`--etag` prints only that) |
+| `dailybot board state create\|update\|archive\|restore\|reorder` | Manage columns. `archive` previews first and takes `--migrate-to <state>` to move the column's cards |
+| `dailybot board member add <board> <user>` (or `--team <team>`) · `board member remove <board> <user>` | Who can see the board — **needs `dailybot login` as an admin**. A team grant follows the team live. There is no board role to edit |
+| `dailybot board label create <board> -n <name>` | Create an organization label from the board — **needs `dailybot login`** |
+| `dailybot board view save <board> -f views.json --if-match <etag>` | Replace your saved views (the whole list) — **needs `dailybot login`** |
 | `dailybot board snapshot <uuid>` | The whole board in one request; carries the `delta_cursor` that `tasks changes` consumes |
+| `dailybot board update <uuid>` | Name, key (the old key stays reserved), visibility, estimate scale, auto-archive, project |
 | `dailybot board create --name <n>` | Create a board — **needs `dailybot login`** |
 | `dailybot board archive <uuid>` | Archive a board. **Cascade-archives its live tasks**, and restoring does not bring them back |
 | `dailybot board restore <uuid>` | Restore a board (cascaded tasks stay archived) |
 | `dailybot project list` | List projects (`--include progress`) |
 | `dailybot project get <uuid>` | Show one project |
-| `dailybot project updates` | Batched update digest — replaces one request per project |
-| `dailybot project update-post <uuid> <body>` | **Post a project update** — how the team sees what was done |
+| `dailybot project updates [<project>]` | Batched update digest, or one project's feed |
+| `dailybot project update-post <uuid> <body>` | **Post a project update** — how the team sees what was done (`--health`; sends an idempotency key) |
 | `dailybot project milestones [<uuid>]` | List milestones |
 | `dailybot project milestone-complete <p> <m>` | Complete a milestone. **Its open tasks stay open** |
 | `dailybot project milestone-reopen <p> <m>` | Reopen a milestone |
 | `dailybot project create --name <n>` | Create a project — **needs `dailybot login`** |
+| `dailybot project update <uuid>` | Name, description, lead, health, dates, visibility |
+| `dailybot project restore <uuid>` | Restore an archived project (its boards and tasks stay archived) |
+| `dailybot project members <uuid>` · `project member add\|remove` | Who can see the project — people or whole teams (`--team`) — **needs `dailybot login`** |
+| `dailybot project views <uuid>` · `project view save` | Your saved views; save replaces the list and requires the ETag — **needs `dailybot login`** |
+| `dailybot project milestone-create\|milestone-update\|milestone-delete` | Dated milestones; delete retires it (tasks keep pointing at it) |
 | `dailybot project archive <uuid>` | Archive a project |
+| `dailybot project attach <uuid> <file>` · `project attachments` · `project attachment get\|delete` | Files on a project (≤5 MiB, one request). Attaching and deleting need a signed-in admin |
 | `dailybot goal list` | List goals (`--include` is repeatable: `--include progress --include projects`) |
-| `dailybot goal get <uuid>` | Show one goal |
-| `dailybot goal create --name <n>` | Create a goal — **needs `dailybot login`** |
+| `dailybot goal get <uuid>` | Show one goal, with its progress and linked projects (always included) |
+| `dailybot goal create --name <n> --period-start <d> --period-end <d>` | Create a goal (a dated commitment) — **needs `dailybot login`** |
+| `dailybot goal update <uuid>` | Name, period, owner, team, and the declared `--status` (not_started, on_track, at_risk, off_track, achieved, missed) |
+| `dailybot goal restore <uuid>` | Restore an archived goal |
+| `dailybot goal link\|unlink <goal> <project>` | Make a project count toward a goal (or stop it) |
 | `dailybot goal archive <uuid>` | Archive a goal (its projects are not archived) |
+| `dailybot goal attach <uuid> <file>` · `goal attachments` · `goal attachment get\|delete` | Files on a goal (≤5 MiB, one request). Attaching and deleting need a signed-in admin |
 
 **Three things worth knowing before you script against this:**
 

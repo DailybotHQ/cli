@@ -53,7 +53,12 @@ CAPABILITIES: list[tuple[int, str, list[str], str]] = [
     (6, "task get", ["task", "get", "t-1"], "get_task"),
     (7, "task create", ["task", "create", "--title", "x"], "create_task"),
     (8, "task update", ["task", "update", "t-1", "--title", "y"], "update_task"),
-    (9, "task move", ["task", "move", "t-1", "--state", "done"], "move_task"),
+    (
+        9,
+        "task move",
+        ["task", "move", "t-1", "--state", "00000000-0000-0000-0000-000000000005"],
+        "move_task",
+    ),
     (10, "task assign", ["task", "assign", "t-1", "--to", "u-1"], "update_task"),
     (11, "task comment", ["task", "comment", "t-1", "hi"], "comment_on_task"),
     (12, "task link", ["task", "link", "t-1", "t-2", "--type", "blocks"], "relate_tasks"),
@@ -105,6 +110,7 @@ def _default_return(method: str) -> Any:
     if method in {"archive_task", "complete_milestone"}:
         return {
             "operation": "x",
+            "dry_run": True,
             "reversible": True,
             "consequence": "c",
             "_idempotency_replayed": False,
@@ -178,7 +184,8 @@ class TestFlagWiringRenders:
             assert len(shorts) == len(set(shorts)), f"{group} {sub}: duplicate shorts {shorts}"
 
 
-# One table, so drift is caught once rather than per-command.
+# One table, so drift is caught once rather than per-command. Source of truth: the
+# published contract's Idempotency-Key list (27 endpoints).
 ACCEPTS: list[tuple[str, dict[str, Any]]] = [
     ("create_task", {"title": "x"}),
     ("update_task", {"task_uuid": "t-1", "title": "x"}),
@@ -189,16 +196,31 @@ ACCEPTS: list[tuple[str, dict[str, Any]]] = [
     ("relate_tasks", {"task_uuid": "t-1", "other": "t-2", "relation": "blocks"}),
     ("batch_task_labels", {"task_uuid": "t-1", "mode": "add", "labels": ["l"]}),
     ("add_task_participant", {"task_uuid": "t-1", "user_uuid": "u-1"}),
+    ("duplicate_task", {"task_uuid": "t-1"}),
     ("bulk_tasks", {"operation": "archive", "items": [{"uuid": "t-1"}]}),
     ("create_board", {"name": "b"}),
+    ("update_board", {"board_uuid": "b-1", "name": "x"}),
+    ("create_board_state", {"board_uuid": "b-1", "name": "x", "category": "todo"}),
+    ("add_board_member", {"board_uuid": "b-1", "user_uuid": "u-1"}),
     ("create_project", {"name": "p"}),
+    ("update_project", {"project_uuid": "p-1", "name": "x"}),
+    ("restore_project", {"project_uuid": "p-1"}),
+    ("post_project_update", {"project_uuid": "p-1", "body": "b"}),
+    ("complete_milestone", {"project_uuid": "p-1", "milestone_uuid": "m-1"}),
+    ("reopen_milestone", {"project_uuid": "p-1", "milestone_uuid": "m-1"}),
     ("create_goal", {"name": "g"}),
 ]
 IGNORES: list[tuple[str, dict[str, Any]]] = [
     ("subscribe_task", {"task_uuid": "t-1"}),
-    ("post_project_update", {"project_uuid": "p-1", "body": "b"}),
-    ("complete_milestone", {"project_uuid": "p-1", "milestone_uuid": "m-1"}),
-    ("reopen_milestone", {"project_uuid": "p-1", "milestone_uuid": "m-1"}),
+    ("move_task_to_board", {"task_uuid": "t-1", "board": "b-2"}),
+    ("confirm_attachment", {"task_uuid": "t-1", "attachment_uuid": "a-1"}),
+    ("archive_board_state", {"board_uuid": "b-1", "state_uuid": "s-1"}),
+    ("restore_board_state", {"board_uuid": "b-1", "state_uuid": "s-1"}),
+    ("reorder_board_states", {"board_uuid": "b-1", "order": ["s-1"]}),
+    ("create_board_label", {"board_uuid": "b-1", "name": "bug"}),
+    ("add_project_member", {"project_uuid": "p-1", "user_uuid": "u-1"}),
+    ("create_milestone", {"project_uuid": "p-1", "name": "m", "date": "2026-11-01"}),
+    ("restore_goal", {"goal_uuid": "g-1"}),
 ]
 
 
@@ -260,7 +282,21 @@ PERSON_ONLY: list[tuple[list[str], str, str, int]] = [
     (["tasks", "counts"], "tasks", "tasks", 3),
     (["board", "create", "--name", "x"], "board", "board", 4),
     (["project", "create", "--name", "x"], "project", "project", 4),
-    (["goal", "create", "--name", "x"], "goal", "project", 4),
+    (
+        [
+            "goal",
+            "create",
+            "--name",
+            "x",
+            "--period-start",
+            "2026-10-01",
+            "--period-end",
+            "2026-12-31",
+        ],
+        "goal",
+        "project",
+        4,
+    ),
 ]
 
 
@@ -336,6 +372,7 @@ class TestCrossCommandSequences:
         client.archive_task.side_effect = [
             {
                 "operation": "task.archive",
+                "dry_run": True,
                 "reversible": True,
                 "consequence": "c",
                 "_idempotency_replayed": False,

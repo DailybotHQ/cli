@@ -63,7 +63,21 @@ class TestPreflightRefusalsHonourJson:
             (["project", "create", "--name", "p", "--json"], "project", EXIT_PERMISSION_DENIED),
             # `goal create` reuses project's helper, so the token lookup resolves in
             # project's namespace — patching goal's would silently do nothing.
-            (["goal", "create", "--name", "g", "--json"], "project", EXIT_PERMISSION_DENIED),
+            (
+                [
+                    "goal",
+                    "create",
+                    "--name",
+                    "g",
+                    "--period-start",
+                    "2026-10-01",
+                    "--period-end",
+                    "2026-12-31",
+                    "--json",
+                ],
+                "project",
+                EXIT_PERMISSION_DENIED,
+            ),
             (
                 ["task", "participants", "add", "t-1", "--user", "u-1", "--json"],
                 "task",
