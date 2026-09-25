@@ -122,6 +122,7 @@ tests/                       # pytest suite (file naming: *_test.py)
 ├── tasks_attachments_test.py # attachments: upload host boundary, redirects, size cap
 ├── tasks_bulk_dry_run_test.py # bulk --dry-run (R5) and bulk contract fixes
 ├── tasks_favorites_views_test.py # favorites + single saved views
+├── tasks_ergonomics_sweep_test.py # the Beta ergonomics bar on every Tasks command
 ├── board_commands_test.py   # `board` group (reads + container writes)
 ├── board_admin_test.py      # `board` administration (states, members, labels, views)
 ├── project_goal_commands_test.py  # `project` + `goal`

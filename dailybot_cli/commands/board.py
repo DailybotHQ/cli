@@ -121,7 +121,7 @@ def board_list(json_mode: bool, **flags: Any) -> None:
 
 
 @board.command("get")
-@click.argument("board_uuid")
+@click.argument("board_uuid", metavar="BOARD")
 @click.option("--json", "json_mode", is_flag=True, help="Emit machine-readable JSON to stdout.")
 def board_get(board_uuid: str, json_mode: bool) -> None:
     """Show one board's metadata.
@@ -910,7 +910,7 @@ def board_view_save(
 
 
 @board.command("snapshot")
-@click.argument("board_uuid")
+@click.argument("board_uuid", metavar="BOARD")
 @click.option("--json", "json_mode", is_flag=True, help="Emit machine-readable JSON to stdout.")
 def board_snapshot(board_uuid: str, json_mode: bool) -> None:
     """Show the whole board in one request — the cold-context read.
@@ -1076,7 +1076,7 @@ def board_update(
 
 
 @board.command("archive")
-@click.argument("board_uuid")
+@click.argument("board_uuid", metavar="BOARD")
 @click.option("--dry-run", is_flag=True, help="Show the consequence and exit without acting.")
 @click.option("-y", "--yes", "assume_yes", is_flag=True, help="Skip the prompt (still previews).")
 @click.option("--idempotency-key", default=None, help="Reuse a key to make a retry safe.")
@@ -1120,7 +1120,7 @@ def board_archive(
 
 
 @board.command("restore")
-@click.argument("board_uuid")
+@click.argument("board_uuid", metavar="BOARD")
 @click.option("--idempotency-key", default=None, help="Reuse a key to make a retry safe.")
 @click.option("--json", "json_mode", is_flag=True, help="Emit machine-readable JSON to stdout.")
 def board_restore(board_uuid: str, idempotency_key: str | None, json_mode: bool) -> None:

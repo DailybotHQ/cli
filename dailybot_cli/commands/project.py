@@ -125,7 +125,7 @@ def project_list(include: tuple[str, ...], json_mode: bool, **flags: Any) -> Non
 
 
 @project.command("get")
-@click.argument("project_uuid")
+@click.argument("project_uuid", metavar="PROJECT")
 @click.option(
     "--include",
     type=click.Choice(PROJECT_INCLUDE_VALUES, case_sensitive=False),
@@ -206,7 +206,7 @@ def _read_body(value: str) -> str:
 
 
 @project.command("update-post")
-@click.argument("project_uuid")
+@click.argument("project_uuid", metavar="PROJECT")
 @click.argument("body")
 @click.option(
     "--health",
@@ -263,7 +263,7 @@ def project_update_post(
 
 
 @project.command("milestones")
-@click.argument("project_uuid", required=False)
+@click.argument("project_uuid", metavar="PROJECT", required=False)
 @query_options
 @click.option("--json", "json_mode", is_flag=True, help="Emit machine-readable JSON to stdout.")
 def project_milestones(project_uuid: str | None, json_mode: bool, **flags: Any) -> None:
@@ -298,8 +298,8 @@ def project_milestones(project_uuid: str | None, json_mode: bool, **flags: Any) 
 
 
 @project.command("milestone-complete")
-@click.argument("project_uuid")
-@click.argument("milestone_uuid")
+@click.argument("project_uuid", metavar="PROJECT")
+@click.argument("milestone_uuid", metavar="MILESTONE")
 @click.option("--dry-run", is_flag=True, help="Show the consequence and exit without acting.")
 @click.option("-y", "--yes", "assume_yes", is_flag=True, help="Skip the prompt (still previews).")
 @click.option("--idempotency-key", default=None, help="Reuse a key to make a retry safe.")
@@ -349,8 +349,8 @@ def project_milestone_complete(
 
 
 @project.command("milestone-reopen")
-@click.argument("project_uuid")
-@click.argument("milestone_uuid")
+@click.argument("project_uuid", metavar="PROJECT")
+@click.argument("milestone_uuid", metavar="MILESTONE")
 @click.option("--idempotency-key", default=None, help="Reuse a key to make a retry safe.")
 @click.option("--json", "json_mode", is_flag=True, help="Emit machine-readable JSON to stdout.")
 def project_milestone_reopen(
@@ -475,7 +475,7 @@ def project_create(
 
 
 @project.command("archive")
-@click.argument("project_uuid")
+@click.argument("project_uuid", metavar="PROJECT")
 @click.option("--dry-run", is_flag=True, help="Show the consequence and exit without acting.")
 @click.option("-y", "--yes", "assume_yes", is_flag=True, help="Skip the prompt (still previews).")
 @click.option("--idempotency-key", default=None, help="Reuse a key to make a retry safe.")

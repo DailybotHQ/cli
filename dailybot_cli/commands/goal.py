@@ -206,7 +206,7 @@ def goal_create(
 
 
 @goal.command("archive")
-@click.argument("goal_uuid")
+@click.argument("goal_uuid", metavar="GOAL")
 @click.option("--dry-run", is_flag=True, help="Show the consequence and exit without acting.")
 @click.option("-y", "--yes", "assume_yes", is_flag=True, help="Skip the prompt (still previews).")
 @click.option("--idempotency-key", default=None, help="Reuse a key to make a retry safe.")
