@@ -72,6 +72,7 @@ dailybot_cli/                # Source package
     ├── task.py              # `task` group: object-level — list / get / create / update /
     │                        #   move / set-owner / comment(s) / comment-edit / comment-delete /
     │                        #   link / relations / unlink / labels / participants / watch / mute /
+    │                        #   children / duplicate / events / activity /
     │                        #   archive / delete / restore / bulk
     ├── board.py             # `board` group: list / get / tasks / snapshot / create / archive / restore
     ├── project.py           # `project` group: list / get / updates / update-post /
@@ -114,6 +115,7 @@ tests/                       # pytest suite (file naming: *_test.py)
 ├── tasks_beta_ergonomics_test.py # KEY-n, --sort, board tasks, exit codes, Beta notice
 ├── tasks_contract_fixes_test.py # goal period, move-board, state names, priority, relation types
 ├── task_collaboration_test.py # comments edit/delete, relations, participants, watch, mute
+├── task_structure_test.py  # children, duplicate, events, activity
 ├── board_commands_test.py   # `board` group (reads + container writes)
 ├── board_admin_test.py      # `board` administration (states, members, labels, views)
 ├── project_goal_commands_test.py  # `project` + `goal`

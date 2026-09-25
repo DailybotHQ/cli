@@ -22,6 +22,7 @@ from dailybot_cli.api_client import (
     TASKS_BULK_MAX_ITEMS,
     APIError,
     PaginatedResult,
+    as_query_datetime,
 )
 from dailybot_cli.commands._beta import mark_beta
 from dailybot_cli.commands._destructive import confirm_without_preview, preview_then_confirm
@@ -95,6 +96,19 @@ PRIORITY_TYPE: click.IntRange = click.IntRange(min=1, max=5)
 
 # Relation types the contract declares. `relates-to` (the spelling this CLI's help
 # once taught) is accepted and normalised, so an old script keeps working.
+# What `task duplicate --include` may copy. The server's default (no --include) is
+# title, description and labels.
+DUPLICATE_FIELDS: tuple[str, ...] = (
+    "title",
+    "description",
+    "labels",
+    "priority",
+    "estimate",
+    "owner",
+    "start_date",
+    "due_date",
+)
+
 PARTICIPANT_ROLES: tuple[str, ...] = ("participant", "watcher")
 
 RELATION_TYPES: tuple[str, ...] = ("blocks", "relates_to", "duplicates")
@@ -1145,6 +1159,155 @@ def task_comment_delete(
         emit_json({"deleted": True, "task": task_uuid, "comment": comment_uuid})
         return
     print_success("Comment deleted.")
+
+
+_EVENT_COLUMNS: list[tuple[str, str, bool]] = [
+    ("When", "created_at", True),
+    ("Type", "type", True),
+    ("Actor", "actor.name", False),
+]
+
+
+@task.command("children")
+@click.argument("task_uuid", metavar="TASK")
+@click.option("--json", "json_mode", is_flag=True, help="Emit machine-readable JSON to stdout.")
+def task_children(task_uuid: str, json_mode: bool) -> None:
+    """List a task's direct sub-tasks.
+
+    \b
+    Examples:
+      dailybot task children ENG-142
+      dailybot task children ENG-142 --json
+    """
+    client = require_auth()
+    try:
+        with console.status("Reading the sub-tasks..."):
+            data: Any = client.list_task_children(task_uuid)
+    except APIError as exc:
+        _write_error(exc, json_mode)
+    if json_mode:
+        emit_json(data)
+        return
+    print_tasks_table(rows_of(data))
+
+
+@task.command("duplicate")
+@click.argument("task_uuid", metavar="TASK")
+@click.option(
+    "--include",
+    type=click.Choice(DUPLICATE_FIELDS),
+    multiple=True,
+    help="Fields to copy (repeatable). Default: title, description and labels.",
+)
+@click.option("--json", "json_mode", is_flag=True, help="Emit machine-readable JSON to stdout.")
+def task_duplicate(task_uuid: str, include: tuple[str, ...], json_mode: bool) -> None:
+    """Copy a task into the same column, with a new key.
+
+    \b
+    This door takes no idempotency key: running the command twice makes two
+    copies. Check the result before retrying after a timeout.
+
+    \b
+    Examples:
+      dailybot task duplicate ENG-142
+      dailybot task duplicate ENG-142 --include title --include owner --include due_date --json
+    """
+    client = require_auth()
+    try:
+        with console.status("Duplicating the task..."):
+            data: dict[str, Any] = client.duplicate_task(
+                task_uuid, include=list(include) if include else None
+            )
+    except APIError as exc:
+        _write_error(exc, json_mode)
+    if json_mode:
+        emit_json(data)
+        return
+    report_write(data, f"Duplicated as {data.get('key') or data.get('uuid') or 'a new task'}")
+
+
+@task.command("events")
+@click.argument("task_uuid", metavar="TASK")
+@click.option("--json", "json_mode", is_flag=True, help="Emit machine-readable JSON to stdout.")
+def task_events(task_uuid: str, json_mode: bool) -> None:
+    """List a task's raw event history (created, moved, owner changed, …).
+
+    \b
+    For the readable feed with before/after values, use `dailybot task activity`.
+
+    \b
+    Examples:
+      dailybot task events ENG-142
+      dailybot task events ENG-142 --json
+    """
+    client = require_auth()
+    try:
+        with console.status("Reading the events..."):
+            data: Any = client.list_task_events(task_uuid)
+    except APIError as exc:
+        _write_error(exc, json_mode)
+    if json_mode:
+        emit_json(data)
+        return
+    print_tasks_rows("Events", rows_of(data), _EVENT_COLUMNS, empty="No events.")
+
+
+@task.command("activity")
+@click.argument("task_uuid", metavar="TASK")
+@click.option(
+    "--updated-since",
+    "updated_since",
+    default=None,
+    help="Only activity after this ISO-8601 timestamp.",
+)
+@click.option("--type", "event_type", default=None, help="Only this kind of activity.")
+@paging_options
+@click.option("--json", "json_mode", is_flag=True, help="Emit machine-readable JSON to stdout.")
+def task_activity(
+    task_uuid: str,
+    updated_since: str | None,
+    event_type: str | None,
+    json_mode: bool,
+    **flags: Any,
+) -> None:
+    """Show one task's activity feed — what changed, who changed it, from and to.
+
+    \b
+    Examples:
+      dailybot task activity ENG-142
+      dailybot task activity ENG-142 --updated-since 2026-09-20T00:00:00Z --json
+    """
+    params: dict[str, Any] = {}
+    if updated_since:
+        params["updated_since"] = as_query_datetime(updated_since)
+    if event_type:
+        params["type"] = event_type
+    client = require_auth()
+    try:
+        spec = build_query_params(**flags)
+        with console.status("Reading the activity..."):
+            result: PaginatedResult = client.list_task_activity(
+                task_uuid,
+                params=params or None,
+                page=spec.page,
+                page_size=spec.page_size,
+                fetch_all=spec.fetch_all,
+                limit=spec.limit,
+            )
+    except ValueError as exc:
+        raise click.BadParameter(str(exc)) from exc
+    except APIError as exc:
+        _write_error(exc, json_mode)
+    if json_mode:
+        emit_json(_envelope(result))
+        return
+    print_tasks_rows("Activity", result.results, _EVENT_COLUMNS, empty="No activity.")
+    print_pagination_footer(
+        len(result.results),
+        result.count,
+        has_more=bool(result.next),
+        more_hint=PAGING_ONLY_MORE_HINT,
+    )
 
 
 @task.command("archive")

@@ -2623,6 +2623,34 @@ class DailyBotClient:
         """DELETE /v1/tasks/tasks/<uuid>/subscription/ — person-only; stop watching."""
         return self._tasks_write("DELETE", f"tasks/{task_uuid}/subscription/")
 
+    def list_task_children(self, task_uuid: str) -> Any:
+        """GET /v1/tasks/tasks/<uuid>/children/ — the task's direct sub-tasks."""
+        return self._tasks_read(f"tasks/{task_uuid}/children/")
+
+    def list_task_events(self, task_uuid: str) -> Any:
+        """GET /v1/tasks/tasks/<uuid>/events/ — the task's raw event history."""
+        return self._tasks_read(f"tasks/{task_uuid}/events/")
+
+    def list_task_activity(
+        self, task_uuid: str, *, params: dict[str, Any] | None = None, **page: Any
+    ) -> PaginatedResult:
+        """GET /v1/tasks/tasks/<uuid>/activity/ — one task's activity feed (R3c).
+
+        Same envelope as the workspace feed; declares `updated_since` and `type`.
+        """
+        return self._tasks_list(f"tasks/{task_uuid}/activity/", params=params, **page)
+
+    def duplicate_task(self, task_uuid: str, *, include: list[str] | None = None) -> Any:
+        """POST /v1/tasks/tasks/<uuid>/duplicate/ — a copy in the same column. No key accepted.
+
+        With no `include` the server copies title, description and labels.
+        """
+        return self._tasks_write(
+            "POST",
+            f"tasks/{task_uuid}/duplicate/",
+            json={"include": include} if include else {},
+        )
+
     def list_task_relations(self, task_uuid: str) -> Any:
         """GET /v1/tasks/tasks/<uuid>/relations/ — links to other tasks, with direction."""
         return self._tasks_read(f"tasks/{task_uuid}/relations/")

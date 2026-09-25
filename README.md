@@ -896,6 +896,8 @@ humans who own them.
 | `dailybot task mute\|unmute <task>` | Silence a task and stay on it (leaving is `participants remove`) — **needs `dailybot login`** |
 | `dailybot task relations <task>` · `task unlink <task> <relation>` | List links (direction included) / remove one; `unlink` confirms and has `--dry-run` |
 | `dailybot task comment-edit\|comment-delete <task> <comment>` | Edit (`-` reads stdin) or delete a comment; delete blanks the text and keeps the entry |
+| `dailybot task children <task>` · `task events <task>` · `task activity <task>` | Sub-tasks, raw event history, and the readable activity feed (`--updated-since`, `--type`) |
+| `dailybot task duplicate <task>` | Copy into the same column (`--include` picks fields). No idempotency key: a retry makes a second copy |
 | `dailybot task archive <uuid>` | Archive a task. Previews the consequence first; reversible |
 | `dailybot task delete <uuid>` | Alias of archive — nothing is destroyed |
 | `dailybot task restore <uuid>` | Restore an archived task |
