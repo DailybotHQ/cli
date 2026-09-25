@@ -710,13 +710,23 @@ def board_member() -> None:
 
 @board_member.command("add")
 @click.argument("board_uuid", metavar="BOARD")
-@click.argument("user_uuid", metavar="USER")
+@click.argument("user_uuid", metavar="[USER]", required=False, default=None)
+@click.option(
+    "--team",
+    "team_uuid",
+    default=None,
+    help="A whole team (uuid) instead of one person; membership follows the team live.",
+)
 @click.option("--idempotency-key", default=None, help="Reuse a key to make a retry safe.")
 @click.option("--json", "json_mode", is_flag=True, help="Emit machine-readable JSON to stdout.")
 def board_member_add(
-    board_uuid: str, user_uuid: str, idempotency_key: str | None, json_mode: bool
+    board_uuid: str,
+    user_uuid: str | None,
+    team_uuid: str | None,
+    idempotency_key: str | None,
+    json_mode: bool,
 ) -> None:
-    """Give someone sight of a board. Adding an existing member is a no-op.
+    """Give a person or a whole team sight of a board. Adding an existing member is a no-op.
 
     \b
     Adding yourself to a private board you manage is visible to its members — it is
@@ -725,13 +735,16 @@ def board_member_add(
     \b
     Examples:
       dailybot board member add <board-uuid> <user-uuid>
+      dailybot board member add <board-uuid> --team <team-uuid> --json
     """
     _require_person_for_admin("board member add", json_mode=json_mode)
+    if (user_uuid is None) == (team_uuid is None):
+        raise click.UsageError("Pass exactly one of USER or --team.")
     client = require_auth()
     try:
         with console.status("Adding the member..."):
             data: dict[str, Any] = client.add_board_member(
-                board_uuid, user_uuid, idempotency_key=idempotency_key
+                board_uuid, user_uuid, team_uuid=team_uuid, idempotency_key=idempotency_key
             )
     except APIError as exc:
         exit_for_tasks_error(exc, json_mode)

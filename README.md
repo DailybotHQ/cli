@@ -925,7 +925,7 @@ humans who own them.
 | `dailybot board labels <uuid>` | Labels available on the board — **needs `dailybot login`** |
 | `dailybot board views <uuid>` | Your saved views on the board, plus the ETag a save needs (`--etag` prints only that) |
 | `dailybot board state create\|update\|archive\|restore\|reorder` | Manage columns. `archive` previews first and takes `--migrate-to <state>` to move the column's cards |
-| `dailybot board member add\|remove <board> <user>` | Who can see the board — **needs `dailybot login` as an admin**. There is no board role to edit |
+| `dailybot board member add <board> <user>` (or `--team <team>`) · `board member remove <board> <user>` | Who can see the board — **needs `dailybot login` as an admin**. A team grant follows the team live. There is no board role to edit |
 | `dailybot board label create <board> -n <name>` | Create an organization label from the board — **needs `dailybot login`** |
 | `dailybot board view save <board> -f views.json --if-match <etag>` | Replace your saved views (the whole list) — **needs `dailybot login`** |
 | `dailybot board snapshot <uuid>` | The whole board in one request; carries the `delta_cursor` that `tasks changes` consumes |

@@ -180,3 +180,45 @@ class TestSavedViewRefusalSaysViews:
         text: str = " ".join(result.output.split()).lower()
         assert "saved view" in text
         assert "pins" not in text
+
+
+class TestBoardMemberAddTakesATeam:
+    """Contract 2576eceb4: board member add takes exactly one of user_uuid / team_uuid."""
+
+    TEAM: str = "00000000-0000-0000-0000-000000000011"
+    USER: str = "00000000-0000-0000-0000-000000000004"
+
+    def _run(self, argv: list[str]) -> tuple[Any, MagicMock]:
+        client: MagicMock = MagicMock(spec=DailyBotClient)
+        client.add_board_member.return_value = {"subject_type": "team"}
+        with (
+            patch("dailybot_cli.commands.board.require_auth", return_value=client),
+            patch("dailybot_cli.commands.board.get_token", return_value="tok"),
+        ):
+            result = CliRunner().invoke(cli, ["board", "member", "add", BOARD, *argv, "--json"])
+        return result, client
+
+    def test_a_team_is_sent_as_team_uuid(self) -> None:
+        result, client = self._run(["--team", self.TEAM])
+        assert result.exit_code == 0, result.output
+        assert client.add_board_member.call_args.kwargs["team_uuid"] == self.TEAM
+        assert client.add_board_member.call_args.args[1] is None
+
+    def test_a_user_still_works_positionally(self) -> None:
+        result, client = self._run([self.USER])
+        assert result.exit_code == 0, result.output
+        assert client.add_board_member.call_args.args[1] == self.USER
+
+    @pytest.mark.parametrize("argv", [[], ["u-1", "--team", "t-1"]])
+    def test_exactly_one_is_required(self, argv: list[str]) -> None:
+        result, client = self._run(argv)
+        assert result.exit_code == 2
+        client.add_board_member.assert_not_called()
+
+    def test_the_wire_body_carries_only_the_team(self) -> None:
+        real: DailyBotClient = DailyBotClient(api_url=API_URL, token="test-token")
+        with patch(
+            "dailybot_cli.api_client.httpx.post", return_value=_response({"uuid": "m"})
+        ) as post:
+            real.add_board_member(BOARD, None, team_uuid=self.TEAM)
+        assert post.call_args.kwargs["json"] == {"team_uuid": self.TEAM}

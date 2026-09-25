@@ -2559,13 +2559,25 @@ class DailyBotClient:
         )
 
     def add_board_member(
-        self, board_uuid: str, user_uuid: str, *, idempotency_key: str | None = None
+        self,
+        board_uuid: str,
+        user_uuid: str | None = None,
+        *,
+        team_uuid: str | None = None,
+        idempotency_key: str | None = None,
     ) -> Any:
-        """POST …/members/ — person-only (`tasks:admin`); 200 when already a member."""
+        """POST …/members/ — `tasks:admin`; a person OR a whole team; 200 when already in.
+
+        The body carries exactly one of `user_uuid` / `team_uuid` (both or neither is
+        a 400 `invalid_filter_value`).
+        """
+        payload: dict[str, Any] = (
+            {"user_uuid": user_uuid} if user_uuid else {"team_uuid": team_uuid}
+        )
         return self._tasks_write(
             "POST",
             f"boards/{_path_segment(board_uuid)}/members/",
-            json={"user_uuid": user_uuid},
+            json=payload,
             idempotent=True,
             idempotency_key=idempotency_key,
         )
