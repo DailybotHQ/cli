@@ -214,6 +214,14 @@ new command must too:
 - A renamed flag or verb stays as a **hidden** alias that maps to the new wire and prints a
   deprecation note through `display.print_deprecation` (stderr, so `--json` stays clean).
 - Every group calls `_beta.mark_beta(group)` so the Beta notice tops its `--help`.
+- A destructive door **with** a server preview goes through `_destructive.preview_then_confirm`;
+  one **without** (member removal, unlink, comment / attachment / milestone / view delete) goes
+  through `_destructive.confirm_without_preview`, whose `--dry-run` sends nothing. Every
+  archive / delete / remove / unlink command offers `--dry-run` and `--yes` —
+  `tests/tasks_ergonomics_sweep_test.py` fails the suite otherwise.
+- Send an `Idempotency-Key` only where the contract accepts one (`_tasks_write(idempotent=True)`)
+  and add the door to the posture table in `tests/tasks_coverage_test.py`.
+- Pins (favorites) go through `_favorites.star` / `unstar`; they are person-only.
 
 ### File-or-flag-or-interactive input
 
