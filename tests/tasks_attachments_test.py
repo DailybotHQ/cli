@@ -1,4 +1,4 @@
-"""Task attachments (Tasks Beta PR4): attach, list, get, delete.
+"""Task attachments: attach, list, get, delete.
 
 The upload is three calls — presign, send the bytes to the returned target,
 confirm — hidden behind one command. The target may be object storage on a
@@ -21,10 +21,12 @@ import pytest
 from click.testing import CliRunner
 
 from dailybot_cli.api_client import (
+    ATTACHMENT_DOWNLOAD_DEADLINE_SECS,
     ATTACHMENT_MAX_SIZE_BYTES,
     ATTACHMENT_MULTIPART_MAX_BYTES,
     APIError,
     DailyBotClient,
+    TransportError,
 )
 from dailybot_cli.commands.public_api_helpers import (
     ERROR_CODE_MESSAGES,
@@ -68,6 +70,22 @@ def _response(
     mock.headers = headers or {}
     mock.content = content
     return mock
+
+
+def _stream(
+    status: int = 200,
+    headers: dict[str, str] | None = None,
+    chunks: list[bytes] | None = None,
+) -> Any:
+    """A context manager standing in for `httpx.stream(...)` on the storage hop."""
+    response: MagicMock = MagicMock(spec=httpx.Response)
+    response.status_code = status
+    response.headers = headers or {}
+    response.iter_bytes.return_value = iter(chunks if chunks is not None else [])
+    manager: MagicMock = MagicMock()
+    manager.__enter__.return_value = response
+    manager.__exit__.return_value = False
+    return manager
 
 
 def _presign(upload_url: str = STORAGE_URL) -> dict[str, Any]:
@@ -176,20 +194,26 @@ class TestDownload:
         self, real: DailyBotClient
     ) -> None:
         first: Any = _response(status=302, headers={"Location": STORAGE_URL})
-        second: Any = _response(content=b"from storage")
-        with patch("dailybot_cli.api_client.httpx.get", side_effect=[first, second]) as get:
+        second: Any = _stream(chunks=[b"from ", b"storage"])
+        with (
+            patch("dailybot_cli.api_client.httpx.get", return_value=first),
+            patch("dailybot_cli.api_client.httpx.stream", return_value=second) as stream,
+        ):
             data: bytes = real.download_attachment(TASK, ATT)
         assert data == b"from storage"
-        storage_call: Any = get.call_args_list[1]
-        assert storage_call.args[0] == STORAGE_URL
-        assert not storage_call.kwargs.get("headers")
+        storage_call: Any = stream.call_args
+        assert storage_call.args == ("GET", STORAGE_URL)
+        sent: dict[str, str] = dict(storage_call.kwargs.get("headers") or {})
+        assert "Authorization" not in sent and "X-API-KEY" not in sent
+        assert sent.get("Accept-Encoding") == "identity"
         assert storage_call.kwargs["follow_redirects"] is False
 
     def test_a_second_redirect_is_refused(self, real: DailyBotClient) -> None:
         first: Any = _response(status=302, headers={"Location": STORAGE_URL})
-        second: Any = _response(status=302, headers={"Location": "https://elsewhere.example/"})
+        second: Any = _stream(status=302, headers={"Location": "https://elsewhere.example/"})
         with (
-            patch("dailybot_cli.api_client.httpx.get", side_effect=[first, second]),
+            patch("dailybot_cli.api_client.httpx.get", return_value=first),
+            patch("dailybot_cli.api_client.httpx.stream", return_value=second),
             pytest.raises(APIError) as caught,
         ):
             real.download_attachment(TASK, ATT)
@@ -478,9 +502,10 @@ class TestReviewFindings:
         self, real: DailyBotClient
     ) -> None:
         first: Any = _response(status=302, headers={"Location": STORAGE_URL})
-        refused: Any = _response(status=401)
+        refused: Any = _stream(status=401)
         with (
-            patch("dailybot_cli.api_client.httpx.get", side_effect=[first, refused]),
+            patch("dailybot_cli.api_client.httpx.get", return_value=first),
+            patch("dailybot_cli.api_client.httpx.stream", return_value=refused),
             pytest.raises(APIError) as caught,
         ):
             real.download_attachment(TASK, ATT)
@@ -497,3 +522,45 @@ class TestReviewFindings:
         ):
             real.download_attachment(TASK, ATT)
         assert caught.value.code == "attachment_too_large"
+
+    def test_storage_is_cut_off_at_the_cap_while_streaming(self, real: DailyBotClient) -> None:
+        # No Content-Length (chunked), or a small one that a compressed body blows
+        # past: the cap has to hold on the bytes actually received.
+        first: Any = _response(status=302, headers={"Location": STORAGE_URL})
+        chunk: bytes = b"x" * (1024 * 1024)
+        produced: list[int] = []
+
+        def endless() -> Any:
+            while True:
+                produced.append(1)
+                yield chunk
+
+        body: Any = _stream(headers={"Content-Length": "10"})
+        body.__enter__.return_value.iter_bytes.return_value = endless()
+        with (
+            patch("dailybot_cli.api_client.httpx.get", return_value=first),
+            patch("dailybot_cli.api_client.httpx.stream", return_value=body),
+            pytest.raises(APIError) as caught,
+        ):
+            real.download_attachment(TASK, ATT)
+        assert caught.value.code == "attachment_too_large"
+        assert len(produced) <= ATTACHMENT_MAX_SIZE_BYTES // len(chunk) + 1
+
+    def test_a_storage_hop_that_runs_past_the_deadline_is_abandoned(
+        self, real: DailyBotClient
+    ) -> None:
+        first: Any = _response(status=302, headers={"Location": STORAGE_URL})
+        body: Any = _stream(chunks=[b"a", b"b", b"c"])
+        clock: list[float] = [0.0]
+
+        def tick() -> float:
+            clock[0] += ATTACHMENT_DOWNLOAD_DEADLINE_SECS
+            return clock[0]
+
+        with (
+            patch("dailybot_cli.api_client.httpx.get", return_value=first),
+            patch("dailybot_cli.api_client.httpx.stream", return_value=body),
+            patch("dailybot_cli.api_client.time.monotonic", side_effect=tick),
+            pytest.raises(TransportError),
+        ):
+            real.download_attachment(TASK, ATT)

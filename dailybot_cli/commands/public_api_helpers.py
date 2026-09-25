@@ -95,6 +95,14 @@ ERROR_CODE_MESSAGES: dict[str, str] = {
     # Validation and volume
     "insufficient_scope": ("Your credential does not hold the scope this action needs."),
     "invalid_filter_value": "A filter value was rejected by the server.",
+    "invalid_identifier": (
+        "Not a valid identifier. Pass a task key such as ENG-142 or a uuid; slashes, "
+        "dots and query characters are not allowed."
+    ),
+    "preview_not_honoured": (
+        "The server answered with a result instead of a preview, so the change may "
+        "already have been applied. Check the object's state before doing anything else."
+    ),
     "too_many_items": (
         "Too many items in one call. The server caps a bulk payload at 100 items — "
         "split the batch and send it in chunks."
@@ -729,6 +737,24 @@ _TASKS_WRITE_EXIT_BY_STATUS: dict[int, int] = {
 def tasks_write_exit_code(exc: APIError) -> int:
     """Exit code for a Tasks write refusal, matching the documented table."""
     return _TASKS_WRITE_EXIT_BY_STATUS.get(exc.status_code, 1)
+
+
+# Ceiling on a JSON input file (`-f` batch, views, filters). The largest real
+# payload is a 100-item bulk batch, far below this; the cap exists so `-f /dev/zero`
+# or a runaway pipe ends as an error instead of exhausting memory.
+MAX_JSON_INPUT_CHARS: int = 5 * 1024 * 1024
+
+
+def load_json_input(handle: Any) -> Any:
+    """Parse a JSON input file, reading no more than `MAX_JSON_INPUT_CHARS`.
+
+    Raises ``ValueError`` (the callers' existing JSON-error path) when the input
+    is too large or not JSON.
+    """
+    text: str = handle.read(MAX_JSON_INPUT_CHARS + 1)
+    if len(text) > MAX_JSON_INPUT_CHARS:
+        raise ValueError(f"the input is larger than {MAX_JSON_INPUT_CHARS // (1024 * 1024)} MiB")
+    return json.loads(text)
 
 
 def rows_of(data: Any) -> list[dict[str, Any]]:

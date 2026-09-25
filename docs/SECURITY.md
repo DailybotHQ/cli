@@ -89,6 +89,15 @@ point: it escapes Rich markup (so a title cannot style the terminal), wraps the 
 quotes (so a reader sees a datum, not a sentence addressed to them), and truncates.
 Every user-authored field goes through it.
 
+**Control characters never reach the terminal.** Rich escapes its own markup but passes ANSI /
+OSC escape sequences, bidi overrides and zero-width characters straight through. Left alone, a
+title could clear the screen, overwrite the line a person reads before answering "Proceed?", or
+plant a hyperlink. The presenter turns newlines and tabs into spaces and shows every other
+control or format character as its `\uXXXX` code. It escapes an embedded `"` so a value cannot
+close its own quotes. Server text that is shown unquoted (keys, codes, a preview's consequence
+and counts, roll-ups) goes through `display.safe_text()`, which applies the same
+neutralization and markup escaping.
+
 **The trusted set is exact and auditable.** `display.TASKS_TRUSTED_FIELDS` lists the only
 server-generated fields — `uuid`, `key`, `rank`, `cursor`, `etag`, `delta_cursor`, `code`,
 and the three timestamps. Everything else is untrusted. A test asserts the set matches the
@@ -113,12 +122,32 @@ to the calling user; an organization API key is an organization with nobody to b
 is refused. So are the writes that change **who can see** or **who is notified**
 (participants, membership).
 
-**`tasks:admin` can never be held by an API key.** The scope validator refuses to store it
-and the doors refuse it independently, so `board create`, `project create` and
-`goal create` need `dailybot login`. This holds **even for an organization admin's own
+**`tasks:admin` can never be held by an API key.** The scope validator refuses to store it,
+and every door that needs it refuses a key with `403 insufficient_scope`. That is every
+structure change: creating, updating, archiving or restoring boards, columns, projects and
+goals, board and project membership, and linking goals to projects. The CLI refuses a key on
+all of them before any request is sent (exit 4, the server's own answer), and
+`tests/tasks_key_refusal_sweep_test.py` pins the list. This holds **even for an organization admin's own
 key** — verified against a live instance. CLI messages therefore blame the *credential
 kind*, never the user's role: telling an org admin they "need to be an admin" would send
 them looking for a setting that cannot exist.
+
+**A person refused is never replayed as the organization.** The client normally retries a
+401/403 once with the other stored credential. On a Tasks door, a 403 to a signed-in person
+means the *person* lacks the role or the visibility. Replaying it with the organization API
+key would perform, as the organization, exactly what the person was refused. So on Tasks a
+Bearer 403 is final. A key refused on a person-only door still retries as the person, and an
+expired session (401) still falls back.
+
+**Identifiers cannot change which door a path reaches.** A task key or uuid is interpolated
+into the URL path, and an agent may copy an "id" out of untrusted task text. Every path
+segment must match `[A-Za-z0-9_-]+`, both where the value is interpolated and again when the
+URL is built. So `ENG-1/../../boards/<uuid>/archive/?` is refused with `invalid_identifier`
+(exit 2) before any request, instead of being collapsed into a board archive.
+
+**Pagination links stay on the API.** A list's `next` link is server data. Only its path and
+query are followed, on the configured API's own scheme, host and port, so a link naming
+another host never receives the Bearer token or the API key.
 
 **Isolation is 404, never 403.** An object in another organization is *invisible*, not
 forbidden. No Tasks command renders permission language for `not_found`, because doing so
@@ -145,6 +174,9 @@ says so (`"previewed_by": "client"` under `--json`).
   is the point, and the flag is advisory anyway: the server bounds blast radius per call.
 - `--dry-run` shows the preview and performs no mutation.
 - **A preview that fails aborts.** Not knowing the blast radius is not permission to proceed.
+- **A preview must be a preview.** If the server answers `?dry_run=true` with a mutated object
+  instead of a preview document, the CLI reports that the change may already have been applied
+  (`preview_not_honoured`, exit 1), sends nothing more, and never asks for confirmation.
 - An irreversible operation is marked as such and offered no restore path.
 - `task delete` is an alias of archive and says so; it never claims data was destroyed.
 - Bulk previews through the server's own dry run (`task bulk --dry-run`): the batch is run and
@@ -167,12 +199,19 @@ the transport draws a hard line (`DailyBotClient.upload_attachment_bytes`):
   and the attachment is not confirmed.
 - **https only** for a foreign target, unless the configured API URL is itself plain `http`
   (local development).
-- Size is checked before any request (25 MiB; 5 MiB on the captioned one-request door).
+- Size is checked before any request (25 MiB; 5 MiB on the captioned single-request upload),
+  and the file is read at most one byte past the limit, so a file that grows after the check is
+  refused rather than read in full. JSON input files (`-f` batches, views, filters) are capped
+  at 5 MiB.
 
 `task attachment get` follows at most **one** redirect from the API to storage, without
 credentials; a second redirect is refused, and a refusal from storage is reported as storage's
 (`attachment_download_failed`), never as a session problem. Downloads over the attachment
-size cap are refused. The output path is never derived from server data. Without `--force`
+size cap are refused. On the storage hop the cap is enforced on the bytes as they stream in,
+the body is requested uncompressed (`Accept-Encoding: identity`), and the whole hop has a
+wall-clock deadline. So an endless chunked body, a compression bomb or a slow drip cannot
+exhaust memory or hang the CLI. If writing the file fails, the partial file this call created
+is removed. The output path is never derived from server data. Without `--force`
 the file is created exclusively (`O_EXCL`) and a symlink is never followed (`O_NOFOLLOW`), so a
 file or link that appears during the download is left alone; nothing is written when the
 download fails, and an unwritable path is a clear error rather than a crash.

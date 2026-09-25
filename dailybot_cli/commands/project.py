@@ -1,6 +1,5 @@
 """Project commands (``/v1/tasks/projects/*``)."""
 
-import json as _json
 from datetime import datetime
 from typing import Any
 
@@ -15,6 +14,7 @@ from dailybot_cli.commands._writes import named, report_write
 from dailybot_cli.commands.public_api_helpers import (
     emit_json,
     exit_for_tasks_error,
+    load_json_input,
     refuse_without_person,
     require_auth,
     rows_of,
@@ -247,7 +247,7 @@ def project_update_post(
     client = require_auth()
     try:
         with console.status("Posting the update..."):
-            # The door honours Idempotency-Key (API R4): a retry with the printed key
+            # The door honours Idempotency-Key: a retry with the printed key
             # replays the original post instead of posting it twice.
             data: dict[str, Any] = client.post_project_update(
                 project_uuid,
@@ -492,6 +492,7 @@ def project_archive(
     Examples:
       dailybot project archive <project-uuid> --dry-run
     """
+    _require_person_for_admin("project archive", json_mode=json_mode)
     client = require_auth()
     if not preview_then_confirm(
         lambda: client.archive_project(project_uuid, dry_run=True),
@@ -543,6 +544,7 @@ def project_update(
       dailybot project update <project-uuid> --health at_risk
       dailybot project update <project-uuid> --target-date 2027-01-15 --lead <user-uuid> --json
     """
+    _require_person_for_admin("project update", json_mode=json_mode)
     fields: dict[str, Any] = _project_fields(visibility, lead, health, start_date, target_date)
     if name is not None:
         fields["name"] = name
@@ -579,6 +581,7 @@ def project_restore(project_uuid: str, idempotency_key: str | None, json_mode: b
     Examples:
       dailybot project restore <project-uuid>
     """
+    _require_person_for_admin("project restore", json_mode=json_mode)
     client = require_auth()
     try:
         with console.status("Restoring the project..."):
@@ -682,9 +685,9 @@ def project_member_add(
       dailybot project member add <project-uuid> --user <user-uuid>
       dailybot project member add <project-uuid> --team <team-uuid> --json
     """
+    _require_person_for_admin("project member add", json_mode=json_mode)
     if (user_uuid is None) == (team_uuid is None):
         raise click.UsageError("Pass exactly one of --user or --team.")
-    _require_person("project member add", _MEMBER_REASON, json_mode=json_mode)
     client = require_auth()
     try:
         with console.status("Adding the member..."):
@@ -715,7 +718,7 @@ def project_member_remove(
       dailybot project member remove <project-uuid> <user-uuid> --dry-run
       dailybot project member remove <project-uuid> <user-uuid> --yes
     """
-    _require_person("project member remove", _MEMBER_REASON, json_mode=json_mode)
+    _require_person_for_admin("project member remove", json_mode=json_mode)
     if not confirm_without_preview(
         f"remove user {user_uuid} from project {project_uuid}; they lose sight of it if it "
         "is private.",
@@ -753,6 +756,11 @@ def project_views(project_uuid: str, etag_only: bool, json_mode: bool) -> None:
       dailybot project views <project-uuid>
       ETAG=$(dailybot project views <project-uuid> --etag)
     """
+    _require_person(
+        "project views",
+        "lists saved views, which belong to a person, and an organization API key is not one.",
+        json_mode=json_mode,
+    )
     client = require_auth()
     try:
         with console.status("Reading the views..."):
@@ -810,7 +818,7 @@ def project_view_save(
     if (if_match is None) == (not fetch_etag):
         raise click.UsageError("Pass exactly one of --if-match <etag> or --fetch-etag.")
     try:
-        views: Any = _json.load(views_file)
+        views: Any = load_json_input(views_file)
     except ValueError as exc:
         raise click.BadParameter(f"not valid JSON: {exc}", param_hint="--file") from exc
     if not isinstance(views, list):

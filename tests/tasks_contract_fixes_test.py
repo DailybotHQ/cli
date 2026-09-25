@@ -1,4 +1,4 @@
-"""Existing commands corrected against the published write contract (Tasks Beta PR2).
+"""Existing commands corrected against the published write contract.
 
 Each fix is pinned on the exact wire the real client sends:
 
@@ -27,7 +27,7 @@ API_URL: str = "http://test-api.example.com"
 BASE: str = f"{API_URL}/v1/tasks/"
 TASK: str = "ENG-142"
 BOARD: str = "b-1"
-STATE_UUID: str = "0b9c7a52-6a7e-4d43-9d0b-1f5f0e7c2a10"
+STATE_UUID: str = "00000000-0000-0000-0000-000000000005"
 
 # A board's live columns, deliberately out of position order.
 STATES: list[dict[str, Any]] = [

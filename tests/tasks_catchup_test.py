@@ -1,4 +1,4 @@
-"""The catch-up surface (Tasks Beta PR6a).
+"""The catch-up surface.
 
 `tasks status` asks the pulse for every band in its one request; inbox
 read/read-all/unread and the activity cursor are person-only and refuse an API

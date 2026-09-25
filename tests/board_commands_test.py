@@ -27,7 +27,12 @@ def _page(rows: list[dict[str, Any]] | None = None) -> PaginatedResult:
 
 
 def _invoke(runner: CliRunner, client: MagicMock, args: list[str]) -> Any:
-    with patch("dailybot_cli.commands.board.require_auth", return_value=client):
+    # A signed-in person: board structure changes are `tasks:admin` doors, which
+    # refuse an organization API key before any request.
+    with (
+        patch("dailybot_cli.commands.board.require_auth", return_value=client),
+        patch("dailybot_cli.commands.board.get_token", return_value="tok"),
+    ):
         return runner.invoke(cli, args)
 
 

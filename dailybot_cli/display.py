@@ -5,6 +5,7 @@ Messages passed to the print_* helpers routinely carry server-controlled text
 tag, so every such message is escaped before interpolation.
 """
 
+import unicodedata
 from typing import Any
 
 import click
@@ -1555,6 +1556,32 @@ UNTRUSTED_CELL_LIMIT: int = 60
 _EMPTY_PLACEHOLDER: str = "—"
 
 
+def _neutralize(text: str) -> str:
+    """Make control and format characters visible instead of letting them act.
+
+    Rich escapes its own markup but passes ANSI / OSC escape sequences, bidi
+    overrides and zero-width characters straight to the terminal. In a title or a
+    preview's consequence they could clear the screen, overwrite the line a person
+    reads before answering "Proceed?", or plant a hyperlink. Whitespace controls
+    become a space so a cell stays one line; every other Cc / Cf character is
+    shown as its `\\uXXXX` code.
+    """
+    out: list[str] = []
+    for char in text:
+        if char in "\n\r\t\v\f":
+            out.append(" ")
+        elif unicodedata.category(char) in ("Cc", "Cf"):
+            out.append(f"\\u{ord(char):04x}")
+        else:
+            out.append(char)
+    return "".join(out)
+
+
+def safe_text(value: Any) -> str:
+    """Server text that is not quoted as data (keys, codes, counts): neutralized and escaped."""
+    return escape(_neutralize(str(value)))
+
+
 def present_untrusted(value: Any, *, limit: int | None = None) -> str:
     """Render a user-authored string as visibly quoted, escaped data.
 
@@ -1572,11 +1599,13 @@ def present_untrusted(value: Any, *, limit: int | None = None) -> str:
     """
     if value is None or value == "":
         return _EMPTY_PLACEHOLDER
-    text: str = str(value)
+    text: str = _neutralize(str(value))
     cap: int = limit if limit is not None else UNTRUSTED_CELL_LIMIT
     if len(text) > cap:
         text = text[: cap - 1] + "\u2026"
-    return f'"{escape(text)}"'
+    # An embedded quote would close the data boundary early and let the rest read
+    # as a sentence addressed to the reader.
+    return '"' + escape(text.replace('"', '\\"')) + '"'
 
 
 def _state_name(task: dict[str, Any]) -> str:
@@ -1600,7 +1629,7 @@ def print_tasks_table(tasks: list[dict[str, Any]]) -> None:
         owner: Any = task.get("executor") or task.get("owner") or {}
         owner_name: Any = owner.get("full_name") if isinstance(owner, dict) else owner
         table.add_row(
-            str(task.get("key") or task.get("uuid") or ""),
+            safe_text(task.get("key") or task.get("uuid") or ""),
             present_untrusted(task.get("title")),
             _state_name(task),
             present_untrusted(owner_name, limit=20),
@@ -1617,11 +1646,11 @@ def print_task_detail(task: dict[str, Any]) -> None:
     """
     uuid_value: str = str(task.get("uuid") or "")
     lines: list[str] = [
-        f"[bold]Key[/bold]        {escape(str(task.get('key') or '—'))}",
+        f"[bold]Key[/bold]        {safe_text(task.get('key') or '—')}",
         f"[bold]Title[/bold]      {present_untrusted(task.get('title'), limit=200)}",
         f"[bold]State[/bold]      {_state_name(task)}",
-        f"[bold]UUID[/bold]       {escape(uuid_value)}",
-        f"[bold]API link[/bold]   /v1/tasks/tasks/{escape(uuid_value)}/",
+        f"[bold]UUID[/bold]       {safe_text(uuid_value)}",
+        f"[bold]API link[/bold]   /v1/tasks/tasks/{safe_text(uuid_value)}/",
     ]
     description: Any = task.get("description")
     if description:
@@ -1640,7 +1669,7 @@ def print_board_snapshot(snapshot: dict[str, Any]) -> None:
     board: Any = snapshot.get("board") if isinstance(snapshot.get("board"), dict) else {}
     title: str = "Board snapshot"
     if board.get("key"):
-        title = f"Board snapshot — {escape(str(board.get('key')))}"
+        title = f"Board snapshot — {safe_text(board.get('key'))}"
     table: Table = Table(title=title)
     table.add_column("Column", style="cyan", no_wrap=True)
     table.add_column("Category", no_wrap=True)
@@ -1657,14 +1686,14 @@ def print_board_snapshot(snapshot: dict[str, Any]) -> None:
             count += f" (+{total - shown} more)"
         table.add_row(
             present_untrusted(group.get("name"), limit=24),
-            escape(str(group.get("category") or "")),
+            safe_text(group.get("category") or ""),
             count,
         )
     console.print(table)
     cursor: Any = snapshot.get("delta_cursor")
     if cursor:
         console.print(
-            f"[bold]delta_cursor[/bold]  {escape(str(cursor))}\n"
+            f"[bold]delta_cursor[/bold]  {safe_text(cursor)}\n"
             "[dim]Pass it to `dailybot tasks changes` to read only what changed since.[/dim]"
         )
 
@@ -1694,7 +1723,7 @@ def print_delta_summary(delta: dict[str, Any]) -> None:
     )
     cursor: Any = delta.get("delta_cursor")
     if cursor:
-        console.print(f"[bold]delta_cursor[/bold]  {escape(str(cursor))}")
+        console.print(f"[bold]delta_cursor[/bold]  {safe_text(cursor)}")
 
 
 def print_dry_run_consequence(preview: dict[str, Any], *, to_stderr: bool = False) -> None:
@@ -1712,18 +1741,18 @@ def print_dry_run_consequence(preview: dict[str, Any], *, to_stderr: bool = Fals
     """
     reversible: bool = bool(preview.get("reversible"))
     operation: str = str(preview.get("operation") or "operation")
-    lines: list[str] = [f"[bold]Operation[/bold]  {escape(operation)}"]
+    lines: list[str] = [f"[bold]Operation[/bold]  {safe_text(operation)}"]
     consequence: Any = preview.get("consequence")
     if consequence:
-        lines.append(f"\n{escape(str(consequence))}\n")
+        lines.append(f"\n{safe_text(consequence)}\n")
     affects: Any = preview.get("affects")
     if isinstance(affects, dict) and affects:
-        detail: str = "  ".join(f"{escape(str(k))}={escape(str(v))}" for k, v in affects.items())
+        detail: str = "  ".join(f"{safe_text(k)}={safe_text(v)}" for k, v in affects.items())
         lines.append(f"[bold]Affects[/bold]    {detail}")
     if reversible:
         restore: Any = preview.get("restore_path")
         if restore:
-            lines.append(f"[bold]Restore[/bold]    {escape(str(restore))}")
+            lines.append(f"[bold]Restore[/bold]    {safe_text(restore)}")
         border: str = "yellow"
         title: str = "Dry run — reversible"
     else:
@@ -1784,7 +1813,7 @@ def print_tasks_rows(
         for _header, path, trusted in columns:
             value: Any = _dig(row, path)
             if trusted:
-                cells.append("" if value is None else escape(str(value)))
+                cells.append("" if value is None else safe_text(value))
             else:
                 cells.append(present_untrusted(value))
         table.add_row(*cells)
@@ -1795,7 +1824,7 @@ def print_bulk_preview(preview: dict[str, Any]) -> None:
     """Render a bulk dry run: the consequence, each change, and what would be refused."""
     console.print(
         Panel(
-            escape(str(preview.get("consequence") or "")),
+            safe_text(preview.get("consequence") or ""),
             title="Dry run. Nothing was changed.",
             border_style="yellow",
         )
@@ -1812,8 +1841,8 @@ def print_bulk_preview(preview: dict[str, Any]) -> None:
                 after: Any = change.get("to") if isinstance(change, dict) else None
                 table.add_row(
                     str(row.get("index", "")),
-                    escape(str(row.get("key") or row.get("task") or "")),
-                    escape(str(field)),
+                    safe_text(row.get("key") or row.get("task") or ""),
+                    safe_text(field),
                     present_untrusted(before),
                     present_untrusted(after),
                 )
@@ -1821,8 +1850,8 @@ def print_bulk_preview(preview: dict[str, Any]) -> None:
     refused: list[dict[str, Any]] = [r for r in preview.get("refused") or [] if isinstance(r, dict)]
     for row in refused:
         console.print(
-            f"  [red]would be refused[/red] item {escape(str(row.get('index', '?')))}: "
-            f"{escape(str(row.get('code', '')))} {present_untrusted(row.get('detail'))}"
+            f"  [red]would be refused[/red] item {safe_text(row.get('index', '?'))}: "
+            f"{safe_text(row.get('code', ''))} {present_untrusted(row.get('detail'))}"
         )
 
 
@@ -1837,9 +1866,9 @@ def print_boards_table(boards: list[dict[str, Any]]) -> None:
     table.add_column("UUID", no_wrap=True)
     for row in boards:
         table.add_row(
-            str(row.get("key") or ""),
+            safe_text(row.get("key") or ""),
             present_untrusted(row.get("name")),
-            str(row.get("uuid") or ""),
+            safe_text(row.get("uuid") or ""),
         )
     console.print(table)
 
@@ -1857,7 +1886,7 @@ def print_projects_table(projects: list[dict[str, Any]], *, rollup: Any = None) 
         table.add_row(
             present_untrusted(row.get("name")),
             rollup(row, "progress") if rollup else "",
-            str(row.get("uuid") or ""),
+            safe_text(row.get("uuid") or ""),
         )
     console.print(table)
 
@@ -1877,7 +1906,7 @@ def print_goals_table(goals: list[dict[str, Any]], *, rollup: Any = None) -> Non
             present_untrusted(row.get("name")),
             rollup(row, "progress") if rollup else "",
             rollup(row, "project_count") if rollup else "",
-            str(row.get("uuid") or ""),
+            safe_text(row.get("uuid") or ""),
         )
     console.print(table)
 
@@ -1897,7 +1926,7 @@ def print_milestones_table(milestones: list[dict[str, Any]], *, rollup: Any = No
             present_untrusted(row.get("name")),
             present_untrusted(row.get("status"), limit=16),
             rollup(row, "open_task_count") if rollup else "",
-            str(row.get("uuid") or ""),
+            safe_text(row.get("uuid") or ""),
         )
     console.print(table)
 

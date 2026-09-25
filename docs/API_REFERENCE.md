@@ -815,14 +815,17 @@ This is the most confusing thing about the family, so it is a table rather than 
 | project & goal reads, `project updates`, `update-post` | — | organization-scoped |
 | milestones list / complete / reopen | — | organization-scoped |
 | — | `tasks mine`, `tasks counts`, `tasks inbox` / `inbox-read` / `inbox-read-all` / `inbox-unread`, `tasks cursor`, `board mentionables`, `board star` / `unstar`, `tasks favorites`, `tasks view …` | **person-shaped**: a key is an organization with nobody to be, so "my X" has no answer |
-| — | `task participants add` / `remove`, `task watch` / `unwatch`, `task mute` / `unmute` | published policy: no key may change **who is notified** |
-| — | board **member** add / remove, all **project member** doors (list too), saved-view saves, board labels | published policy: no key may change or reveal **who can see**; views and label usage belong to a person |
-| — | `board create`, `project create`, `goal create` | need `tasks:admin`, which **cannot be stored on a key at all** |
+| — | `task participants list` / `add` / `remove`, `task watch` / `unwatch`, `task mute` / `unmute` | published policy: no key may change or reveal **who is notified** |
+| — | `project members` (list), `board views` / `view save`, `project views` / `view save`, `board labels` / `label create` | published policy: no key may reveal **who can see**; views and label usage belong to a person |
+| — | **every structure change**: `board create` / `update` / `archive` / `restore`, `board state create` / `update` / `archive` / `restore` / `reorder`, `board member add` / `remove`, `project create` / `update` / `archive` / `restore`, `project member add` / `remove`, `goal create` / `update` / `archive` / `restore` / `link` / `unlink` | need `tasks:admin`, which **cannot be stored on a key at all**. The CLI refuses a key before the request and exits 4 (`insufficient_scope`), exactly as the server's 403 would |
 | — | label CRUD, `boards/{id}/labels/` | a product decision, still open: `usage_count` sums a per-person visibility predicate, so it has no correct value for a key |
 | — | `boards/{id}/mentionables/` | **person-shaped by definition** — it answers "who may *this viewer* address". For an assignee picker on a key, use the org roster (`dailybot user list`) or board members |
 
-The last row holds **even for an organization admin's own key** — verified against a live
-instance. CLI messages therefore blame the *credential kind*, never the user's role.
+The server answers a key on any of these doors with `403 insufficient_scope`. That holds
+**even for an organization admin's own key**; it was verified against a live instance. `board mentionables` rows carry
+`uuid`, `name`, `handle`, `avatar_url`, `has_photo` and `kind`, but no email.
+
+CLI messages therefore blame the *credential kind*, never the user's role.
 
 ### Stable JSON shapes (Beta contract)
 
@@ -987,7 +990,7 @@ The server keeps an idempotency slot for **24 hours**, keyed on
   **"Key required" in the capability table means the *header*, not the credential:**
   confirmed by the API team, bulk serves a session JWT, a CLI Bearer token and an
   organization API key alike. The CLI correctly does not refuse a Bearer token.
-- The CLI sends the header exactly where the published contract accepts it (27 doors,
+- The CLI sends the header exactly where the published contract accepts it (27 endpoints,
   including `project update-post`, `milestone complete` / `reopen`, `task duplicate`,
   board / project / goal creates and updates, board member add, and pins). Doors that do
   **not** accept it are sent none and offer no `--idempotency-key` flag — among them column
@@ -1053,7 +1056,7 @@ what was about to happen survives for whoever reads the terminal.
 
 Archiving a **board** cascade-archives its live tasks, and restoring the board does **not**
 restore them. `task delete` is an alias of archive: reversible, audited as `task.archived`.
-Bulk has **no** dry run; its blast radius is bounded by the 100-item cap.
+Bulk has a real server-side dry run (`task bulk --dry-run`): the same body, run and rolled back, with no Idempotency-Key and no notifications. Its blast radius is also bounded by the 100-item cap.
 
 ### The delta cursor lifecycle
 

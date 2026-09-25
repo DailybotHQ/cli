@@ -1,5 +1,6 @@
 """HTTP client for Dailybot CLI API endpoints."""
 
+import re
 import time
 import uuid
 from collections.abc import Callable
@@ -26,6 +27,9 @@ LONG_TIMEOUT_SECS: float = 120.0  # AI-processing endpoints (ask, submit_update)
 ATTACHMENT_MAX_SIZE_BYTES: int = 25 * 1024 * 1024
 ATTACHMENT_MULTIPART_MAX_BYTES: int = 5 * 1024 * 1024
 ATTACHMENT_TRANSFER_TIMEOUT_SECS: float = LONG_TIMEOUT_SECS
+# A read timeout is per read, so a storage host that drips one byte a minute is
+# never cut off by it. This is the wall-clock ceiling for the whole storage hop.
+ATTACHMENT_DOWNLOAD_DEADLINE_SECS: float = 300.0
 
 # HTTP status codes that trigger the alt-credential auth retry. 401 is the
 # standards-compliant "credentials rejected" answer; 403 is what many
@@ -72,6 +76,13 @@ MAX_OWNER_USER_IDS: int = 50  # server rejects owner_user_ids lists longer than 
 
 # --- Tasks (/v1/tasks/*) ---
 TASKS_BASE_PATH: str = "/v1/tasks/"
+# Every segment of a Tasks path: a key (`ENG-142`), a uuid, or a fixed word. A
+# task key or uuid is interpolated into the path, and task text is untrusted, so
+# a value like `X/../../boards/<uuid>/archive/?` must never reach the HTTP stack,
+# which would collapse it into a different door. `%` is refused too: a server
+# that decodes `%2F` before routing would re-open the same hole.
+TASKS_PATH_SEGMENT_RE: re.Pattern[str] = re.compile(r"^[A-Za-z0-9_-]+$")
+INVALID_IDENTIFIER_CODE: str = "invalid_identifier"
 # Server cap on a bulk payload; above it the server answers `too_many_items`.
 # BLAST_RADIUS.md records this as THE volume guard for unattended destructive
 # loops — the CLI adds no second ceiling of its own.
@@ -293,6 +304,27 @@ class APIError(Exception):
         super().__init__(f"API error {status_code}: {detail}")
 
 
+def _invalid_identifier() -> APIError:
+    """The refusal for an identifier that would change which door a path reaches.
+
+    The offending value is deliberately not echoed: it is untrusted text, and the
+    error message is rendered to a terminal.
+    """
+    return APIError(
+        400,
+        "Not a valid identifier. Pass a task key such as ENG-142 or a uuid.",
+        code=INVALID_IDENTIFIER_CODE,
+    )
+
+
+def _path_segment(value: Any) -> str:
+    """One validated path segment: a key, a uuid or a slug — never `/`, `..`, `?`, `#`."""
+    text: str = str(value)
+    if not TASKS_PATH_SEGMENT_RE.match(text):
+        raise _invalid_identifier()
+    return text
+
+
 class DailyBotClient:
     """HTTP client for the Dailybot /v1/cli/* API endpoints."""
 
@@ -489,7 +521,7 @@ class DailyBotClient:
 
         response: httpx.Response = self._dispatch_guarded(method, url, **kwargs)
 
-        if _is_auth_retryable(response):
+        if _is_auth_retryable(response) and not self._is_final_person_refusal(url, response):
             alt: dict[str, str] | None = self._alt_auth_headers()
             if alt is not None:
                 retry_headers: dict[str, str] = dict(alt)
@@ -501,6 +533,22 @@ class DailyBotClient:
                 response = self._dispatch_guarded(method, url, **kwargs)
 
         return response
+
+    def _is_final_person_refusal(self, url: str, response: httpx.Response) -> bool:
+        """A Tasks door that refused the signed-in person keeps that answer.
+
+        On Tasks a 403 to a Bearer session means the *person* lacks the role or the
+        visibility. Replaying the call with the organization API key would perform,
+        as the organization, exactly what the person was refused, and attribute it
+        to nobody. So the retry is kept for the other direction only: a key refused
+        on a person-only door (`insufficient_scope` / `actor_required`) may still
+        retry as the person, and a 401 (an expired session) still falls back.
+        """
+        return (
+            response.status_code == 403
+            and self._agent_auth_mode == "bearer"
+            and urlsplit(url).path.startswith(TASKS_BASE_PATH)
+        )
 
     def _transport_message(self, exc: Exception, *, method: str, mutates: bool = True) -> str:
         """Explain a transport failure in terms the reader can act on.
@@ -775,7 +823,7 @@ class DailyBotClient:
                 break
             if not fetch_all:
                 break
-            current_url = next_url
+            current_url = self._same_api_origin(next_url) if next_url else None
 
         return PaginatedResult(results=collected, count=count, next=next_url, previous=previous)
 
@@ -2149,8 +2197,17 @@ class DailyBotClient:
     # ------------------------------------------------------------------
 
     def _tasks_url(self, path: str) -> str:
-        """Build an absolute URL under the Tasks base path."""
-        return f"{self.api_url}{TASKS_BASE_PATH}{path.lstrip('/')}"
+        """Build an absolute URL under the Tasks base path.
+
+        Every segment is re-checked here as well as at interpolation
+        (`_path_segment`): a door built without the helper still cannot be
+        steered by `..`, `?`, `#` or `%`.
+        """
+        relative: str = path.lstrip("/")
+        for segment in relative.rstrip("/").split("/"):
+            if not TASKS_PATH_SEGMENT_RE.match(segment):
+                raise _invalid_identifier()
+        return f"{self.api_url}{TASKS_BASE_PATH}{relative}"
 
     def _tasks_write(
         self,
@@ -2275,7 +2332,9 @@ class DailyBotClient:
 
     def mark_inbox_item_read(self, item_uuid: str) -> dict[str, Any]:
         """POST /v1/tasks/inbox/<uuid>/read/ — person-only; marks it AND everything older."""
-        result: dict[str, Any] = self._tasks_write("POST", f"inbox/{item_uuid}/read/")
+        result: dict[str, Any] = self._tasks_write(
+            "POST", f"inbox/{_path_segment(item_uuid)}/read/"
+        )
         return result
 
     def mark_inbox_read_all(self) -> dict[str, Any]:
@@ -2313,26 +2372,28 @@ class DailyBotClient:
 
     def delete_favorite(self, favorite_uuid: str) -> Any:
         """DELETE /v1/tasks/me/favorites/<uuid>/ — unpin; never touches the target."""
-        return self._tasks_write("DELETE", f"me/favorites/{favorite_uuid}/")
+        return self._tasks_write("DELETE", f"me/favorites/{_path_segment(favorite_uuid)}/")
 
     def get_view(self, view_uuid: str) -> dict[str, Any]:
         """GET /v1/tasks/views/<uuid>/ — one saved view (person-only)."""
-        return self._tasks_read(f"views/{view_uuid}/")
+        return self._tasks_read(f"views/{_path_segment(view_uuid)}/")
 
     def update_view(self, view_uuid: str, **fields: Any) -> dict[str, Any]:
         """PATCH /v1/tasks/views/<uuid>/ — partial; shared views need a board manager."""
         result: dict[str, Any] = self._tasks_write(
-            "PATCH", f"views/{view_uuid}/", json={k: v for k, v in fields.items() if v is not None}
+            "PATCH",
+            f"views/{_path_segment(view_uuid)}/",
+            json={k: v for k, v in fields.items() if v is not None},
         )
         return result
 
     def delete_view(self, view_uuid: str) -> Any:
         """DELETE /v1/tasks/views/<uuid>/ — permanent."""
-        return self._tasks_write("DELETE", f"views/{view_uuid}/")
+        return self._tasks_write("DELETE", f"views/{_path_segment(view_uuid)}/")
 
     def list_board_mentionables(self, board_uuid: str) -> Any:
         """GET /v1/tasks/boards/<uuid>/mentionables/ — who this viewer may @mention."""
-        return self._tasks_read(f"boards/{board_uuid}/mentionables/")
+        return self._tasks_read(f"boards/{_path_segment(board_uuid)}/mentionables/")
 
     def get_tasks_entitlements(self) -> dict[str, Any]:
         """GET /v1/tasks/entitlements/ — never answers 402 by contract."""
@@ -2379,7 +2440,9 @@ class DailyBotClient:
         self, board_uuid: str, *, filters: dict[str, Any] | None = None, **page: Any
     ) -> PaginatedResult:
         """GET /v1/tasks/boards/<uuid>/tasks/ — one board's tasks, paginated."""
-        return self._tasks_list(f"boards/{board_uuid}/tasks/", params=filters, **page)
+        return self._tasks_list(
+            f"boards/{_path_segment(board_uuid)}/tasks/", params=filters, **page
+        )
 
     def list_board_states(self, board_uuid: str, *, include_archived: bool = False) -> Any:
         """GET /v1/tasks/boards/<uuid>/states/ — the board's live columns.
@@ -2387,23 +2450,23 @@ class DailyBotClient:
         Retired columns are only returned with ``include_archived``.
         """
         params: dict[str, Any] | None = {"include_archived": "true"} if include_archived else None
-        return self._tasks_read(f"boards/{board_uuid}/states/", params=params)
+        return self._tasks_read(f"boards/{_path_segment(board_uuid)}/states/", params=params)
 
     def list_board_members(self, board_uuid: str) -> Any:
         """GET /v1/tasks/boards/<uuid>/members/ — who can see the board."""
-        return self._tasks_read(f"boards/{board_uuid}/members/")
+        return self._tasks_read(f"boards/{_path_segment(board_uuid)}/members/")
 
     def list_board_labels(self, board_uuid: str) -> Any:
         """GET /v1/tasks/boards/<uuid>/labels/ — person-only (usage counts are per viewer)."""
-        return self._tasks_read(f"boards/{board_uuid}/labels/")
+        return self._tasks_read(f"boards/{_path_segment(board_uuid)}/labels/")
 
     def list_board_views(self, board_uuid: str) -> Any:
         """GET /v1/tasks/boards/<uuid>/views/ — saved views on the board."""
-        return self._tasks_read(f"boards/{board_uuid}/views/")
+        return self._tasks_read(f"boards/{_path_segment(board_uuid)}/views/")
 
     def list_board_views_with_etag(self, board_uuid: str) -> tuple[Any, str | None]:
         """GET /v1/tasks/boards/<uuid>/views/ plus the `ETag` a save must send back."""
-        return self._tasks_read_with_etag(f"boards/{board_uuid}/views/")
+        return self._tasks_read_with_etag(f"boards/{_path_segment(board_uuid)}/views/")
 
     def save_board_views(self, board_uuid: str, views: list[Any], *, if_match: str) -> Any:
         """PUT /v1/tasks/boards/<uuid>/views/ — replaces the caller's WHOLE view array.
@@ -2412,7 +2475,10 @@ class DailyBotClient:
         because two concurrent saves would otherwise drop each other's views.
         """
         return self._tasks_write(
-            "PUT", f"boards/{board_uuid}/views/", json=views, headers={"If-Match": if_match}
+            "PUT",
+            f"boards/{_path_segment(board_uuid)}/views/",
+            json=views,
+            headers={"If-Match": if_match},
         )
 
     def create_board_state(
@@ -2422,7 +2488,7 @@ class DailyBotClient:
         payload: dict[str, Any] = {k: v for k, v in fields.items() if v is not None}
         return self._tasks_write(
             "POST",
-            f"boards/{board_uuid}/states/",
+            f"boards/{_path_segment(board_uuid)}/states/",
             json=payload,
             idempotent=True,
             idempotency_key=idempotency_key,
@@ -2431,7 +2497,11 @@ class DailyBotClient:
     def update_board_state(self, board_uuid: str, state_uuid: str, **fields: Any) -> Any:
         """PATCH …/states/<uuid>/ — name, color and position only; no key accepted."""
         payload: dict[str, Any] = {k: v for k, v in fields.items() if v is not None}
-        return self._tasks_write("PATCH", f"boards/{board_uuid}/states/{state_uuid}/", json=payload)
+        return self._tasks_write(
+            "PATCH",
+            f"boards/{_path_segment(board_uuid)}/states/{_path_segment(state_uuid)}/",
+            json=payload,
+        )
 
     def archive_board_state(
         self,
@@ -2444,19 +2514,22 @@ class DailyBotClient:
         """POST …/states/<uuid>/archive/ — retire a column; `migrate_to` moves its cards."""
         return self._tasks_write(
             "POST",
-            f"boards/{board_uuid}/states/{state_uuid}/archive/",
+            f"boards/{_path_segment(board_uuid)}/states/{_path_segment(state_uuid)}/archive/",
             json={"migrate_to": migrate_to} if migrate_to else None,
             params={"dry_run": "true"} if dry_run else None,
         )
 
     def restore_board_state(self, board_uuid: str, state_uuid: str) -> Any:
         """POST …/states/<uuid>/restore/ — the column returns after the live ones."""
-        return self._tasks_write("POST", f"boards/{board_uuid}/states/{state_uuid}/restore/")
+        return self._tasks_write(
+            "POST",
+            f"boards/{_path_segment(board_uuid)}/states/{_path_segment(state_uuid)}/restore/",
+        )
 
     def reorder_board_states(self, board_uuid: str, order: list[str]) -> Any:
         """POST …/states/reorder/ — `order` must list every live column exactly once."""
         return self._tasks_write(
-            "POST", f"boards/{board_uuid}/states/reorder/", json={"order": order}
+            "POST", f"boards/{_path_segment(board_uuid)}/states/reorder/", json={"order": order}
         )
 
     def add_board_member(
@@ -2465,7 +2538,7 @@ class DailyBotClient:
         """POST …/members/ — person-only (`tasks:admin`); 200 when already a member."""
         return self._tasks_write(
             "POST",
-            f"boards/{board_uuid}/members/",
+            f"boards/{_path_segment(board_uuid)}/members/",
             json={"user_uuid": user_uuid},
             idempotent=True,
             idempotency_key=idempotency_key,
@@ -2473,7 +2546,9 @@ class DailyBotClient:
 
     def remove_board_member(self, board_uuid: str, user_uuid: str) -> Any:
         """DELETE …/members/<user>/ — person-only; the last member of a private board stays."""
-        return self._tasks_write("DELETE", f"boards/{board_uuid}/members/{user_uuid}/")
+        return self._tasks_write(
+            "DELETE", f"boards/{_path_segment(board_uuid)}/members/{_path_segment(user_uuid)}/"
+        )
 
     def create_board_label(self, board_uuid: str, *, name: str, **fields: Any) -> Any:
         """POST …/labels/ — person-only; creates an organization label from the board."""
@@ -2481,11 +2556,13 @@ class DailyBotClient:
             "name": name,
             **{k: v for k, v in fields.items() if v is not None},
         }
-        return self._tasks_write("POST", f"boards/{board_uuid}/labels/", json=payload)
+        return self._tasks_write(
+            "POST", f"boards/{_path_segment(board_uuid)}/labels/", json=payload
+        )
 
     def get_board(self, board_uuid: str) -> dict[str, Any]:
         """GET /v1/tasks/boards/<uuid>/."""
-        return self._tasks_read(f"boards/{board_uuid}/")
+        return self._tasks_read(f"boards/{_path_segment(board_uuid)}/")
 
     def get_board_snapshot(self, board_uuid: str) -> dict[str, Any]:
         """GET /v1/tasks/boards/<uuid>/board/ — the dense cold-context door.
@@ -2494,7 +2571,7 @@ class DailyBotClient:
         cursor for :meth:`get_board_delta`; the delta door's own 400 does not
         say where to get one.
         """
-        return self._tasks_read(f"boards/{board_uuid}/board/")
+        return self._tasks_read(f"boards/{_path_segment(board_uuid)}/board/")
 
     def get_board_delta(self, board_uuid: str, *, updated_since: datetime | str) -> dict[str, Any]:
         """GET /v1/tasks/boards/<uuid>/delta/ — the poll-loop door.
@@ -2505,7 +2582,7 @@ class DailyBotClient:
         cannot parse. Only the second is recoverable, and only by re-snapshotting.
         """
         return self._tasks_read(
-            f"boards/{board_uuid}/delta/",
+            f"boards/{_path_segment(board_uuid)}/delta/",
             params={"updated_since": as_query_datetime(updated_since)},
         )
 
@@ -2517,7 +2594,7 @@ class DailyBotClient:
 
     def get_task(self, task_uuid: str) -> dict[str, Any]:
         """GET /v1/tasks/tasks/<uuid>/ — the most frequent call of all."""
-        return self._tasks_read(f"tasks/{task_uuid}/")
+        return self._tasks_read(f"tasks/{_path_segment(task_uuid)}/")
 
     def create_task(
         self,
@@ -2550,7 +2627,7 @@ class DailyBotClient:
         payload: dict[str, Any] = {k: v for k, v in fields.items() if v is not None}
         return self._tasks_write(
             "PATCH",
-            f"tasks/{task_uuid}/",
+            f"tasks/{_path_segment(task_uuid)}/",
             json=payload,
             idempotent=True,
             idempotency_key=idempotency_key,
@@ -2568,7 +2645,7 @@ class DailyBotClient:
         if state:
             payload["state"] = state
         result: dict[str, Any] = self._tasks_write(
-            "POST", f"tasks/{task_uuid}/move-board/", json=payload
+            "POST", f"tasks/{_path_segment(task_uuid)}/move-board/", json=payload
         )
         return result
 
@@ -2578,7 +2655,7 @@ class DailyBotClient:
         """POST /v1/tasks/tasks/<uuid>/move/ — accepts a key."""
         return self._tasks_write(
             "POST",
-            f"tasks/{task_uuid}/move/",
+            f"tasks/{_path_segment(task_uuid)}/move/",
             json={k: v for k, v in fields.items() if v is not None},
             idempotent=True,
             idempotency_key=idempotency_key,
@@ -2594,7 +2671,7 @@ class DailyBotClient:
         """
         return self._tasks_write(
             "POST",
-            f"tasks/{task_uuid}/archive/",
+            f"tasks/{_path_segment(task_uuid)}/archive/",
             params={"dry_run": "true"} if dry_run else None,
             idempotent=True,
             idempotency_key=idempotency_key,
@@ -2603,12 +2680,17 @@ class DailyBotClient:
     def restore_task(self, task_uuid: str, *, idempotency_key: str | None = None) -> dict[str, Any]:
         """POST /v1/tasks/tasks/<uuid>/restore/ — accepts a key."""
         return self._tasks_write(
-            "POST", f"tasks/{task_uuid}/restore/", idempotent=True, idempotency_key=idempotency_key
+            "POST",
+            f"tasks/{_path_segment(task_uuid)}/restore/",
+            idempotent=True,
+            idempotency_key=idempotency_key,
         )
 
     def subscribe_task(self, task_uuid: str) -> dict[str, Any]:
         """POST /v1/tasks/tasks/<uuid>/subscription/ — person-only; no key accepted."""
-        return self._tasks_write("POST", f"tasks/{task_uuid}/subscription/", idempotent=False)
+        return self._tasks_write(
+            "POST", f"tasks/{_path_segment(task_uuid)}/subscription/", idempotent=False
+        )
 
     def bulk_tasks(
         self,
@@ -2623,7 +2705,7 @@ class DailyBotClient:
 
         Without the header the server answers ``400 idempotency_key_required``, so
         the real call always sends one. ``dry_run`` asks the server to run the batch
-        and roll it back (API R5): no key is sent, and nothing is written. `create`
+        and roll it back: no key is sent, and nothing is written. `create`
         needs the target ``board`` at the top of the body.
         """
         payload: dict[str, Any] = {"operation": operation, "items": items}
@@ -2647,7 +2729,7 @@ class DailyBotClient:
         """POST /v1/tasks/tasks/<uuid>/comments/ — accepts a key."""
         return self._tasks_write(
             "POST",
-            f"tasks/{task_uuid}/comments/",
+            f"tasks/{_path_segment(task_uuid)}/comments/",
             json={"body": body},
             idempotent=True,
             idempotency_key=idempotency_key,
@@ -2657,7 +2739,9 @@ class DailyBotClient:
         self, task_uuid: str, *, params: dict[str, Any] | None = None, **page: Any
     ) -> PaginatedResult:
         """GET /v1/tasks/tasks/<uuid>/comments/."""
-        return self._tasks_list(f"tasks/{task_uuid}/comments/", params=params, **page)
+        return self._tasks_list(
+            f"tasks/{_path_segment(task_uuid)}/comments/", params=params, **page
+        )
 
     def relate_tasks(
         self, task_uuid: str, *, other: str, relation: str, idempotency_key: str | None = None
@@ -2665,7 +2749,7 @@ class DailyBotClient:
         """POST /v1/tasks/tasks/<uuid>/relations/ — accepts a key."""
         return self._tasks_write(
             "POST",
-            f"tasks/{task_uuid}/relations/",
+            f"tasks/{_path_segment(task_uuid)}/relations/",
             json={"relation_type": relation, "target_task": other},
             idempotent=True,
             idempotency_key=idempotency_key,
@@ -2677,7 +2761,7 @@ class DailyBotClient:
         """POST /v1/tasks/tasks/<uuid>/labels/batch/ — accepts a key."""
         return self._tasks_write(
             "POST",
-            f"tasks/{task_uuid}/labels/batch/",
+            f"tasks/{_path_segment(task_uuid)}/labels/batch/",
             json={"mode": mode, "labels": labels},
             idempotent=True,
             idempotency_key=idempotency_key,
@@ -2705,7 +2789,7 @@ class DailyBotClient:
             payload["is_muted"] = is_muted
         result: dict[str, Any] = self._tasks_write(
             "POST",
-            f"tasks/{task_uuid}/participants/",
+            f"tasks/{_path_segment(task_uuid)}/participants/",
             json=payload,
             idempotent=True,
             idempotency_key=idempotency_key,
@@ -2714,15 +2798,17 @@ class DailyBotClient:
 
     def list_task_participants(self, task_uuid: str) -> Any:
         """GET /v1/tasks/tasks/<uuid>/participants/ — who is on the card, and watchers."""
-        return self._tasks_read(f"tasks/{task_uuid}/participants/")
+        return self._tasks_read(f"tasks/{_path_segment(task_uuid)}/participants/")
 
     def remove_task_participant(self, task_uuid: str, user_uuid: str) -> Any:
         """DELETE …/participants/<user>/ — person-only. Leaving is not muting."""
-        return self._tasks_write("DELETE", f"tasks/{task_uuid}/participants/{user_uuid}/")
+        return self._tasks_write(
+            "DELETE", f"tasks/{_path_segment(task_uuid)}/participants/{_path_segment(user_uuid)}/"
+        )
 
     def unsubscribe_task(self, task_uuid: str) -> Any:
         """DELETE /v1/tasks/tasks/<uuid>/subscription/ — person-only; stop watching."""
-        return self._tasks_write("DELETE", f"tasks/{task_uuid}/subscription/")
+        return self._tasks_write("DELETE", f"tasks/{_path_segment(task_uuid)}/subscription/")
 
     # --- Attachments ---
 
@@ -2740,6 +2826,18 @@ class DailyBotClient:
             api.port,
         )
 
+    def _same_api_origin(self, url: str) -> str:
+        """A pagination link, pinned to the configured API before credentials follow it.
+
+        `next` is server data. Following it verbatim would hand the Bearer token or
+        API key to whatever host it names, and a proxy that rewrites it (to
+        `http://`, or to an internal host name) would break `--all`. Only its path
+        and query are kept; the scheme, host and port are always the API's own.
+        """
+        target = urlsplit(self._absolute(url))
+        api = urlsplit(self.api_url)
+        return target._replace(scheme=api.scheme, netloc=api.netloc).geturl()
+
     def _absolute(self, url: str) -> str:
         """Resolve a relative target against the API origin."""
         return urljoin(self.api_url.rstrip("/") + "/", url)
@@ -2754,7 +2852,7 @@ class DailyBotClient:
         """POST …/attachments/presign/ — reserve an attachment and get an upload target."""
         result: dict[str, Any] = self._tasks_write(
             "POST",
-            f"tasks/{task_uuid}/attachments/presign/",
+            f"tasks/{_path_segment(task_uuid)}/attachments/presign/",
             json={"filename": filename, "content_type": content_type, "size": size},
         )
         return result
@@ -2820,7 +2918,8 @@ class DailyBotClient:
     def confirm_attachment(self, task_uuid: str, attachment_uuid: str) -> dict[str, Any]:
         """POST …/attachments/<uuid>/confirm/ — mark the uploaded attachment ready."""
         result: dict[str, Any] = self._tasks_write(
-            "POST", f"tasks/{task_uuid}/attachments/{attachment_uuid}/confirm/"
+            "POST",
+            f"tasks/{_path_segment(task_uuid)}/attachments/{_path_segment(attachment_uuid)}/confirm/",
         )
         return result
 
@@ -2837,7 +2936,7 @@ class DailyBotClient:
         return self._handle_response(
             self._request(
                 "POST",
-                self._tasks_url(f"tasks/{task_uuid}/attachments/"),
+                self._tasks_url(f"tasks/{_path_segment(task_uuid)}/attachments/"),
                 files={"file": (filename, data, content_type)},
                 data={"caption": caption} if caption else None,
                 timeout=ATTACHMENT_TRANSFER_TIMEOUT_SECS,
@@ -2846,11 +2945,14 @@ class DailyBotClient:
 
     def list_task_attachments(self, task_uuid: str) -> Any:
         """GET /v1/tasks/tasks/<uuid>/attachments/."""
-        return self._tasks_read(f"tasks/{task_uuid}/attachments/")
+        return self._tasks_read(f"tasks/{_path_segment(task_uuid)}/attachments/")
 
     def delete_task_attachment(self, task_uuid: str, attachment_uuid: str) -> Any:
         """DELETE …/attachments/<uuid>/ — also removes the stored object when unshared."""
-        return self._tasks_write("DELETE", f"tasks/{task_uuid}/attachments/{attachment_uuid}/")
+        return self._tasks_write(
+            "DELETE",
+            f"tasks/{_path_segment(task_uuid)}/attachments/{_path_segment(attachment_uuid)}/",
+        )
 
     def download_attachment(self, task_uuid: str, attachment_uuid: str) -> bytes:
         """GET …/attachments/<uuid>/content/ — the bytes.
@@ -2860,7 +2962,9 @@ class DailyBotClient:
         """
         response: httpx.Response = self._request(
             "GET",
-            self._tasks_url(f"tasks/{task_uuid}/attachments/{attachment_uuid}/content/"),
+            self._tasks_url(
+                f"tasks/{_path_segment(task_uuid)}/attachments/{_path_segment(attachment_uuid)}/content/"
+            ),
             timeout=ATTACHMENT_TRANSFER_TIMEOUT_SECS,
         )
         if 300 <= response.status_code < 400:
@@ -2871,26 +2975,7 @@ class DailyBotClient:
                     "The download redirect pointed somewhere it should not; not followed.",
                     code="attachment_download_redirected",
                 )
-            try:
-                response = httpx.get(
-                    location, timeout=ATTACHMENT_TRANSFER_TIMEOUT_SECS, follow_redirects=False
-                )
-            except httpx.HTTPError as exc:
-                raise TransportError(f"Could not download the file from storage: {exc}") from exc
-            if 300 <= response.status_code < 400:
-                raise APIError(
-                    response.status_code,
-                    "Storage answered with a second redirect; it was not followed.",
-                    code="attachment_download_redirected",
-                )
-            if response.status_code >= 400:
-                # Storage, not Dailybot, refused: a 401 here says nothing about the
-                # session, so it must not be reported as "run dailybot login".
-                raise APIError(
-                    response.status_code,
-                    f"Storage refused the download (HTTP {response.status_code}).",
-                    code="attachment_download_failed",
-                )
+            return self._download_from_storage(location)
         if response.status_code >= 400:
             self._handle_response(response)
         declared: str = str(getattr(response, "headers", {}).get("Content-Length") or "")
@@ -2909,13 +2994,67 @@ class DailyBotClient:
             )
         return content
 
+    @staticmethod
+    def _download_from_storage(location: str) -> bytes:
+        """The one credential-less hop to storage, streamed under a hard byte cap.
+
+        Storage is not trusted the way the API is. Buffering the whole body before
+        checking its size would let a gzip bomb or an endless chunked body exhaust
+        memory, so the cap is enforced on the bytes as they arrive, the body is
+        requested uncompressed, and the whole hop has a wall-clock deadline.
+        """
+        started: float = time.monotonic()
+        received: list[bytes] = []
+        total: int = 0
+        try:
+            with httpx.stream(
+                "GET",
+                location,
+                headers={"Accept-Encoding": "identity"},
+                timeout=ATTACHMENT_TRANSFER_TIMEOUT_SECS,
+                follow_redirects=False,
+            ) as response:
+                if 300 <= response.status_code < 400:
+                    raise APIError(
+                        response.status_code,
+                        "Storage answered with a second redirect; it was not followed.",
+                        code="attachment_download_redirected",
+                    )
+                if response.status_code >= 400:
+                    # Storage, not Dailybot, refused: a 401 here says nothing about the
+                    # session, so it must not be reported as "run dailybot login".
+                    raise APIError(
+                        response.status_code,
+                        f"Storage refused the download (HTTP {response.status_code}).",
+                        code="attachment_download_failed",
+                    )
+                for chunk in response.iter_bytes():
+                    total += len(chunk)
+                    if total > ATTACHMENT_MAX_SIZE_BYTES:
+                        raise APIError(
+                            413,
+                            "The attachment is larger than this CLI downloads; "
+                            "nothing was written.",
+                            code="attachment_too_large",
+                        )
+                    if time.monotonic() - started > ATTACHMENT_DOWNLOAD_DEADLINE_SECS:
+                        raise TransportError(
+                            "Storage took too long to send the file; nothing was written."
+                        )
+                    received.append(chunk)
+        except httpx.HTTPError as exc:
+            if isinstance(exc, TransportError):
+                raise
+            raise TransportError(f"Could not download the file from storage: {exc}") from exc
+        return b"".join(received)
+
     def list_task_children(self, task_uuid: str) -> Any:
         """GET /v1/tasks/tasks/<uuid>/children/ — the task's direct sub-tasks."""
-        return self._tasks_read(f"tasks/{task_uuid}/children/")
+        return self._tasks_read(f"tasks/{_path_segment(task_uuid)}/children/")
 
     def list_task_events(self, task_uuid: str) -> Any:
         """GET /v1/tasks/tasks/<uuid>/events/ — the task's raw event history."""
-        return self._tasks_read(f"tasks/{task_uuid}/events/")
+        return self._tasks_read(f"tasks/{_path_segment(task_uuid)}/events/")
 
     def list_task_activity(
         self, task_uuid: str, *, params: dict[str, Any] | None = None, **page: Any
@@ -2924,7 +3063,9 @@ class DailyBotClient:
 
         Same envelope as the workspace feed; declares `updated_since` and `type`.
         """
-        return self._tasks_list(f"tasks/{task_uuid}/activity/", params=params, **page)
+        return self._tasks_list(
+            f"tasks/{_path_segment(task_uuid)}/activity/", params=params, **page
+        )
 
     def duplicate_task(
         self,
@@ -2940,7 +3081,7 @@ class DailyBotClient:
         """
         return self._tasks_write(
             "POST",
-            f"tasks/{task_uuid}/duplicate/",
+            f"tasks/{_path_segment(task_uuid)}/duplicate/",
             json={"include": include} if include else {},
             idempotent=True,
             idempotency_key=idempotency_key,
@@ -2948,21 +3089,27 @@ class DailyBotClient:
 
     def list_task_relations(self, task_uuid: str) -> Any:
         """GET /v1/tasks/tasks/<uuid>/relations/ — links to other tasks, with direction."""
-        return self._tasks_read(f"tasks/{task_uuid}/relations/")
+        return self._tasks_read(f"tasks/{_path_segment(task_uuid)}/relations/")
 
     def delete_task_relation(self, task_uuid: str, relation_uuid: str) -> Any:
         """DELETE …/relations/<uuid>/ — unlink two tasks; no key accepted."""
-        return self._tasks_write("DELETE", f"tasks/{task_uuid}/relations/{relation_uuid}/")
+        return self._tasks_write(
+            "DELETE", f"tasks/{_path_segment(task_uuid)}/relations/{_path_segment(relation_uuid)}/"
+        )
 
     def update_task_comment(self, task_uuid: str, comment_uuid: str, *, body: str) -> Any:
         """PATCH …/comments/<uuid>/ — edit; `edited_at` is set. No key accepted."""
         return self._tasks_write(
-            "PATCH", f"tasks/{task_uuid}/comments/{comment_uuid}/", json={"body": body}
+            "PATCH",
+            f"tasks/{_path_segment(task_uuid)}/comments/{_path_segment(comment_uuid)}/",
+            json={"body": body},
         )
 
     def delete_task_comment(self, task_uuid: str, comment_uuid: str) -> Any:
         """DELETE …/comments/<uuid>/ — a soft delete: the row survives, the body is blanked."""
-        return self._tasks_write("DELETE", f"tasks/{task_uuid}/comments/{comment_uuid}/")
+        return self._tasks_write(
+            "DELETE", f"tasks/{_path_segment(task_uuid)}/comments/{_path_segment(comment_uuid)}/"
+        )
 
     # --- Projects, goals, milestones ---
 
@@ -2979,12 +3126,16 @@ class DailyBotClient:
     def get_project(self, project_uuid: str, *, include: list[str] | None = None) -> dict[str, Any]:
         """GET /v1/tasks/projects/<uuid>/."""
         return self._tasks_read(
-            f"projects/{project_uuid}/", params=self._with_include(None, include)
+            f"projects/{_path_segment(project_uuid)}/", params=self._with_include(None, include)
         )
 
     def list_project_updates(self, project_uuid: str | None = None, **page: Any) -> PaginatedResult:
         """GET the project-update feed: the batched digest, or one project's updates."""
-        path: str = f"projects/{project_uuid}/updates/" if project_uuid else "projects/updates/"
+        path: str = (
+            f"projects/{_path_segment(project_uuid)}/updates/"
+            if project_uuid
+            else "projects/updates/"
+        )
         return self._tasks_list(path, **page)
 
     def post_project_update(
@@ -2995,7 +3146,7 @@ class DailyBotClient:
         health: str | None = None,
         idempotency_key: str | None = None,
     ) -> dict[str, Any]:
-        """POST /v1/tasks/projects/<uuid>/updates/ — accepts a key (API R4).
+        """POST /v1/tasks/projects/<uuid>/updates/ — accepts an Idempotency-Key.
 
         The loop-closing command: it is how the team sees what an agent did.
         `health` records the author's claim that day; it does not change the project.
@@ -3005,7 +3156,7 @@ class DailyBotClient:
             payload["health"] = health
         result: dict[str, Any] = self._tasks_write(
             "POST",
-            f"projects/{project_uuid}/updates/",
+            f"projects/{_path_segment(project_uuid)}/updates/",
             json=payload,
             idempotent=True,
             idempotency_key=idempotency_key,
@@ -3018,7 +3169,7 @@ class DailyBotClient:
         """PATCH /v1/tasks/projects/<uuid>/ — partial; `tasks:admin`; accepts a key."""
         result: dict[str, Any] = self._tasks_write(
             "PATCH",
-            f"projects/{project_uuid}/",
+            f"projects/{_path_segment(project_uuid)}/",
             json={k: v for k, v in fields.items() if v is not None},
             idempotent=True,
             idempotency_key=idempotency_key,
@@ -3031,7 +3182,7 @@ class DailyBotClient:
         """POST …/restore/ — boards and tasks that cascaded on archive stay archived."""
         result: dict[str, Any] = self._tasks_write(
             "POST",
-            f"projects/{project_uuid}/restore/",
+            f"projects/{_path_segment(project_uuid)}/restore/",
             idempotent=True,
             idempotency_key=idempotency_key,
         )
@@ -3039,7 +3190,7 @@ class DailyBotClient:
 
     def list_project_members(self, project_uuid: str) -> Any:
         """GET /v1/tasks/projects/<uuid>/members/ — person-only."""
-        return self._tasks_read(f"projects/{project_uuid}/members/")
+        return self._tasks_read(f"projects/{_path_segment(project_uuid)}/members/")
 
     def add_project_member(
         self, project_uuid: str, *, user_uuid: str | None = None, team_uuid: str | None = None
@@ -3048,20 +3199,27 @@ class DailyBotClient:
         payload: dict[str, Any] = (
             {"user_uuid": user_uuid} if user_uuid else {"team_uuid": team_uuid}
         )
-        return self._tasks_write("POST", f"projects/{project_uuid}/members/", json=payload)
+        return self._tasks_write(
+            "POST", f"projects/{_path_segment(project_uuid)}/members/", json=payload
+        )
 
     def remove_project_member(self, project_uuid: str, user_uuid: str) -> Any:
         """DELETE …/members/<user>/ — person-only."""
-        return self._tasks_write("DELETE", f"projects/{project_uuid}/members/{user_uuid}/")
+        return self._tasks_write(
+            "DELETE", f"projects/{_path_segment(project_uuid)}/members/{_path_segment(user_uuid)}/"
+        )
 
     def list_project_views_with_etag(self, project_uuid: str) -> tuple[Any, str | None]:
         """GET /v1/tasks/projects/<uuid>/views/ plus the `ETag` a save must send back."""
-        return self._tasks_read_with_etag(f"projects/{project_uuid}/views/")
+        return self._tasks_read_with_etag(f"projects/{_path_segment(project_uuid)}/views/")
 
     def save_project_views(self, project_uuid: str, views: list[Any], *, if_match: str) -> Any:
         """PUT …/views/ — replaces the caller's whole view array; `If-Match` required."""
         return self._tasks_write(
-            "PUT", f"projects/{project_uuid}/views/", json=views, headers={"If-Match": if_match}
+            "PUT",
+            f"projects/{_path_segment(project_uuid)}/views/",
+            json=views,
+            headers={"If-Match": if_match},
         )
 
     def create_milestone(self, project_uuid: str, *, name: str, date: str, **fields: Any) -> Any:
@@ -3071,42 +3229,53 @@ class DailyBotClient:
             "date": date,
             **{k: v for k, v in fields.items() if v is not None},
         }
-        return self._tasks_write("POST", f"projects/{project_uuid}/milestones/", json=payload)
+        return self._tasks_write(
+            "POST", f"projects/{_path_segment(project_uuid)}/milestones/", json=payload
+        )
 
     def update_milestone(self, project_uuid: str, milestone_uuid: str, **fields: Any) -> Any:
         """PATCH …/milestones/<uuid>/ — move or rename."""
         return self._tasks_write(
             "PATCH",
-            f"projects/{project_uuid}/milestones/{milestone_uuid}/",
+            f"projects/{_path_segment(project_uuid)}/milestones/{_path_segment(milestone_uuid)}/",
             json={k: v for k, v in fields.items() if v is not None},
         )
 
     def delete_milestone(self, project_uuid: str, milestone_uuid: str) -> Any:
         """DELETE …/milestones/<uuid>/ — retires (archives); tasks keep pointing at it."""
-        return self._tasks_write("DELETE", f"projects/{project_uuid}/milestones/{milestone_uuid}/")
+        return self._tasks_write(
+            "DELETE",
+            f"projects/{_path_segment(project_uuid)}/milestones/{_path_segment(milestone_uuid)}/",
+        )
 
     def update_goal(self, goal_uuid: str, **fields: Any) -> dict[str, Any]:
         """PATCH /v1/tasks/goals/<uuid>/ — including the declared `status`; no key."""
         result: dict[str, Any] = self._tasks_write(
-            "PATCH", f"goals/{goal_uuid}/", json={k: v for k, v in fields.items() if v is not None}
+            "PATCH",
+            f"goals/{_path_segment(goal_uuid)}/",
+            json={k: v for k, v in fields.items() if v is not None},
         )
         return result
 
     def restore_goal(self, goal_uuid: str) -> dict[str, Any]:
         """POST …/restore/ — 409 `goal_name_conflict` when the name was reused meanwhile."""
-        result: dict[str, Any] = self._tasks_write("POST", f"goals/{goal_uuid}/restore/")
+        result: dict[str, Any] = self._tasks_write(
+            "POST", f"goals/{_path_segment(goal_uuid)}/restore/"
+        )
         return result
 
     def link_goal_project(self, goal_uuid: str, project_uuid: str) -> dict[str, Any]:
         """POST /v1/tasks/goals/<uuid>/projects/ — the project now counts toward the goal."""
         result: dict[str, Any] = self._tasks_write(
-            "POST", f"goals/{goal_uuid}/projects/", json={"project": project_uuid}
+            "POST", f"goals/{_path_segment(goal_uuid)}/projects/", json={"project": project_uuid}
         )
         return result
 
     def unlink_goal_project(self, goal_uuid: str, project_uuid: str) -> Any:
         """DELETE …/projects/<uuid>/ — the project stops counting toward the goal."""
-        return self._tasks_write("DELETE", f"goals/{goal_uuid}/projects/{project_uuid}/")
+        return self._tasks_write(
+            "DELETE", f"goals/{_path_segment(goal_uuid)}/projects/{_path_segment(project_uuid)}/"
+        )
 
     def list_goals(
         self,
@@ -3120,13 +3289,17 @@ class DailyBotClient:
 
     def get_goal(self, goal_uuid: str, *, include: list[str] | None = None) -> dict[str, Any]:
         """GET /v1/tasks/goals/<uuid>/."""
-        return self._tasks_read(f"goals/{goal_uuid}/", params=self._with_include(None, include))
+        return self._tasks_read(
+            f"goals/{_path_segment(goal_uuid)}/", params=self._with_include(None, include)
+        )
 
     def list_milestones(
         self, project_uuid: str | None = None, *, params: dict[str, Any] | None = None, **page: Any
     ) -> PaginatedResult:
         """GET the milestone family, org-wide or scoped to one project."""
-        path: str = f"projects/{project_uuid}/milestones/" if project_uuid else "milestones/"
+        path: str = (
+            f"projects/{_path_segment(project_uuid)}/milestones/" if project_uuid else "milestones/"
+        )
         return self._tasks_list(path, params=params, **page)
 
     def complete_milestone(
@@ -3143,7 +3316,7 @@ class DailyBotClient:
         """
         result: dict[str, Any] = self._tasks_write(
             "POST",
-            f"projects/{project_uuid}/milestones/{milestone_uuid}/complete/",
+            f"projects/{_path_segment(project_uuid)}/milestones/{_path_segment(milestone_uuid)}/complete/",
             params={"dry_run": "true"} if dry_run else None,
             idempotent=True,
             idempotency_key=idempotency_key,
@@ -3156,7 +3329,7 @@ class DailyBotClient:
         """POST .../milestones/<uuid>/reopen/ — the reverse verb; accepts a key."""
         result: dict[str, Any] = self._tasks_write(
             "POST",
-            f"projects/{project_uuid}/milestones/{milestone_uuid}/reopen/",
+            f"projects/{_path_segment(project_uuid)}/milestones/{_path_segment(milestone_uuid)}/reopen/",
             idempotent=True,
             idempotency_key=idempotency_key,
         )
@@ -3191,7 +3364,7 @@ class DailyBotClient:
         payload: dict[str, Any] = {k: v for k, v in fields.items() if v is not None}
         result: dict[str, Any] = self._tasks_write(
             "PATCH",
-            f"boards/{board_uuid}/",
+            f"boards/{_path_segment(board_uuid)}/",
             json=payload,
             idempotent=True,
             idempotency_key=idempotency_key,
@@ -3204,7 +3377,7 @@ class DailyBotClient:
         """POST /v1/tasks/boards/<uuid>/archive/ — cascades to live tasks."""
         return self._tasks_write(
             "POST",
-            f"boards/{board_uuid}/archive/",
+            f"boards/{_path_segment(board_uuid)}/archive/",
             params={"dry_run": "true"} if dry_run else None,
             idempotent=True,
             idempotency_key=idempotency_key,
@@ -3216,7 +3389,7 @@ class DailyBotClient:
         """POST /v1/tasks/boards/<uuid>/restore/ — cascaded tasks stay archived."""
         return self._tasks_write(
             "POST",
-            f"boards/{board_uuid}/restore/",
+            f"boards/{_path_segment(board_uuid)}/restore/",
             idempotent=True,
             idempotency_key=idempotency_key,
         )
@@ -3239,7 +3412,7 @@ class DailyBotClient:
         """POST /v1/tasks/projects/<uuid>/archive/."""
         return self._tasks_write(
             "POST",
-            f"projects/{project_uuid}/archive/",
+            f"projects/{_path_segment(project_uuid)}/archive/",
             params={"dry_run": "true"} if dry_run else None,
             idempotent=True,
             idempotency_key=idempotency_key,
@@ -3263,7 +3436,7 @@ class DailyBotClient:
         """POST /v1/tasks/goals/<uuid>/archive/ — projects are not cascaded."""
         return self._tasks_write(
             "POST",
-            f"goals/{goal_uuid}/archive/",
+            f"goals/{_path_segment(goal_uuid)}/archive/",
             params={"dry_run": "true"} if dry_run else None,
             idempotent=True,
             idempotency_key=idempotency_key,

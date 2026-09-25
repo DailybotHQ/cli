@@ -63,7 +63,10 @@ tests/
 ├── task_collaboration_test.py    # comments edit/delete, relations, participants, watch, mute
 ├── task_structure_test.py         # children, duplicate, events, activity; delegation absent
 ├── tasks_attachments_test.py      # attach/list/get/delete; credential + redirect boundary
-├── tasks_bulk_dry_run_test.py     # bulk --dry-run (R5), create --board, declared operations
+├── tasks_bulk_dry_run_test.py     # bulk --dry-run (server preview), create --board, declared operations
+├── tasks_path_safety_test.py     # path identifiers, no Bearer→key replay on Tasks 403, next links pinned
+├── tasks_terminal_safety_test.py # control chars neutralized, preview shape, local file limits
+├── tasks_key_refusal_sweep_test.py # every admin / person-only door refuses a key before the request
 ├── tasks_favorites_views_test.py  # board/view star|unstar (R3a), saved view get/update/delete (R3d)
 ├── tasks_ergonomics_sweep_test.py # walks every Tasks command: --json, example, TASK metavar, --dry-run
 ├── board_commands_test.py         # `board` group: reads + container writes

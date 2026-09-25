@@ -1,4 +1,4 @@
-"""Favorites (API R3a) and single saved views (API R3d) — Tasks Beta PR6b.
+"""Favorites and single saved views.
 
 Only boards and saved views can be pinned; everything here is person-only and
 refuses an API key before any request.

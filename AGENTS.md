@@ -120,13 +120,16 @@ tests/                       # pytest suite (file naming: *_test.py)
 ├── task_collaboration_test.py # comments edit/delete, relations, participants, watch, mute
 ├── task_structure_test.py  # children, duplicate, events, activity
 ├── tasks_attachments_test.py # attachments: upload host boundary, redirects, size cap
-├── tasks_bulk_dry_run_test.py # bulk --dry-run (R5) and bulk contract fixes
+├── tasks_bulk_dry_run_test.py # bulk --dry-run (server preview) and bulk contract fixes
+├── tasks_path_safety_test.py # path identifiers, no Bearer→key replay, next links pinned
+├── tasks_terminal_safety_test.py # control chars neutralized, preview shape, local file limits
+├── tasks_key_refusal_sweep_test.py # every admin / person-only door refuses a key pre-request
 ├── tasks_favorites_views_test.py # favorites + single saved views
 ├── tasks_ergonomics_sweep_test.py # the Beta ergonomics bar on every Tasks command
 ├── board_commands_test.py   # `board` group (reads + container writes)
 ├── board_admin_test.py      # `board` administration (states, members, labels, views)
 ├── project_goal_commands_test.py  # `project` + `goal`
-├── project_goal_admin_test.py # project + goal administration (PR5)
+├── project_goal_admin_test.py # project + goal administration
 ├── tasks_display_test.py    # Tasks renderers + untrusted-content presenter
 ├── tasks_error_taxonomy_test.py   # Tasks error codes + credential guidance
 ├── tasks_security_test.py   # injection boundary, isolation, destructive paths

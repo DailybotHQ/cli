@@ -1,4 +1,4 @@
-"""`task bulk --dry-run` (API R5) and the bulk contract corrections.
+"""`task bulk --dry-run` (server-side preview) and the bulk contract corrections.
 
 The dry run is the real bulk, run and rolled back by the server: same body, no
 Idempotency-Key, nothing written. Safety property worth pinning: because a real

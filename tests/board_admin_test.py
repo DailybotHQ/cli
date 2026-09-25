@@ -1,9 +1,9 @@
-"""`dailybot board` administration surfaces (Tasks Beta PR2).
+"""`dailybot board` administration surfaces.
 
 Reads: states, members, labels, views. Writes: board update, columns (create,
 update, archive, restore, reorder), members (add, remove), labels (create) and
 saved views (save). Every write is asserted on the exact wire against the
-published contract (`tasks_v1.yaml` 1.1.0): body, path, and whether the
+published Tasks API contract: body, path, and whether the
 Idempotency-Key header is sent — present only where the door accepts one.
 """
 
@@ -441,9 +441,10 @@ class TestMembers:
     def test_member_writes_refuse_a_key_before_the_request(
         self, runner: CliRunner, client: MagicMock, argv: list[str]
     ) -> None:
+        # Member writes are `tasks:admin` doors: refused like the server's 403.
         result = _invoke(runner, client, argv, person=False)
-        assert result.exit_code == EXIT_NOT_AUTHENTICATED
-        assert json.loads(result.output)["status"] == "error"
+        assert result.exit_code == EXIT_PERMISSION_DENIED
+        assert json.loads(result.output)["code"] == "insufficient_scope"
         client.add_board_member.assert_not_called()
         client.remove_board_member.assert_not_called()
 

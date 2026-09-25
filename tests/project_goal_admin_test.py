@@ -1,4 +1,4 @@
-"""Projects and goals reach web parity (Tasks Beta PR5).
+"""Projects and goals reach web parity.
 
 Project update/restore, members (person-only), saved views (If-Match), per-project
 updates, update-post health + key (R4), milestone create/update/delete, and goal
@@ -261,8 +261,6 @@ class TestProjectCommands:
         "argv",
         [
             ["project", "members", PROJECT, "--json"],
-            ["project", "member", "add", PROJECT, "--user", USER, "--json"],
-            ["project", "member", "remove", PROJECT, USER, "--yes", "--json"],
             ["project", "view", "save", PROJECT, "-f", "-", "--if-match", '"1"', "--json"],
         ],
     )

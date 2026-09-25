@@ -30,6 +30,17 @@ from dailybot_cli.commands.public_api_helpers import (
 from dailybot_cli.display import console, print_dry_run_consequence, print_error
 
 
+def _is_preview(payload: Any) -> bool:
+    """True for a dry-run preview document, False for a mutated object."""
+    if not isinstance(payload, dict):
+        return False
+    # Every preview shape the doors return carries at least one of these; a mutated
+    # task / board / project / goal / milestone carries none of them.
+    return payload.get("dry_run") is True or any(
+        field in payload for field in ("consequence", "affects", "reversible")
+    )
+
+
 def preview_then_confirm(
     preview_call: Callable[[], dict[str, Any]],
     *,
@@ -67,6 +78,27 @@ def preview_then_confirm(
         # must exit 5 like every other not-found, or an agent branching
         # "5 → skip, 1 → alert" pages on every already-archived object.
         raise SystemExit(tasks_write_exit_code(exc)) from exc
+
+    if not _is_preview(preview):
+        # The server ignored `?dry_run=true`, so this "preview" was the mutation
+        # itself. Rendering it as a preview (or, worse, confirming and sending the
+        # real call as well) would hide that a change already happened.
+        unexpected: str = (
+            "The server answered with a result instead of a preview, so the change may "
+            "already have been applied. Nothing more was sent; check the object's state."
+        )
+        if json_mode:
+            emit_json(
+                {
+                    "status": "error",
+                    "code": "preview_not_honoured",
+                    "detail": unexpected,
+                    "message": unexpected,
+                }
+            )
+        else:
+            print_error(unexpected)
+        raise SystemExit(1)
 
     if json_mode and preview_only:
         # --dry-run --json must emit the blast radius as data. Printing only the

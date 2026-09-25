@@ -25,7 +25,7 @@ from dailybot_cli.main import cli
 API_URL: str = "http://test-api.example.com"
 README_PATH: Path = Path(__file__).resolve().parent.parent / "README.md"
 TASK_KEY: str = "ENG-142"
-STATE_UUID: str = "0b9c7a52-6a7e-4d43-9d0b-1f5f0e7c2a10"
+STATE_UUID: str = "00000000-0000-0000-0000-000000000005"
 
 # The canonical Beta copy, as product ships it (Markdown).
 CANONICAL_BETA: str = (
@@ -84,6 +84,12 @@ class TestKeyAddressing:
         self, runner: CliRunner, client: MagicMock, argv: list[str], method: str
     ) -> None:
         getattr(client, method).return_value = {"uuid": "t-1", "key": TASK_KEY}
+        if method == "archive_task":
+            # Archive previews first, then applies: the first answer is a preview.
+            client.archive_task.side_effect = [
+                {"operation": "task.archive", "reversible": True},
+                {"uuid": "t-1", "key": TASK_KEY},
+            ]
         client.list_task_comments.return_value = _page()
         with (
             patch("dailybot_cli.commands.task.require_auth", return_value=client),

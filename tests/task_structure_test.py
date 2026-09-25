@@ -1,7 +1,7 @@
-"""Task structure and history (Tasks Beta PR3b): children, duplicate, events, activity.
+"""Task structure and history: children, duplicate, events, activity.
 
-Delegation (list / delegate / revoke / handback) is an x-phase-2 surface in the
-contract and is deliberately NOT built; a test pins its absence.
+Delegation is not part of the public Tasks API yet, so it is deliberately NOT
+built; a test pins its absence.
 """
 
 import json
@@ -185,6 +185,6 @@ class TestEventsAndActivity:
 
 
 def test_delegation_is_not_built() -> None:
-    # x-phase 2 in the contract: excluded until it is promoted to the public surface.
+    # Not part of the public Tasks API yet.
     output: str = CliRunner().invoke(cli, ["task", "--help"]).output
     assert "delegat" not in output

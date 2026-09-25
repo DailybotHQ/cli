@@ -232,6 +232,7 @@ def goal_archive(
     Examples:
       dailybot goal archive <goal-uuid> --dry-run
     """
+    _require_person_for_admin("goal archive", json_mode=json_mode)
     client = require_auth()
     if not preview_then_confirm(
         lambda: client.archive_goal(goal_uuid, dry_run=True),
@@ -302,6 +303,7 @@ def goal_update(
       dailybot goal update <goal-uuid> --status at_risk
       dailybot goal update <goal-uuid> --period-end 2027-01-31 --owner <user-uuid> --json
     """
+    _require_person_for_admin("goal update", json_mode=json_mode)
     if period_start and period_end and period_end < period_start:
         raise click.UsageError("--period-end is before --period-start.")
     fields: dict[str, Any] = {
@@ -345,6 +347,7 @@ def goal_restore(goal_uuid: str, json_mode: bool) -> None:
     Examples:
       dailybot goal restore <goal-uuid>
     """
+    _require_person_for_admin("goal restore", json_mode=json_mode)
     client = require_auth()
     try:
         with console.status("Restoring the goal..."):
@@ -372,6 +375,7 @@ def goal_link(goal_uuid: str, project_uuid: str, json_mode: bool) -> None:
     Examples:
       dailybot goal link <goal-uuid> <project-uuid>
     """
+    _require_person_for_admin("goal link", json_mode=json_mode)
     client = require_auth()
     try:
         with console.status("Linking the project..."):
@@ -400,6 +404,7 @@ def goal_unlink(
       dailybot goal unlink <goal-uuid> <project-uuid> --dry-run
       dailybot goal unlink <goal-uuid> <project-uuid> --yes
     """
+    _require_person_for_admin("goal unlink", json_mode=json_mode)
     if not confirm_without_preview(
         f"unlink project {project_uuid} from goal {goal_uuid}; its work stops counting toward "
         "the goal.",

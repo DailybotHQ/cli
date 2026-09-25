@@ -10,7 +10,7 @@ maps to a parameter the contract declares — a convenience flag that invents a
 parameter name would produce a 400.
 """
 
-import json as _json
+import contextlib
 import mimetypes
 import os
 import re
@@ -37,6 +37,7 @@ from dailybot_cli.commands.public_api_helpers import (
     EXIT_USER_ABORTED,
     emit_json,
     exit_for_tasks_error,
+    load_json_input,
     refuse_without_person,
     require_auth,
     rows_of,
@@ -61,6 +62,7 @@ from dailybot_cli.display import (
     print_task_detail,
     print_tasks_rows,
     print_tasks_table,
+    safe_text,
 )
 
 # Parameters `/v1/tasks/tasks/` declares. `has_dates` is here deliberately: it was
@@ -907,6 +909,7 @@ def participants_list(task_uuid: str, json_mode: bool) -> None:
       dailybot task participants list ENG-142
       dailybot task participants list ENG-142 --json
     """
+    _require_person_for("task participants list", json_mode=json_mode)
     client = require_auth()
     try:
         with console.status("Reading the participants..."):
@@ -1256,7 +1259,9 @@ def task_duplicate(
     if json_mode:
         emit_json(data)
         return
-    report_write(data, f"Duplicated as {data.get('key') or data.get('uuid') or 'a new task'}")
+    report_write(
+        data, f"Duplicated as {safe_text(data.get('key') or data.get('uuid') or 'a new task')}"
+    )
 
 
 @task.command("events")
@@ -1345,7 +1350,7 @@ def task_activity(
 
 _ATTACHMENT_COLUMNS: list[tuple[str, str, bool]] = [
     ("File", "filename", False),
-    ("Type", "content_type", True),
+    ("Type", "content_type", False),
     ("Bytes", "size", True),
     ("Status", "status", True),
     ("UUID", "uuid", True),
@@ -1401,7 +1406,15 @@ def task_attach(task_uuid: str, file_path: Path, caption: str | None, json_mode:
             f"{limit // _MIB} MiB. Nothing was uploaded."
         )
     content_type: str = _guess_content_type(file_path)
-    data: bytes = file_path.read_bytes()
+    # Read at most one byte past the limit: a file that grew after the size check
+    # (a log still being written) is refused instead of being read in full.
+    with file_path.open("rb") as source:
+        data: bytes = source.read(limit + 1)
+    if len(data) > limit:
+        raise click.UsageError(
+            f"{file_path.name} grew past the {limit // _MIB} MiB limit while it was being "
+            "read. Nothing was uploaded."
+        )
     client = require_auth()
     try:
         if caption:
@@ -1478,8 +1491,10 @@ def _write_download(output: Path, content: bytes, *, force: bool, json_mode: boo
     """
     flags: int = os.O_WRONLY | os.O_CREAT | getattr(os, "O_NOFOLLOW", 0)
     flags |= os.O_TRUNC if force else os.O_EXCL
+    created: bool = False
     try:
         descriptor: int = os.open(output, flags, DOWNLOAD_FILE_MODE)
+        created = not force
         with os.fdopen(descriptor, "wb") as handle:
             handle.write(content)
     except FileExistsError as exc:
@@ -1487,6 +1502,11 @@ def _write_download(output: Path, content: bytes, *, force: bool, json_mode: boo
             f"{output} already exists. Pass --force to overwrite it. Nothing was written."
         ) from exc
     except OSError as exc:
+        if created:
+            # This call made the file, so a half-written one is ours to remove: left
+            # behind, it would make the next attempt refuse without --force.
+            with contextlib.suppress(OSError):
+                os.unlink(output)
         message: str = f"Could not write {output}: {exc.strerror or exc}. Nothing was saved."
         if json_mode:
             emit_json(
@@ -1790,7 +1810,7 @@ def task_bulk(
       echo '[{"task":"ENG-142"}]' | dailybot task bulk --operation archive -f - --json
     """
     try:
-        items: Any = _json.load(batch_file)
+        items: Any = load_json_input(batch_file)
     except ValueError as exc:
         raise click.BadParameter(f"Could not read the batch as JSON: {exc}") from exc
     if not isinstance(items, list) or not items:

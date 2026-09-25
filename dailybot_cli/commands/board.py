@@ -7,7 +7,6 @@ the delta door's own refusal for a missing cursor does not say where to get it.
 That handoff is named in both commands' help on purpose.
 """
 
-import json as _json
 from collections.abc import Callable
 from typing import Any
 
@@ -21,6 +20,7 @@ from dailybot_cli.commands._writes import named, report_write
 from dailybot_cli.commands.public_api_helpers import (
     emit_json,
     exit_for_tasks_error,
+    load_json_input,
     refuse_without_person,
     require_auth,
     rows_of,
@@ -344,6 +344,11 @@ def board_views(board_uuid: str, etag_only: bool, json_mode: bool) -> None:
       dailybot board views <board-uuid> --json > views.json
       ETAG=$(dailybot board views <board-uuid> --etag)
     """
+    _require_person(
+        "board views",
+        "lists saved views, which belong to a person, and an organization API key is not one.",
+        json_mode=json_mode,
+    )
     client = require_auth()
     try:
         with console.status("Reading the board's views..."):
@@ -499,6 +504,7 @@ def board_state_create(
       dailybot board state create <board-uuid> -n "In review" --category in_progress
       dailybot board state create <board-uuid> -n Blocked --category todo --position 2 --json
     """
+    _require_person_for_admin("board state create", json_mode=json_mode)
     client = require_auth()
     try:
         with console.status("Adding the column..."):
@@ -546,6 +552,7 @@ def board_state_update(
       dailybot board state update <board-uuid> <state-uuid> --name "Shipped"
       dailybot board state update <board-uuid> <state-uuid> --position 1 --json
     """
+    _require_person_for_admin("board state update", json_mode=json_mode)
     fields: dict[str, Any] = {
         k: v
         for k, v in {"name": name, "color": color, "position": position}.items()
@@ -595,6 +602,7 @@ def board_state_archive(
       dailybot board state archive <board-uuid> <state-uuid> --dry-run
       dailybot board state archive <board-uuid> <state-uuid> --migrate-to <other-state> --yes
     """
+    _require_person_for_admin("board state archive", json_mode=json_mode)
     client = require_auth()
     if not preview_then_confirm(
         lambda: client.archive_board_state(
@@ -629,6 +637,7 @@ def board_state_restore(board_uuid: str, state_uuid: str, json_mode: bool) -> No
     Examples:
       dailybot board state restore <board-uuid> <state-uuid>
     """
+    _require_person_for_admin("board state restore", json_mode=json_mode)
     client = require_auth()
     try:
         with console.status("Restoring the column..."):
@@ -657,6 +666,7 @@ def board_state_reorder(board_uuid: str, state_uuids: tuple[str, ...], json_mode
     Examples:
       dailybot board state reorder <board-uuid> <backlog> <todo> <doing> <done>
     """
+    _require_person_for_admin("board state reorder", json_mode=json_mode)
     if len(set(state_uuids)) != len(state_uuids):
         raise click.UsageError("A column appears twice. List each live column exactly once.")
     client = require_auth()
@@ -714,7 +724,7 @@ def board_member_add(
     Examples:
       dailybot board member add <board-uuid> <user-uuid>
     """
-    _require_person("board member add", _MEMBER_WRITE_REASON, json_mode=json_mode)
+    _require_person_for_admin("board member add", json_mode=json_mode)
     client = require_auth()
     try:
         with console.status("Adding the member..."):
@@ -750,7 +760,7 @@ def board_member_remove(
       dailybot board member remove <board-uuid> <user-uuid> --dry-run
       dailybot board member remove <board-uuid> <user-uuid> --yes
     """
-    _require_person("board member remove", _MEMBER_WRITE_REASON, json_mode=json_mode)
+    _require_person_for_admin("board member remove", json_mode=json_mode)
     if not confirm_without_preview(
         f"remove user {user_uuid} from board {board_uuid}; they lose sight of it if it is private.",
         assume_yes=assume_yes,
@@ -878,7 +888,7 @@ def board_view_save(
     if (if_match is None) == (not fetch_etag):
         raise click.UsageError("Pass exactly one of --if-match <etag> or --fetch-etag.")
     try:
-        views: Any = _json.load(views_file)
+        views: Any = load_json_input(views_file)
     except ValueError as exc:
         raise click.BadParameter(f"not valid JSON: {exc}", param_hint="--file") from exc
     if not isinstance(views, list):
@@ -1044,6 +1054,7 @@ def board_update(
       dailybot board update <board-uuid> --name "Design (Q4)"
       dailybot board update <board-uuid> --key DSN --visibility members --json
     """
+    _require_person_for_admin("board update", json_mode=json_mode)
     fields: dict[str, Any] = {
         k: v
         for k, v in {
@@ -1094,6 +1105,7 @@ def board_archive(
     Examples:
       dailybot board archive <board-uuid> --dry-run
     """
+    _require_person_for_admin("board archive", json_mode=json_mode)
     client = require_auth()
     if not preview_then_confirm(
         lambda: client.archive_board(board_uuid, dry_run=True),
@@ -1134,6 +1146,7 @@ def board_restore(board_uuid: str, idempotency_key: str | None, json_mode: bool)
     Examples:
       dailybot board restore <board-uuid>
     """
+    _require_person_for_admin("board restore", json_mode=json_mode)
     client = require_auth()
     try:
         with console.status("Restoring the board..."):

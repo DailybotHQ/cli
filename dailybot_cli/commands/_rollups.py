@@ -17,6 +17,8 @@ renders absence as `0` reintroduces the exact defect the server fixed.
 
 from typing import Any
 
+from dailybot_cli.display import safe_text
+
 NOT_REQUESTED: str = "not requested"
 NOTHING_TO_MEASURE: str = "nothing to measure"
 
@@ -36,5 +38,5 @@ def render_rollup(row: dict[str, Any], field: str) -> str:
             text += f" ({value.get('completed')} of {value.get('total')} done)"
         if value.get("is_partial"):
             text += " — partial: some linked projects are not visible to you"
-        return text
-    return str(value)
+        return safe_text(text)
+    return safe_text(value)

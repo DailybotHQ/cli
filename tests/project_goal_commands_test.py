@@ -182,7 +182,7 @@ class TestProjectUpdatePost:
         assert "a long update" in client.post_project_update.call_args[1]["body"]
 
     def test_the_idempotency_key_flag_is_offered(self, runner: CliRunner) -> None:
-        # The door honours Idempotency-Key since API R4, so the flag is real now.
+        # The door honours Idempotency-Key now, so the flag is real now.
         assert (
             "--idempotency-key" in runner.invoke(cli, ["project", "update-post", "--help"]).output
         )

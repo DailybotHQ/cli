@@ -866,6 +866,12 @@ Replies to agent emails land as messages retrievable via `dailybot agent message
 Projects, boards and tasks. Two groups: **`dailybot tasks`** answers questions about the
 workspace, **`dailybot task`** reads or changes one task.
 
+**Structure changes need a signed-in organization admin.** Creating, updating, archiving or
+restoring boards, columns, projects and goals, board and project membership, and linking
+goals to projects all need the `tasks:admin` scope, which an organization API key can never
+hold. With only `DAILYBOT_API_KEY` those commands stop before sending anything; run
+`dailybot login` first.
+
 The command an agent should reach for first is **`dailybot project update-post`** — it is
 how the team sees what was done. An agent that moves tasks silently is invisible to the
 humans who own them.
@@ -902,7 +908,7 @@ humans who own them.
 | `dailybot task comment-edit\|comment-delete <task> <comment>` | Edit (`-` reads stdin) or delete a comment; delete blanks the text and keeps the entry |
 | `dailybot task children <task>` · `task events <task>` · `task activity <task>` | Sub-tasks, raw event history, and the readable activity feed (`--updated-since`, `--type`) |
 | `dailybot task duplicate <task>` | Copy into the same column (`--include` picks fields); sends an idempotency key so a retry returns the same copy |
-| `dailybot task attach <task> <file>` | Attach a file (≤25 MiB; `--caption` uses the one-request door, ≤5 MiB). Credentials never go to the storage host |
+| `dailybot task attach <task> <file>` | Attach a file (≤25 MiB; `--caption` uses a single-request upload, ≤5 MiB). Credentials never go to the storage host |
 | `dailybot task attachments <task>` · `task attachment get <task> <id> -o <path>` · `task attachment delete` | List, download (never overwrites without `--force`) or delete attachments |
 | `dailybot task archive <uuid>` | Archive a task. Previews the consequence first; reversible |
 | `dailybot task delete <uuid>` | Alias of archive — nothing is destroyed |
@@ -918,7 +924,7 @@ humans who own them.
 | `dailybot board labels <uuid>` | Labels available on the board — **needs `dailybot login`** |
 | `dailybot board views <uuid>` | Your saved views on the board, plus the ETag a save needs (`--etag` prints only that) |
 | `dailybot board state create\|update\|archive\|restore\|reorder` | Manage columns. `archive` previews first and takes `--migrate-to <state>` to move the column's cards |
-| `dailybot board member add\|remove <board> <user>` | Who can see the board — **needs `dailybot login`**. There is no board role to edit |
+| `dailybot board member add\|remove <board> <user>` | Who can see the board — **needs `dailybot login` as an admin**. There is no board role to edit |
 | `dailybot board label create <board> -n <name>` | Create an organization label from the board — **needs `dailybot login`** |
 | `dailybot board view save <board> -f views.json --if-match <etag>` | Replace your saved views (the whole list) — **needs `dailybot login`** |
 | `dailybot board snapshot <uuid>` | The whole board in one request; carries the `delta_cursor` that `tasks changes` consumes |

@@ -1,4 +1,4 @@
-"""Collaboration on one task (Tasks Beta PR3a).
+"""Collaboration on one task.
 
 Comments edit/delete, relations list/unlink, participants list/remove/role,
 watch/unwatch and mute/unmute. Wire asserted against the published contract;

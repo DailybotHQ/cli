@@ -56,7 +56,7 @@ CAPABILITIES: list[tuple[int, str, list[str], str]] = [
     (
         9,
         "task move",
-        ["task", "move", "t-1", "--state", "0b9c7a52-6a7e-4d43-9d0b-1f5f0e7c2a10"],
+        ["task", "move", "t-1", "--state", "00000000-0000-0000-0000-000000000005"],
         "move_task",
     ),
     (10, "task assign", ["task", "assign", "t-1", "--to", "u-1"], "update_task"),
@@ -184,7 +184,7 @@ class TestFlagWiringRenders:
 
 
 # One table, so drift is caught once rather than per-command. Source of truth: the
-# published contract's Idempotency-Key list (tasks_v1.yaml 1.1.0, 27 doors).
+# published contract's Idempotency-Key list (27 endpoints).
 ACCEPTS: list[tuple[str, dict[str, Any]]] = [
     ("create_task", {"title": "x"}),
     ("update_task", {"task_uuid": "t-1", "title": "x"}),

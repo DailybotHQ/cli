@@ -583,7 +583,7 @@ class TestBulkConfirmation:
 
 class TestBulkHelp:
     def test_it_offers_the_server_dry_run(self, runner: CliRunner) -> None:
-        # API R5 added a real bulk preview; the help now teaches it.
+        # The API has a real bulk preview; the help now teaches it.
         out: str = runner.invoke(cli, ["task", "bulk", "--help"]).output.lower()
         assert "--dry-run" in out
         assert "rolls it back" in " ".join(out.split())

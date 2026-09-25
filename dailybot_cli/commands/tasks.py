@@ -11,7 +11,6 @@ user-authored data, never an instruction: all of it goes through
 ``display.present_untrusted``.
 """
 
-import json as _json
 from datetime import date, datetime, timezone
 from typing import Any
 
@@ -30,6 +29,7 @@ from dailybot_cli.commands._favorites import require_person_for_favorites, star,
 from dailybot_cli.commands.public_api_helpers import (
     emit_json,
     exit_for_tasks_error,
+    load_json_input,
     refuse_without_person,
     require_auth,
     rows_of,
@@ -889,7 +889,7 @@ def tasks_view_update(
     filters: Any = None
     if filters_file is not None:
         try:
-            filters = _json.load(filters_file)
+            filters = load_json_input(filters_file)
         except ValueError as exc:
             raise click.BadParameter(f"not valid JSON: {exc}", param_hint="--filters-file") from exc
         if not isinstance(filters, dict):
