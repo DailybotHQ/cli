@@ -86,14 +86,16 @@ If the PR doesn't have automated review (e.g., human-only, or `Ready` never appl
 
 ## What This Repo Does
 
-This repo (`cli`) uses **AI Diff Reviewer v2** in Flow B (local skill + CI):
+This repo (`cli`) uses **AI Diff Reviewer v3** (pinned `v3.1.1`, skill and Action) in Flow B (local skill + CI):
 
 - **CI workflow:** [`.github/workflows/pr-review.yml`](../.github/workflows/pr-review.yml)
 - **Trigger:** apply the **`Ready`** label on a PR targeting `main` (remove + re-add to re-run)
 - **Extension:** [`.review/extension.md`](../.review/extension.md) (shared by local + CI)
 - **Merge gate check name:** `AI review gate` (stable — this is the one to mark required)
 - **Review job check name:** `AI review — grok` (carries the provider; renaming the provider renames this context, so the branch ruleset has to move with it)
-- **Provider:** `grok` (xAI Grok CLI), model pinned to `grok-4.5`, bounded by `agent-max-turns`
+- **Provider:** `grok` (xAI Grok CLI), model pinned to `grok-4.5`, bounded by `agent-max-turns: 60`
+- **v3 gate:** `block-on-critical` blocks only on **verified** criticals (unconfirmed claims publish as annotated warnings); an `incomplete` or `timeout` review fails the gate. Budgets are risk-tiered (`budget-profile: auto`); `high-risk-paths` lifts credential / auth / transport / release-pipeline changes to the `critical` tier
+- **Structured output:** every run uploads `review-output/3.0` as an artifact — read it (or the marker's Check status block) instead of scraping the review body; `Recommendation: approve` in the body is not evidence the check passed
 - **Secret:** `XAI_API_KEY`
 - **Emergency bypass:** `skip-ai-review` (protect with a ruleset if the gate is required)
 - **Marker:** `<!-- ai-pr-reviewer-marker -->`
