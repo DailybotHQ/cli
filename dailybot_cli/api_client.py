@@ -90,6 +90,11 @@ INVALID_IDENTIFIER_CODE: str = "invalid_identifier"
 ETAG_RE: re.Pattern[str] = re.compile(r'^(W/)?"[\x21\x23-\x7e]*"$')
 INVALID_ETAG_CODE: str = "invalid_etag"
 DEFAULT_PORTS: dict[str, int] = {"http": 80, "https": 443}
+# The only same-origin upload target: a task attachment's content door.
+ATTACHMENT_CONTENT_PATH_RE: re.Pattern[str] = re.compile(
+    r"^tasks/[A-Za-z0-9_-]+/attachments/[A-Za-z0-9_-]+/content/?$"
+)
+SAME_ORIGIN_UPLOAD_METHODS: frozenset[str] = frozenset({"PUT", "POST"})
 # Server cap on a bulk payload; above it the server answers `too_many_items`.
 # BLAST_RADIUS.md records this as THE volume guard for unattended destructive
 # loops — the CLI adds no second ceiling of its own.
@@ -557,7 +562,7 @@ class DailyBotClient:
         return (
             response.status_code == 403
             and self._agent_auth_mode == "bearer"
-            and urlsplit(url).path.startswith(TASKS_BASE_PATH)
+            and url.startswith(f"{self.api_url.rstrip('/')}{TASKS_BASE_PATH}")
         )
 
     def _transport_message(self, exc: Exception, *, method: str, mutates: bool = True) -> str:
@@ -2887,6 +2892,14 @@ class DailyBotClient:
         """Resolve a relative target against the API origin."""
         return urljoin(self.api_url.rstrip("/") + "/", url)
 
+    def _is_attachment_content_url(self, url: str) -> bool:
+        """True for `<api>/v1/tasks/tasks/<task>/attachments/<uuid>/content/` only."""
+        prefix: str = urlsplit(self.api_url).path.rstrip("/") + TASKS_BASE_PATH
+        path: str = urlsplit(url).path
+        return path.startswith(prefix) and bool(
+            ATTACHMENT_CONTENT_PATH_RE.match(path[len(prefix) :])
+        )
+
     def _may_send_to_foreign(self, url: str) -> bool:
         """A foreign target must be https, unless the API itself is plain http (local dev)."""
         return urlsplit(url).scheme == "https" or urlsplit(self.api_url).scheme == "http"
@@ -2917,15 +2930,31 @@ class DailyBotClient:
             str(k): str(v) for k, v in (presign.get("headers") or {}).items()
         }
         if self._is_api_origin(url):
-            return self._handle_response(
-                self._request(
-                    method,
-                    url,
-                    content=data,
-                    extra_headers=headers,
-                    timeout=ATTACHMENT_TRANSFER_TIMEOUT_SECS,
+            # This one request carries the caller's credentials to a URL and method the
+            # server chose, so both are held to the only same-origin upload target there
+            # is: PUT / POST on a task attachment's `…/content/` door.
+            if method not in SAME_ORIGIN_UPLOAD_METHODS or not self._is_attachment_content_url(url):
+                raise APIError(
+                    502,
+                    "The upload target is not an attachment content endpoint, so the file "
+                    "was not sent.",
+                    code="attachment_upload_target_refused",
                 )
+            response_same: httpx.Response = self._request(
+                method,
+                url,
+                content=data,
+                extra_headers=headers,
+                timeout=ATTACHMENT_TRANSFER_TIMEOUT_SECS,
             )
+            if response_same.status_code >= 300:
+                return self._handle_response(response_same)
+            # Accepted. Like the storage branch, an empty or non-JSON 2xx is success.
+            try:
+                body: Any = response_same.json()
+            except Exception:
+                return {}
+            return body if isinstance(body, dict) else {}
         if not self._may_send_to_foreign(url):
             # Not the caller's input and not retryable: the server handed back a
             # target this client will not send a file to. 502 keeps it off the
@@ -3065,6 +3094,7 @@ class DailyBotClient:
                     self._handle_response(response)
                 received: list[bytes] = []
                 total: int = 0
+                started: float = time.monotonic()
                 for chunk in response.iter_bytes():
                     total += len(chunk)
                     if total > ATTACHMENT_MAX_SIZE_BYTES:
@@ -3074,6 +3104,10 @@ class DailyBotClient:
                             "nothing was written.",
                             code="attachment_too_large",
                         )
+                    # The same abandonment rule as the storage hop: a read timeout
+                    # never stops a slow drip, a wall-clock deadline does.
+                    if time.monotonic() - started > ATTACHMENT_DOWNLOAD_DEADLINE_SECS:
+                        raise TransportError("The download took too long; nothing was written.")
                     received.append(chunk)
                 return b"".join(received)
         except httpx.HTTPError as exc:

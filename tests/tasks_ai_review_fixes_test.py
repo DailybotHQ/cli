@@ -314,3 +314,110 @@ class TestRetryKeepsTheRawContentType:
         assert put.call_count == 2
         for call in put.call_args_list:
             assert dict(call.kwargs["headers"]).get("Content-Type") != "application/json"
+
+
+class TestRound3:
+    """AI review round 3 on 248c200."""
+
+    def test_a_path_prefixed_api_still_treats_tasks_doors_as_tasks(self) -> None:
+        client: DailyBotClient = DailyBotClient(
+            api_url="https://gw.example.com/gateway", token="test-token", api_key="test-key"
+        )
+        with (
+            patch(
+                "dailybot_cli.api_client.httpx.post",
+                return_value=_response({"code": "permission_denied"}, status=403),
+            ) as post,
+            pytest.raises(APIError),
+        ):
+            client.restore_task("ENG-1")
+        assert post.call_count == 1
+
+    def test_a_same_origin_upload_accepts_an_empty_2xx(self) -> None:
+        client: DailyBotClient = DailyBotClient(api_url=API_URL, token="test-token")
+        empty: Any = _response(status=200)
+        empty.json.side_effect = ValueError("no body")
+        empty.text = ""
+        presign: dict[str, Any] = {
+            "upload_url": f"{API_URL}/v1/tasks/tasks/ENG-1/attachments/{ATT}/content/",
+            "method": "PUT",
+        }
+        with patch("dailybot_cli.api_client.httpx.put", return_value=empty):
+            assert client.upload_attachment_bytes(presign, b"x") == {}
+
+    @pytest.mark.parametrize(
+        ("method", "path"),
+        [
+            ("DELETE", f"/v1/tasks/tasks/ENG-1/attachments/{ATT}/content/"),
+            ("PUT", "/v1/tasks/boards/b-1/archive/"),
+            ("POST", "/v1/cli/logout/"),
+        ],
+    )
+    def test_a_same_origin_upload_target_is_allowlisted(self, method: str, path: str) -> None:
+        client: DailyBotClient = DailyBotClient(api_url=API_URL, token="test-token")
+        presign: dict[str, Any] = {"upload_url": f"{API_URL}{path}", "method": method}
+        with (
+            patch("dailybot_cli.api_client.httpx.request") as request,
+            patch("dailybot_cli.api_client.httpx.put") as put,
+            patch("dailybot_cli.api_client.httpx.post") as post,
+            pytest.raises(APIError) as caught,
+        ):
+            client.upload_attachment_bytes(presign, b"x")
+        assert caught.value.code == "attachment_upload_target_refused"
+        for mock in (request, put, post):
+            mock.assert_not_called()
+
+    def test_the_api_download_has_a_wall_clock_deadline(self) -> None:
+        from dailybot_cli.api_client import ATTACHMENT_DOWNLOAD_DEADLINE_SECS, TransportError
+
+        client: DailyBotClient = DailyBotClient(api_url=API_URL, token="test-token")
+        clock: list[float] = [0.0]
+
+        def tick() -> float:
+            clock[0] += ATTACHMENT_DOWNLOAD_DEADLINE_SECS
+            return clock[0]
+
+        with (
+            patch(
+                "dailybot_cli.api_client.httpx.stream",
+                return_value=_stream(chunks=[b"a", b"b", b"c"]),
+            ),
+            patch("dailybot_cli.api_client.time.monotonic", side_effect=tick),
+            pytest.raises(TransportError),
+        ):
+            client.download_attachment("ENG-1", ATT)
+
+    def test_force_never_writes_through_a_symlink(self, tmp_path: Any) -> None:
+        from dailybot_cli.commands._attachments import write_download
+
+        victim: Any = tmp_path / "victim.txt"
+        victim.write_text("keep me")
+        link: Any = tmp_path / "out.bin"
+        link.symlink_to(victim)
+        with (
+            patch("dailybot_cli.commands._attachments.os.O_NOFOLLOW", 0, create=True),
+            pytest.raises((SystemExit, Exception)),
+        ):
+            write_download(link, b"evil", force=True, json_mode=True)
+        assert victim.read_text() == "keep me"
+
+    def test_replies_are_grouped_under_their_root(self) -> None:
+        from rich.console import Console
+
+        from dailybot_cli import display
+
+        buffer: Console = Console(record=True, width=200, color_system=None)
+        comments: list[dict[str, Any]] = [
+            {"uuid": "c-1", "author": {"full_name": "A"}, "body": "root one"},
+            {"uuid": "c-2", "author": {"full_name": "B"}, "body": "root two"},
+            {
+                "uuid": "c-3",
+                "author": {"full_name": "C"},
+                "body": "reply to one",
+                "parent_comment": "c-1",
+            },
+        ]
+        with patch.object(display, "console", buffer):
+            display.print_task_comments(comments)
+        text: str = buffer.export_text()
+        assert text.index("root one") < text.index("reply to one") < text.index("root two")

@@ -126,6 +126,12 @@ def write_download(output: Path, content: bytes, *, force: bool, json_mode: bool
     followed, so a file (or link) that appeared during the download is left alone.
     A path that cannot be written is an actionable error, not a crash.
     """
+    if force and output.is_symlink():
+        # O_NOFOLLOW is not available everywhere, so --force refuses a symlink
+        # explicitly: overwriting must never truncate the file a link points at.
+        raise click.UsageError(
+            f"{output} is a symbolic link; refusing to write through it. Nothing was written."
+        )
     flags: int = os.O_WRONLY | os.O_CREAT | getattr(os, "O_NOFOLLOW", 0)
     flags |= os.O_TRUNC if force else os.O_EXCL
     created: bool = False

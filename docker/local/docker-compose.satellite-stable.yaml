@@ -8,31 +8,31 @@ services:
 
 volumes:
   claude_data:
-    name: ${PRIMARY_COMPOSE_PROJECT}_claude_data
+    name: ${PRIMARY_COMPOSE_PROJECT:-dailybotplatformlocal}_claude_data
     external: true
   codex_data:
-    name: ${PRIMARY_COMPOSE_PROJECT}_codex_data
+    name: ${PRIMARY_COMPOSE_PROJECT:-dailybotplatformlocal}_codex_data
     external: true
   cursor_data:
-    name: ${PRIMARY_COMPOSE_PROJECT}_cursor_data
+    name: ${PRIMARY_COMPOSE_PROJECT:-dailybotplatformlocal}_cursor_data
     external: true
   cline_data:
-    name: ${PRIMARY_COMPOSE_PROJECT}_cline_data
+    name: ${PRIMARY_COMPOSE_PROJECT:-dailybotplatformlocal}_cline_data
     external: true
   opencode_data:
-    name: ${PRIMARY_COMPOSE_PROJECT}_opencode_data
+    name: ${PRIMARY_COMPOSE_PROJECT:-dailybotplatformlocal}_opencode_data
     external: true
   pi_data:
-    name: ${PRIMARY_COMPOSE_PROJECT}_pi_data
+    name: ${PRIMARY_COMPOSE_PROJECT:-dailybotplatformlocal}_pi_data
     external: true
   grok_data:
-    name: ${PRIMARY_COMPOSE_PROJECT}_grok_data
+    name: ${PRIMARY_COMPOSE_PROJECT:-dailybotplatformlocal}_grok_data
     external: true
   # Herdr session stays satellite-local. Sharing the primary volume puts both
   # containers on one herdr.sock, and whichever starts last owns every pane.
   dailybot_data:
-    name: ${PRIMARY_COMPOSE_PROJECT}_dailybot_data
+    name: ${PRIMARY_COMPOSE_PROJECT:-dailybotplatformlocal}_dailybot_data
     external: true
   gh_data:
-    name: ${PRIMARY_COMPOSE_PROJECT}_gh_data
+    name: ${PRIMARY_COMPOSE_PROJECT:-dailybotplatformlocal}_gh_data
     external: true

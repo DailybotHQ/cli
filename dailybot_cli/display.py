@@ -1936,6 +1936,31 @@ def print_milestones_table(milestones: list[dict[str, Any]], *, rollup: Any = No
     console.print(table)
 
 
+def _threaded(comments: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Each root comment followed by its replies, in list order.
+
+    A reply whose root is not in this page is kept, at the end, so nothing is lost.
+    """
+    roots: list[dict[str, Any]] = [c for c in comments if not c.get("parent_comment")]
+    root_ids: set[str] = {str(c.get("uuid")) for c in roots}
+    replies: dict[str, list[dict[str, Any]]] = {}
+    orphans: list[dict[str, Any]] = []
+    for comment in comments:
+        parent: Any = comment.get("parent_comment")
+        if not parent:
+            continue
+        parent_id: str = str(parent.get("uuid") if isinstance(parent, dict) else parent)
+        if parent_id in root_ids:
+            replies.setdefault(parent_id, []).append(comment)
+        else:
+            orphans.append(comment)
+    ordered: list[dict[str, Any]] = []
+    for root in roots:
+        ordered.append(root)
+        ordered.extend(replies.get(str(root.get("uuid")), []))
+    return ordered + orphans
+
+
 def print_task_comments(comments: list[dict[str, Any]]) -> None:
     """Render task comments.
 
@@ -1948,12 +1973,12 @@ def print_task_comments(comments: list[dict[str, Any]]) -> None:
     if not comments:
         print_info("No comments.")
         return
-    for comment in comments:
+    for comment in _threaded(comments):
         author: Any = comment.get("author") or {}
         author_name: Any = author.get("full_name") if isinstance(author, dict) else author
         attribution: str = present_untrusted(author_name, limit=24)
         if comment.get("provenance") == "typed":
             attribution += " [dim](typed by a person)[/dim]"
-        # A reply names its thread's root in `parent_comment`; it renders under it.
+        # A reply names its thread's root in `parent_comment`; `_threaded` put it there.
         thread: str = "  ↳ " if comment.get("parent_comment") else ""
         console.print(f"{thread}{attribution}: {present_untrusted(comment.get('body'), limit=400)}")

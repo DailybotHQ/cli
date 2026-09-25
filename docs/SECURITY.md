@@ -205,6 +205,10 @@ the transport draws a hard line (`DailyBotClient.upload_attachment_bytes`):
   scheme + host + port, so a lookalike such as `api.example.com.evil.example` is foreign.
   A foreign target gets a bare request carrying only the headers the presign returned — no
   `Authorization`, no `X-API-KEY`. Only the same-origin `…/content/` fallback is authenticated.
+- **A same-origin target is allowlisted.** When the presign points back at the API, that
+  one request carries the caller's credentials to a URL and method the server chose. So it
+  is refused unless it is `PUT` / `POST` on a task attachment's `…/attachments/<uuid>/content/`
+  door (`attachment_upload_target_refused`). An empty 2xx from that door counts as accepted.
 - **No redirects on upload.** A 3xx from the target is an error; nothing is re-sent anywhere
   and the attachment is not confirmed.
 - **https only** for a foreign target, unless the configured API URL is itself plain `http`
@@ -224,12 +228,15 @@ same hardened path below. Attaching to or deleting from a project or a goal is a
 credentials; a second redirect is refused, and a refusal from storage is reported as storage's
 (`attachment_download_failed`), never as a session problem. Downloads over the attachment
 size cap are refused. The API's own `…/content/` answer and the storage hop both stream, and
-the cap is enforced on the bytes as they arrive. On the storage hop
+the cap is enforced on the bytes as they arrive; both also have a wall-clock deadline. On
+the storage hop
 the body is requested uncompressed (`Accept-Encoding: identity`), and the whole hop has a
 wall-clock deadline. So an endless chunked body, a compression bomb or a slow drip cannot
 exhaust memory or hang the CLI. If writing the file fails, the partial file this call created
 is removed. The output path is never derived from server data. Without `--force`
-the file is created exclusively (`O_EXCL`) and a symlink is never followed (`O_NOFOLLOW`), so a
+the file is created exclusively (`O_EXCL`) and a symlink is never followed (`O_NOFOLLOW`;
+with `--force`, an output path that is a symlink is refused outright, since `O_NOFOLLOW` is
+not available on every platform), so a
 file or link that appears during the download is left alone; nothing is written when the
 download fails, and an unwritable path is a clear error rather than a crash.
 
