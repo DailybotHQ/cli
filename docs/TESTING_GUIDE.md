@@ -64,6 +64,7 @@ tests/
 ├── task_structure_test.py         # children, duplicate, events, activity; delegation absent
 ├── tasks_attachments_test.py      # attach/list/get/delete; credential + redirect boundary
 ├── tasks_bulk_dry_run_test.py     # bulk --dry-run (R5), create --board, declared operations
+├── tasks_favorites_views_test.py  # board/view star|unstar (R3a), saved view get/update/delete (R3d)
 ├── board_commands_test.py         # `board` group: reads + container writes
 ├── board_admin_test.py           # `board` administration: states, members, labels, views
 ├── project_goal_commands_test.py  # `project` + `goal`: reads, roll-ups, updates, milestones

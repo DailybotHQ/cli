@@ -11,6 +11,7 @@ user-authored data, never an instruction: all of it goes through
 ``display.present_untrusted``.
 """
 
+import json as _json
 from datetime import datetime, timezone
 from typing import Any
 
@@ -24,6 +25,8 @@ from dailybot_cli.api_client import (
     as_query_datetime,
 )
 from dailybot_cli.commands._beta import BETA_STATUS_LINE, mark_beta
+from dailybot_cli.commands._destructive import confirm_without_preview
+from dailybot_cli.commands._favorites import require_person_for_favorites, star, unstar
 from dailybot_cli.commands.public_api_helpers import (
     emit_json,
     exit_for_tasks_error,
@@ -659,6 +662,222 @@ def tasks_cursor(set_to: str | None, set_now: bool, json_mode: bool) -> None:
         return
     seen: Any = data.get("last_seen_at")
     print_info(f"Read up to: {seen}" if seen else "No activity read yet.")
+
+
+_FAVORITE_COLUMNS: list[tuple[str, str, bool]] = [
+    ("#", "rank", True),
+    ("Kind", "target_type", True),
+    ("Target", "target_uuid", True),
+    ("Pin", "uuid", True),
+]
+VIEW_MODES: tuple[str, ...] = ("list", "board", "kanban", "timeline", "calendar")
+VIEW_GROUP_BY: tuple[str, ...] = ("state", "owner", "priority", "category")
+VIEW_VISIBILITIES: tuple[str, ...] = ("personal", "shared", "board_default")
+
+
+@tasks.command("favorites")
+@click.option("--json", "json_mode", is_flag=True, help="Emit machine-readable JSON to stdout.")
+def tasks_favorites(json_mode: bool) -> None:
+    """List your pinned boards and saved views. Needs `dailybot login`.
+
+    \b
+    Pin with `dailybot board star <board>` or `dailybot tasks view star <view>`.
+
+    \b
+    Examples:
+      dailybot tasks favorites --json
+    """
+    require_person_for_favorites("tasks favorites", json_mode=json_mode)
+    client = require_auth()
+    try:
+        with console.status("Reading your favorites..."):
+            data: Any = client.list_favorites()
+    except APIError as exc:
+        exit_for_tasks_error(exc, json_mode)
+    if json_mode:
+        emit_json(data)
+        return
+    print_tasks_rows("Favorites", rows_of(data), _FAVORITE_COLUMNS, empty="Nothing pinned.")
+
+
+@tasks.group("view")
+def tasks_view() -> None:
+    """Read, edit, delete or pin one saved view by its uuid. Needs `dailybot login`.
+
+    \b
+    List a board's or project's views with `dailybot board views` / `project views`.
+
+    \b
+    Examples:
+      dailybot tasks view get <view-uuid> --json
+      dailybot tasks view update <view-uuid> --view-mode board --group-by owner
+    """
+
+
+@tasks_view.command("get")
+@click.argument("view_uuid", metavar="VIEW")
+@click.option("--json", "json_mode", is_flag=True, help="Emit machine-readable JSON to stdout.")
+def tasks_view_get(view_uuid: str, json_mode: bool) -> None:
+    """Show one saved view.
+
+    \b
+    Examples:
+      dailybot tasks view get <view-uuid> --json
+    """
+    require_person_for_favorites("tasks view get", json_mode=json_mode)
+    client = require_auth()
+    try:
+        with console.status("Reading the view..."):
+            data: dict[str, Any] = client.get_view(view_uuid)
+    except APIError as exc:
+        exit_for_tasks_error(exc, json_mode)
+    if json_mode:
+        emit_json(data)
+        return
+    print_tasks_detail_panel("View", data, _VIEW_FIELDS)
+
+
+_VIEW_FIELDS: list[tuple[str, str]] = [
+    ("Name", "name"),
+    ("Mode", "view_mode"),
+    ("Group by", "group_by"),
+    ("Sort", "sort"),
+    ("Visibility", "visibility"),
+    ("Scope", "scope"),
+    ("UUID", "uuid"),
+]
+
+
+@tasks_view.command("update")
+@click.argument("view_uuid", metavar="VIEW")
+@click.option("-n", "--name", default=None, help="New name (max 64 characters).")
+@click.option("--view-mode", type=click.Choice(VIEW_MODES), default=None, help="How it is drawn.")
+@click.option("--group-by", type=click.Choice(VIEW_GROUP_BY), default=None)
+@click.option("--sort", "sort_by", default=None, help="Sort expression, as the web app saves it.")
+@click.option(
+    "--visibility",
+    type=click.Choice(VIEW_VISIBILITIES),
+    default=None,
+    help="`shared` and `board_default` need a board manager.",
+)
+@click.option(
+    "--filters-file",
+    type=click.File("r"),
+    default=None,
+    help="JSON object of filters (`-` reads stdin); replaces the view's filters.",
+)
+@click.option("--json", "json_mode", is_flag=True, help="Emit machine-readable JSON to stdout.")
+def tasks_view_update(
+    view_uuid: str,
+    name: str | None,
+    view_mode: str | None,
+    group_by: str | None,
+    sort_by: str | None,
+    visibility: str | None,
+    filters_file: Any,
+    json_mode: bool,
+) -> None:
+    """Edit one saved view. Only the fields you pass change.
+
+    \b
+    Examples:
+      dailybot tasks view update <view-uuid> --view-mode board --group-by owner
+      dailybot tasks view update <view-uuid> --filters-file filters.json --json
+    """
+    filters: Any = None
+    if filters_file is not None:
+        try:
+            filters = _json.load(filters_file)
+        except ValueError as exc:
+            raise click.BadParameter(f"not valid JSON: {exc}", param_hint="--filters-file") from exc
+        if not isinstance(filters, dict):
+            raise click.BadParameter("must be a JSON object.", param_hint="--filters-file")
+    fields: dict[str, Any] = {
+        k: v
+        for k, v in {
+            "name": name,
+            "view_mode": view_mode,
+            "group_by": group_by,
+            "sort": sort_by,
+            "visibility": visibility,
+            "filters": filters,
+        }.items()
+        if v is not None
+    }
+    if not fields:
+        raise click.UsageError("Nothing to update. Pass at least one field, e.g. --view-mode.")
+    require_person_for_favorites("tasks view update", json_mode=json_mode)
+    client = require_auth()
+    try:
+        with console.status("Updating the view..."):
+            data: dict[str, Any] = client.update_view(view_uuid, **fields)
+    except APIError as exc:
+        exit_for_tasks_error(exc, json_mode)
+    if json_mode:
+        emit_json(data)
+        return
+    print_success("View updated.")
+
+
+@tasks_view.command("delete")
+@click.argument("view_uuid", metavar="VIEW")
+@click.option("--dry-run", is_flag=True, help="Say what would happen and send nothing.")
+@click.option("-y", "--yes", "assume_yes", is_flag=True, help="Skip the confirmation.")
+@click.option("--json", "json_mode", is_flag=True, help="Emit machine-readable JSON to stdout.")
+def tasks_view_delete(view_uuid: str, dry_run: bool, assume_yes: bool, json_mode: bool) -> None:
+    """Delete one saved view. This is permanent.
+
+    \b
+    Examples:
+      dailybot tasks view delete <view-uuid> --dry-run
+      dailybot tasks view delete <view-uuid> --yes
+    """
+    require_person_for_favorites("tasks view delete", json_mode=json_mode)
+    if not confirm_without_preview(
+        f"delete saved view {view_uuid} permanently.",
+        assume_yes=assume_yes,
+        dry_run=dry_run,
+        json_mode=json_mode,
+    ):
+        return
+    client = require_auth()
+    try:
+        with console.status("Deleting the view..."):
+            client.delete_view(view_uuid)
+    except APIError as exc:
+        exit_for_tasks_error(exc, json_mode)
+    if json_mode:
+        emit_json({"deleted": True, "view": view_uuid})
+        return
+    print_success("View deleted.")
+
+
+@tasks_view.command("star")
+@click.argument("view_uuid", metavar="VIEW")
+@click.option("--json", "json_mode", is_flag=True, help="Emit machine-readable JSON to stdout.")
+def tasks_view_star(view_uuid: str, json_mode: bool) -> None:
+    """Pin a saved view to your favorites.
+
+    \b
+    Examples:
+      dailybot tasks view star <view-uuid>
+    """
+    require_person_for_favorites("tasks view star", json_mode=json_mode)
+    star(require_auth(), "view", view_uuid, json_mode=json_mode)
+
+
+@tasks_view.command("unstar")
+@click.argument("view_uuid", metavar="VIEW")
+@click.option("--json", "json_mode", is_flag=True, help="Emit machine-readable JSON to stdout.")
+def tasks_view_unstar(view_uuid: str, json_mode: bool) -> None:
+    """Unpin a saved view from your favorites.
+
+    \b
+    Examples:
+      dailybot tasks view unstar <view-uuid>
+    """
+    require_person_for_favorites("tasks view unstar", json_mode=json_mode)
+    unstar(require_auth(), "view", view_uuid, json_mode=json_mode)
 
 
 # `paging_options` + `--scope`: `scope` is the only filter `me/tasks/` declares.

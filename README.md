@@ -881,6 +881,8 @@ humans who own them.
 | `dailybot tasks inbox` | Your Tasks notifications — **needs `dailybot login`** |
 | `dailybot tasks inbox-read <item>` · `inbox-read-all` · `inbox-unread` | Catch up on the inbox (reading an item also reads everything older) — **needs `dailybot login`** |
 | `dailybot tasks cursor [--now \| --set <time>]` | Your "read up to here" mark for the activity feed — **needs `dailybot login`** |
+| `dailybot tasks favorites` | Your pinned boards and saved views — **needs `dailybot login`** |
+| `dailybot tasks view get\|update\|delete\|star\|unstar <view>` | One saved view by uuid: read, edit (`--view-mode`, `--group-by`, `--filters-file`…), delete, pin — **needs `dailybot login`** |
 | `dailybot tasks mine` | Tasks that are yours (`--scope`) — **needs `dailybot login`** |
 | `dailybot tasks counts` | Your task counts by bucket — **needs `dailybot login`** |
 | `dailybot task list` | List tasks (`--board`, `--state`, `--owner` — repeatable, `me` / `unowned`, `--label`, `--sort <field\|-field>`, `--has-dates`, `--include`) |
@@ -909,6 +911,7 @@ humans who own them.
 | `dailybot board list` | List boards |
 | `dailybot board get <uuid>` | Board metadata |
 | `dailybot board tasks <uuid>` | The tasks on one board, one page per call |
+| `dailybot board star\|unstar <uuid>` | Pin a board to your favorites (projects and goals cannot be pinned) — **needs `dailybot login`** |
 | `dailybot board mentionables <uuid> [-q name]` | Who you can @mention, with the `<@DB@{uuid}>` token to write — **needs `dailybot login`** |
 | `dailybot board states <uuid>` | The board's columns, left to right (`--include-archived` for retired ones) |
 | `dailybot board members <uuid>` | Who can see the board, and their role |

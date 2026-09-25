@@ -2294,6 +2294,42 @@ class DailyBotClient:
         )
         return result
 
+    def list_favorites(self) -> Any:
+        """GET /v1/tasks/me/favorites/ — the caller's pinned boards and views (person-only)."""
+        return self._tasks_read("me/favorites/")
+
+    def add_favorite(
+        self, *, target_type: str, target_uuid: str, idempotency_key: str | None = None
+    ) -> dict[str, Any]:
+        """POST /v1/tasks/me/favorites/ — pin a board or a view; re-pinning returns the pin."""
+        result: dict[str, Any] = self._tasks_write(
+            "POST",
+            "me/favorites/",
+            json={"target_type": target_type, "target_uuid": target_uuid},
+            idempotent=True,
+            idempotency_key=idempotency_key,
+        )
+        return result
+
+    def delete_favorite(self, favorite_uuid: str) -> Any:
+        """DELETE /v1/tasks/me/favorites/<uuid>/ — unpin; never touches the target."""
+        return self._tasks_write("DELETE", f"me/favorites/{favorite_uuid}/")
+
+    def get_view(self, view_uuid: str) -> dict[str, Any]:
+        """GET /v1/tasks/views/<uuid>/ — one saved view (person-only)."""
+        return self._tasks_read(f"views/{view_uuid}/")
+
+    def update_view(self, view_uuid: str, **fields: Any) -> dict[str, Any]:
+        """PATCH /v1/tasks/views/<uuid>/ — partial; shared views need a board manager."""
+        result: dict[str, Any] = self._tasks_write(
+            "PATCH", f"views/{view_uuid}/", json={k: v for k, v in fields.items() if v is not None}
+        )
+        return result
+
+    def delete_view(self, view_uuid: str) -> Any:
+        """DELETE /v1/tasks/views/<uuid>/ — permanent."""
+        return self._tasks_write("DELETE", f"views/{view_uuid}/")
+
     def list_board_mentionables(self, board_uuid: str) -> Any:
         """GET /v1/tasks/boards/<uuid>/mentionables/ — who this viewer may @mention."""
         return self._tasks_read(f"boards/{board_uuid}/mentionables/")

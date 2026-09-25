@@ -16,6 +16,7 @@ import click
 from dailybot_cli.api_client import APIError, PaginatedResult
 from dailybot_cli.commands._beta import mark_beta
 from dailybot_cli.commands._destructive import confirm_without_preview, preview_then_confirm
+from dailybot_cli.commands._favorites import require_person_for_favorites, star, unstar
 from dailybot_cli.commands._writes import named, report_write
 from dailybot_cli.commands.public_api_helpers import (
     emit_json,
@@ -416,6 +417,34 @@ def board_mentionables(board_uuid: str, query: str | None, json_mode: bool) -> N
         for row in rows
     ]
     print_tasks_rows("Mentionable", shown, _MENTIONABLE_COLUMNS, empty="Nobody matches.")
+
+
+@board.command("star")
+@click.argument("board_uuid", metavar="BOARD")
+@click.option("--json", "json_mode", is_flag=True, help="Emit machine-readable JSON to stdout.")
+def board_star(board_uuid: str, json_mode: bool) -> None:
+    """Pin a board to your favorites. Needs `dailybot login`.
+
+    \b
+    Examples:
+      dailybot board star <board-uuid>
+    """
+    require_person_for_favorites("board star", json_mode=json_mode)
+    star(require_auth(), "board", board_uuid, json_mode=json_mode)
+
+
+@board.command("unstar")
+@click.argument("board_uuid", metavar="BOARD")
+@click.option("--json", "json_mode", is_flag=True, help="Emit machine-readable JSON to stdout.")
+def board_unstar(board_uuid: str, json_mode: bool) -> None:
+    """Unpin a board from your favorites. Needs `dailybot login`.
+
+    \b
+    Examples:
+      dailybot board unstar <board-uuid>
+    """
+    require_person_for_favorites("board unstar", json_mode=json_mode)
+    unstar(require_auth(), "board", board_uuid, json_mode=json_mode)
 
 
 # ---------------------------------------------------------------------------
