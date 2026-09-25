@@ -7,6 +7,7 @@ the delta door's own refusal for a missing cursor does not say where to get it.
 That handoff is named in both commands' help on purpose.
 """
 
+import json as _json
 from collections.abc import Callable
 from typing import Any
 
@@ -14,7 +15,7 @@ import click
 
 from dailybot_cli.api_client import APIError, PaginatedResult
 from dailybot_cli.commands._beta import mark_beta
-from dailybot_cli.commands._destructive import preview_then_confirm
+from dailybot_cli.commands._destructive import confirm_without_preview, preview_then_confirm
 from dailybot_cli.commands._writes import named, report_write
 from dailybot_cli.commands.public_api_helpers import (
     emit_json,
@@ -34,7 +35,10 @@ from dailybot_cli.display import (
     console,
     print_board_snapshot,
     print_boards_table,
+    print_info,
     print_pagination_footer,
+    print_raw_value,
+    print_success,
     print_tasks_detail_panel,
     print_tasks_rows,
     print_tasks_table,
@@ -48,6 +52,12 @@ _BOARD_FIELDS: list[tuple[str, str]] = [
 ]
 
 
+BOARD_VISIBILITIES: tuple[str, ...] = ("org", "members")
+BOARD_ESTIMATE_SCALES: tuple[str, ...] = ("none", "fibonacci", "linear")
+# Fixed by the server and never customer-editable; there is deliberately no `blocked`.
+STATE_CATEGORIES: tuple[str, ...] = ("backlog", "todo", "in_progress", "done", "canceled")
+
+
 def _envelope(result: PaginatedResult) -> dict[str, Any]:
     return {
         "count": result.count,
@@ -59,7 +69,7 @@ def _envelope(result: PaginatedResult) -> dict[str, Any]:
 
 @click.group()
 def board() -> None:
-    """Read Dailybot Tasks boards.
+    """Read and administer Dailybot Tasks boards.
 
     \b
     `board snapshot` is the one call that gives cold context in a single request,
@@ -195,6 +205,7 @@ def _require_person(action: str, reason: str, *, json_mode: bool) -> None:
 
 # Column specs for the board sub-collections: (header, field path, trusted).
 _STATE_COLUMNS: list[tuple[str, str, bool]] = [
+    ("Pos", "position", True),
     ("Name", "name", False),
     ("Category", "category", True),
     ("Archived", "is_archived", True),
@@ -241,19 +252,24 @@ def _read_board_collection(
 
 @board.command("states")
 @click.argument("board_uuid", metavar="BOARD")
+@click.option("--include-archived", is_flag=True, help="Also list retired columns.")
 @click.option("--json", "json_mode", is_flag=True, help="Emit machine-readable JSON to stdout.")
-def board_states(board_uuid: str, json_mode: bool) -> None:
-    """List a board's states (its columns), archived ones included.
+def board_states(board_uuid: str, include_archived: bool, json_mode: bool) -> None:
+    """List a board's states (its columns), left to right.
+
+    \b
+    Retired columns are hidden unless you pass --include-archived. A state's
+    `category` (backlog, todo, in_progress, done, canceled) is fixed; its name is not.
 
     \b
     Examples:
       dailybot board states <board-uuid>
-      dailybot board states <board-uuid> --json
+      dailybot board states <board-uuid> --include-archived --json
     """
     client = require_auth()
     _read_board_collection(
         board_uuid,
-        client.list_board_states,
+        lambda ref: client.list_board_states(ref, include_archived=include_archived),
         spinner="Reading the board's states...",
         title="States",
         columns=_STATE_COLUMNS,
@@ -319,25 +335,500 @@ def board_labels(board_uuid: str, json_mode: bool) -> None:
 
 @board.command("views")
 @click.argument("board_uuid", metavar="BOARD")
+@click.option(
+    "--etag",
+    "etag_only",
+    is_flag=True,
+    help="Print only the ETag `board view save --if-match` needs, and nothing else.",
+)
 @click.option("--json", "json_mode", is_flag=True, help="Emit machine-readable JSON to stdout.")
-def board_views(board_uuid: str, json_mode: bool) -> None:
-    """List the saved views on a board.
+def board_views(board_uuid: str, etag_only: bool, json_mode: bool) -> None:
+    """List your saved views on a board, with the ETag a save needs.
 
     \b
     Examples:
       dailybot board views <board-uuid>
-      dailybot board views <board-uuid> --json
+      dailybot board views <board-uuid> --json > views.json
+      ETAG=$(dailybot board views <board-uuid> --etag)
     """
     client = require_auth()
-    _read_board_collection(
-        board_uuid,
-        client.list_board_views,
-        spinner="Reading the board's views...",
-        title="Views",
-        columns=_VIEW_COLUMNS,
-        empty="This board has no saved views.",
+    try:
+        with console.status("Reading the board's views..."):
+            data, etag = client.list_board_views_with_etag(board_uuid)
+    except APIError as exc:
+        exit_for_tasks_error(exc, json_mode)
+    if etag_only:
+        # Raw, unstyled, one line: this is a value for a shell variable.
+        print_raw_value(etag or "")
+        return
+    if json_mode:
+        emit_json(data)
+        return
+    print_tasks_rows("Views", _rows(data), _VIEW_COLUMNS, empty="This board has no saved views.")
+    if etag:
+        print_info(f"ETag: {etag} (pass it to `board view save --if-match`)")
+
+
+# ---------------------------------------------------------------------------
+# Columns (workflow states)
+# ---------------------------------------------------------------------------
+
+
+@board.group("state")
+def board_state() -> None:
+    """Create, rename, reorder, retire and restore a board's columns.
+
+    \b
+    Examples:
+      dailybot board state create <board-uuid> -n "In review" --category in_progress
+      dailybot board state reorder <board-uuid> <state-1> <state-2> <state-3>
+    """
+
+
+@board_state.command("create")
+@click.argument("board_uuid", metavar="BOARD")
+@click.option("-n", "--name", required=True, help="Column name (max 48 characters).")
+@click.option(
+    "--category",
+    type=click.Choice(STATE_CATEGORIES),
+    required=True,
+    help="Fixed meaning of the column; it survives renames and never changes.",
+)
+@click.option(
+    "--position",
+    type=click.IntRange(min=0),
+    default=None,
+    help="Insert at this 1-based place among live columns; later columns shift right.",
+)
+@click.option("--color", default=None, help="Column color, e.g. #3b82f6.")
+@click.option("--default", "is_default", is_flag=True, help="New tasks land in this column.")
+@click.option("--idempotency-key", default=None, help="Reuse a key to make a retry safe.")
+@click.option("--json", "json_mode", is_flag=True, help="Emit machine-readable JSON to stdout.")
+def board_state_create(
+    board_uuid: str,
+    name: str,
+    category: str,
+    position: int | None,
+    color: str | None,
+    is_default: bool,
+    idempotency_key: str | None,
+    json_mode: bool,
+) -> None:
+    """Add a column to a board.
+
+    \b
+    Examples:
+      dailybot board state create <board-uuid> -n "In review" --category in_progress
+      dailybot board state create <board-uuid> -n Blocked --category todo --position 2 --json
+    """
+    client = require_auth()
+    try:
+        with console.status("Adding the column..."):
+            data: dict[str, Any] = client.create_board_state(
+                board_uuid,
+                name=name,
+                category=category,
+                position=position,
+                color=color,
+                is_default=True if is_default else None,
+                idempotency_key=idempotency_key,
+            )
+    except APIError as exc:
+        exit_for_tasks_error(exc, json_mode)
+    if json_mode:
+        emit_json(data)
+        return
+    report_write(data, f"Added column {named(data, name)}")
+
+
+@board_state.command("update")
+@click.argument("board_uuid", metavar="BOARD")
+@click.argument("state_uuid", metavar="STATE")
+@click.option("-n", "--name", default=None, help="New column name.")
+@click.option("--color", default=None, help="New column color.")
+@click.option(
+    "--position",
+    type=click.IntRange(min=0),
+    default=None,
+    help="Move the column to this place.",
+)
+@click.option("--json", "json_mode", is_flag=True, help="Emit machine-readable JSON to stdout.")
+def board_state_update(
+    board_uuid: str,
+    state_uuid: str,
+    name: str | None,
+    color: str | None,
+    position: int | None,
+    json_mode: bool,
+) -> None:
+    """Rename, recolor or move one column. Its category cannot change.
+
+    \b
+    Examples:
+      dailybot board state update <board-uuid> <state-uuid> --name "Shipped"
+      dailybot board state update <board-uuid> <state-uuid> --position 1 --json
+    """
+    fields: dict[str, Any] = {
+        k: v
+        for k, v in {"name": name, "color": color, "position": position}.items()
+        if v is not None
+    }
+    if not fields:
+        raise click.UsageError("Nothing to update. Pass --name, --color or --position.")
+    client = require_auth()
+    try:
+        with console.status("Updating the column..."):
+            data: dict[str, Any] = client.update_board_state(board_uuid, state_uuid, **fields)
+    except APIError as exc:
+        exit_for_tasks_error(exc, json_mode)
+    if json_mode:
+        emit_json(data)
+        return
+    report_write(data, "Column updated")
+
+
+@board_state.command("archive")
+@click.argument("board_uuid", metavar="BOARD")
+@click.argument("state_uuid", metavar="STATE")
+@click.option(
+    "--migrate-to",
+    default=None,
+    help="Move this column's live tasks to another live column first (state uuid).",
+)
+@click.option("--dry-run", is_flag=True, help="Show the consequence and exit without acting.")
+@click.option("-y", "--yes", "assume_yes", is_flag=True, help="Skip the prompt (still previews).")
+@click.option("--json", "json_mode", is_flag=True, help="Emit machine-readable JSON to stdout.")
+def board_state_archive(
+    board_uuid: str,
+    state_uuid: str,
+    migrate_to: str | None,
+    dry_run: bool,
+    assume_yes: bool,
+    json_mode: bool,
+) -> None:
+    """Retire a column. Reversible with `board state restore`.
+
+    \b
+    A column that still holds live tasks is refused (`state_in_use`) unless you
+    name --migrate-to: every card moves there in one update before the column goes.
+
+    \b
+    Examples:
+      dailybot board state archive <board-uuid> <state-uuid> --dry-run
+      dailybot board state archive <board-uuid> <state-uuid> --migrate-to <other-state> --yes
+    """
+    client = require_auth()
+    if not preview_then_confirm(
+        lambda: client.archive_board_state(
+            board_uuid, state_uuid, migrate_to=migrate_to, dry_run=True
+        ),
+        assume_yes=assume_yes,
+        preview_only=dry_run,
+        json_mode=json_mode,
+    ):
+        return
+    try:
+        with console.status("Retiring the column..."):
+            data: dict[str, Any] = client.archive_board_state(
+                board_uuid, state_uuid, migrate_to=migrate_to
+            )
+    except APIError as exc:
+        exit_for_tasks_error(exc, json_mode)
+    if json_mode:
+        emit_json(data)
+        return
+    report_write(data, "Column retired. Restore it with `dailybot board state restore`.")
+
+
+@board_state.command("restore")
+@click.argument("board_uuid", metavar="BOARD")
+@click.argument("state_uuid", metavar="STATE")
+@click.option("--json", "json_mode", is_flag=True, help="Emit machine-readable JSON to stdout.")
+def board_state_restore(board_uuid: str, state_uuid: str, json_mode: bool) -> None:
+    """Bring a retired column back, after the live ones. A live column is a no-op.
+
+    \b
+    Examples:
+      dailybot board state restore <board-uuid> <state-uuid>
+    """
+    client = require_auth()
+    try:
+        with console.status("Restoring the column..."):
+            data: dict[str, Any] = client.restore_board_state(board_uuid, state_uuid)
+    except APIError as exc:
+        exit_for_tasks_error(exc, json_mode)
+    if json_mode:
+        emit_json(data)
+        return
+    report_write(data, "Column restored")
+
+
+@board_state.command("reorder")
+@click.argument("board_uuid", metavar="BOARD")
+@click.argument("state_uuids", metavar="STATE...", nargs=-1, required=True)
+@click.option("--json", "json_mode", is_flag=True, help="Emit machine-readable JSON to stdout.")
+def board_state_reorder(board_uuid: str, state_uuids: tuple[str, ...], json_mode: bool) -> None:
+    """Set the left-to-right order of every live column in one call.
+
+    \b
+    List EVERY live column exactly once. A partial list, an unknown uuid or a
+    duplicate is refused (`states_reorder_invalid`); read the current set with
+    `dailybot board states <board>`.
+
+    \b
+    Examples:
+      dailybot board state reorder <board-uuid> <backlog> <todo> <doing> <done>
+    """
+    if len(set(state_uuids)) != len(state_uuids):
+        raise click.UsageError("A column appears twice. List each live column exactly once.")
+    client = require_auth()
+    try:
+        with console.status("Reordering the columns..."):
+            data: Any = client.reorder_board_states(board_uuid, list(state_uuids))
+    except APIError as exc:
+        exit_for_tasks_error(exc, json_mode)
+    if json_mode:
+        emit_json(data)
+        return
+    print_tasks_rows("States", _rows(data), _STATE_COLUMNS, empty="No live columns.")
+
+
+# ---------------------------------------------------------------------------
+# Members (who can see a board) — person-only writes
+# ---------------------------------------------------------------------------
+
+_MEMBER_WRITE_REASON: str = (
+    "changes who can see the board, and no organization API key may do that — there is "
+    "no person behind it to be accountable."
+)
+
+
+@board.group("member")
+def board_member() -> None:
+    """Add or remove the people who can see a board. Needs `dailybot login`.
+
+    \b
+    There is no board-level role: organization roles plus board visibility are the
+    whole access model, so a membership can be added or removed but not edited.
+
+    \b
+    Examples:
+      dailybot board member add <board-uuid> <user-uuid>
+      dailybot board member remove <board-uuid> <user-uuid> --dry-run
+    """
+
+
+@board_member.command("add")
+@click.argument("board_uuid", metavar="BOARD")
+@click.argument("user_uuid", metavar="USER")
+@click.option("--idempotency-key", default=None, help="Reuse a key to make a retry safe.")
+@click.option("--json", "json_mode", is_flag=True, help="Emit machine-readable JSON to stdout.")
+def board_member_add(
+    board_uuid: str, user_uuid: str, idempotency_key: str | None, json_mode: bool
+) -> None:
+    """Give someone sight of a board. Adding an existing member is a no-op.
+
+    \b
+    Adding yourself to a private board you manage is visible to its members — it is
+    recorded as an event, never a silent capability.
+
+    \b
+    Examples:
+      dailybot board member add <board-uuid> <user-uuid>
+    """
+    _require_person("board member add", _MEMBER_WRITE_REASON, json_mode=json_mode)
+    client = require_auth()
+    try:
+        with console.status("Adding the member..."):
+            data: dict[str, Any] = client.add_board_member(
+                board_uuid, user_uuid, idempotency_key=idempotency_key
+            )
+    except APIError as exc:
+        exit_for_tasks_error(exc, json_mode)
+    if json_mode:
+        emit_json(data)
+        return
+    report_write(data, "Member added")
+
+
+@board_member.command("remove")
+@click.argument("board_uuid", metavar="BOARD")
+@click.argument("user_uuid", metavar="USER")
+@click.option("--dry-run", is_flag=True, help="Say what would happen and send nothing.")
+@click.option("-y", "--yes", "assume_yes", is_flag=True, help="Skip the confirmation.")
+@click.option("--json", "json_mode", is_flag=True, help="Emit machine-readable JSON to stdout.")
+def board_member_remove(
+    board_uuid: str, user_uuid: str, dry_run: bool, assume_yes: bool, json_mode: bool
+) -> None:
+    """Take someone's sight of a board away.
+
+    \b
+    The last member of a private board cannot be removed
+    (`last_grant_cannot_be_removed`): a private board with nobody in it is
+    readable by nobody.
+
+    \b
+    Examples:
+      dailybot board member remove <board-uuid> <user-uuid> --dry-run
+      dailybot board member remove <board-uuid> <user-uuid> --yes
+    """
+    _require_person("board member remove", _MEMBER_WRITE_REASON, json_mode=json_mode)
+    if not confirm_without_preview(
+        f"remove user {user_uuid} from board {board_uuid}; they lose sight of it if it is private.",
+        assume_yes=assume_yes,
+        dry_run=dry_run,
+        json_mode=json_mode,
+    ):
+        return
+    client = require_auth()
+    try:
+        with console.status("Removing the member..."):
+            client.remove_board_member(board_uuid, user_uuid)
+    except APIError as exc:
+        exit_for_tasks_error(exc, json_mode)
+    if json_mode:
+        emit_json({"removed": True, "board": board_uuid, "user": user_uuid})
+        return
+    print_success("Member removed.")
+
+
+# ---------------------------------------------------------------------------
+# Labels and saved views — person-only writes
+# ---------------------------------------------------------------------------
+
+
+@board.group("label")
+def board_label() -> None:
+    """Create labels from a board. Needs `dailybot login`.
+
+    \b
+    Labels are the organization's shared taxonomy (the same set forms and check-ins
+    use); edit or retire them with `dailybot label`.
+
+    \b
+    Examples:
+      dailybot board label create <board-uuid> -n bug --color "#ef4444"
+    """
+
+
+@board_label.command("create")
+@click.argument("board_uuid", metavar="BOARD")
+@click.option("-n", "--name", required=True, help="Label name.")
+@click.option("--color", default=None, help="Label color, e.g. #ef4444.")
+@click.option("-d", "--description", default=None, help="What the label means.")
+@click.option("--json", "json_mode", is_flag=True, help="Emit machine-readable JSON to stdout.")
+def board_label_create(
+    board_uuid: str, name: str, color: str | None, description: str | None, json_mode: bool
+) -> None:
+    """Create an organization label from this board.
+
+    \b
+    Examples:
+      dailybot board label create <board-uuid> -n bug --color "#ef4444"
+      dailybot board label create <board-uuid> -n "needs design" --json
+    """
+    _require_person(
+        "board label create",
+        "creates an organization label, which needs a signed-in person.",
         json_mode=json_mode,
     )
+    client = require_auth()
+    try:
+        with console.status("Creating the label..."):
+            data: dict[str, Any] = client.create_board_label(
+                board_uuid, name=name, color=color, description=description
+            )
+    except APIError as exc:
+        exit_for_tasks_error(exc, json_mode)
+    if json_mode:
+        emit_json(data)
+        return
+    report_write(data, f"Created label {named(data, name)}")
+
+
+@board.group("view")
+def board_view() -> None:
+    """Save your views of a board. Needs `dailybot login`.
+
+    \b
+    Examples:
+      dailybot board view save <board-uuid> -f views.json --if-match '"3"'
+    """
+
+
+@board_view.command("save")
+@click.argument("board_uuid", metavar="BOARD")
+@click.option(
+    "-f",
+    "--file",
+    "views_file",
+    type=click.File("r"),
+    required=True,
+    help="JSON array of views (`-` reads stdin). It REPLACES your whole list.",
+)
+@click.option(
+    "--if-match",
+    default=None,
+    help="The ETag `board views` showed. Protects against overwriting a concurrent save.",
+)
+@click.option(
+    "--fetch-etag",
+    is_flag=True,
+    help="Read the current ETag first instead of passing --if-match (narrower protection).",
+)
+@click.option("--json", "json_mode", is_flag=True, help="Emit machine-readable JSON to stdout.")
+def board_view_save(
+    board_uuid: str,
+    views_file: Any,
+    if_match: str | None,
+    fetch_etag: bool,
+    json_mode: bool,
+) -> None:
+    """Replace your saved views on a board with the array in a file.
+
+    \b
+    This replaces the WHOLE list, so the server requires the ETag you read: with
+    --if-match you prove you saw the latest list; --fetch-etag reads it now, which
+    only guards the moment between that read and this write.
+
+    \b
+    Examples:
+      dailybot board views <board-uuid> --json > views.json
+      dailybot board view save <board-uuid> -f views.json --if-match '"3"'
+      dailybot board view save <board-uuid> -f views.json --fetch-etag --json
+    """
+    if (if_match is None) == (not fetch_etag):
+        raise click.UsageError("Pass exactly one of --if-match <etag> or --fetch-etag.")
+    try:
+        views: Any = _json.load(views_file)
+    except ValueError as exc:
+        raise click.BadParameter(f"not valid JSON: {exc}", param_hint="--file") from exc
+    if not isinstance(views, list):
+        raise click.BadParameter("must be a JSON array of views.", param_hint="--file")
+    _require_person(
+        "board view save",
+        "saves views that belong to a person, and an organization API key is not one.",
+        json_mode=json_mode,
+    )
+    client = require_auth()
+    try:
+        etag: str | None = if_match
+        if fetch_etag:
+            with console.status("Reading the current views..."):
+                _current, etag = client.list_board_views_with_etag(board_uuid)
+            if etag is None:
+                raise click.ClickException(
+                    "The server returned no ETag for this board's views, so a save cannot be "
+                    "made safely. Nothing was changed."
+                )
+        with console.status("Saving the views..."):
+            data: Any = client.save_board_views(board_uuid, views, if_match=str(etag))
+    except APIError as exc:
+        exit_for_tasks_error(exc, json_mode)
+    if json_mode:
+        emit_json(data)
+        return
+    print_tasks_rows("Views", _rows(data), _VIEW_COLUMNS, empty="No saved views.")
 
 
 @board.command("snapshot")
@@ -426,30 +917,73 @@ def board_create(
 @board.command("update")
 @click.argument("board_uuid", metavar="BOARD")
 @click.option("-n", "--name", default=None, help="New board name.")
-@click.option("-d", "--description", default=None, help="New board description.")
+@click.option(
+    "--key",
+    "board_key",
+    default=None,
+    help="New key prefix. The old key is retired and stays reserved, so old links still resolve.",
+)
+@click.option(
+    "--visibility",
+    type=click.Choice(BOARD_VISIBILITIES),
+    default=None,
+    help="`members` makes it private; you are seated as its first member.",
+)
+@click.option("--estimate-scale", type=click.Choice(BOARD_ESTIMATE_SCALES), default=None)
+@click.option(
+    "--archive-after-days",
+    type=click.IntRange(min=1),
+    default=None,
+    help="Auto-archive done tasks after this many days.",
+)
+@click.option("--project", default=None, help="Move the board under this project (uuid).")
+@click.option("--idempotency-key", default=None, help="Reuse a key to make a retry safe.")
 @click.option("--json", "json_mode", is_flag=True, help="Emit machine-readable JSON to stdout.")
 def board_update(
-    board_uuid: str, name: str | None, description: str | None, json_mode: bool
+    board_uuid: str,
+    name: str | None,
+    board_key: str | None,
+    visibility: str | None,
+    estimate_scale: str | None,
+    archive_after_days: int | None,
+    project: str | None,
+    idempotency_key: str | None,
+    json_mode: bool,
 ) -> None:
-    """Rename a board or change its description.
+    """Change a board's name, key, visibility or settings.
 
     \b
-    Only the fields you pass are sent; the rest keep their current value.
+    Only the fields you pass are sent. Renaming the key retires the old one, which
+    stays reserved forever, so `ENG-142` typed two years later still resolves.
 
     \b
     Examples:
       dailybot board update <board-uuid> --name "Design (Q4)"
-      dailybot board update <board-uuid> -d "Everything the design team ships" --json
+      dailybot board update <board-uuid> --key DSN --visibility members --json
     """
     fields: dict[str, Any] = {
-        k: v for k, v in {"name": name, "description": description}.items() if v is not None
+        k: v
+        for k, v in {
+            "name": name,
+            "key": board_key,
+            "visibility": visibility,
+            "estimate_scale": estimate_scale,
+            "archive_after_days": archive_after_days,
+            "project": project,
+        }.items()
+        if v is not None
     }
     if not fields:
-        raise click.UsageError("Nothing to update. Pass --name or --description.")
+        raise click.UsageError(
+            "Nothing to update. Pass at least one of --name, --key, --visibility, "
+            "--estimate-scale, --archive-after-days or --project."
+        )
     client = require_auth()
     try:
         with console.status("Updating the board..."):
-            data: dict[str, Any] = client.update_board(board_uuid, **fields)
+            data: dict[str, Any] = client.update_board(
+                board_uuid, idempotency_key=idempotency_key, **fields
+            )
     except APIError as exc:
         exit_for_tasks_error(exc, json_mode)
     if json_mode:

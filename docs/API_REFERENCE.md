@@ -874,7 +874,7 @@ Dispatch on `code`, never on the English `detail`.
 | `idempotency_in_progress` | identical call still running — do not retry | 4 |
 | `delta_window_expired` | cursor older than 7 days — **re-snapshot** | **9** |
 | `too_many_items` | bulk over 100 items | 2 |
-| `state_in_use` | column has tasks; the server wants `migrate_to` so they are **moved**, which the CLI cannot send yet — use the web app. Archiving them in bulk is not a substitute | 4 |
+| `state_in_use` | the column still holds live tasks — re-run `board state archive` with `--migrate-to <state>` so they move first | 4 |
 | `invalid_filter_value` | a declared parameter's value was rejected | 2 |
 | `user_aborted` | a human declined the confirmation — **stop**; never re-run with `--yes` | **7** |
 | *(transport failure — no server response)* | unreachable, timeout, bad URL | **8** |

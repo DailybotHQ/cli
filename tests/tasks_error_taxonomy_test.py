@@ -173,7 +173,7 @@ class TestDeltaAndVolumeCodes:
         assert "100" in ERROR_CODE_MESSAGES["too_many_items"]
 
     def test_state_in_use_names_migrate_to(self) -> None:
-        assert "migrate_to" in ERROR_CODE_MESSAGES["state_in_use"]
+        assert "--migrate-to" in ERROR_CODE_MESSAGES["state_in_use"]
 
 
 class TestAuthTaxonomy:

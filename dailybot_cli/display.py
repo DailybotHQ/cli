@@ -7,6 +7,7 @@ tag, so every such message is escaped before interpolation.
 
 from typing import Any
 
+import click
 from rich.console import Console
 from rich.markdown import Markdown
 from rich.markup import escape
@@ -39,6 +40,11 @@ def print_warning(message: str) -> None:
 def print_info(message: str) -> None:
     """Print an info message."""
     console.print(f"[dim]{escape(message)}[/dim]")
+
+
+def print_raw_value(value: str) -> None:
+    """Print one bare value for a shell variable: no styling, no wrapping, stdout."""
+    click.echo(value)
 
 
 def print_deprecation(message: str) -> None:

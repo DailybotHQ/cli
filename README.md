@@ -899,12 +899,16 @@ humans who own them.
 | `dailybot board list` | List boards |
 | `dailybot board get <uuid>` | Board metadata |
 | `dailybot board tasks <uuid>` | The tasks on one board, one page per call |
-| `dailybot board states <uuid>` | The board's states (columns), archived ones included |
+| `dailybot board states <uuid>` | The board's columns, left to right (`--include-archived` for retired ones) |
 | `dailybot board members <uuid>` | Who can see the board, and their role |
 | `dailybot board labels <uuid>` | Labels available on the board — **needs `dailybot login`** |
-| `dailybot board views <uuid>` | Saved views on the board |
+| `dailybot board views <uuid>` | Your saved views on the board, plus the ETag a save needs (`--etag` prints only that) |
+| `dailybot board state create\|update\|archive\|restore\|reorder` | Manage columns. `archive` previews first and takes `--migrate-to <state>` to move the column's cards |
+| `dailybot board member add\|remove <board> <user>` | Who can see the board — **needs `dailybot login`**. There is no board role to edit |
+| `dailybot board label create <board> -n <name>` | Create an organization label from the board — **needs `dailybot login`** |
+| `dailybot board view save <board> -f views.json --if-match <etag>` | Replace your saved views (the whole list) — **needs `dailybot login`** |
 | `dailybot board snapshot <uuid>` | The whole board in one request; carries the `delta_cursor` that `tasks changes` consumes |
-| `dailybot board update <uuid>` | Rename a board or change its description (`-n`, `-d`) |
+| `dailybot board update <uuid>` | Name, key (the old key stays reserved), visibility, estimate scale, auto-archive, project |
 | `dailybot board create --name <n>` | Create a board — **needs `dailybot login`** |
 | `dailybot board archive <uuid>` | Archive a board. **Cascade-archives its live tasks**, and restoring does not bring them back |
 | `dailybot board restore <uuid>` | Restore a board (cascaded tasks stay archived) |

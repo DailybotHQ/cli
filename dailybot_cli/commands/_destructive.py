@@ -97,3 +97,37 @@ def preview_then_confirm(
             print_error(aborted)
         raise SystemExit(EXIT_USER_ABORTED)
     return True
+
+
+def confirm_without_preview(
+    consequence: str,
+    *,
+    assume_yes: bool,
+    dry_run: bool,
+    json_mode: bool = False,
+) -> bool:
+    """Confirm a destructive write on a door that has no server-side dry run.
+
+    The CLI cannot ask the server for the blast radius here, so it states the one
+    thing it does know — the exact act — and never pretends to more. `--dry-run`
+    prints that sentence and sends nothing; `--yes` skips the prompt. Returns True
+    when the caller should proceed.
+    """
+    if dry_run:
+        if json_mode:
+            emit_json({"dry_run": True, "consequence": consequence, "previewed_by": "client"})
+        else:
+            console.print(f"[bold]Dry run[/bold] — nothing was changed. Would: {consequence}")
+        return False
+    if assume_yes:
+        return True
+    if not click.confirm(f"{consequence} Proceed?", default=False, err=json_mode):
+        aborted: str = "Aborted. Nothing was changed."
+        if json_mode:
+            emit_json(
+                {"status": "error", "code": "user_aborted", "detail": aborted, "message": aborted}
+            )
+        else:
+            print_error(aborted)
+        raise SystemExit(EXIT_USER_ABORTED)
+    return True

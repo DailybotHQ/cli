@@ -428,7 +428,7 @@ class DailyBotClient:
         method: str,
         url: str,
         *,
-        json: dict[str, Any] | None = None,
+        json: Any = None,
         params: dict[str, Any] | None = None,
         timeout: float | None = None,
         extra_headers: dict[str, str] | None = None,
@@ -2135,11 +2135,12 @@ class DailyBotClient:
         method: str,
         path: str,
         *,
-        json: dict[str, Any] | None = None,
+        json: Any = None,
         params: dict[str, Any] | None = None,
         idempotent: bool = False,
         idempotency_key: str | None = None,
-    ) -> dict[str, Any]:
+        headers: dict[str, str] | None = None,
+    ) -> Any:
         """Issue a Tasks write and surface the replay flag.
 
         ``idempotent`` reflects the door's posture in IDEMPOTENCY.md, not the
@@ -2151,7 +2152,7 @@ class DailyBotClient:
         same organization **share a namespace** (MEASURED_ANSWERS.md §6 Q5) and a
         sequential default would collide between two agents.
         """
-        extra: dict[str, str] | None = None
+        extra: dict[str, str] | None = dict(headers) if headers else None
         sent_key: str | None = None
         # A `dry_run=true` call writes nothing, so it has nothing to make idempotent —
         # and returning a key for it invites the caller to reuse that key for the real
@@ -2162,12 +2163,12 @@ class DailyBotClient:
         }
         if idempotent and not previewing:
             sent_key = idempotency_key or str(uuid.uuid4())
-            extra = {IDEMPOTENCY_KEY_HEADER: sent_key}
+            extra = {**(extra or {}), IDEMPOTENCY_KEY_HEADER: sent_key}
         try:
             response: httpx.Response = self._request(
                 method, self._tasks_url(path), json=json, params=params, extra_headers=extra
             )
-            result: dict[str, Any] = self._handle_response(response)
+            result: Any = self._handle_response(response)
         except TransportError as exc:
             # Two paths reach here and NEITHER has a body to recover the key from:
             # a timeout, and an unreadable 2xx (a captive portal's HTML 200), which
@@ -2192,6 +2193,17 @@ class DailyBotClient:
     def _tasks_read(self, path: str, *, params: dict[str, Any] | None = None) -> dict[str, Any]:
         """Issue a Tasks read (single object or non-paginated document)."""
         return self._handle_response(self._request("GET", self._tasks_url(path), params=params))
+
+    def _tasks_read_with_etag(self, path: str) -> tuple[Any, str | None]:
+        """A Tasks read that also returns the response's `ETag` validator.
+
+        The saved-view doors replace a whole array and demand `If-Match`; the
+        validator is only available from the read, so it has to leave with it.
+        """
+        response: httpx.Response = self._request("GET", self._tasks_url(path))
+        data: Any = self._handle_response(response)
+        etag: Any = getattr(response, "headers", {}).get("ETag")
+        return data, (str(etag) if etag else None)
 
     def _tasks_list(
         self,
@@ -2281,9 +2293,13 @@ class DailyBotClient:
         """GET /v1/tasks/boards/<uuid>/tasks/ — one board's tasks, paginated."""
         return self._tasks_list(f"boards/{board_uuid}/tasks/", params=filters, **page)
 
-    def list_board_states(self, board_uuid: str) -> Any:
-        """GET /v1/tasks/boards/<uuid>/states/ — the board's columns."""
-        return self._tasks_read(f"boards/{board_uuid}/states/")
+    def list_board_states(self, board_uuid: str, *, include_archived: bool = False) -> Any:
+        """GET /v1/tasks/boards/<uuid>/states/ — the board's live columns.
+
+        Retired columns are only returned with ``include_archived``.
+        """
+        params: dict[str, Any] | None = {"include_archived": "true"} if include_archived else None
+        return self._tasks_read(f"boards/{board_uuid}/states/", params=params)
 
     def list_board_members(self, board_uuid: str) -> Any:
         """GET /v1/tasks/boards/<uuid>/members/ — who can see the board."""
@@ -2296,6 +2312,88 @@ class DailyBotClient:
     def list_board_views(self, board_uuid: str) -> Any:
         """GET /v1/tasks/boards/<uuid>/views/ — saved views on the board."""
         return self._tasks_read(f"boards/{board_uuid}/views/")
+
+    def list_board_views_with_etag(self, board_uuid: str) -> tuple[Any, str | None]:
+        """GET /v1/tasks/boards/<uuid>/views/ plus the `ETag` a save must send back."""
+        return self._tasks_read_with_etag(f"boards/{board_uuid}/views/")
+
+    def save_board_views(self, board_uuid: str, views: list[Any], *, if_match: str) -> Any:
+        """PUT /v1/tasks/boards/<uuid>/views/ — replaces the caller's WHOLE view array.
+
+        Person-only. `If-Match` is required by the server (412 stale, 428 absent)
+        because two concurrent saves would otherwise drop each other's views.
+        """
+        return self._tasks_write(
+            "PUT", f"boards/{board_uuid}/views/", json=views, headers={"If-Match": if_match}
+        )
+
+    def create_board_state(
+        self, board_uuid: str, *, idempotency_key: str | None = None, **fields: Any
+    ) -> Any:
+        """POST /v1/tasks/boards/<uuid>/states/ — `position` inserts; accepts a key."""
+        payload: dict[str, Any] = {k: v for k, v in fields.items() if v is not None}
+        return self._tasks_write(
+            "POST",
+            f"boards/{board_uuid}/states/",
+            json=payload,
+            idempotent=True,
+            idempotency_key=idempotency_key,
+        )
+
+    def update_board_state(self, board_uuid: str, state_uuid: str, **fields: Any) -> Any:
+        """PATCH …/states/<uuid>/ — name, color and position only; no key accepted."""
+        payload: dict[str, Any] = {k: v for k, v in fields.items() if v is not None}
+        return self._tasks_write("PATCH", f"boards/{board_uuid}/states/{state_uuid}/", json=payload)
+
+    def archive_board_state(
+        self,
+        board_uuid: str,
+        state_uuid: str,
+        *,
+        migrate_to: str | None = None,
+        dry_run: bool = False,
+    ) -> Any:
+        """POST …/states/<uuid>/archive/ — retire a column; `migrate_to` moves its cards."""
+        return self._tasks_write(
+            "POST",
+            f"boards/{board_uuid}/states/{state_uuid}/archive/",
+            json={"migrate_to": migrate_to} if migrate_to else None,
+            params={"dry_run": "true"} if dry_run else None,
+        )
+
+    def restore_board_state(self, board_uuid: str, state_uuid: str) -> Any:
+        """POST …/states/<uuid>/restore/ — the column returns after the live ones."""
+        return self._tasks_write("POST", f"boards/{board_uuid}/states/{state_uuid}/restore/")
+
+    def reorder_board_states(self, board_uuid: str, order: list[str]) -> Any:
+        """POST …/states/reorder/ — `order` must list every live column exactly once."""
+        return self._tasks_write(
+            "POST", f"boards/{board_uuid}/states/reorder/", json={"order": order}
+        )
+
+    def add_board_member(
+        self, board_uuid: str, user_uuid: str, *, idempotency_key: str | None = None
+    ) -> Any:
+        """POST …/members/ — person-only (`tasks:admin`); 200 when already a member."""
+        return self._tasks_write(
+            "POST",
+            f"boards/{board_uuid}/members/",
+            json={"user_uuid": user_uuid},
+            idempotent=True,
+            idempotency_key=idempotency_key,
+        )
+
+    def remove_board_member(self, board_uuid: str, user_uuid: str) -> Any:
+        """DELETE …/members/<user>/ — person-only; the last member of a private board stays."""
+        return self._tasks_write("DELETE", f"boards/{board_uuid}/members/{user_uuid}/")
+
+    def create_board_label(self, board_uuid: str, *, name: str, **fields: Any) -> Any:
+        """POST …/labels/ — person-only; creates an organization label from the board."""
+        payload: dict[str, Any] = {
+            "name": name,
+            **{k: v for k, v in fields.items() if v is not None},
+        }
+        return self._tasks_write("POST", f"boards/{board_uuid}/labels/", json=payload)
 
     def get_board(self, board_uuid: str) -> dict[str, Any]:
         """GET /v1/tasks/boards/<uuid>/."""
@@ -2571,10 +2669,22 @@ class DailyBotClient:
             "POST", "boards/", json=payload, idempotent=True, idempotency_key=idempotency_key
         )
 
-    def update_board(self, board_uuid: str, **fields: Any) -> dict[str, Any]:
-        """PATCH /v1/tasks/boards/<uuid>/ — partial update of the board's metadata."""
+    def update_board(
+        self, board_uuid: str, *, idempotency_key: str | None = None, **fields: Any
+    ) -> dict[str, Any]:
+        """PATCH /v1/tasks/boards/<uuid>/ — partial update; accepts a key.
+
+        Renaming `key` retires the old one, which stays reserved forever.
+        """
         payload: dict[str, Any] = {k: v for k, v in fields.items() if v is not None}
-        return self._tasks_write("PATCH", f"boards/{board_uuid}/", json=payload)
+        result: dict[str, Any] = self._tasks_write(
+            "PATCH",
+            f"boards/{board_uuid}/",
+            json=payload,
+            idempotent=True,
+            idempotency_key=idempotency_key,
+        )
+        return result
 
     def archive_board(
         self, board_uuid: str, *, dry_run: bool = False, idempotency_key: str | None = None

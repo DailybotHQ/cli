@@ -444,7 +444,9 @@ class TestStateInUse:
     def test_it_names_migrate_to(self, runner: CliRunner, client: MagicMock) -> None:
         client.archive_task.side_effect = APIError(409, "in use", code="state_in_use")
         result = _invoke(runner, client, ["task", "archive", "t-1", "--yes"])
-        assert "migrate_to" in result.output
+        collapsed: str = " ".join(result.output.split())
+        assert "--migrate-to" in collapsed
+        assert "board state restore" in collapsed
 
 
 class TestRestore:
