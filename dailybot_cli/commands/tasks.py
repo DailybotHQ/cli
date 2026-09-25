@@ -15,7 +15,6 @@ from datetime import date, datetime, timezone
 from typing import Any
 
 import click
-from rich.markup import escape
 
 from dailybot_cli.api_client import (
     TASKS_DELTA_MAX_WINDOW_DAYS,
@@ -25,7 +24,12 @@ from dailybot_cli.api_client import (
 )
 from dailybot_cli.commands._beta import BETA_STATUS_LINE, mark_beta
 from dailybot_cli.commands._destructive import confirm_without_preview
-from dailybot_cli.commands._favorites import require_person_for_favorites, star, unstar
+from dailybot_cli.commands._favorites import (
+    require_person_for_favorites,
+    require_person_for_views,
+    star,
+    unstar,
+)
 from dailybot_cli.commands.public_api_helpers import (
     emit_json,
     exit_for_tasks_error,
@@ -57,6 +61,7 @@ from dailybot_cli.display import (
     print_tasks_detail_panel,
     print_tasks_rows,
     print_tasks_table,
+    safe_text,
 )
 
 # A dedicated exit code so an agent can branch on "my cursor died" without
@@ -411,7 +416,7 @@ def tasks_activity(
         return
     for event in result.results:
         console.print(
-            f"[dim]{escape(str(event.get('created_at') or event.get('observed_at') or ''))}[/dim] "
+            f"[dim]{safe_text(event.get('created_at') or event.get('observed_at') or '')}[/dim] "
             f"{present_untrusted(event.get('summary') or event.get('verb') or event.get('type'), limit=90)}"
         )
     print_pagination_footer(
@@ -455,7 +460,7 @@ def tasks_timeline(json_mode: bool, **flags: Any) -> None:
         return
     for entry in result.results:
         console.print(
-            f"[dim]{escape(str(entry.get('date', '')))}[/dim] "
+            f"[dim]{safe_text(entry.get('date', ''))}[/dim] "
             f"{present_untrusted(entry.get('title') or entry.get('summary'), limit=90)}"
         )
     print_pagination_footer(
@@ -635,7 +640,7 @@ def tasks_inbox(json_mode: bool, **flags: Any) -> None:
     for item in result.results:
         # The uuid is what `tasks inbox-read` takes, so it leads the line.
         console.print(
-            f"[dim]{escape(str(item.get('uuid') or ''))}[/dim] "
+            f"[dim]{safe_text(item.get('uuid') or '')}[/dim] "
             f"{present_untrusted(item.get('title') or item.get('summary'), limit=90)}"
         )
     print_pagination_footer(
@@ -826,7 +831,7 @@ def tasks_view_get(view_uuid: str, json_mode: bool) -> None:
     Examples:
       dailybot tasks view get <view-uuid> --json
     """
-    require_person_for_favorites("tasks view get", json_mode=json_mode)
+    require_person_for_views("tasks view get", json_mode=json_mode)
     client = require_auth()
     try:
         with console.status("Reading the view..."):
@@ -908,7 +913,7 @@ def tasks_view_update(
     }
     if not fields:
         raise click.UsageError("Nothing to update. Pass at least one field, e.g. --view-mode.")
-    require_person_for_favorites("tasks view update", json_mode=json_mode)
+    require_person_for_views("tasks view update", json_mode=json_mode)
     client = require_auth()
     try:
         with console.status("Updating the view..."):
@@ -934,7 +939,7 @@ def tasks_view_delete(view_uuid: str, dry_run: bool, assume_yes: bool, json_mode
       dailybot tasks view delete <view-uuid> --dry-run
       dailybot tasks view delete <view-uuid> --yes
     """
-    require_person_for_favorites("tasks view delete", json_mode=json_mode)
+    require_person_for_views("tasks view delete", json_mode=json_mode)
     if not confirm_without_preview(
         f"delete saved view {view_uuid} permanently.",
         assume_yes=assume_yes,

@@ -68,6 +68,7 @@ tests/
 ├── tasks_terminal_safety_test.py # control chars neutralized, preview shape, local file limits
 ├── tasks_key_refusal_sweep_test.py # every admin / person-only door refuses a key before the request
 ├── tasks_parent_attachments_test.py # attachments on comments, projects and goals (5 MiB, admin doors)
+├── tasks_ai_review_fixes_test.py # AI review round 1: bulk preview shape, ETag grammar, ports, streamed download
 ├── tasks_favorites_views_test.py  # board/view star|unstar (R3a), saved view get/update/delete (R3d)
 ├── tasks_ergonomics_sweep_test.py # walks every Tasks command: --json, example, TASK metavar, --dry-run
 ├── board_commands_test.py         # `board` group: reads + container writes

@@ -75,12 +75,14 @@ class TestWire:
         with patch("dailybot_cli.api_client.httpx.get", return_value=_response([])) as get:
             getattr(real, f"list_{kind}_attachments")(*ids)
         assert get.call_args.args[0] == f"{BASE}{parent}/attachments/"
-        with patch(
-            "dailybot_cli.api_client.httpx.get", return_value=_response(content=b"bytes")
-        ) as get:
+        body: MagicMock = MagicMock()
+        body.__enter__.return_value = _response()
+        body.__enter__.return_value.iter_bytes.return_value = iter([b"bytes"])
+        body.__exit__.return_value = False
+        with patch("dailybot_cli.api_client.httpx.stream", return_value=body) as stream:
             data: bytes = getattr(real, f"download_{kind}_attachment")(*ids, ATT)
         assert data == b"bytes"
-        assert get.call_args.args[0] == f"{BASE}{parent}/attachments/{ATT}/content/"
+        assert stream.call_args.args == ("GET", f"{BASE}{parent}/attachments/{ATT}/content/")
         with patch(
             "dailybot_cli.api_client.httpx.request", return_value=_response(status=204)
         ) as request:

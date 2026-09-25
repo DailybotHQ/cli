@@ -29,6 +29,16 @@ def require_person_for_favorites(action: str, *, json_mode: bool) -> None:
         )
 
 
+def require_person_for_views(action: str, *, json_mode: bool) -> None:
+    """Refuse an API key before any request: a saved view belongs to a person."""
+    if get_token() is None:
+        refuse_without_person(
+            f"`{action}` works on a saved view, which belongs to a person, and an "
+            "organization API key is nobody. Run `dailybot login` and retry.",
+            json_mode=json_mode,
+        )
+
+
 def star(client: DailyBotClient, target_type: str, target_uuid: str, *, json_mode: bool) -> None:
     """Pin a board or view. Pinning something already pinned returns the existing pin."""
     try:

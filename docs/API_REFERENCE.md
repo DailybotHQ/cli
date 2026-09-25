@@ -881,6 +881,9 @@ Dispatch on `code`, never on the English `detail`.
 | `attachment_upload_redirected` / `attachment_upload_failed` | the storage target redirected or refused — never followed, never confirmed | 1 |
 | `attachment_upload_target_refused` | the server handed back a non-https foreign target; the file was not sent | 1 |
 | `attachment_download_redirected` | a download redirect pointed somewhere unexpected; nothing written | 1 |
+| `invalid_identifier` | a TASK / uuid argument contained `/`, `..`, `?`, `#`, `%` or a space; refused before any request | 2 |
+| `invalid_etag` | an ETag or `--if-match` value that is not a quoted entity tag; refused before it is printed or sent | 2 (argument) / 1 (server header) |
+| `preview_not_honoured` | a `--dry-run` answer without `dry_run: true`: the server may have applied the change; nothing more was sent | 1 |
 | `column_too_large` | a column too big to return in one read — page with `board tasks` | 4 |
 | `too_many_items` | bulk over 100 items | 2 |
 | `state_in_use` | the column still holds live tasks — re-run `board state archive` with `--migrate-to <state>` so they move first | 4 |

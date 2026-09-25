@@ -17,7 +17,6 @@ from typing import Any, NoReturn
 
 import click
 from rich.console import Console
-from rich.markup import escape
 
 from dailybot_cli.api_client import (
     ATTACHMENT_MAX_SIZE_BYTES,
@@ -37,7 +36,11 @@ from dailybot_cli.commands._attachments import (
     run_list,
 )
 from dailybot_cli.commands._beta import mark_beta
-from dailybot_cli.commands._destructive import confirm_without_preview, preview_then_confirm
+from dailybot_cli.commands._destructive import (
+    confirm_without_preview,
+    preview_then_confirm,
+    report_preview_not_honoured,
+)
 from dailybot_cli.commands._writes import IDEMPOTENCY_TTL_HOURS, named, report_write
 from dailybot_cli.commands.public_api_helpers import (
     EXIT_USAGE_ERROR,
@@ -1764,7 +1767,7 @@ def _bulk_preview(operation: str, items: list[Any], board: str | None, json_mode
     """Show what a bulk call would do, via the server's run-and-roll-back dry run."""
     client = require_auth()
     try:
-        with console.status(f"Previewing {escape(operation)} on {len(items)} item(s)..."):
+        with console.status(f"Previewing {safe_text(operation)} on {len(items)} item(s)..."):
             preview: dict[str, Any] = client.bulk_tasks(
                 operation=operation, items=items, board=board, dry_run=True
             )
@@ -1790,6 +1793,11 @@ def _bulk_preview(operation: str, items: list[Any], board: str | None, json_mode
                 print_error(message)
             raise SystemExit(EXIT_USAGE_ERROR) from exc
         _write_error(exc, json_mode)
+    if not isinstance(preview, dict) or preview.get("dry_run") is not True:
+        # The contract answers a bulk dry run with a BulkPreview carrying
+        # `dry_run: true`. Anything else means the server did not honour it, and
+        # the batch may have been applied: never present that as a preview.
+        report_preview_not_honoured(json_mode)
     refused: list[Any] = [r for r in preview.get("refused") or [] if isinstance(r, dict)]
     if json_mode:
         emit_json(preview)
@@ -1806,7 +1814,8 @@ def _bulk_preview(operation: str, items: list[Any], board: str | None, json_mode
     "--operation",
     required=True,
     type=click.Choice(BULK_OPERATIONS),
-    help="Operation to apply to every item.",
+    help="Operation to apply to every item. `delete` is the archive alias: soft and "
+    "restorable, like `task delete`.",
 )
 @click.option(
     "-f",
@@ -1880,7 +1889,7 @@ def task_bulk(
         # parseable document, exactly as `_destructive.preview_then_confirm` does.
         notice: Console = error_console if json_mode else console
         notice.print(
-            f"About to apply [bold]{escape(operation)}[/bold] to "
+            f"About to apply [bold]{safe_text(operation)}[/bold] to "
             f"[bold]{len(items)}[/bold] item(s). Preview it first with --dry-run."
         )
         if not click.confirm("Proceed?", default=False, err=json_mode):
@@ -1900,7 +1909,7 @@ def task_bulk(
 
     client = require_auth()
     try:
-        with console.status(f"Applying {escape(operation)} to {len(items)} item(s)..."):
+        with console.status(f"Applying {safe_text(operation)} to {len(items)} item(s)..."):
             data: dict[str, Any] = client.bulk_tasks(
                 operation=operation, items=items, board=board, idempotency_key=idempotency_key
             )
@@ -1922,15 +1931,15 @@ def task_bulk(
 
     report_write(
         data,
-        f"Bulk {escape(operation)}: {len(results) - len(failed)} succeeded, {len(failed)} failed",
+        f"Bulk {safe_text(operation)}: {len(results) - len(failed)} succeeded, {len(failed)} failed",
     )
     for row in failed:
         # Both values are echoed from the caller's own batch file, so both are
         # untrusted for markup purposes — the same footgun as `--operation`, except
         # this one fires *after* the success line has already printed.
         console.print(
-            f"  [red]failed[/red] {escape(str(row.get('task') or row.get('uuid') or '?'))} "
-            f"[dim]{escape(str(row.get('code', '')))}[/dim]"
+            f"  [red]failed[/red] {safe_text(row.get('task') or row.get('uuid') or '?')} "
+            f"[dim]{safe_text(row.get('code', ''))}[/dim]"
         )
     if failed:
         raise SystemExit(1)

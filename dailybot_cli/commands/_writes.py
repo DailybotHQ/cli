@@ -13,10 +13,8 @@ message is therefore composed and printed here, escaped exactly once.
 
 from typing import Any
 
-from rich.markup import escape
-
 from dailybot_cli.api_client import IDEMPOTENCY_KEY_SENT_KEY
-from dailybot_cli.display import console, present_untrusted
+from dailybot_cli.display import console, present_untrusted, safe_text
 
 IDEMPOTENCY_TTL_HOURS: int = 24  # server-side slot lifetime, mirrored in the hint
 
@@ -40,7 +38,7 @@ def report_write(result: dict[str, Any], message: str) -> None:
         # fresh uuid4, which the server cannot recognise, so the "safe retry" the
         # help describes would duplicate.
         console.print(
-            f"[dim]Idempotency key: {escape(str(key))} — pass it with --idempotency-key "
+            f"[dim]Idempotency key: {safe_text(key)} — pass it with --idempotency-key "
             f"to make a retry of this exact call safe for {IDEMPOTENCY_TTL_HOURS}h.[/dim]"
         )
 

@@ -481,7 +481,8 @@ def board_state() -> None:
     "--position",
     type=click.IntRange(min=0),
     default=None,
-    help="Insert at this 1-based place among live columns; later columns shift right.",
+    help="Insert at this 1-based place among live columns (0 counts as 1; past the end "
+    "goes last; omitted appends). Later columns shift right.",
 )
 @click.option("--color", default=None, help="Column color, e.g. #3b82f6.")
 @click.option("--default", "is_default", is_flag=True, help="New tasks land in this column.")
@@ -534,7 +535,8 @@ def board_state_create(
     "--position",
     type=click.IntRange(min=0),
     default=None,
-    help="Move the column to this place.",
+    help="Move the column to this 1-based place among live columns (0 counts as 1; past "
+    "the end goes last).",
 )
 @click.option("--json", "json_mode", is_flag=True, help="Emit machine-readable JSON to stdout.")
 def board_state_update(

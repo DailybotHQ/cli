@@ -5,7 +5,6 @@ from pathlib import Path
 from typing import Any
 
 import click
-from rich.markup import escape
 
 from dailybot_cli.api_client import ATTACHMENT_MULTIPART_MAX_BYTES, APIError, PaginatedResult
 from dailybot_cli.commands._attachments import run_attach, run_delete, run_get, run_list
@@ -34,6 +33,7 @@ from dailybot_cli.display import (
     print_success,
     print_tasks_detail_panel,
     print_tasks_rows,
+    safe_text,
 )
 
 # Split deliberately. `projects` is a goal-shaped selector: a project has no
@@ -197,7 +197,7 @@ def project_updates(project_uuid: str | None, json_mode: bool, **flags: Any) -> 
         return
     for update in result.results:
         console.print(
-            f"[dim]{escape(str(update.get('created_at', '')))}[/dim] "
+            f"[dim]{safe_text(update.get('created_at', ''))}[/dim] "
             f"{present_untrusted(update.get('body'), limit=160)}"
         )
     print_pagination_footer(len(result.results), result.count, has_more=bool(result.next))

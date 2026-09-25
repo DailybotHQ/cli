@@ -15,10 +15,9 @@ Three rules, each closing a distinct hole:
 """
 
 from collections.abc import Callable
-from typing import Any
+from typing import Any, NoReturn
 
 import click
-from rich.markup import escape
 
 from dailybot_cli.api_client import APIError
 from dailybot_cli.commands.public_api_helpers import (
@@ -27,7 +26,7 @@ from dailybot_cli.commands.public_api_helpers import (
     resolve_error_message,
     tasks_write_exit_code,
 )
-from dailybot_cli.display import console, print_dry_run_consequence, print_error
+from dailybot_cli.display import console, print_dry_run_consequence, print_error, safe_text
 
 
 def _is_preview(payload: Any) -> bool:
@@ -38,6 +37,30 @@ def _is_preview(payload: Any) -> bool:
     # BulkPreview) carrying `dry_run: true`. A 2xx without it means the server did
     # not honour the dry run.
     return payload.get("dry_run") is True
+
+
+def report_preview_not_honoured(json_mode: bool) -> NoReturn:
+    """Stop: the server answered a dry run with a result, so it may have acted.
+
+    Rendering that answer as a preview (or confirming and sending the real call as
+    well) would hide that a change may already have happened.
+    """
+    unexpected: str = (
+        "The server answered with a result instead of a preview, so the change may "
+        "already have been applied. Nothing more was sent; check the object's state."
+    )
+    if json_mode:
+        emit_json(
+            {
+                "status": "error",
+                "code": "preview_not_honoured",
+                "detail": unexpected,
+                "message": unexpected,
+            }
+        )
+    else:
+        print_error(unexpected)
+    raise SystemExit(1)
 
 
 def preview_then_confirm(
@@ -79,25 +102,7 @@ def preview_then_confirm(
         raise SystemExit(tasks_write_exit_code(exc)) from exc
 
     if not _is_preview(preview):
-        # The server ignored `?dry_run=true`, so this "preview" was the mutation
-        # itself. Rendering it as a preview (or, worse, confirming and sending the
-        # real call as well) would hide that a change already happened.
-        unexpected: str = (
-            "The server answered with a result instead of a preview, so the change may "
-            "already have been applied. Nothing more was sent; check the object's state."
-        )
-        if json_mode:
-            emit_json(
-                {
-                    "status": "error",
-                    "code": "preview_not_honoured",
-                    "detail": unexpected,
-                    "message": unexpected,
-                }
-            )
-        else:
-            print_error(unexpected)
-        raise SystemExit(1)
+        report_preview_not_honoured(json_mode)
 
     if json_mode and preview_only:
         # --dry-run --json must emit the blast radius as data. Printing only the
@@ -151,7 +156,7 @@ def confirm_without_preview(
         else:
             # The sentence embeds caller-supplied ids, so it is data for Rich, never markup.
             console.print(
-                f"[bold]Dry run[/bold] — nothing was changed. Would: {escape(consequence)}"
+                f"[bold]Dry run[/bold] — nothing was changed. Would: {safe_text(consequence)}"
             )
         return False
     if assume_yes:

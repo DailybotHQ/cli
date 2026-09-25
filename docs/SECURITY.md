@@ -145,6 +145,16 @@ segment must match `[A-Za-z0-9_-]+`, both where the value is interpolated and ag
 URL is built. So `ENG-1/../../boards/<uuid>/archive/?` is refused with `invalid_identifier`
 (exit 2) before any request, instead of being collapsed into a board archive.
 
+**ETags are entity tags or nothing.** `board views --etag` / `project views --etag` print the
+ETag for shell capture, and `view save` sends it back as `If-Match`. A header value that isn't
+a quoted, visible-ASCII entity tag (optionally `W/`-prefixed) is refused (`invalid_etag`)
+before it is printed or sent. So a hostile header can't drive the terminal, break
+`ETAG=$(...)`, or inject a header.
+
+**Default ports are the same origin.** `https://host` and `https://host:443` compare equal
+(and `http://host` with `:80`), so an explicit default port never turns the API into a
+"foreign" host.
+
 **Pagination links stay on the API.** A list's `next` link is server data. Only its path and
 query are followed, on the configured API's own scheme, host and port, so a link naming
 another host never receives the Bearer token or the API key.
@@ -213,7 +223,8 @@ same hardened path below. Attaching to or deleting from a project or a goal is a
 `task attachment get` follows at most **one** redirect from the API to storage, without
 credentials; a second redirect is refused, and a refusal from storage is reported as storage's
 (`attachment_download_failed`), never as a session problem. Downloads over the attachment
-size cap are refused. On the storage hop the cap is enforced on the bytes as they stream in,
+size cap are refused. The API's own `…/content/` answer and the storage hop both stream, and
+the cap is enforced on the bytes as they arrive. On the storage hop
 the body is requested uncompressed (`Accept-Encoding: identity`), and the whole hop has a
 wall-clock deadline. So an endless chunked body, a compression bomb or a slow drip cannot
 exhaust memory or hang the CLI. If writing the file fails, the partial file this call created

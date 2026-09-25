@@ -83,6 +83,13 @@ TASKS_BASE_PATH: str = "/v1/tasks/"
 # that decodes `%2F` before routing would re-open the same hole.
 TASKS_PATH_SEGMENT_RE: re.Pattern[str] = re.compile(r"^[A-Za-z0-9_-]+$")
 INVALID_IDENTIFIER_CODE: str = "invalid_identifier"
+# An entity tag as RFC 9110 defines it: optionally weak, always quoted, visible
+# ASCII only. The ETag is printed for `ETAG=$(...)` capture and sent back as
+# `If-Match`, so anything else (control characters, a newline, a bidi override)
+# is refused rather than printed or put in a header.
+ETAG_RE: re.Pattern[str] = re.compile(r'^(W/)?"[\x21\x23-\x7e]*"$')
+INVALID_ETAG_CODE: str = "invalid_etag"
+DEFAULT_PORTS: dict[str, int] = {"http": 80, "https": 443}
 # Server cap on a bulk payload; above it the server answers `too_many_items`.
 # BLAST_RADIUS.md records this as THE volume guard for unattended destructive
 # loops — the CLI adds no second ceiling of its own.
@@ -2282,7 +2289,26 @@ class DailyBotClient:
         response: httpx.Response = self._request("GET", self._tasks_url(path))
         data: Any = self._handle_response(response)
         etag: Any = getattr(response, "headers", {}).get("ETag")
-        return data, (str(etag) if etag else None)
+        if not etag:
+            return data, None
+        if not ETAG_RE.match(str(etag)):
+            raise APIError(
+                502,
+                "The server sent an ETag that is not a valid entity tag; it was not used.",
+                code=INVALID_ETAG_CODE,
+            )
+        return data, str(etag)
+
+    @staticmethod
+    def _checked_if_match(if_match: str) -> str:
+        """An `If-Match` value, refused locally unless it is a well-formed entity tag."""
+        if not ETAG_RE.match(if_match):
+            raise APIError(
+                400,
+                'Not a valid ETag. Pass the value `views --etag` printed, e.g. "abc123".',
+                code=INVALID_ETAG_CODE,
+            )
+        return if_match
 
     def _tasks_list(
         self,
@@ -2478,7 +2504,7 @@ class DailyBotClient:
             "PUT",
             f"boards/{_path_segment(board_uuid)}/views/",
             json=views,
-            headers={"If-Match": if_match},
+            headers={"If-Match": self._checked_if_match(if_match)},
         )
 
     def create_board_state(
@@ -2818,13 +2844,17 @@ class DailyBotClient:
         A prefix or suffix comparison would let `api.example.com.evil.example`
         through; comparing the parsed origin does not.
         """
-        target = urlsplit(url)
-        api = urlsplit(self.api_url)
-        return (target.scheme, target.hostname, target.port) == (
-            api.scheme,
-            api.hostname,
-            api.port,
-        )
+        return self._origin(url) == self._origin(self.api_url)
+
+    @staticmethod
+    def _origin(url: str) -> tuple[str, str | None, int | None]:
+        """Scheme, host and port, with the scheme's default port filled in.
+
+        `https://api.example.com` and `https://api.example.com:443` are one origin;
+        comparing the raw `.port` (None vs 443) would call them different.
+        """
+        parts = urlsplit(url)
+        return (parts.scheme, parts.hostname, parts.port or DEFAULT_PORTS.get(parts.scheme))
 
     def _same_api_origin(self, url: str) -> str:
         """A pagination link, pinned to the configured API before credentials follow it.
@@ -2966,37 +2996,76 @@ class DailyBotClient:
         The API streams the file itself. A 3xx to storage is still handled
         defensively: followed ONCE, without credentials, and no further.
         """
-        response: httpx.Response = self._request(
-            "GET",
-            self._tasks_url(f"{parent}/attachments/{_path_segment(attachment_uuid)}/content/"),
-            timeout=ATTACHMENT_TRANSFER_TIMEOUT_SECS,
+        url: str = self._tasks_url(
+            f"{parent}/attachments/{_path_segment(attachment_uuid)}/content/"
         )
-        if 300 <= response.status_code < 400:
-            location: str = self._absolute(str(response.headers.get("Location") or ""))
+        headers: dict[str, str] = self._headers()
+        outcome: bytes | str | None = self._stream_from_api(
+            url, headers, can_retry=bool(self.api_key and self.token)
+        )
+        if outcome is None:
+            # Wrong credential kind: one retry with the other, like `_request`.
+            alt: dict[str, str] | None = self._alt_auth_headers()
+            outcome = self._stream_from_api(url, alt or headers, can_retry=False)
+        if isinstance(outcome, str):
+            # A 3xx: the API handed off to storage.
+            location: str = self._absolute(outcome)
             if self._is_api_origin(location) or not self._may_send_to_foreign(location):
                 raise APIError(
-                    response.status_code,
+                    302,
                     "The download redirect pointed somewhere it should not; not followed.",
                     code="attachment_download_redirected",
                 )
             return self._download_from_storage(location)
-        if response.status_code >= 400:
-            self._handle_response(response)
-        declared: str = str(getattr(response, "headers", {}).get("Content-Length") or "")
-        if declared.isdigit() and int(declared) > ATTACHMENT_MAX_SIZE_BYTES:
-            raise APIError(
-                413,
-                "The attachment is larger than this CLI downloads; nothing was written.",
-                code="attachment_too_large",
-            )
-        content: bytes = bytes(response.content)
-        if len(content) > ATTACHMENT_MAX_SIZE_BYTES:
-            raise APIError(
-                413,
-                "The attachment is larger than this CLI downloads; nothing was written.",
-                code="attachment_too_large",
-            )
-        return content
+        return outcome or b""
+
+    def _stream_from_api(
+        self, url: str, headers: dict[str, str], *, can_retry: bool
+    ) -> bytes | str | None:
+        """One streamed GET to the API under the attachment byte cap.
+
+        Returns the bytes, a redirect `Location`, or None when the credential kind
+        was refused and the caller may retry once with the other one. The body is
+        counted as it arrives: `Content-Length` alone is not trusted to bound memory.
+        """
+        try:
+            with httpx.stream(
+                "GET",
+                url,
+                headers=headers,
+                timeout=ATTACHMENT_TRANSFER_TIMEOUT_SECS,
+                follow_redirects=False,
+            ) as response:
+                if 300 <= response.status_code < 400:
+                    return str(response.headers.get("Location") or "")
+                if response.status_code >= 400:
+                    response.read()
+                    if (
+                        can_retry
+                        and _is_auth_retryable(response)
+                        and not self._is_final_person_refusal(url, response)
+                    ):
+                        return None
+                    self._handle_response(response)
+                received: list[bytes] = []
+                total: int = 0
+                for chunk in response.iter_bytes():
+                    total += len(chunk)
+                    if total > ATTACHMENT_MAX_SIZE_BYTES:
+                        raise APIError(
+                            413,
+                            "The attachment is larger than this CLI downloads; "
+                            "nothing was written.",
+                            code="attachment_too_large",
+                        )
+                    received.append(chunk)
+                return b"".join(received)
+        except httpx.HTTPError as exc:
+            if isinstance(exc, TransportError):
+                raise
+            raise self._transport_class(exc)(
+                self._transport_message(exc, method="GET", mutates=False)
+            ) from exc
 
     @staticmethod
     def _task_parent(task_uuid: str) -> str:
@@ -3372,7 +3441,7 @@ class DailyBotClient:
             "PUT",
             f"projects/{_path_segment(project_uuid)}/views/",
             json=views,
-            headers={"If-Match": if_match},
+            headers={"If-Match": self._checked_if_match(if_match)},
         )
 
     def create_milestone(self, project_uuid: str, *, name: str, date: str, **fields: Any) -> Any:

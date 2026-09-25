@@ -99,6 +99,10 @@ ERROR_CODE_MESSAGES: dict[str, str] = {
         "Not a valid identifier. Pass a task key such as ENG-142 or a uuid; slashes, "
         "dots and query characters are not allowed."
     ),
+    "invalid_etag": (
+        "That ETag is not a valid entity tag. Use the exact value `views --etag` printed "
+        '(quoted, e.g. "abc123"), or pass --fetch-etag.'
+    ),
     "preview_not_honoured": (
         "The server answered with a result instead of a preview, so the change may "
         "already have been applied. Check the object's state before doing anything else."
