@@ -41,6 +41,11 @@ def print_info(message: str) -> None:
     console.print(f"[dim]{escape(message)}[/dim]")
 
 
+def print_deprecation(message: str) -> None:
+    """Print a deprecation note to stderr, so `--json` stdout stays parseable."""
+    error_console.print(f"[bold yellow]Deprecated:[/bold yellow] {escape(message)}")
+
+
 def print_kudos_table(kudos: list[dict[str, Any]]) -> None:
     """Render a compact table of kudos (giver → receivers, message, date)."""
     if not kudos:

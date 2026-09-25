@@ -56,6 +56,7 @@ tests/
 ├── tasks_delta_test.py            # `tasks changes`: cursor lifecycle, window expiry
 ├── tasks_person_shaped_test.py    # inbox / mine / counts: person-only refusals
 ├── task_commands_test.py          # `task` group: reads, writes, collaboration, bulk, archive
+├── tasks_owner_wire_test.py      # owner vocabulary: exact query/body on the wire (P0 guard)
 ├── board_commands_test.py         # `board` group: reads + container writes
 ├── project_goal_commands_test.py  # `project` + `goal`: reads, roll-ups, updates, milestones
 ├── tasks_display_test.py          # Tasks renderers + the untrusted-content presenter

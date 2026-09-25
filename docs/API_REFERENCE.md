@@ -792,6 +792,15 @@ key, where the wording would be misleading).
 Projects, boards, tasks, goals and milestones. Two CLI groups serve it: `dailybot tasks`
 (workspace-level) and `dailybot task` (object-level).
 
+### Owner, not assignee
+
+The accountable person on a task is its **owner**. On the wire that is the `owner` list
+filter on `GET /v1/tasks/tasks/` (repeatable and OR-ed: a user uuid, `me`, or `unassigned`)
+and the `owner` body field on create / PATCH (a user uuid or `me`). The strict list door
+refuses `assignee` with `invalid_filter_value`, and `executor` — who is actually doing the
+work, a person or an agent — is **read-only**: a write carrying it is refused. The CLI keeps
+`--assignee` and `task assign --to` as hidden, deprecated aliases that send `owner`.
+
 ### Which verbs need a signed-in person
 
 This is the most confusing thing about the family, so it is a table rather than prose.
@@ -800,7 +809,7 @@ This is the most confusing thing about the family, so it is a table rather than 
 | --- | --- | --- |
 | pulse, entitlements, search, activity, timeline | — | organization-scoped reads |
 | board list / get / snapshot / delta | — | organization-scoped reads |
-| task list / get / create / update / move / assign | — | organization-scoped writes |
+| task list / get / create / update / move / set-owner | — | organization-scoped writes |
 | comments, relations, labels, bulk | — | organization-scoped writes |
 | project & goal reads, `project updates`, `update-post` | — | organization-scoped |
 | milestones list / complete / reopen | — | organization-scoped |

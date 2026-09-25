@@ -42,6 +42,7 @@ from dailybot_cli.config import get_token
 from dailybot_cli.display import (
     console,
     error_console,
+    print_deprecation,
     print_error,
     print_pagination_footer,
     print_task_comments,
@@ -63,6 +64,19 @@ TASK_INCLUDE_VALUES: tuple[str, ...] = ("labels", "participants", "subtasks")
 # copies would drift and the help would contradict the CLI's own output.
 
 LABEL_MODES: tuple[str, ...] = ("add", "remove", "replace")
+
+# The accountable person is `owner` on the wire, both as the list filter and as the
+# written field. `assignee` is refused by the strict list door, and `executor` is
+# read-only (who is doing the work, an agent or a person) — writing it is refused.
+# The old flags survive only as hidden aliases that map onto `owner`.
+OWNER_HELP: str = "Owner: a user uuid, or `me`."
+OWNER_FILTER_HELP: str = (
+    "Only tasks owned by this user (uuid, `me` or `unassigned`). Repeat to OR several."
+)
+ASSIGNEE_DEPRECATION: str = "`--assignee` is deprecated; use `--owner` (same value)."
+ASSIGN_DEPRECATION: str = (
+    "`dailybot task assign` is deprecated; use `dailybot task set-owner <task> <user|me>`."
+)
 
 # Short aliases owned by the shared `query_options` decorator: -a (--all),
 # -l (--limit), -s (--search), -S (--since), -U (--until), -p (--page).
@@ -98,7 +112,8 @@ def task() -> None:
 @task.command("list")
 @click.option("-b", "--board", default=None, help="Only tasks on this board.")
 @click.option("--state", default=None, help="Only tasks in this workflow state.")
-@click.option("--assignee", default=None, help="Only tasks assigned to this user.")
+@click.option("--owner", "owners", multiple=True, help=OWNER_FILTER_HELP)
+@click.option("--assignee", "assignees", multiple=True, hidden=True, help=ASSIGNEE_DEPRECATION)
 @click.option("--label", default=None, help="Only tasks carrying this label.")
 @click.option(
     "--has-dates/--no-has-dates",
@@ -120,7 +135,8 @@ def task() -> None:
 def task_list(
     board: str | None,
     state: str | None,
-    assignee: str | None,
+    owners: tuple[str, ...],
+    assignees: tuple[str, ...],
     label: str | None,
     has_dates: bool | None,
     include: tuple[str, ...],
@@ -143,7 +159,7 @@ def task_list(
     \b
     Examples:
       dailybot task list --board <board-uuid> --state doing
-      dailybot task list --assignee <user-uuid> --include labels --json
+      dailybot task list --owner me --owner unassigned --include labels --json
     """
     client = require_auth()
     filters: dict[str, Any] = {}
@@ -151,8 +167,11 @@ def task_list(
         filters["board"] = board
     if state:
         filters["state"] = state
-    if assignee:
-        filters["assignee"] = assignee
+    if assignees:
+        print_deprecation(ASSIGNEE_DEPRECATION)
+    owner_values: list[str] = [*owners, *assignees]
+    if owner_values:
+        filters["owner"] = owner_values
     if label:
         filters["label"] = label
     if has_dates is not None:
@@ -237,7 +256,8 @@ def _write_error(exc: APIError, json_mode: bool = False) -> NoReturn:
 @click.option("-b", "--board", default=None, help="Board to create it on.")
 @click.option("-d", "--description", default=None, help="Task description.")
 @click.option("--state", default=None, help="Initial workflow state.")
-@click.option("--assignee", default=None, help="User to assign it to.")
+@click.option("--owner", default=None, help=OWNER_HELP)
+@click.option("--assignee", default=None, hidden=True, help=ASSIGNEE_DEPRECATION)
 @click.option("--due", default=None, help="Due date (YYYY-MM-DD).")
 @click.option(
     "--idempotency-key",
@@ -254,6 +274,7 @@ def task_create(
     board: str | None,
     description: str | None,
     state: str | None,
+    owner: str | None,
     assignee: str | None,
     due: str | None,
     idempotency_key: str | None,
@@ -271,9 +292,11 @@ def task_create(
 
     \b
     Examples:
-      dailybot task create --title "Fix the flaky test" --board <board-uuid>
+      dailybot task create --title "Fix the flaky test" --board <board-uuid> --owner me
       dailybot task create -t "Ship it" --idempotency-key deploy-42 --json
     """
+    if assignee:
+        print_deprecation(ASSIGNEE_DEPRECATION)
     client = require_auth()
     try:
         with console.status("Creating the task..."):
@@ -282,7 +305,7 @@ def task_create(
                 board=board,
                 description=description,
                 state=state,
-                executor=assignee,
+                owner=owner or assignee,
                 due_date=due,
                 idempotency_key=idempotency_key,
             )
@@ -302,6 +325,7 @@ def task_create(
 @click.option("--state", default=None, help="New workflow state.")
 @click.option("--due", default=None, help="New due date (YYYY-MM-DD).")
 @click.option("--priority", default=None, help="New priority.")
+@click.option("--owner", default=None, help=OWNER_HELP)
 @click.option("--idempotency-key", default=None, help="Reuse a key to make a retry safe.")
 @click.option("--json", "json_mode", is_flag=True, help="Emit machine-readable JSON to stdout.")
 def task_update(
@@ -311,6 +335,7 @@ def task_update(
     state: str | None,
     due: str | None,
     priority: str | None,
+    owner: str | None,
     idempotency_key: str | None,
     json_mode: bool,
 ) -> None:
@@ -331,6 +356,7 @@ def task_update(
         "state": state,
         "due_date": due,
         "priority": priority,
+        "owner": owner,
     }
     supplied: dict[str, Any] = {k: v for k, v in fields.items() if v is not None}
     if not supplied:
@@ -388,32 +414,57 @@ def task_move(
     report_write(data, "Task moved")
 
 
-@task.command("assign")
-@click.argument("task_uuid")
-@click.option("--to", "assignee", required=True, help="User uuid to assign the task to.")
-@click.option("--idempotency-key", default=None, help="Reuse a key to make a retry safe.")
-@click.option("--json", "json_mode", is_flag=True, help="Emit machine-readable JSON to stdout.")
-def task_assign(
-    task_uuid: str, assignee: str, idempotency_key: str | None, json_mode: bool
-) -> None:
-    """Assign a task to someone.
-
-    \b
-    Examples:
-      dailybot task assign <task-uuid> --to <user-uuid>
-    """
+def _set_owner(task_ref: str, owner: str, idempotency_key: str | None, json_mode: bool) -> None:
+    """PATCH the task's `owner`, the one writable field for the accountable person."""
     client = require_auth()
     try:
-        with console.status("Assigning the task..."):
+        with console.status("Setting the owner..."):
             data: dict[str, Any] = client.update_task(
-                task_uuid, executor=assignee, idempotency_key=idempotency_key
+                task_ref, owner=owner, idempotency_key=idempotency_key
             )
     except APIError as exc:
         _write_error(exc, json_mode)
     if json_mode:
         emit_json(data)
         return
-    report_write(data, "Task assigned")
+    report_write(data, "Owner set")
+
+
+@task.command("set-owner")
+@click.argument("task_ref", metavar="TASK")
+@click.argument("owner", metavar="USER")
+@click.option("--idempotency-key", default=None, help="Reuse a key to make a retry safe.")
+@click.option("--json", "json_mode", is_flag=True, help="Emit machine-readable JSON to stdout.")
+def task_set_owner(task_ref: str, owner: str, idempotency_key: str | None, json_mode: bool) -> None:
+    """Make someone the task's owner — the accountable person.
+
+    \b
+    TASK is a key (ENG-142) or a uuid. USER is a user uuid, or `me`. Who is doing
+    the work (a person or an agent) is a separate, read-only fact the server keeps;
+    this command never writes it.
+
+    \b
+    Examples:
+      dailybot task set-owner ENG-142 me
+      dailybot task set-owner <task-uuid> <user-uuid> --json
+    """
+    _set_owner(task_ref, owner, idempotency_key, json_mode)
+
+
+@task.command("assign", hidden=True)
+@click.argument("task_ref", metavar="TASK")
+@click.option("--to", "owner", required=True, help=OWNER_HELP)
+@click.option("--idempotency-key", default=None, help="Reuse a key to make a retry safe.")
+@click.option("--json", "json_mode", is_flag=True, help="Emit machine-readable JSON to stdout.")
+def task_assign(task_ref: str, owner: str, idempotency_key: str | None, json_mode: bool) -> None:
+    """Deprecated alias of `dailybot task set-owner`.
+
+    \b
+    Examples:
+      dailybot task set-owner ENG-142 <user-uuid>
+    """
+    print_deprecation(ASSIGN_DEPRECATION)
+    _set_owner(task_ref, owner, idempotency_key, json_mode)
 
 
 def _require_person_for(action: str, *, json_mode: bool) -> None:

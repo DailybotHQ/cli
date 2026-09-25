@@ -108,6 +108,7 @@ tests/                       # pytest suite (file naming: *_test.py)
 ├── tasks_delta_test.py      # `tasks changes` cursor lifecycle + window expiry
 ├── tasks_person_shaped_test.py  # person-only Tasks doors
 ├── task_commands_test.py    # `task` group (reads, writes, collaboration, bulk, archive)
+├── tasks_owner_wire_test.py # owner vocabulary — exact wire (no assignee/executor)
 ├── board_commands_test.py   # `board` group (reads + container writes)
 ├── project_goal_commands_test.py  # `project` + `goal`
 ├── tasks_display_test.py    # Tasks renderers + untrusted-content presenter

@@ -252,10 +252,12 @@ class TestTaskMoveAndAssign:
         _invoke(runner, client, ["task", "move", "t-1", "--state", "done"])
         assert client.move_task.call_args[1]["state"] == "done"
 
-    def test_assign_uses_patch(self, runner: CliRunner, client: MagicMock) -> None:
+    def test_assign_alias_writes_owner(self, runner: CliRunner, client: MagicMock) -> None:
+        # `executor` is read-only on the wire; the accountable person is `owner`.
         client.update_task.return_value = {"uuid": "t-1", "_idempotency_replayed": False}
         _invoke(runner, client, ["task", "assign", "t-1", "--to", "u-1"])
-        assert client.update_task.call_args[1]["executor"] == "u-1"
+        assert client.update_task.call_args[1]["owner"] == "u-1"
+        assert "executor" not in client.update_task.call_args[1]
 
 
 # ---------------------------------------------------------------------------

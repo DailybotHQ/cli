@@ -879,12 +879,12 @@ humans who own them.
 | `dailybot tasks inbox` | Your Tasks notifications — **needs `dailybot login`** |
 | `dailybot tasks mine` | Tasks that are yours (`--scope`) — **needs `dailybot login`** |
 | `dailybot tasks counts` | Your task counts by bucket — **needs `dailybot login`** |
-| `dailybot task list` | List tasks (`--board`, `--state`, `--assignee`, `--label`, `--has-dates`, `--include`) |
+| `dailybot task list` | List tasks (`--board`, `--state`, `--owner` — repeatable, `me` / `unassigned`, `--label`, `--has-dates`, `--include`) |
 | `dailybot task get <uuid>` | Show one task |
-| `dailybot task create --title <t>` | Create a task; sends an idempotency key so a retry cannot duplicate |
+| `dailybot task create --title <t>` | Create a task (`--owner <user\|me>`); sends an idempotency key so a retry cannot duplicate |
 | `dailybot task update <uuid>` | Change fields — partial update, never an overwrite |
 | `dailybot task move <uuid>` | Move to another column (`--state`) or board (`--board`) |
-| `dailybot task assign <uuid> --to <user>` | Assign a task |
+| `dailybot task set-owner <task> <user\|me>` | Set the task's owner — the accountable person (`task assign --to` still works, deprecated) |
 | `dailybot task comment <uuid> <body>` | Comment (`-` reads the body from stdin) |
 | `dailybot task comments <uuid>` | List a task's comments |
 | `dailybot task link <a> <b> --type <rel>` | Relate two tasks |
