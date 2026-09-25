@@ -20,6 +20,7 @@ from dailybot_cli.commands.public_api_helpers import (
     emit_json,
     exit_for_tasks_error,
     require_auth,
+    rows_of,
 )
 from dailybot_cli.commands.query_options import build_query_params, query_options, resolve_fetch_all
 from dailybot_cli.display import (
@@ -27,15 +28,24 @@ from dailybot_cli.display import (
     print_deprecation,
     print_goals_table,
     print_pagination_footer,
-    print_projects_table,
     print_success,
     print_tasks_detail_panel,
+    print_tasks_rows,
 )
 
 _GOAL_FIELDS: list[tuple[str, str]] = [
     ("Name", "name"),
+    ("Status", "status"),
+    ("Period start", "period_start"),
+    ("Period end", "period_end"),
     ("UUID", "uuid"),
     ("Archived", "is_archived"),
+]
+# Linked projects on a goal carry their health, not a progress roll-up.
+_GOAL_PROJECT_COLUMNS: list[tuple[str, str, bool]] = [
+    ("Name", "name", False),
+    ("Health", "health", True),
+    ("UUID", "uuid", True),
 ]
 
 
@@ -136,7 +146,9 @@ def goal_get(goal_uuid: str, include: tuple[str, ...], json_mode: bool) -> None:
         console.print(f"[bold]Projects[/bold]  {render_rollup(data, 'project_count')}")
         projects: Any = data.get("projects")
         if isinstance(projects, list) and projects:
-            print_projects_table(projects, rollup=render_rollup)
+            print_tasks_rows(
+                "Linked projects", rows_of(projects), _GOAL_PROJECT_COLUMNS, empty="None."
+            )
 
 
 # Goals are dated commitments: the contract requires both ends of the period.

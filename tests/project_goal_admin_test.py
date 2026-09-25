@@ -432,3 +432,43 @@ class TestGoalCommands:
             runner, client, ["goal", "unlink", GOAL, PROJECT, "--yes", "--json"], module="goal"
         )
         assert json.loads(result.output)["unlinked"] is True
+
+
+class TestProgressReadsLikeProgress:
+    """Found by the recipe transcripts: progress printed as a raw Python dict."""
+
+    def test_a_progress_object_renders_as_a_sentence(self) -> None:
+        from dailybot_cli.commands._rollups import render_rollup
+
+        row: dict[str, Any] = {
+            "progress": {"total": 40, "completed": 22, "percent_complete": 55, "is_partial": True}
+        }
+        text: str = render_rollup(row, "progress")
+        assert text.startswith("55% (22 of 40 done)")
+        assert "partial" in text
+        assert "{" not in text
+
+    def test_absent_and_null_still_differ(self) -> None:
+        from dailybot_cli.commands._rollups import render_rollup
+
+        assert render_rollup({}, "progress") == "not requested"
+        assert render_rollup({"progress": None}, "progress") == "nothing to measure"
+
+    def test_goal_get_shows_status_period_and_linked_project_health(
+        self, runner: CliRunner, client: MagicMock
+    ) -> None:
+        client.get_goal.return_value = {
+            "uuid": GOAL,
+            "name": "Q4",
+            "status": "at_risk",
+            "period_start": "2026-10-01",
+            "period_end": "2026-12-31",
+            "progress": {"total": 4, "completed": 1, "percent_complete": 25, "is_partial": False},
+            "project_count": 1,
+            "projects": [{"uuid": PROJECT, "name": "Apollo", "health": "off_track"}],
+        }
+        result = _invoke(runner, client, ["goal", "get", GOAL], module="goal")
+        assert result.exit_code == 0, result.output
+        for text in ("at_risk", "2026-12-31", "25% (1 of 4 done)", "off_track"):
+            assert text in result.output
+        assert "not requested" not in result.output

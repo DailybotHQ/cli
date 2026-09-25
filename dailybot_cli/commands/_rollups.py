@@ -28,4 +28,13 @@ def render_rollup(row: dict[str, Any], field: str) -> str:
     value: Any = row[field]
     if value is None:
         return NOTHING_TO_MEASURE
+    if isinstance(value, dict) and "percent_complete" in value:
+        # A progress object (ProjectProgress / GoalProgress): say it as a person
+        # would read it, not as a Python dict.
+        text: str = f"{value.get('percent_complete')}%"
+        if "completed" in value and "total" in value:
+            text += f" ({value.get('completed')} of {value.get('total')} done)"
+        if value.get("is_partial"):
+            text += " — partial: some linked projects are not visible to you"
+        return text
     return str(value)

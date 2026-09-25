@@ -47,8 +47,11 @@ GOAL_INCLUDE_VALUES: tuple[str, ...] = ("progress", "projects")
 
 _PROJECT_FIELDS: list[tuple[str, str]] = [
     ("Name", "name"),
+    ("Health", "health"),
+    ("Start", "start_date"),
+    ("Target", "target_date"),
+    ("Boards", "board_count"),
     ("UUID", "uuid"),
-    ("Status", "status"),
     ("Archived", "is_archived"),
 ]
 
