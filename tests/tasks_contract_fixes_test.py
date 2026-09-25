@@ -343,24 +343,73 @@ class TestBoardCreateHasNoDescription:
     ) -> None:
         with patch("dailybot_cli.api_client.httpx.post") as post:
             result = _invoke(
-                runner, real, ["board", "create", "-n", "Design", "-d", "x", "--json"], "board"
+                runner,
+                real,
+                [
+                    "board",
+                    "create",
+                    "--project",
+                    "00000000-0000-0000-0000-000000000002",
+                    "--key",
+                    "DSN",
+                    "-n",
+                    "Design",
+                    "-d",
+                    "x",
+                    "--json",
+                ],
+                "board",
             )
         assert result.exit_code == EXIT_USAGE_ERROR
         post.assert_not_called()
 
-    def test_the_create_body_is_just_the_name(
+    def test_the_create_body_has_no_description(
         self, runner: CliRunner, real: DailyBotClient
     ) -> None:
         with patch(
             "dailybot_cli.api_client.httpx.post", return_value=_response({"uuid": BOARD}, 201)
         ) as post:
-            result = _invoke(runner, real, ["board", "create", "-n", "Design", "--json"], "board")
+            result = _invoke(
+                runner,
+                real,
+                [
+                    "board",
+                    "create",
+                    "--project",
+                    "00000000-0000-0000-0000-000000000002",
+                    "--key",
+                    "DSN",
+                    "-n",
+                    "Design",
+                    "--json",
+                ],
+                "board",
+            )
         assert result.exit_code == 0, result.output
-        assert post.call_args.kwargs["json"] == {"name": "Design"}
+        # No description, and exactly what the contract requires: name, project, key.
+        assert post.call_args.kwargs["json"] == {
+            "name": "Design",
+            "project": "00000000-0000-0000-0000-000000000002",
+            "key": "DSN",
+        }
         assert json.loads(result.output)["uuid"] == BOARD
 
     def test_help_does_not_offer_description(self, runner: CliRunner) -> None:
-        assert "--description" not in runner.invoke(cli, ["board", "create", "--help"]).output
+        assert (
+            "--description"
+            not in runner.invoke(
+                cli,
+                [
+                    "board",
+                    "create",
+                    "--project",
+                    "00000000-0000-0000-0000-000000000002",
+                    "--key",
+                    "DSN",
+                    "--help",
+                ],
+            ).output
+        )
 
 
 # ---------------------------------------------------------------------------

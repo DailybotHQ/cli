@@ -161,7 +161,21 @@ class TestOneConstantAndNoDeadHelpers:
     @pytest.mark.parametrize(
         ("argv", "module", "door", "field"),
         [
-            (["board", "create", "-n", "B"], "board", "create_board", "name"),
+            (
+                [
+                    "board",
+                    "create",
+                    "--project",
+                    "00000000-0000-0000-0000-000000000002",
+                    "--key",
+                    "DSN",
+                    "-n",
+                    "B",
+                ],
+                "board",
+                "create_board",
+                "name",
+            ),
             (["project", "create", "-n", "P"], "project", "create_project", "name"),
             (
                 [

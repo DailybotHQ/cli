@@ -59,7 +59,21 @@ class TestPreflightRefusalsHonourJson:
             (["tasks", "inbox", "--json"], "tasks", EXIT_NOT_AUTHENTICATED),
             (["tasks", "mine", "--json"], "tasks", EXIT_NOT_AUTHENTICATED),
             (["tasks", "counts", "--json"], "tasks", EXIT_NOT_AUTHENTICATED),
-            (["board", "create", "--name", "b", "--json"], "board", EXIT_PERMISSION_DENIED),
+            (
+                [
+                    "board",
+                    "create",
+                    "--project",
+                    "00000000-0000-0000-0000-000000000002",
+                    "--key",
+                    "DSN",
+                    "--name",
+                    "b",
+                    "--json",
+                ],
+                "board",
+                EXIT_PERMISSION_DENIED,
+            ),
             (["project", "create", "--name", "p", "--json"], "project", EXIT_PERMISSION_DENIED),
             # `goal create` reuses project's helper, so the token lookup resolves in
             # project's namespace — patching goal's would silently do nothing.
@@ -102,7 +116,20 @@ class TestPreflightRefusalsHonourJson:
             person = json.loads(runner.invoke(cli, ["tasks", "inbox", "--json"]).stdout)
         with patch("dailybot_cli.commands.board.get_token", return_value=None):
             admin = json.loads(
-                runner.invoke(cli, ["board", "create", "--name", "b", "--json"]).stdout
+                runner.invoke(
+                    cli,
+                    [
+                        "board",
+                        "create",
+                        "--project",
+                        "00000000-0000-0000-0000-000000000002",
+                        "--key",
+                        "DSN",
+                        "--name",
+                        "b",
+                        "--json",
+                    ],
+                ).stdout
             )
         assert person["code"] == "actor_required"
         assert admin["code"] == "insufficient_scope"
