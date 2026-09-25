@@ -9,6 +9,19 @@ Do not edit it by hand — your edits will be overwritten on the next release.
 
 <!-- version list -->
 
+## v3.14.2 (2026-09-25)
+
+### Bug Fixes
+
+- **cli**: Board create takes --project and --key; refuse same-origin upload redirects
+  ([#96](https://github.com/DailybotHQ/cli/pull/96),
+  [`20167d8`](https://github.com/DailybotHQ/cli/commit/20167d8d68251de7cf647f7b180aae1359026b74))
+
+- **cli**: Say 'upload target' for a redirected upload; pin one-shot same-origin upload
+  ([#96](https://github.com/DailybotHQ/cli/pull/96),
+  [`20167d8`](https://github.com/DailybotHQ/cli/commit/20167d8d68251de7cf647f7b180aae1359026b74))
+
+
 ## v3.14.1 (2026-09-25)
 
 ### Chores
