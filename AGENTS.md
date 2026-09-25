@@ -75,10 +75,10 @@ dailybot_cli/                # Source package
     │                        #   children / duplicate / events / activity / attach / attachment(s) /
     │                        #   archive / delete / restore / bulk
     ├── board.py             # `board` group: list / get / tasks / snapshot / create / archive / restore
-    ├── project.py           # `project` group: list / get / updates / update-post /
-    │                        #   milestones / milestone-complete / milestone-reopen /
-    │                        #   create / archive
-    ├── goal.py              # `goal` group: list / get / create / archive
+    ├── project.py           # `project` group: list / get / create / update / restore / archive /
+    │                        #   updates / update-post / members / member / views / view /
+    │                        #   milestones / milestone-create|update|delete|complete|reopen
+    ├── goal.py              # `goal` group: list / get / create / update / restore / archive / link / unlink
     ├── _rollups.py          # absent vs null vs zero for roll-up fields (AD-01)
     ├── _beta.py             # Tasks Beta notice (group help + status line)
     ├── _destructive.py      # shared preview-then-confirm for destructive Tasks doors
@@ -120,6 +120,7 @@ tests/                       # pytest suite (file naming: *_test.py)
 ├── board_commands_test.py   # `board` group (reads + container writes)
 ├── board_admin_test.py      # `board` administration (states, members, labels, views)
 ├── project_goal_commands_test.py  # `project` + `goal`
+├── project_goal_admin_test.py # project + goal administration (PR5)
 ├── tasks_display_test.py    # Tasks renderers + untrusted-content presenter
 ├── tasks_error_taxonomy_test.py   # Tasks error codes + credential guidance
 ├── tasks_security_test.py   # injection boundary, isolation, destructive paths

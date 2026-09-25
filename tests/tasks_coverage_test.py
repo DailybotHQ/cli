@@ -183,7 +183,8 @@ class TestFlagWiringRenders:
             assert len(shorts) == len(set(shorts)), f"{group} {sub}: duplicate shorts {shorts}"
 
 
-# One table, so drift is caught once rather than per-command.
+# One table, so drift is caught once rather than per-command. Source of truth: the
+# published contract's Idempotency-Key list (tasks_v1.yaml 1.1.0, 27 doors).
 ACCEPTS: list[tuple[str, dict[str, Any]]] = [
     ("create_task", {"title": "x"}),
     ("update_task", {"task_uuid": "t-1", "title": "x"}),
@@ -194,16 +195,31 @@ ACCEPTS: list[tuple[str, dict[str, Any]]] = [
     ("relate_tasks", {"task_uuid": "t-1", "other": "t-2", "relation": "blocks"}),
     ("batch_task_labels", {"task_uuid": "t-1", "mode": "add", "labels": ["l"]}),
     ("add_task_participant", {"task_uuid": "t-1", "user_uuid": "u-1"}),
+    ("duplicate_task", {"task_uuid": "t-1"}),
     ("bulk_tasks", {"operation": "archive", "items": [{"uuid": "t-1"}]}),
     ("create_board", {"name": "b"}),
+    ("update_board", {"board_uuid": "b-1", "name": "x"}),
+    ("create_board_state", {"board_uuid": "b-1", "name": "x", "category": "todo"}),
+    ("add_board_member", {"board_uuid": "b-1", "user_uuid": "u-1"}),
     ("create_project", {"name": "p"}),
+    ("update_project", {"project_uuid": "p-1", "name": "x"}),
+    ("restore_project", {"project_uuid": "p-1"}),
+    ("post_project_update", {"project_uuid": "p-1", "body": "b"}),
+    ("complete_milestone", {"project_uuid": "p-1", "milestone_uuid": "m-1"}),
+    ("reopen_milestone", {"project_uuid": "p-1", "milestone_uuid": "m-1"}),
     ("create_goal", {"name": "g"}),
 ]
 IGNORES: list[tuple[str, dict[str, Any]]] = [
     ("subscribe_task", {"task_uuid": "t-1"}),
-    ("post_project_update", {"project_uuid": "p-1", "body": "b"}),
-    ("complete_milestone", {"project_uuid": "p-1", "milestone_uuid": "m-1"}),
-    ("reopen_milestone", {"project_uuid": "p-1", "milestone_uuid": "m-1"}),
+    ("move_task_to_board", {"task_uuid": "t-1", "board": "b-2"}),
+    ("confirm_attachment", {"task_uuid": "t-1", "attachment_uuid": "a-1"}),
+    ("archive_board_state", {"board_uuid": "b-1", "state_uuid": "s-1"}),
+    ("restore_board_state", {"board_uuid": "b-1", "state_uuid": "s-1"}),
+    ("reorder_board_states", {"board_uuid": "b-1", "order": ["s-1"]}),
+    ("create_board_label", {"board_uuid": "b-1", "name": "bug"}),
+    ("add_project_member", {"project_uuid": "p-1", "user_uuid": "u-1"}),
+    ("create_milestone", {"project_uuid": "p-1", "name": "m", "date": "2026-11-01"}),
+    ("restore_goal", {"goal_uuid": "g-1"}),
 ]
 
 

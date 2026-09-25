@@ -65,6 +65,7 @@ tests/
 ├── board_commands_test.py         # `board` group: reads + container writes
 ├── board_admin_test.py           # `board` administration: states, members, labels, views
 ├── project_goal_commands_test.py  # `project` + `goal`: reads, roll-ups, updates, milestones
+├── project_goal_admin_test.py    # project update/restore/members/views/milestones; goal update/link
 ├── tasks_display_test.py          # Tasks renderers + the untrusted-content presenter
 ├── tasks_error_taxonomy_test.py   # Tasks error codes and credential guidance
 ├── tasks_security_test.py         # injection boundary, isolation, destructive paths

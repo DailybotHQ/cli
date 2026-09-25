@@ -2881,18 +2881,131 @@ class DailyBotClient:
             f"projects/{project_uuid}/", params=self._with_include(None, include)
         )
 
-    def list_project_updates(self, **page: Any) -> PaginatedResult:
-        """GET /v1/tasks/projects/updates/ — the batched digest."""
-        return self._tasks_list("projects/updates/", **page)
+    def list_project_updates(self, project_uuid: str | None = None, **page: Any) -> PaginatedResult:
+        """GET the project-update feed: the batched digest, or one project's updates."""
+        path: str = f"projects/{project_uuid}/updates/" if project_uuid else "projects/updates/"
+        return self._tasks_list(path, **page)
 
-    def post_project_update(self, project_uuid: str, *, body: str) -> dict[str, Any]:
-        """POST /v1/tasks/projects/<uuid>/updates/ — key IGNORED by the server.
+    def post_project_update(
+        self,
+        project_uuid: str,
+        *,
+        body: str,
+        health: str | None = None,
+        idempotency_key: str | None = None,
+    ) -> dict[str, Any]:
+        """POST /v1/tasks/projects/<uuid>/updates/ — accepts a key (API R4).
 
         The loop-closing command: it is how the team sees what an agent did.
+        `health` records the author's claim that day; it does not change the project.
         """
-        return self._tasks_write(
-            "POST", f"projects/{project_uuid}/updates/", json={"body": body}, idempotent=False
+        payload: dict[str, Any] = {"body": body}
+        if health is not None:
+            payload["health"] = health
+        result: dict[str, Any] = self._tasks_write(
+            "POST",
+            f"projects/{project_uuid}/updates/",
+            json=payload,
+            idempotent=True,
+            idempotency_key=idempotency_key,
         )
+        return result
+
+    def update_project(
+        self, project_uuid: str, *, idempotency_key: str | None = None, **fields: Any
+    ) -> dict[str, Any]:
+        """PATCH /v1/tasks/projects/<uuid>/ — partial; `tasks:admin`; accepts a key."""
+        result: dict[str, Any] = self._tasks_write(
+            "PATCH",
+            f"projects/{project_uuid}/",
+            json={k: v for k, v in fields.items() if v is not None},
+            idempotent=True,
+            idempotency_key=idempotency_key,
+        )
+        return result
+
+    def restore_project(
+        self, project_uuid: str, *, idempotency_key: str | None = None
+    ) -> dict[str, Any]:
+        """POST …/restore/ — boards and tasks that cascaded on archive stay archived."""
+        result: dict[str, Any] = self._tasks_write(
+            "POST",
+            f"projects/{project_uuid}/restore/",
+            idempotent=True,
+            idempotency_key=idempotency_key,
+        )
+        return result
+
+    def list_project_members(self, project_uuid: str) -> Any:
+        """GET /v1/tasks/projects/<uuid>/members/ — person-only."""
+        return self._tasks_read(f"projects/{project_uuid}/members/")
+
+    def add_project_member(
+        self, project_uuid: str, *, user_uuid: str | None = None, team_uuid: str | None = None
+    ) -> Any:
+        """POST …/members/ — person-only; a person OR a whole team (resolves live)."""
+        payload: dict[str, Any] = (
+            {"user_uuid": user_uuid} if user_uuid else {"team_uuid": team_uuid}
+        )
+        return self._tasks_write("POST", f"projects/{project_uuid}/members/", json=payload)
+
+    def remove_project_member(self, project_uuid: str, user_uuid: str) -> Any:
+        """DELETE …/members/<user>/ — person-only."""
+        return self._tasks_write("DELETE", f"projects/{project_uuid}/members/{user_uuid}/")
+
+    def list_project_views_with_etag(self, project_uuid: str) -> tuple[Any, str | None]:
+        """GET /v1/tasks/projects/<uuid>/views/ plus the `ETag` a save must send back."""
+        return self._tasks_read_with_etag(f"projects/{project_uuid}/views/")
+
+    def save_project_views(self, project_uuid: str, views: list[Any], *, if_match: str) -> Any:
+        """PUT …/views/ — replaces the caller's whole view array; `If-Match` required."""
+        return self._tasks_write(
+            "PUT", f"projects/{project_uuid}/views/", json=views, headers={"If-Match": if_match}
+        )
+
+    def create_milestone(self, project_uuid: str, *, name: str, date: str, **fields: Any) -> Any:
+        """POST /v1/tasks/projects/<uuid>/milestones/ — a dated commitment; no key."""
+        payload: dict[str, Any] = {
+            "name": name,
+            "date": date,
+            **{k: v for k, v in fields.items() if v is not None},
+        }
+        return self._tasks_write("POST", f"projects/{project_uuid}/milestones/", json=payload)
+
+    def update_milestone(self, project_uuid: str, milestone_uuid: str, **fields: Any) -> Any:
+        """PATCH …/milestones/<uuid>/ — move or rename."""
+        return self._tasks_write(
+            "PATCH",
+            f"projects/{project_uuid}/milestones/{milestone_uuid}/",
+            json={k: v for k, v in fields.items() if v is not None},
+        )
+
+    def delete_milestone(self, project_uuid: str, milestone_uuid: str) -> Any:
+        """DELETE …/milestones/<uuid>/ — retires (archives); tasks keep pointing at it."""
+        return self._tasks_write("DELETE", f"projects/{project_uuid}/milestones/{milestone_uuid}/")
+
+    def update_goal(self, goal_uuid: str, **fields: Any) -> dict[str, Any]:
+        """PATCH /v1/tasks/goals/<uuid>/ — including the declared `status`; no key."""
+        result: dict[str, Any] = self._tasks_write(
+            "PATCH", f"goals/{goal_uuid}/", json={k: v for k, v in fields.items() if v is not None}
+        )
+        return result
+
+    def restore_goal(self, goal_uuid: str) -> dict[str, Any]:
+        """POST …/restore/ — 409 `goal_name_conflict` when the name was reused meanwhile."""
+        result: dict[str, Any] = self._tasks_write("POST", f"goals/{goal_uuid}/restore/")
+        return result
+
+    def link_goal_project(self, goal_uuid: str, project_uuid: str) -> dict[str, Any]:
+        """POST /v1/tasks/goals/<uuid>/projects/ — the project now counts toward the goal."""
+        result: dict[str, Any] = self._tasks_write(
+            "POST", f"goals/{goal_uuid}/projects/", json={"project": project_uuid}
+        )
+        return result
+
+    def unlink_goal_project(self, goal_uuid: str, project_uuid: str) -> Any:
+        """DELETE …/projects/<uuid>/ — the project stops counting toward the goal."""
+        return self._tasks_write("DELETE", f"goals/{goal_uuid}/projects/{project_uuid}/")
 
     def list_goals(
         self,
@@ -2916,24 +3029,37 @@ class DailyBotClient:
         return self._tasks_list(path, params=params, **page)
 
     def complete_milestone(
-        self, project_uuid: str, milestone_uuid: str, *, dry_run: bool = False
+        self,
+        project_uuid: str,
+        milestone_uuid: str,
+        *,
+        dry_run: bool = False,
+        idempotency_key: str | None = None,
     ) -> dict[str, Any]:
-        """POST .../milestones/<uuid>/complete/ — capability 19.
+        """POST .../milestones/<uuid>/complete/ — accepts a key; `?dry_run=true` previews.
 
         Completing a milestone does NOT close its open tasks.
         """
-        return self._tasks_write(
+        result: dict[str, Any] = self._tasks_write(
             "POST",
             f"projects/{project_uuid}/milestones/{milestone_uuid}/complete/",
             params={"dry_run": "true"} if dry_run else None,
-            idempotent=False,
+            idempotent=True,
+            idempotency_key=idempotency_key,
         )
+        return result
 
-    def reopen_milestone(self, project_uuid: str, milestone_uuid: str) -> dict[str, Any]:
-        """POST .../milestones/<uuid>/reopen/ — the reverse verb."""
-        return self._tasks_write(
-            "POST", f"projects/{project_uuid}/milestones/{milestone_uuid}/reopen/", idempotent=False
+    def reopen_milestone(
+        self, project_uuid: str, milestone_uuid: str, *, idempotency_key: str | None = None
+    ) -> dict[str, Any]:
+        """POST .../milestones/<uuid>/reopen/ — the reverse verb; accepts a key."""
+        result: dict[str, Any] = self._tasks_write(
+            "POST",
+            f"projects/{project_uuid}/milestones/{milestone_uuid}/reopen/",
+            idempotent=True,
+            idempotency_key=idempotency_key,
         )
+        return result
 
     # --- Container writes (board / project / goal) ---
     #

@@ -816,7 +816,7 @@ This is the most confusing thing about the family, so it is a table rather than 
 | milestones list / complete / reopen | — | organization-scoped |
 | — | `tasks mine`, `tasks counts`, `tasks inbox`, `me/recents`, `me/activity-cursor` | **person-shaped**: a key is an organization with nobody to be, so "my X" has no answer |
 | — | `task participants add` / `remove`, `task watch` / `unwatch`, `task mute` / `unmute` | published policy: no key may change **who is notified** |
-| — | board/project **member** writes | published policy: no key may change **who can see** |
+| — | board **member** add / remove, all **project member** doors (list too), saved-view saves, board labels | published policy: no key may change or reveal **who can see**; views and label usage belong to a person |
 | — | `board create`, `project create`, `goal create` | need `tasks:admin`, which **cannot be stored on a key at all** |
 | — | label CRUD, `boards/{id}/labels/` | a product decision, still open: `usage_count` sums a per-person visibility predicate, so it has no correct value for a key |
 | — | `boards/{id}/mentionables/` | **person-shaped by definition** — it answers "who may *this viewer* address". For an assignee picker on a key, use the org roster (`dailybot user list`) or board members |

@@ -922,16 +922,24 @@ humans who own them.
 | `dailybot board restore <uuid>` | Restore a board (cascaded tasks stay archived) |
 | `dailybot project list` | List projects (`--include progress`) |
 | `dailybot project get <uuid>` | Show one project |
-| `dailybot project updates` | Batched update digest — replaces one request per project |
-| `dailybot project update-post <uuid> <body>` | **Post a project update** — how the team sees what was done |
+| `dailybot project updates [<project>]` | Batched update digest, or one project's feed |
+| `dailybot project update-post <uuid> <body>` | **Post a project update** — how the team sees what was done (`--health`; sends an idempotency key) |
 | `dailybot project milestones [<uuid>]` | List milestones |
 | `dailybot project milestone-complete <p> <m>` | Complete a milestone. **Its open tasks stay open** |
 | `dailybot project milestone-reopen <p> <m>` | Reopen a milestone |
 | `dailybot project create --name <n>` | Create a project — **needs `dailybot login`** |
+| `dailybot project update <uuid>` | Name, description, lead, health, dates, visibility |
+| `dailybot project restore <uuid>` | Restore an archived project (its boards and tasks stay archived) |
+| `dailybot project members <uuid>` · `project member add\|remove` | Who can see the project — people or whole teams (`--team`) — **needs `dailybot login`** |
+| `dailybot project views <uuid>` · `project view save` | Your saved views; save replaces the list and requires the ETag — **needs `dailybot login`** |
+| `dailybot project milestone-create\|milestone-update\|milestone-delete` | Dated milestones; delete retires it (tasks keep pointing at it) |
 | `dailybot project archive <uuid>` | Archive a project |
 | `dailybot goal list` | List goals (`--include` is repeatable: `--include progress --include projects`) |
 | `dailybot goal get <uuid>` | Show one goal |
 | `dailybot goal create --name <n> --period-start <d> --period-end <d>` | Create a goal (a dated commitment) — **needs `dailybot login`** |
+| `dailybot goal update <uuid>` | Name, period, owner, team, and the declared `--status` (not_started, on_track, at_risk, off_track, achieved, missed) |
+| `dailybot goal restore <uuid>` | Restore an archived goal |
+| `dailybot goal link\|unlink <goal> <project>` | Make a project count toward a goal (or stop it) |
 | `dailybot goal archive <uuid>` | Archive a goal (its projects are not archived) |
 
 **Three things worth knowing before you script against this:**

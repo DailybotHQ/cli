@@ -181,12 +181,10 @@ class TestProjectUpdatePost:
         assert result.exit_code == 0
         assert "a long update" in client.post_project_update.call_args[1]["body"]
 
-    def test_no_idempotency_key_flag_is_offered(self, runner: CliRunner) -> None:
-        # IDEMPOTENCY.md marks this door 'ignored'. Offering the flag would
-        # advertise a guarantee the server does not honour.
+    def test_the_idempotency_key_flag_is_offered(self, runner: CliRunner) -> None:
+        # The door honours Idempotency-Key since API R4, so the flag is real now.
         assert (
-            "--idempotency-key"
-            not in runner.invoke(cli, ["project", "update-post", "--help"]).output
+            "--idempotency-key" in runner.invoke(cli, ["project", "update-post", "--help"]).output
         )
 
     def test_no_web_url_is_printed_after_posting(
@@ -249,4 +247,4 @@ class TestMilestoneReopen:
         client.reopen_milestone.return_value = {"uuid": "m-1", "_idempotency_replayed": False}
         result = _invoke(runner, client, ["project", "milestone-reopen", "p-1", "m-1"])
         assert result.exit_code == 0
-        client.reopen_milestone.assert_called_once_with("p-1", "m-1")
+        client.reopen_milestone.assert_called_once_with("p-1", "m-1", idempotency_key=None)
