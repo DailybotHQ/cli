@@ -432,11 +432,13 @@ class TestRound4:
         }
         moved: Any = _response({}, status=302, headers={"Location": "https://elsewhere.example/"})
         with (
-            patch("dailybot_cli.api_client.httpx.put", return_value=moved),
+            patch("dailybot_cli.api_client.httpx.put", return_value=moved) as put,
             pytest.raises(APIError) as caught,
         ):
             client.upload_attachment_bytes(presign, b"x")
         assert caught.value.code == "attachment_upload_redirected"
+        # One shot, never re-sent: the same rule as the foreign-target branch.
+        assert put.call_count == 1
 
 
 class TestBoardCreateRequirements:
