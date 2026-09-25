@@ -129,6 +129,10 @@ ERROR_CODE_MESSAGES: dict[str, str] = {
         "Storage refused the upload, so the attachment was not confirmed. Run the command "
         "again; a new upload target is issued each time."
     ),
+    "attachment_download_failed": (
+        "Storage refused the download, so nothing was written. The signed link may have "
+        "expired: run the command again for a fresh one."
+    ),
     "attachment_download_redirected": (
         "The download pointed at an unexpected place, so it was not followed and nothing "
         "was written. Try again, or download it from the web app."
@@ -551,6 +555,7 @@ TASKS_ERROR_CODES: frozenset[str] = frozenset(
         "attachment_upload_target_refused",
         "attachment_upload_failed",
         "attachment_download_redirected",
+        "attachment_download_failed",
         "column_too_large",
         "bulk_dry_run_unsupported",
     }

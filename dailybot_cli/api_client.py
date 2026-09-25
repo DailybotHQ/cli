@@ -2883,9 +2883,31 @@ class DailyBotClient:
                     "Storage answered with a second redirect; it was not followed.",
                     code="attachment_download_redirected",
                 )
+            if response.status_code >= 400:
+                # Storage, not Dailybot, refused: a 401 here says nothing about the
+                # session, so it must not be reported as "run dailybot login".
+                raise APIError(
+                    response.status_code,
+                    f"Storage refused the download (HTTP {response.status_code}).",
+                    code="attachment_download_failed",
+                )
         if response.status_code >= 400:
             self._handle_response(response)
-        return bytes(response.content)
+        declared: str = str(getattr(response, "headers", {}).get("Content-Length") or "")
+        if declared.isdigit() and int(declared) > ATTACHMENT_MAX_SIZE_BYTES:
+            raise APIError(
+                413,
+                "The attachment is larger than this CLI downloads; nothing was written.",
+                code="attachment_too_large",
+            )
+        content: bytes = bytes(response.content)
+        if len(content) > ATTACHMENT_MAX_SIZE_BYTES:
+            raise APIError(
+                413,
+                "The attachment is larger than this CLI downloads; nothing was written.",
+                code="attachment_too_large",
+            )
+        return content
 
     def list_task_children(self, task_uuid: str) -> Any:
         """GET /v1/tasks/tasks/<uuid>/children/ — the task's direct sub-tasks."""

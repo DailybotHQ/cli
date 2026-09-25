@@ -987,8 +987,14 @@ The server keeps an idempotency slot for **24 hours**, keyed on
   **"Key required" in the capability table means the *header*, not the credential:**
   confirmed by the API team, bulk serves a session JWT, a CLI Bearer token and an
   organization API key alike. The CLI correctly does not refuse a Bearer token.
-- Doors that **ignore** the header are not sent one, and offer no `--idempotency-key` flag:
-  `project update-post`, `milestone complete`/`reopen`, task subscription.
+- The CLI sends the header exactly where the published contract accepts it (27 doors,
+  including `project update-post`, `milestone complete` / `reopen`, `task duplicate`,
+  board / project / goal creates and updates, board member add, and pins). Doors that do
+  **not** accept it are sent none and offer no `--idempotency-key` flag — among them column
+  edits, milestone create / update, goal update / restore / link, comment edits, task
+  subscription (`watch`), cross-board moves (`move --board`) and every DELETE. A retry of those
+  after a timeout can repeat the write: check the state first. The table-driven test in
+  `tests/tasks_coverage_test.py` keeps this list and the code in step.
 
 **The generated key is surfaced, because otherwise the guarantee is unreachable.** When
 `--idempotency-key` is omitted the client mints a uuid4 — and re-running the command mints a

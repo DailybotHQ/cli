@@ -429,3 +429,71 @@ class TestAttachmentsListGetDelete:
 def test_every_new_code_has_a_next_step_message(code: str) -> None:
     assert code in TASKS_ERROR_CODES
     assert ERROR_CODE_MESSAGES[code][0].isupper()
+
+
+class TestReviewFindings:
+    """Final Review (AI Diff Reviewer local pass) findings 1, 4 and 5."""
+
+    def test_a_missing_parent_directory_is_a_clear_error(
+        self, runner: CliRunner, client: MagicMock, tmp_path: Path
+    ) -> None:
+        client.download_attachment.return_value = b"x"
+        target: Path = tmp_path / "no-such-dir" / "out.txt"
+        result = _invoke(
+            runner, client, ["task", "attachment", "get", TASK, ATT, "-o", str(target), "--json"]
+        )
+        assert result.exit_code == EXIT_USAGE_ERROR
+        body: dict[str, Any] = json.loads(result.output)
+        assert body["code"] == "output_not_writable"
+        assert "This is a bug" not in result.output
+
+    def test_a_file_that_appears_during_the_download_is_not_overwritten(
+        self, runner: CliRunner, client: MagicMock, tmp_path: Path
+    ) -> None:
+        target: Path = tmp_path / "out.txt"
+
+        def download(*_: Any) -> bytes:
+            target.write_bytes(b"someone else's file")
+            return b"attachment"
+
+        client.download_attachment.side_effect = download
+        result = _invoke(
+            runner, client, ["task", "attachment", "get", TASK, ATT, "-o", str(target)]
+        )
+        assert result.exit_code == EXIT_USAGE_ERROR
+        assert target.read_bytes() == b"someone else's file"
+
+    def test_a_dangling_symlink_is_not_followed(
+        self, runner: CliRunner, client: MagicMock, tmp_path: Path
+    ) -> None:
+        elsewhere: Path = tmp_path / "elsewhere.txt"
+        link: Path = tmp_path / "out.txt"
+        link.symlink_to(elsewhere)
+        client.download_attachment.return_value = b"attachment"
+        result = _invoke(runner, client, ["task", "attachment", "get", TASK, ATT, "-o", str(link)])
+        assert result.exit_code == EXIT_USAGE_ERROR
+        assert not elsewhere.exists()
+
+    def test_a_storage_refusal_is_not_reported_as_a_login_problem(
+        self, real: DailyBotClient
+    ) -> None:
+        first: Any = _response(status=302, headers={"Location": STORAGE_URL})
+        refused: Any = _response(status=401)
+        with (
+            patch("dailybot_cli.api_client.httpx.get", side_effect=[first, refused]),
+            pytest.raises(APIError) as caught,
+        ):
+            real.download_attachment(TASK, ATT)
+        assert caught.value.code == "attachment_download_failed"
+        assert "login" not in caught.value.detail.lower()
+
+    def test_an_oversize_download_is_refused(self, real: DailyBotClient) -> None:
+        big: Any = _response(
+            content=b"x", headers={"Content-Length": str(ATTACHMENT_MAX_SIZE_BYTES + 1)}
+        )
+        with (
+            patch("dailybot_cli.api_client.httpx.get", return_value=big),
+            pytest.raises(APIError) as caught,
+        ):
+            real.download_attachment(TASK, ATT)
+        assert caught.value.code == "attachment_too_large"

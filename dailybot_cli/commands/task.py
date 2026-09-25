@@ -12,6 +12,7 @@ parameter name would produce a 400.
 
 import json as _json
 import mimetypes
+import os
 import re
 from pathlib import Path
 from typing import Any, NoReturn
@@ -1351,6 +1352,8 @@ _ATTACHMENT_COLUMNS: list[tuple[str, str, bool]] = [
 ]
 _MIB: int = 1024 * 1024
 DEFAULT_CONTENT_TYPE: str = "application/octet-stream"
+# Downloaded files are created owner-writable, world-readable, like any saved file.
+DOWNLOAD_FILE_MODE: int = 0o644
 
 
 def _guess_content_type(path: Path) -> str:
@@ -1466,6 +1469,39 @@ def task_attachment() -> None:
     """
 
 
+def _write_download(output: Path, content: bytes, *, force: bool, json_mode: bool) -> None:
+    """Write downloaded bytes to `output` without surprises.
+
+    Without --force the file is created exclusively and a symlink is never
+    followed, so a file (or link) that appeared during the download is left alone.
+    A path that cannot be written is an actionable error, not a crash.
+    """
+    flags: int = os.O_WRONLY | os.O_CREAT | getattr(os, "O_NOFOLLOW", 0)
+    flags |= os.O_TRUNC if force else os.O_EXCL
+    try:
+        descriptor: int = os.open(output, flags, DOWNLOAD_FILE_MODE)
+        with os.fdopen(descriptor, "wb") as handle:
+            handle.write(content)
+    except FileExistsError as exc:
+        raise click.UsageError(
+            f"{output} already exists. Pass --force to overwrite it. Nothing was written."
+        ) from exc
+    except OSError as exc:
+        message: str = f"Could not write {output}: {exc.strerror or exc}. Nothing was saved."
+        if json_mode:
+            emit_json(
+                {
+                    "status": "error",
+                    "code": "output_not_writable",
+                    "detail": str(exc),
+                    "message": message,
+                }
+            )
+        else:
+            print_error(message)
+        raise SystemExit(EXIT_USAGE_ERROR) from exc
+
+
 @task_attachment.command("get")
 @click.argument("task_uuid", metavar="TASK")
 @click.argument("attachment_uuid", metavar="ATTACHMENT")
@@ -1497,7 +1533,7 @@ def attachment_get(
             content: bytes = client.download_attachment(task_uuid, attachment_uuid)
     except APIError as exc:
         _write_error(exc, json_mode)
-    output.write_bytes(content)
+    _write_download(output, content, force=force, json_mode=json_mode)
     if json_mode:
         emit_json({"path": str(output), "bytes": len(content), "attachment": attachment_uuid})
         return
