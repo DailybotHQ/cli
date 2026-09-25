@@ -989,12 +989,29 @@ def _require_person_for_admin(action: str, *, json_mode: bool) -> None:
 # Boards have no description field (BoardWrite declares none), so the flag the CLI
 # once offered could only earn a 400. It stays, hidden, to refuse with the reason.
 @click.option("-d", "--description", default=None, hidden=True)
+@click.option(
+    "--project",
+    "project_uuid",
+    required=True,
+    help="The project the board belongs to (uuid).",
+)
+@click.option(
+    "--key",
+    "board_key",
+    required=True,
+    help="The board's key prefix, e.g. DSN, so its tasks read DSN-1, DSN-2…",
+)
 @click.option("--idempotency-key", default=None, help="Reuse a key to make a retry safe.")
 @click.option("--json", "json_mode", is_flag=True, help="Emit machine-readable JSON to stdout.")
 def board_create(
-    name: str, description: str | None, idempotency_key: str | None, json_mode: bool
+    name: str,
+    description: str | None,
+    project_uuid: str,
+    board_key: str,
+    idempotency_key: str | None,
+    json_mode: bool,
 ) -> None:
-    """Create a board. Needs a signed-in person.
+    """Create a board in a project. Needs a signed-in organization admin.
 
     \b
     An organization API key cannot do this: the `tasks:admin` scope it requires can
@@ -1002,7 +1019,7 @@ def board_create(
 
     \b
     Examples:
-      dailybot board create --name "Design"
+      dailybot board create --name "Design" --project <project-uuid> --key DSN
     """
     if description is not None:
         raise click.UsageError(
@@ -1013,7 +1030,9 @@ def board_create(
     client = require_auth()
     try:
         with console.status("Creating the board..."):
-            data: dict[str, Any] = client.create_board(name=name, idempotency_key=idempotency_key)
+            data: dict[str, Any] = client.create_board(
+                name=name, project=project_uuid, key=board_key, idempotency_key=idempotency_key
+            )
     except APIError as exc:
         exit_for_tasks_error(exc, json_mode)
     if json_mode:

@@ -131,7 +131,7 @@ ERROR_CODE_MESSAGES: dict[str, str] = {
         "now. Nothing was uploaded; try again later or attach from the web app."
     ),
     "attachment_upload_redirected": (
-        "The storage target answered with a redirect, which this CLI never follows for an "
+        "The upload target answered with a redirect, which this CLI never follows for an "
         "upload. Nothing was confirmed; run the command again for a fresh upload target."
     ),
     "attachment_upload_target_refused": (

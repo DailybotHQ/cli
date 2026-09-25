@@ -280,7 +280,21 @@ PERSON_ONLY: list[tuple[list[str], str, str, int]] = [
     (["tasks", "inbox"], "tasks", "tasks", 3),
     (["tasks", "mine"], "tasks", "tasks", 3),
     (["tasks", "counts"], "tasks", "tasks", 3),
-    (["board", "create", "--name", "x"], "board", "board", 4),
+    (
+        [
+            "board",
+            "create",
+            "--project",
+            "00000000-0000-0000-0000-000000000002",
+            "--key",
+            "DSN",
+            "--name",
+            "x",
+        ],
+        "board",
+        "board",
+        4,
+    ),
     (["project", "create", "--name", "x"], "project", "project", 4),
     (
         [

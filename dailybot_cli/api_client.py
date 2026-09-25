@@ -2947,7 +2947,15 @@ class DailyBotClient:
                 extra_headers=headers,
                 timeout=ATTACHMENT_TRANSFER_TIMEOUT_SECS,
             )
-            if response_same.status_code >= 300:
+            if 300 <= response_same.status_code < 400:
+                # Same rule as the storage branch: an upload is never re-sent anywhere,
+                # and a redirect is not an acceptance, so nothing gets confirmed.
+                raise APIError(
+                    response_same.status_code,
+                    "The upload target answered with a redirect; it was not followed.",
+                    code="attachment_upload_redirected",
+                )
+            if response_same.status_code >= 400:
                 return self._handle_response(response_same)
             # Accepted. Like the storage branch, an empty or non-JSON 2xx is success.
             try:

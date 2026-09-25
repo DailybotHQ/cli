@@ -123,7 +123,19 @@ class TestPreflightExitMatchesTheServer:
     @pytest.mark.parametrize(
         ("argv", "module"),
         [
-            (["board", "create", "--name", "b"], "board"),
+            (
+                [
+                    "board",
+                    "create",
+                    "--project",
+                    "00000000-0000-0000-0000-000000000002",
+                    "--key",
+                    "DSN",
+                    "--name",
+                    "b",
+                ],
+                "board",
+            ),
             (["project", "create", "--name", "p"], "project"),
             (
                 [

@@ -155,7 +155,21 @@ class TestContainerCreateNeedsAPerson:
     def test_an_api_key_is_refused_before_the_request(
         self, runner: CliRunner, client: MagicMock
     ) -> None:
-        result = _invoke_auth(runner, client, ["board", "create", "--name", "Design"], "api_key")
+        result = _invoke_auth(
+            runner,
+            client,
+            [
+                "board",
+                "create",
+                "--project",
+                "00000000-0000-0000-0000-000000000002",
+                "--key",
+                "DSN",
+                "--name",
+                "Design",
+            ],
+            "api_key",
+        )
         # 4, not 3: a `tasks:admin` refusal is a 403 on the wire, and the pre-flight
         # must be indistinguishable from the server's own answer.
         assert result.exit_code == 4
@@ -164,7 +178,21 @@ class TestContainerCreateNeedsAPerson:
     def test_the_message_blames_the_credential_kind(
         self, runner: CliRunner, client: MagicMock
     ) -> None:
-        result = _invoke_auth(runner, client, ["board", "create", "--name", "x"], "api_key")
+        result = _invoke_auth(
+            runner,
+            client,
+            [
+                "board",
+                "create",
+                "--project",
+                "00000000-0000-0000-0000-000000000002",
+                "--key",
+                "DSN",
+                "--name",
+                "x",
+            ],
+            "api_key",
+        )
         # Rich wraps at the terminal width, so a phrase can straddle a newline.
         # Collapse whitespace before asserting on wording.
         out: str = " ".join(result.output.lower().split())
@@ -176,7 +204,21 @@ class TestContainerCreateNeedsAPerson:
     ) -> None:
         # Task 1 measured an ADMIN_ORG owner refused identically. "You must be an
         # admin" would send them hunting for a setting that cannot exist.
-        result = _invoke_auth(runner, client, ["board", "create", "--name", "x"], "api_key")
+        result = _invoke_auth(
+            runner,
+            client,
+            [
+                "board",
+                "create",
+                "--project",
+                "00000000-0000-0000-0000-000000000002",
+                "--key",
+                "DSN",
+                "--name",
+                "x",
+            ],
+            "api_key",
+        )
         out: str = " ".join(result.output.lower().split())
         assert "must be an admin" not in out
         assert "be an org admin" not in out
@@ -185,7 +227,21 @@ class TestContainerCreateNeedsAPerson:
 class TestGuestIsDistinctFromScope:
     def test_guest_not_allowed_talks_about_role(self, runner: CliRunner, client: MagicMock) -> None:
         client.create_board.side_effect = APIError(403, "guest", code="guest_not_allowed")
-        result = _invoke_auth(runner, client, ["board", "create", "--name", "x"], "bearer")
+        result = _invoke_auth(
+            runner,
+            client,
+            [
+                "board",
+                "create",
+                "--project",
+                "00000000-0000-0000-0000-000000000002",
+                "--key",
+                "DSN",
+                "--name",
+                "x",
+            ],
+            "bearer",
+        )
         assert "role" in " ".join(result.output.lower().split())
 
 
@@ -232,6 +288,20 @@ class TestBoardLimitIsSurfaced:
         self, runner: CliRunner, client: MagicMock
     ) -> None:
         client.create_board.side_effect = APIError(402, "limit", code="task_boards_limit_reached")
-        result = _invoke_auth(runner, client, ["board", "create", "--name", "x"], "bearer")
+        result = _invoke_auth(
+            runner,
+            client,
+            [
+                "board",
+                "create",
+                "--project",
+                "00000000-0000-0000-0000-000000000002",
+                "--key",
+                "DSN",
+                "--name",
+                "x",
+            ],
+            "bearer",
+        )
         assert result.exit_code != 0
         assert "limit" in " ".join(result.output.lower().split())

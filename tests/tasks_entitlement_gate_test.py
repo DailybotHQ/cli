@@ -132,14 +132,42 @@ class TestTheWritesKillSwitchIsTransient:
 
     def test_it_exits_with_the_back_off_code(self, runner: CliRunner, client: MagicMock) -> None:
         client.create_board.side_effect = self._switched_off()
-        result = _invoke(runner, client, ["board", "create", "-n", "x"], "board")
+        result = _invoke(
+            runner,
+            client,
+            [
+                "board",
+                "create",
+                "--project",
+                "00000000-0000-0000-0000-000000000002",
+                "--key",
+                "DSN",
+                "-n",
+                "x",
+            ],
+            "board",
+        )
         assert result.exit_code == EXIT_RATE_LIMITED
 
     def test_it_does_not_surface_raw_server_prose(
         self, runner: CliRunner, client: MagicMock
     ) -> None:
         client.create_board.side_effect = self._switched_off()
-        result = _invoke(runner, client, ["board", "create", "-n", "x"], "board")
+        result = _invoke(
+            runner,
+            client,
+            [
+                "board",
+                "create",
+                "--project",
+                "00000000-0000-0000-0000-000000000002",
+                "--key",
+                "DSN",
+                "-n",
+                "x",
+            ],
+            "board",
+        )
         assert "Tasks writes are temporarily disabled." not in result.stderr
 
     def test_it_says_reads_still_work(self) -> None:

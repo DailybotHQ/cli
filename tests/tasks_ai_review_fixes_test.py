@@ -421,3 +421,64 @@ class TestRound3:
             display.print_task_comments(comments)
         text: str = buffer.export_text()
         assert text.index("root one") < text.index("reply to one") < text.index("root two")
+
+
+class TestRound4:
+    def test_a_same_origin_upload_redirect_is_refused(self) -> None:
+        client: DailyBotClient = DailyBotClient(api_url=API_URL, token="test-token")
+        presign: dict[str, Any] = {
+            "upload_url": f"{API_URL}/v1/tasks/tasks/ENG-1/attachments/{ATT}/content/",
+            "method": "PUT",
+        }
+        moved: Any = _response({}, status=302, headers={"Location": "https://elsewhere.example/"})
+        with (
+            patch("dailybot_cli.api_client.httpx.put", return_value=moved) as put,
+            pytest.raises(APIError) as caught,
+        ):
+            client.upload_attachment_bytes(presign, b"x")
+        assert caught.value.code == "attachment_upload_redirected"
+        # One shot, never re-sent: the same rule as the foreign-target branch.
+        assert put.call_count == 1
+
+
+class TestBoardCreateRequirements:
+    """The merged contract: POST boards/ needs name, project and key."""
+
+    PROJECT: str = "00000000-0000-0000-0000-000000000002"
+
+    def _run(self, argv: list[str]) -> tuple[Any, MagicMock]:
+        client: MagicMock = MagicMock(spec=DailyBotClient)
+        client.create_board.return_value = {"uuid": BOARD, "key": "DSN", "name": "Design"}
+        with (
+            patch("dailybot_cli.commands.board.require_auth", return_value=client),
+            patch("dailybot_cli.commands.board.get_token", return_value="tok"),
+        ):
+            result = CliRunner().invoke(cli, ["board", "create", *argv, "--json"])
+        return result, client
+
+    def test_name_project_and_key_are_sent(self) -> None:
+        result, client = self._run(["-n", "Design", "--project", self.PROJECT, "--key", "DSN"])
+        assert result.exit_code == 0, result.output
+        kwargs: dict[str, Any] = client.create_board.call_args.kwargs
+        assert (kwargs["name"], kwargs["project"], kwargs["key"]) == (
+            "Design",
+            self.PROJECT,
+            "DSN",
+        )
+
+    @pytest.mark.parametrize(
+        "argv", [["-n", "Design", "--key", "DSN"], ["-n", "Design", "--project", PROJECT]]
+    )
+    def test_a_missing_requirement_is_refused_locally(self, argv: list[str]) -> None:
+        result, client = self._run(argv)
+        assert result.exit_code == 2
+        client.create_board.assert_not_called()
+
+    def test_the_wire_body(self) -> None:
+        real: DailyBotClient = DailyBotClient(api_url=API_URL, token="test-token")
+        with patch(
+            "dailybot_cli.api_client.httpx.post", return_value=_response({"uuid": BOARD})
+        ) as post:
+            real.create_board(name="Design", project=self.PROJECT, key="DSN")
+        body: dict[str, Any] = post.call_args.kwargs["json"]
+        assert body == {"name": "Design", "project": self.PROJECT, "key": "DSN"}

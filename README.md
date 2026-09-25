@@ -930,7 +930,7 @@ humans who own them.
 | `dailybot board view save <board> -f views.json --if-match <etag>` | Replace your saved views (the whole list) — **needs `dailybot login`** |
 | `dailybot board snapshot <uuid>` | The whole board in one request; carries the `delta_cursor` that `tasks changes` consumes |
 | `dailybot board update <uuid>` | Name, key (the old key stays reserved), visibility, estimate scale, auto-archive, project |
-| `dailybot board create --name <n>` | Create a board — **needs `dailybot login`** |
+| `dailybot board create --name <n> --project <uuid> --key <KEY>` | Create a board in a project; the key prefixes its tasks (`DSN-1`) — **needs `dailybot login` as an admin** |
 | `dailybot board archive <uuid>` | Archive a board. **Cascade-archives its live tasks**, and restoring does not bring them back |
 | `dailybot board restore <uuid>` | Restore a board (cascaded tasks stay archived) |
 | `dailybot project list` | List projects (`--include progress`) |

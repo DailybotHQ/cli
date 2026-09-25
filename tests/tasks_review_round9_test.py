@@ -109,7 +109,20 @@ class TestEveryCreateSurfacesItsKey:
     @pytest.mark.parametrize(
         ("argv", "module", "door"),
         [
-            (["board", "create", "-n", "B"], "board", "create_board"),
+            (
+                [
+                    "board",
+                    "create",
+                    "--project",
+                    "00000000-0000-0000-0000-000000000002",
+                    "--key",
+                    "DSN",
+                    "-n",
+                    "B",
+                ],
+                "board",
+                "create_board",
+            ),
             (["project", "create", "-n", "P"], "project", "create_project"),
             (
                 [
@@ -157,7 +170,19 @@ class TestEveryCreateSurfacesItsKey:
             patch("dailybot_cli.commands.board.require_auth", return_value=client),
             patch("dailybot_cli.commands.board.get_token", return_value="b"),
         ):
-            result = runner.invoke(cli, ["board", "create", "-n", "B"])
+            result = runner.invoke(
+                cli,
+                [
+                    "board",
+                    "create",
+                    "--project",
+                    "00000000-0000-0000-0000-000000000002",
+                    "--key",
+                    "DSN",
+                    "-n",
+                    "B",
+                ],
+            )
         assert f"{IDEMPOTENCY_TTL_HOURS}h" in result.stdout
 
 
@@ -275,7 +300,21 @@ class TestUntrustedTextIsEscapedExactlyOnce:
     @pytest.mark.parametrize(
         ("argv", "module", "door", "field"),
         [
-            (["board", "create", "-n", "x[y]"], "board", "create_board", "name"),
+            (
+                [
+                    "board",
+                    "create",
+                    "--project",
+                    "00000000-0000-0000-0000-000000000002",
+                    "--key",
+                    "DSN",
+                    "-n",
+                    "x[y]",
+                ],
+                "board",
+                "create_board",
+                "name",
+            ),
             (["project", "create", "-n", "x[y]"], "project", "create_project", "name"),
             (
                 [
@@ -323,7 +362,19 @@ class TestUntrustedTextIsEscapedExactlyOnce:
             patch("dailybot_cli.commands.board.require_auth", return_value=client),
             patch("dailybot_cli.commands.board.get_token", return_value="b"),
         ):
-            result = runner.invoke(cli, ["board", "create", "-n", "x"])
+            result = runner.invoke(
+                cli,
+                [
+                    "board",
+                    "create",
+                    "--project",
+                    "00000000-0000-0000-0000-000000000002",
+                    "--key",
+                    "DSN",
+                    "-n",
+                    "x",
+                ],
+            )
         assert "[bold red]urgent" in result.stdout
         assert "Unexpected error" not in result.stderr
 
