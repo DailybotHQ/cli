@@ -110,6 +110,7 @@ def _default_return(method: str) -> Any:
     if method in {"archive_task", "complete_milestone"}:
         return {
             "operation": "x",
+            "dry_run": True,
             "reversible": True,
             "consequence": "c",
             "_idempotency_replayed": False,
@@ -371,6 +372,7 @@ class TestCrossCommandSequences:
         client.archive_task.side_effect = [
             {
                 "operation": "task.archive",
+                "dry_run": True,
                 "reversible": True,
                 "consequence": "c",
                 "_idempotency_replayed": False,

@@ -117,7 +117,8 @@ class TestPreviewMustBeAPreview:
 
         from dailybot_cli.commands._destructive import preview_then_confirm
 
-        archived: dict[str, Any] = {"uuid": "b-1", "name": "x", "archived_at": "2026-09-25"}
+        # A mutated object, or a preview-looking body without `dry_run: true`.
+        archived: dict[str, Any] = {"uuid": "b-1", "consequence": "x", "reversible": True}
         with (
             patch.object(_click, "confirm") as confirm,
             pytest.raises(SystemExit) as caught,
@@ -130,7 +131,7 @@ class TestPreviewMustBeAPreview:
         "preview",
         [
             {"operation": "task.archive", "dry_run": True, "consequence": "x"},
-            {"operation": "board.archive", "consequence": "x", "affects": {"boards": 1}},
+            {"operation": "board.archive", "dry_run": True, "affects": {"boards": 1}},
         ],
     )
     def test_a_real_preview_still_renders(self, preview: dict[str, Any]) -> None:

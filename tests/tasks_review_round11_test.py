@@ -53,7 +53,7 @@ def real_client() -> DailyBotClient:
     return DailyBotClient(api_url="http://t.example.com", token="t", api_key="k")
 
 
-_PREVIEW: dict[str, Any] = {"operation": "task.archive", "reversible": True}
+_PREVIEW: dict[str, Any] = {"operation": "task.archive", "dry_run": True, "reversible": True}
 
 
 def _emitted(stdout: str) -> dict[str, Any]:

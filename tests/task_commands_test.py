@@ -435,6 +435,7 @@ class TestIrreversibleIsMarked:
     def test_no_restore_path_is_offered(self, runner: CliRunner, client: MagicMock) -> None:
         hard: dict[str, Any] = {
             "operation": "task.purge",
+            "dry_run": True,
             "reversible": False,
             "consequence": "Removes it for good.",
             "_idempotency_replayed": False,

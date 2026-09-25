@@ -34,11 +34,10 @@ def _is_preview(payload: Any) -> bool:
     """True for a dry-run preview document, False for a mutated object."""
     if not isinstance(payload, dict):
         return False
-    # Every preview shape the doors return carries at least one of these; a mutated
-    # task / board / project / goal / milestone carries none of them.
-    return payload.get("dry_run") is True or any(
-        field in payload for field in ("consequence", "affects", "reversible")
-    )
+    # The contract publishes every `?dry_run=true` answer as a DryRunPreview (or a
+    # BulkPreview) carrying `dry_run: true`. A 2xx without it means the server did
+    # not honour the dry run.
+    return payload.get("dry_run") is True
 
 
 def preview_then_confirm(

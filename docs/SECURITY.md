@@ -174,8 +174,8 @@ says so (`"previewed_by": "client"` under `--json`).
   is the point, and the flag is advisory anyway: the server bounds blast radius per call.
 - `--dry-run` shows the preview and performs no mutation.
 - **A preview that fails aborts.** Not knowing the blast radius is not permission to proceed.
-- **A preview must be a preview.** If the server answers `?dry_run=true` with a mutated object
-  instead of a preview document, the CLI reports that the change may already have been applied
+- **A preview must be a preview.** The contract publishes every `?dry_run=true` answer with
+  `dry_run: true`. If the answer lacks it, the CLI reports that the change may already have been applied
   (`preview_not_honoured`, exit 1), sends nothing more, and never asks for confirmation.
 - An irreversible operation is marked as such and offered no restore path.
 - `task delete` is an alias of archive and says so; it never claims data was destroyed.

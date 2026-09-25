@@ -87,7 +87,7 @@ class TestKeyAddressing:
         if method == "archive_task":
             # Archive previews first, then applies: the first answer is a preview.
             client.archive_task.side_effect = [
-                {"operation": "task.archive", "reversible": True},
+                {"operation": "task.archive", "dry_run": True, "reversible": True},
                 {"uuid": "t-1", "key": TASK_KEY},
             ]
         client.list_task_comments.return_value = _page()

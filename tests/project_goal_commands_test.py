@@ -229,6 +229,7 @@ class TestMilestoneComplete:
                 "consequence": "x",
                 "reversible": True,
                 "operation": "milestone.complete",
+                "dry_run": True,
                 "_idempotency_replayed": False,
             },
             {"uuid": "m-1", "_idempotency_replayed": False},

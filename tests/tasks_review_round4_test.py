@@ -53,6 +53,7 @@ def _page(
 
 _PREVIEW: dict[str, Any] = {
     "operation": "archive",
+    "dry_run": True,
     "reversible": True,
     "restore_path": "dailybot task restore <uuid>",
     "consequence": "Archives the task and its 3 subtasks.",
