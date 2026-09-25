@@ -2281,6 +2281,22 @@ class DailyBotClient:
         """GET /v1/tasks/boards/<uuid>/tasks/ — one board's tasks, paginated."""
         return self._tasks_list(f"boards/{board_uuid}/tasks/", params=filters, **page)
 
+    def list_board_states(self, board_uuid: str) -> Any:
+        """GET /v1/tasks/boards/<uuid>/states/ — the board's columns."""
+        return self._tasks_read(f"boards/{board_uuid}/states/")
+
+    def list_board_members(self, board_uuid: str) -> Any:
+        """GET /v1/tasks/boards/<uuid>/members/ — who can see the board."""
+        return self._tasks_read(f"boards/{board_uuid}/members/")
+
+    def list_board_labels(self, board_uuid: str) -> Any:
+        """GET /v1/tasks/boards/<uuid>/labels/ — person-only (usage counts are per viewer)."""
+        return self._tasks_read(f"boards/{board_uuid}/labels/")
+
+    def list_board_views(self, board_uuid: str) -> Any:
+        """GET /v1/tasks/boards/<uuid>/views/ — saved views on the board."""
+        return self._tasks_read(f"boards/{board_uuid}/views/")
+
     def get_board(self, board_uuid: str) -> dict[str, Any]:
         """GET /v1/tasks/boards/<uuid>/."""
         return self._tasks_read(f"boards/{board_uuid}/")

@@ -7,6 +7,7 @@ the delta door's own refusal for a missing cursor does not say where to get it.
 That handoff is named in both commands' help on purpose.
 """
 
+from collections.abc import Callable
 from typing import Any
 
 import click
@@ -35,6 +36,7 @@ from dailybot_cli.display import (
     print_boards_table,
     print_pagination_footer,
     print_tasks_detail_panel,
+    print_tasks_rows,
     print_tasks_table,
 )
 
@@ -170,6 +172,171 @@ def board_tasks(board_uuid: str, json_mode: bool, **flags: Any) -> None:
         result.count,
         has_more=bool(result.next),
         more_hint=PAGING_ONLY_MORE_HINT,
+    )
+
+
+def _rows(data: Any) -> list[dict[str, Any]]:
+    """The rows of a board sub-collection, whether it arrives as a list or an envelope."""
+    if isinstance(data, list):
+        return [row for row in data if isinstance(row, dict)]
+    if isinstance(data, dict) and isinstance(data.get("results"), list):
+        return [row for row in data["results"] if isinstance(row, dict)]
+    return []
+
+
+def _require_person(action: str, reason: str, *, json_mode: bool) -> None:
+    """Refuse an API key on a person-only board door, before any request is spent."""
+    if get_token() is None:
+        refuse_without_person(
+            f"`{action}` {reason} Run `dailybot login` and retry as a signed-in person.",
+            json_mode=json_mode,
+        )
+
+
+# Column specs for the board sub-collections: (header, field path, trusted).
+_STATE_COLUMNS: list[tuple[str, str, bool]] = [
+    ("Name", "name", False),
+    ("Category", "category", True),
+    ("Archived", "is_archived", True),
+    ("UUID", "uuid", True),
+]
+_MEMBER_COLUMNS: list[tuple[str, str, bool]] = [
+    ("Name", "user.name", False),
+    ("Role", "role", True),
+    ("User UUID", "user.uuid", True),
+]
+_LABEL_COLUMNS: list[tuple[str, str, bool]] = [
+    ("Name", "name", False),
+    ("Color", "color", True),
+    ("UUID", "uuid", True),
+]
+_VIEW_COLUMNS: list[tuple[str, str, bool]] = [
+    ("Name", "name", False),
+    ("Kind", "kind", True),
+    ("UUID", "uuid", True),
+]
+
+
+def _read_board_collection(
+    board_uuid: str,
+    read: Callable[[str], Any],
+    *,
+    spinner: str,
+    title: str,
+    columns: list[tuple[str, str, bool]],
+    empty: str,
+    json_mode: bool,
+) -> None:
+    """Shared body of the board sub-collection reads: one GET, raw JSON or a table."""
+    try:
+        with console.status(spinner):
+            data: Any = read(board_uuid)
+    except APIError as exc:
+        exit_for_tasks_error(exc, json_mode)
+    if json_mode:
+        emit_json(data)
+        return
+    print_tasks_rows(title, _rows(data), columns, empty=empty)
+
+
+@board.command("states")
+@click.argument("board_uuid", metavar="BOARD")
+@click.option("--json", "json_mode", is_flag=True, help="Emit machine-readable JSON to stdout.")
+def board_states(board_uuid: str, json_mode: bool) -> None:
+    """List a board's states (its columns), archived ones included.
+
+    \b
+    Examples:
+      dailybot board states <board-uuid>
+      dailybot board states <board-uuid> --json
+    """
+    client = require_auth()
+    _read_board_collection(
+        board_uuid,
+        client.list_board_states,
+        spinner="Reading the board's states...",
+        title="States",
+        columns=_STATE_COLUMNS,
+        empty="This board has no states.",
+        json_mode=json_mode,
+    )
+
+
+@board.command("members")
+@click.argument("board_uuid", metavar="BOARD")
+@click.option("--json", "json_mode", is_flag=True, help="Emit machine-readable JSON to stdout.")
+def board_members(board_uuid: str, json_mode: bool) -> None:
+    """List who can see a board, and their role on it.
+
+    \b
+    Examples:
+      dailybot board members <board-uuid>
+      dailybot board members <board-uuid> --json
+    """
+    client = require_auth()
+    _read_board_collection(
+        board_uuid,
+        client.list_board_members,
+        spinner="Reading the board's members...",
+        title="Members",
+        columns=_MEMBER_COLUMNS,
+        empty="This board has no explicit members.",
+        json_mode=json_mode,
+    )
+
+
+@board.command("labels")
+@click.argument("board_uuid", metavar="BOARD")
+@click.option("--json", "json_mode", is_flag=True, help="Emit machine-readable JSON to stdout.")
+def board_labels(board_uuid: str, json_mode: bool) -> None:
+    """List the labels available on a board. Needs `dailybot login`.
+
+    \b
+    Label usage counts are computed for the person asking, so an organization API
+    key has no correct answer here and is refused before the request.
+
+    \b
+    Examples:
+      dailybot board labels <board-uuid>
+      dailybot board labels <board-uuid> --json
+    """
+    _require_person(
+        "board labels",
+        "counts label usage for the person asking, which an organization API key is not.",
+        json_mode=json_mode,
+    )
+    client = require_auth()
+    _read_board_collection(
+        board_uuid,
+        client.list_board_labels,
+        spinner="Reading the board's labels...",
+        title="Labels",
+        columns=_LABEL_COLUMNS,
+        empty="This board has no labels.",
+        json_mode=json_mode,
+    )
+
+
+@board.command("views")
+@click.argument("board_uuid", metavar="BOARD")
+@click.option("--json", "json_mode", is_flag=True, help="Emit machine-readable JSON to stdout.")
+def board_views(board_uuid: str, json_mode: bool) -> None:
+    """List the saved views on a board.
+
+    \b
+    Examples:
+      dailybot board views <board-uuid>
+      dailybot board views <board-uuid> --json
+    """
+    client = require_auth()
+    _read_board_collection(
+        board_uuid,
+        client.list_board_views,
+        spinner="Reading the board's views...",
+        title="Views",
+        columns=_VIEW_COLUMNS,
+        empty="This board has no saved views.",
+        json_mode=json_mode,
     )
 
 

@@ -112,6 +112,7 @@ tests/                       # pytest suite (file naming: *_test.py)
 ├── tasks_owner_wire_test.py # owner vocabulary — exact wire (no assignee/executor)
 ├── tasks_beta_ergonomics_test.py # KEY-n, --sort, board tasks, exit codes, Beta notice
 ├── board_commands_test.py   # `board` group (reads + container writes)
+├── board_admin_test.py      # `board` administration (states, members, labels, views)
 ├── project_goal_commands_test.py  # `project` + `goal`
 ├── tasks_display_test.py    # Tasks renderers + untrusted-content presenter
 ├── tasks_error_taxonomy_test.py   # Tasks error codes + credential guidance

@@ -899,6 +899,10 @@ humans who own them.
 | `dailybot board list` | List boards |
 | `dailybot board get <uuid>` | Board metadata |
 | `dailybot board tasks <uuid>` | The tasks on one board, one page per call |
+| `dailybot board states <uuid>` | The board's states (columns), archived ones included |
+| `dailybot board members <uuid>` | Who can see the board, and their role |
+| `dailybot board labels <uuid>` | Labels available on the board — **needs `dailybot login`** |
+| `dailybot board views <uuid>` | Saved views on the board |
 | `dailybot board snapshot <uuid>` | The whole board in one request; carries the `delta_cursor` that `tasks changes` consumes |
 | `dailybot board create --name <n>` | Create a board — **needs `dailybot login`** |
 | `dailybot board archive <uuid>` | Archive a board. **Cascade-archives its live tasks**, and restoring does not bring them back |

@@ -59,6 +59,7 @@ tests/
 ├── tasks_owner_wire_test.py      # owner vocabulary: exact query/body on the wire (P0 guard)
 ├── tasks_beta_ergonomics_test.py # KEY-n args, --sort, board tasks, --updated-since, exit codes, Beta
 ├── board_commands_test.py         # `board` group: reads + container writes
+├── board_admin_test.py           # `board` administration: states, members, labels, views
 ├── project_goal_commands_test.py  # `project` + `goal`: reads, roll-ups, updates, milestones
 ├── tasks_display_test.py          # Tasks renderers + the untrusted-content presenter
 ├── tasks_error_taxonomy_test.py   # Tasks error codes and credential guidance

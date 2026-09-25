@@ -1731,6 +1731,45 @@ def print_tasks_detail_panel(
     print_detail_panel(title, safe, fields)
 
 
+def _dig(row: dict[str, Any], path: str) -> Any:
+    """Read a dotted path (`user.name`) from a row; a missing hop is None."""
+    value: Any = row
+    for part in path.split("."):
+        value = value.get(part) if isinstance(value, dict) else None
+    return value
+
+
+def print_tasks_rows(
+    title: str,
+    rows: list[dict[str, Any]],
+    columns: list[tuple[str, str, bool]],
+    *,
+    empty: str,
+) -> None:
+    """Render Tasks rows as a table.
+
+    Each column is ``(header, dotted field path, trusted)``. Identifiers the server
+    mints (keys, uuids, roles) are trusted; anything a person typed goes through
+    ``present_untrusted`` so it renders as data, never as markup.
+    """
+    if not rows:
+        print_info(empty)
+        return
+    table: Table = Table(title=title)
+    for header, _path, trusted in columns:
+        table.add_column(header, no_wrap=trusted)
+    for row in rows:
+        cells: list[str] = []
+        for _header, path, trusted in columns:
+            value: Any = _dig(row, path)
+            if trusted:
+                cells.append("" if value is None else escape(str(value)))
+            else:
+                cells.append(present_untrusted(value))
+        table.add_row(*cells)
+    console.print(table)
+
+
 def print_boards_table(boards: list[dict[str, Any]]) -> None:
     """Render a board list. Keys and uuids are trusted; names are not."""
     if not boards:
