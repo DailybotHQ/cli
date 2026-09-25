@@ -110,3 +110,43 @@ class TestBoardCollectionReads:
         getattr(client, f"list_board_{sub}").return_value = []
         result = _invoke(runner, client, ["board", sub, BOARD], person=False)
         assert result.exit_code == 0, result.output
+
+
+class TestBoardUpdate:
+    def test_only_supplied_fields_are_patched(self) -> None:
+        real: DailyBotClient = DailyBotClient(api_url=API_URL, token="test-token")
+        response: MagicMock = MagicMock(spec=httpx.Response)
+        response.status_code = 200
+        response.json.return_value = {"uuid": BOARD, "name": "New"}
+        response.headers = {}
+        with patch("dailybot_cli.api_client.httpx.patch", return_value=response) as patch_:
+            real.update_board(BOARD, name="New")
+        assert patch_.call_args.args[0] == f"{API_URL}/v1/tasks/boards/{BOARD}/"
+        assert patch_.call_args.kwargs["json"] == {"name": "New"}
+
+    def test_the_command_sends_name_and_description(
+        self, runner: CliRunner, client: MagicMock
+    ) -> None:
+        client.update_board.return_value = {"uuid": BOARD, "name": "New"}
+        result = _invoke(
+            runner, client, ["board", "update", BOARD, "-n", "New", "-d", "Why", "--json"]
+        )
+        assert result.exit_code == 0, result.output
+        assert client.update_board.call_args.args[0] == BOARD
+        assert client.update_board.call_args.kwargs == {"name": "New", "description": "Why"}
+        assert json.loads(result.output)["name"] == "New"
+
+    def test_an_empty_update_is_a_usage_error(self, runner: CliRunner, client: MagicMock) -> None:
+        result = _invoke(runner, client, ["board", "update", BOARD])
+        assert result.exit_code == 2
+        client.update_board.assert_not_called()
+
+    def test_a_refusal_exits_with_the_documented_code(
+        self, runner: CliRunner, client: MagicMock
+    ) -> None:
+        client.update_board.side_effect = APIError(
+            403, "No.", code="insufficient_scope", extra={"required_scope": "tasks:admin"}
+        )
+        result = _invoke(runner, client, ["board", "update", BOARD, "-n", "x", "--json"])
+        assert result.exit_code == 4
+        assert json.loads(result.output)["code"] == "insufficient_scope"

@@ -423,6 +423,41 @@ def board_create(
     report_write(data, f"Created board {named(data, name)}")
 
 
+@board.command("update")
+@click.argument("board_uuid", metavar="BOARD")
+@click.option("-n", "--name", default=None, help="New board name.")
+@click.option("-d", "--description", default=None, help="New board description.")
+@click.option("--json", "json_mode", is_flag=True, help="Emit machine-readable JSON to stdout.")
+def board_update(
+    board_uuid: str, name: str | None, description: str | None, json_mode: bool
+) -> None:
+    """Rename a board or change its description.
+
+    \b
+    Only the fields you pass are sent; the rest keep their current value.
+
+    \b
+    Examples:
+      dailybot board update <board-uuid> --name "Design (Q4)"
+      dailybot board update <board-uuid> -d "Everything the design team ships" --json
+    """
+    fields: dict[str, Any] = {
+        k: v for k, v in {"name": name, "description": description}.items() if v is not None
+    }
+    if not fields:
+        raise click.UsageError("Nothing to update. Pass --name or --description.")
+    client = require_auth()
+    try:
+        with console.status("Updating the board..."):
+            data: dict[str, Any] = client.update_board(board_uuid, **fields)
+    except APIError as exc:
+        exit_for_tasks_error(exc, json_mode)
+    if json_mode:
+        emit_json(data)
+        return
+    report_write(data, f"Updated board {named(data, name or board_uuid)}")
+
+
 @board.command("archive")
 @click.argument("board_uuid")
 @click.option("--dry-run", is_flag=True, help="Show the consequence and exit without acting.")

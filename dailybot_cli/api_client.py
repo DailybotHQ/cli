@@ -2571,6 +2571,11 @@ class DailyBotClient:
             "POST", "boards/", json=payload, idempotent=True, idempotency_key=idempotency_key
         )
 
+    def update_board(self, board_uuid: str, **fields: Any) -> dict[str, Any]:
+        """PATCH /v1/tasks/boards/<uuid>/ — partial update of the board's metadata."""
+        payload: dict[str, Any] = {k: v for k, v in fields.items() if v is not None}
+        return self._tasks_write("PATCH", f"boards/{board_uuid}/", json=payload)
+
     def archive_board(
         self, board_uuid: str, *, dry_run: bool = False, idempotency_key: str | None = None
     ) -> dict[str, Any]:
