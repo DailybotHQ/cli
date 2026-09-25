@@ -1,4 +1,4 @@
-name: dailybotplatformlocal
+name: ${COMPOSE_PROJECT_NAME:-dailybotplatformlocal}
 
 services:
   clivscode: &clivscode

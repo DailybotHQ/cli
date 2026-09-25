@@ -37,6 +37,14 @@ compose() {
   "${COMPOSE[@]}" -f docker-compose.yaml "$@"
 }
 
+# -p is the satellite project. Agent volumes use PRIMARY_COMPOSE_PROJECT from
+# docker/local/.env because -p overwrites COMPOSE_PROJECT_NAME.
+sat_compose() {
+  local sid="$1"
+  shift
+  compose -p "dailybotclilocal_${sid}" "$@"
+}
+
 usage() {
   cat <<'EOF'
 Usage: bash docker.sh <verb> [id]
@@ -72,14 +80,14 @@ cmd_satellite_up() {
   local id
   id="$(sat_id "${1:-}")"
   export DEVCONTAINER_INSTANCE_ID="$id"
-  export COMPOSE_PROJECT_NAME="dailybotclilocal_${id}"
+
   # The primary port in docker/local/.env must not pin every satellite.
   export HERDR_SSH_HOST_PORT="$((22900 + id))"
   say "Starting clivscodesatellite #${id} SSH :${HERDR_SSH_HOST_PORT}"
   if docker ps --format '{{.Names}}' | grep -qx "dailybot_clivscodesatellite_${id}"; then
     say "CLI satellite already running — leave it"
   else
-    compose -f docker-compose.satellite-stable.yaml up -d --no-deps clivscodesatellite
+    sat_compose "$id" -f docker-compose.satellite-stable.yaml up -d --no-deps clivscodesatellite
   fi
 }
 
@@ -87,10 +95,10 @@ cmd_satellite_focus() {
   local id
   id="$(sat_id "${1:-}")"
   export DEVCONTAINER_INSTANCE_ID="$id"
-  export COMPOSE_PROJECT_NAME="dailybotclilocal_${id}"
+
   export HERDR_SSH_HOST_PORT="$((22900 + id))"
   if ! docker ps --format '{{.Names}}' | grep -qx "dailybot_clivscodesatellite_${id}"; then
-    compose -f docker-compose.satellite-stable.yaml up -d --no-deps clivscodesatellite
+    sat_compose "$id" -f docker-compose.satellite-stable.yaml up -d --no-deps clivscodesatellite
   else
     say "CLI satellite ${id} already up (no recreate)"
   fi
@@ -126,25 +134,25 @@ cmd_satellite_bash() {
   local id
   id="$(sat_id "${1:-}")"
   export DEVCONTAINER_INSTANCE_ID="$id"
-  export COMPOSE_PROJECT_NAME="dailybotclilocal_${id}"
-  compose exec clivscodesatellite bash
+
+  sat_compose "$id" exec clivscodesatellite bash
 }
 
 cmd_satellite_stop() {
   local id
   id="$(sat_id "${1:-}")"
   export DEVCONTAINER_INSTANCE_ID="$id"
-  export COMPOSE_PROJECT_NAME="dailybotclilocal_${id}"
-  compose stop clivscodesatellite
+
+  sat_compose "$id" stop clivscodesatellite
 }
 
 cmd_satellite_rm() {
   local id
   id="$(sat_id "${1:-}")"
   export DEVCONTAINER_INSTANCE_ID="$id"
-  export COMPOSE_PROJECT_NAME="dailybotclilocal_${id}"
-  compose stop clivscodesatellite 2>/dev/null || true
-  compose rm -f clivscodesatellite 2>/dev/null || true
+
+  sat_compose "$id" stop clivscodesatellite 2>/dev/null || true
+  sat_compose "$id" rm -f clivscodesatellite 2>/dev/null || true
   docker rm -f "dailybot_clivscodesatellite_${id}" 2>/dev/null || true
 }
 
@@ -152,7 +160,7 @@ cmd_satellite_rebuild() {
   local id build_args=()
   id="$(sat_id "${1:-}")"
   export DEVCONTAINER_INSTANCE_ID="$id"
-  export COMPOSE_PROJECT_NAME="dailybotclilocal_${id}"
+
   export HERDR_SSH_HOST_PORT="$((22900 + id))"
   if [ "${SATELLITE_NO_CACHE:-0}" = "1" ]; then
     build_args=(--no-cache --pull)
@@ -160,17 +168,17 @@ cmd_satellite_rebuild() {
   else
     say "Rebuilding clivscodesatellite #${id} (layer cache on)"
   fi
-  compose stop clivscodesatellite 2>/dev/null || true
-  compose -f docker-compose.satellite-stable.yaml build ${build_args[@]+"${build_args[@]}"} clivscodesatellite
-  compose -f docker-compose.satellite-stable.yaml up -d --force-recreate --no-deps clivscodesatellite
+  sat_compose "$id" stop clivscodesatellite 2>/dev/null || true
+  sat_compose "$id" -f docker-compose.satellite-stable.yaml build ${build_args[@]+"${build_args[@]}"} clivscodesatellite
+  sat_compose "$id" -f docker-compose.satellite-stable.yaml up -d --force-recreate --no-deps clivscodesatellite
 }
 
 cmd_satellite_logs() {
   local id
   id="$(sat_id "${1:-}")"
   export DEVCONTAINER_INSTANCE_ID="$id"
-  export COMPOSE_PROJECT_NAME="dailybotclilocal_${id}"
-  compose logs -f clivscodesatellite
+
+  sat_compose "$id" logs -f clivscodesatellite
 }
 
 case "${1:-}" in
