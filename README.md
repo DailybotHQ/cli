@@ -881,7 +881,7 @@ humans who own them.
 | `dailybot tasks inbox` | Your Tasks notifications — **needs `dailybot login`** |
 | `dailybot tasks mine` | Tasks that are yours (`--scope`) — **needs `dailybot login`** |
 | `dailybot tasks counts` | Your task counts by bucket — **needs `dailybot login`** |
-| `dailybot task list` | List tasks (`--board`, `--state`, `--owner` — repeatable, `me` / `unassigned`, `--label`, `--sort <field\|-field>`, `--has-dates`, `--include`) |
+| `dailybot task list` | List tasks (`--board`, `--state`, `--owner` — repeatable, `me` / `unowned`, `--label`, `--sort <field\|-field>`, `--has-dates`, `--include`) |
 | `dailybot task get <task>` | Show one task — every `<task>` accepts a key (`ENG-142`) or a uuid |
 | `dailybot task create --title <t>` | Create a task (`--owner <user\|me>`); sends an idempotency key so a retry cannot duplicate |
 | `dailybot task update <uuid>` | Change fields — partial update, never an overwrite |

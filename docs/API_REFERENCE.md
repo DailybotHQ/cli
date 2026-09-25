@@ -796,7 +796,7 @@ Projects, boards, tasks, goals and milestones. Two CLI groups serve it: `dailybo
 ### Owner, not assignee
 
 The accountable person on a task is its **owner**. On the wire that is the `owner` list
-filter on `GET /v1/tasks/tasks/` (repeatable and OR-ed: a user uuid, `me`, or `unassigned`)
+filter on `GET /v1/tasks/tasks/` (repeatable and OR-ed: a user uuid, `me`, or `unowned`)
 and the `owner` body field on create / PATCH (a user uuid or `me`). The strict list door
 refuses `assignee` with `invalid_filter_value`, and `executor` — who is actually doing the
 work, a person or an agent — is **read-only**: a write carrying it is refused. The CLI keeps
@@ -862,6 +862,7 @@ Dispatch on `code`, never on the English `detail`.
 | --- | --- | --- |
 | `actor_required` / `insufficient_scope` on a person-shaped door | needs a signed-in person | 3 |
 | `insufficient_scope` with `required_scope: tasks:admin` | a key can never hold it | 4 |
+| `insufficient_scope` on an organization API key (other scopes) | **new keys hold no Tasks scopes** — an admin grants them to the key (or write to support@dailybot.com); `dailybot login` works for your own account | 4 |
 | `guest_not_allowed` | role limit — not a credential problem | 4 |
 | `credential_absent` / `_malformed` / `_expired`, `invalid_credentials`, `token_not_valid` | credential problem | 3 |
 | `not_found` | **invisible or nonexistent — never "forbidden"** | 5 |

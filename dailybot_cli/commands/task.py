@@ -72,7 +72,7 @@ LABEL_MODES: tuple[str, ...] = ("add", "remove", "replace")
 # The old flags survive only as hidden aliases that map onto `owner`.
 OWNER_HELP: str = "Owner: a user uuid, or `me`."
 OWNER_FILTER_HELP: str = (
-    "Only tasks owned by this user (uuid, `me` or `unassigned`). Repeat to OR several."
+    "Only tasks owned by this user (uuid, `me` or `unowned`). Repeat to OR several."
 )
 # The values `/v1/tasks/tasks/` accepts for `sort`; a leading `-` sorts descending.
 TASK_SORT_FIELDS: tuple[str, ...] = (
@@ -200,7 +200,7 @@ def task_list(
     \b
     Examples:
       dailybot task list --board <board-uuid> --state doing
-      dailybot task list --owner me --owner unassigned --include labels --json
+      dailybot task list --owner me --owner unowned --include labels --json
       dailybot task list --sort -updated_at --limit 10
     """
     client = require_auth()

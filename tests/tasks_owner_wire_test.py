@@ -1,7 +1,7 @@
 """Owner vocabulary on the wire (P0 regression guard).
 
 `/v1/tasks/tasks/` filters by `owner` (repeatable, OR-ed; a uuid, `me` or
-`unassigned`) and refuses `assignee` with 400 `invalid_filter_value`. The
+`unowned`) and refuses `assignee` with 400 `invalid_filter_value`. The
 accountable person is WRITTEN as `owner`; `executor` is read-only and a write
 carrying it is refused with 400. These tests drive the real `DailyBotClient`
 through the CLI and assert the exact query string / JSON body that leaves the
@@ -68,8 +68,8 @@ class TestListFiltersByOwner:
         self, runner: CliRunner, client: DailyBotClient
     ) -> None:
         with patch("dailybot_cli.api_client.httpx.get", return_value=_response(_envelope())) as get:
-            _invoke(runner, client, ["task", "list", "--owner", "me", "--owner", "unassigned"])
-        assert _sent_params(get)["owner"] == ["me", "unassigned"]
+            _invoke(runner, client, ["task", "list", "--owner", "me", "--owner", "unowned"])
+        assert _sent_params(get)["owner"] == ["me", "unowned"]
 
     def test_owner_values_reach_the_url_as_repeated_keys(self) -> None:
         # httpx encodes a list value as repeated keys — the OR-ed form the API reads.

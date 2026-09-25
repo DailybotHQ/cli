@@ -579,6 +579,15 @@ def is_person_shaped_refusal(exc: APIError, *, door: str | None = None) -> bool:
     return False
 
 
+# New organization API keys start with no Tasks scopes; they are granted to the key
+# itself. Said once here so every Tasks refusal on a key reads the same.
+_KEY_WITHOUT_TASKS_SCOPES_GUIDANCE: str = (
+    "This API key has no Tasks scopes for this action{scope} — new keys start with none. "
+    "Ask an organization admin to grant Tasks scopes to the key, or write to "
+    "support@dailybot.com. Signing in with `dailybot login` also works for your own account."
+)
+
+
 def resolve_error_message(
     exc: APIError, *, door: str | None = None, tasks_surface: bool = False
 ) -> str:
@@ -627,6 +636,11 @@ def resolve_error_message(
                     "organization admin to grant it. Signing in again will not change it."
                 )
             return _ADMIN_SCOPE_GUIDANCE
+        if tasks_surface and get_token() is None:
+            # No person is signed in, so the credential is an organization API key —
+            # and a new key holds no Tasks scopes at all until they are granted to it.
+            scope: str = f" (it needs `{required}`)" if required else ""
+            return _KEY_WITHOUT_TASKS_SCOPES_GUIDANCE.format(scope=scope)
         if required:
             return (
                 f"Your credential is missing the `{required}` scope. Scopes do not nest — "
