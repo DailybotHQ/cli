@@ -1,12 +1,14 @@
 """Project commands (``/v1/tasks/projects/*``)."""
 
 from datetime import datetime
+from pathlib import Path
 from typing import Any
 
 import click
 from rich.markup import escape
 
-from dailybot_cli.api_client import APIError, PaginatedResult
+from dailybot_cli.api_client import ATTACHMENT_MULTIPART_MAX_BYTES, APIError, PaginatedResult
+from dailybot_cli.commands._attachments import run_attach, run_delete, run_get, run_list
 from dailybot_cli.commands._beta import mark_beta
 from dailybot_cli.commands._destructive import confirm_without_preview, preview_then_confirm
 from dailybot_cli.commands._rollups import render_rollup
@@ -964,3 +966,132 @@ def project_milestone_delete(
         emit_json({"retired": True, "project": project_uuid, "milestone": milestone_uuid})
         return
     print_success("Milestone retired.")
+
+
+# ---------------------------------------------------------------------------
+# Attachments. Reading needs only visibility; attaching and deleting are
+# `tasks:admin` doors, which refuse an organization API key before any request.
+# ---------------------------------------------------------------------------
+
+
+@project.command("attach")
+@click.argument("project_uuid", metavar="PROJECT")
+@click.argument(
+    "file_path",
+    metavar="FILE",
+    type=click.Path(exists=True, dir_okay=False, readable=True, path_type=Path),
+)
+@click.option("--caption", default=None, help="Short caption shown with the file.")
+@click.option("--json", "json_mode", is_flag=True, help="Emit machine-readable JSON to stdout.")
+def project_attach(
+    project_uuid: str, file_path: Path, caption: str | None, json_mode: bool
+) -> None:
+    """Attach a file to a project. Needs a signed-in organization admin.
+
+    \b
+    One request, up to 5 MiB. Your Dailybot credentials go only to the API.
+
+    \b
+    Examples:
+      dailybot project attach <project-uuid> ./plan.pdf
+      dailybot project attach <project-uuid> ./roadmap.png --caption "Q4 roadmap" --json
+    """
+    _require_person_for_admin("project attach", json_mode=json_mode)
+    run_attach(
+        lambda client, **file: client.upload_project_attachment(project_uuid, **file),
+        file_path,
+        caption=caption,
+        limit=ATTACHMENT_MULTIPART_MAX_BYTES,
+        where="per file on a project",
+        json_mode=json_mode,
+        require_auth=require_auth,
+    )
+
+
+@project.command("attachments")
+@click.argument("project_uuid", metavar="PROJECT")
+@click.option("--json", "json_mode", is_flag=True, help="Emit machine-readable JSON to stdout.")
+def project_attachments(project_uuid: str, json_mode: bool) -> None:
+    """List a project's attachments.
+
+    \b
+    Examples:
+      dailybot project attachments <project-uuid>
+      dailybot project attachments <project-uuid> --json
+    """
+    run_list(
+        lambda client: client.list_project_attachments(project_uuid),
+        json_mode=json_mode,
+        require_auth=require_auth,
+    )
+
+
+@project.group("attachment")
+def project_attachment() -> None:
+    """Download or delete one attachment on a project.
+
+    \b
+    Examples:
+      dailybot project attachment get <project-uuid> <attachment-uuid> -o ./plan.pdf
+      dailybot project attachment delete <project-uuid> <attachment-uuid> --dry-run
+    """
+
+
+@project_attachment.command("get")
+@click.argument("project_uuid", metavar="PROJECT")
+@click.argument("attachment_uuid", metavar="ATTACHMENT")
+@click.option(
+    "-o",
+    "--output",
+    "output",
+    type=click.Path(dir_okay=False, writable=True, path_type=Path),
+    required=True,
+    help="Where to write the file.",
+)
+@click.option("--force", is_flag=True, help="Overwrite the output file if it exists.")
+@click.option("--json", "json_mode", is_flag=True, help="Emit machine-readable JSON to stdout.")
+def project_attachment_get(
+    project_uuid: str, attachment_uuid: str, output: Path, force: bool, json_mode: bool
+) -> None:
+    """Download a project's attachment to a file. Never overwrites without --force.
+
+    \b
+    Examples:
+      dailybot project attachment get <project-uuid> <attachment-uuid> -o ./plan.pdf
+    """
+    run_get(
+        lambda client: client.download_project_attachment(project_uuid, attachment_uuid),
+        output,
+        attachment_uuid=attachment_uuid,
+        force=force,
+        json_mode=json_mode,
+        require_auth=require_auth,
+    )
+
+
+@project_attachment.command("delete")
+@click.argument("project_uuid", metavar="PROJECT")
+@click.argument("attachment_uuid", metavar="ATTACHMENT")
+@click.option("--dry-run", is_flag=True, help="Say what would happen and send nothing.")
+@click.option("-y", "--yes", "assume_yes", is_flag=True, help="Skip the confirmation.")
+@click.option("--json", "json_mode", is_flag=True, help="Emit machine-readable JSON to stdout.")
+def project_attachment_delete(
+    project_uuid: str, attachment_uuid: str, dry_run: bool, assume_yes: bool, json_mode: bool
+) -> None:
+    """Remove an attachment from a project. This cannot be undone. Needs an admin.
+
+    \b
+    Examples:
+      dailybot project attachment delete <project-uuid> <attachment-uuid> --dry-run
+      dailybot project attachment delete <project-uuid> <attachment-uuid> --yes
+    """
+    _require_person_for_admin("project attachment delete", json_mode=json_mode)
+    run_delete(
+        lambda client: client.delete_project_attachment(project_uuid, attachment_uuid),
+        f"delete attachment {attachment_uuid} from project {project_uuid}.",
+        receipt={"project": project_uuid, "attachment": attachment_uuid},
+        dry_run=dry_run,
+        assume_yes=assume_yes,
+        json_mode=json_mode,
+        require_auth=require_auth,
+    )

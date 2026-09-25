@@ -1,11 +1,13 @@
 """Goal commands (``/v1/tasks/goals/*``)."""
 
 from datetime import datetime
+from pathlib import Path
 from typing import Any
 
 import click
 
-from dailybot_cli.api_client import APIError, PaginatedResult
+from dailybot_cli.api_client import ATTACHMENT_MULTIPART_MAX_BYTES, APIError, PaginatedResult
+from dailybot_cli.commands._attachments import run_attach, run_delete, run_get, run_list
 from dailybot_cli.commands._beta import mark_beta
 from dailybot_cli.commands._destructive import confirm_without_preview, preview_then_confirm
 from dailybot_cli.commands._rollups import render_rollup
@@ -423,3 +425,130 @@ def goal_unlink(
         emit_json({"unlinked": True, "goal": goal_uuid, "project": project_uuid})
         return
     print_success("Project unlinked from the goal.")
+
+
+# ---------------------------------------------------------------------------
+# Attachments. Reading needs only visibility; attaching and deleting are
+# `tasks:admin` doors, which refuse an organization API key before any request.
+# ---------------------------------------------------------------------------
+
+
+@goal.command("attach")
+@click.argument("goal_uuid", metavar="GOAL")
+@click.argument(
+    "file_path",
+    metavar="FILE",
+    type=click.Path(exists=True, dir_okay=False, readable=True, path_type=Path),
+)
+@click.option("--caption", default=None, help="Short caption shown with the file.")
+@click.option("--json", "json_mode", is_flag=True, help="Emit machine-readable JSON to stdout.")
+def goal_attach(goal_uuid: str, file_path: Path, caption: str | None, json_mode: bool) -> None:
+    """Attach a file to a goal. Needs a signed-in organization admin.
+
+    \b
+    One request, up to 5 MiB. Your Dailybot credentials go only to the API.
+
+    \b
+    Examples:
+      dailybot goal attach <goal-uuid> ./plan.pdf
+      dailybot goal attach <goal-uuid> ./roadmap.png --caption "Q4 roadmap" --json
+    """
+    _require_person_for_admin("goal attach", json_mode=json_mode)
+    run_attach(
+        lambda client, **file: client.upload_goal_attachment(goal_uuid, **file),
+        file_path,
+        caption=caption,
+        limit=ATTACHMENT_MULTIPART_MAX_BYTES,
+        where="per file on a goal",
+        json_mode=json_mode,
+        require_auth=require_auth,
+    )
+
+
+@goal.command("attachments")
+@click.argument("goal_uuid", metavar="GOAL")
+@click.option("--json", "json_mode", is_flag=True, help="Emit machine-readable JSON to stdout.")
+def goal_attachments(goal_uuid: str, json_mode: bool) -> None:
+    """List a goal's attachments.
+
+    \b
+    Examples:
+      dailybot goal attachments <goal-uuid>
+      dailybot goal attachments <goal-uuid> --json
+    """
+    run_list(
+        lambda client: client.list_goal_attachments(goal_uuid),
+        json_mode=json_mode,
+        require_auth=require_auth,
+    )
+
+
+@goal.group("attachment")
+def goal_attachment() -> None:
+    """Download or delete one attachment on a goal.
+
+    \b
+    Examples:
+      dailybot goal attachment get <goal-uuid> <attachment-uuid> -o ./plan.pdf
+      dailybot goal attachment delete <goal-uuid> <attachment-uuid> --dry-run
+    """
+
+
+@goal_attachment.command("get")
+@click.argument("goal_uuid", metavar="GOAL")
+@click.argument("attachment_uuid", metavar="ATTACHMENT")
+@click.option(
+    "-o",
+    "--output",
+    "output",
+    type=click.Path(dir_okay=False, writable=True, path_type=Path),
+    required=True,
+    help="Where to write the file.",
+)
+@click.option("--force", is_flag=True, help="Overwrite the output file if it exists.")
+@click.option("--json", "json_mode", is_flag=True, help="Emit machine-readable JSON to stdout.")
+def goal_attachment_get(
+    goal_uuid: str, attachment_uuid: str, output: Path, force: bool, json_mode: bool
+) -> None:
+    """Download a goal's attachment to a file. Never overwrites without --force.
+
+    \b
+    Examples:
+      dailybot goal attachment get <goal-uuid> <attachment-uuid> -o ./plan.pdf
+    """
+    run_get(
+        lambda client: client.download_goal_attachment(goal_uuid, attachment_uuid),
+        output,
+        attachment_uuid=attachment_uuid,
+        force=force,
+        json_mode=json_mode,
+        require_auth=require_auth,
+    )
+
+
+@goal_attachment.command("delete")
+@click.argument("goal_uuid", metavar="GOAL")
+@click.argument("attachment_uuid", metavar="ATTACHMENT")
+@click.option("--dry-run", is_flag=True, help="Say what would happen and send nothing.")
+@click.option("-y", "--yes", "assume_yes", is_flag=True, help="Skip the confirmation.")
+@click.option("--json", "json_mode", is_flag=True, help="Emit machine-readable JSON to stdout.")
+def goal_attachment_delete(
+    goal_uuid: str, attachment_uuid: str, dry_run: bool, assume_yes: bool, json_mode: bool
+) -> None:
+    """Remove an attachment from a goal. This cannot be undone. Needs an admin.
+
+    \b
+    Examples:
+      dailybot goal attachment delete <goal-uuid> <attachment-uuid> --dry-run
+      dailybot goal attachment delete <goal-uuid> <attachment-uuid> --yes
+    """
+    _require_person_for_admin("goal attachment delete", json_mode=json_mode)
+    run_delete(
+        lambda client: client.delete_goal_attachment(goal_uuid, attachment_uuid),
+        f"delete attachment {attachment_uuid} from goal {goal_uuid}.",
+        receipt={"goal": goal_uuid, "attachment": attachment_uuid},
+        dry_run=dry_run,
+        assume_yes=assume_yes,
+        json_mode=json_mode,
+        require_auth=require_auth,
+    )

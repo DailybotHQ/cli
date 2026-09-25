@@ -118,8 +118,9 @@ ERROR_CODE_MESSAGES: dict[str, str] = {
     ),
     # Attachments
     "attachment_too_large": (
-        "That file is larger than this server accepts (the limit is in the refusal: 25 MiB "
-        "with object storage, 5 MiB without). Compress or split it and attach again."
+        "That file is larger than this server accepts: 25 MiB for a task attachment with "
+        "object storage, 5 MiB for a captioned task upload and for any comment, project "
+        "or goal attachment. Compress or split it and attach again."
     ),
     "attachment_storage_unavailable": (
         "This server has no file storage configured, so it cannot accept attachments right "

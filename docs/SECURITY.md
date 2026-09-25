@@ -204,6 +204,12 @@ the transport draws a hard line (`DailyBotClient.upload_attachment_bytes`):
   refused rather than read in full. JSON input files (`-f` batches, views, filters) are capped
   at 5 MiB.
 
+Comments, projects and goals take attachments too (`task comment-attach`, `project attach`,
+`goal attach`). Those doors are multipart only, so the limit is 5 MiB everywhere, and it is
+checked before any request. They go only to the API origin, and their downloads share the
+same hardened path below. Attaching to or deleting from a project or a goal is a
+`tasks:admin` door, refused to an API key before any request.
+
 `task attachment get` follows at most **one** redirect from the API to storage, without
 credentials; a second redirect is refused, and a refusal from storage is reported as storage's
 (`attachment_download_failed`), never as a session problem. Downloads over the attachment

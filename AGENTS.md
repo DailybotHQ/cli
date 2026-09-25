@@ -83,6 +83,7 @@ dailybot_cli/                # Source package
     ├── _rollups.py          # absent vs null vs zero for roll-up fields (AD-01)
     ├── _beta.py             # Tasks Beta notice (group help + status line)
     ├── _favorites.py        # pin/unpin boards and views (person-only), shared by board + tasks
+    ├── _attachments.py      # attach / list / get / delete flows shared by task, comment, project, goal
     ├── _destructive.py      # shared preview-then-confirm for destructive Tasks doors
     ├── _writes.py           # one write reporter: replay, idempotency key, escaping
     ├── team.py              # `team` group: list / get (server-scoped by role)
@@ -124,6 +125,7 @@ tests/                       # pytest suite (file naming: *_test.py)
 ├── tasks_path_safety_test.py # path identifiers, no Bearer→key replay, next links pinned
 ├── tasks_terminal_safety_test.py # control chars neutralized, preview shape, local file limits
 ├── tasks_key_refusal_sweep_test.py # every admin / person-only door refuses a key pre-request
+├── tasks_parent_attachments_test.py # attachments on comments, projects and goals
 ├── tasks_favorites_views_test.py # favorites + single saved views
 ├── tasks_ergonomics_sweep_test.py # the Beta ergonomics bar on every Tasks command
 ├── board_commands_test.py   # `board` group (reads + container writes)

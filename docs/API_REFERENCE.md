@@ -876,7 +876,7 @@ Dispatch on `code`, never on the English `detail`.
 | `idempotency_key_payload_mismatch` | same key, different body — use a **new** key | 4 |
 | `idempotency_in_progress` | identical call still running — do not retry | 4 |
 | `delta_window_expired` | cursor older than 7 days — **re-snapshot** | **9** |
-| `attachment_too_large` | file over the server's limit (25 MiB, 5 MiB without storage) | 2 |
+| `attachment_too_large` | file over the server's limit (25 MiB for a task upload through storage; 5 MiB for a captioned task upload and for every comment, project and goal attachment) | 2 |
 | `attachment_storage_unavailable` | the server has no file storage configured | 6 |
 | `attachment_upload_redirected` / `attachment_upload_failed` | the storage target redirected or refused — never followed, never confirmed | 1 |
 | `attachment_upload_target_refused` | the server handed back a non-https foreign target; the file was not sent | 1 |

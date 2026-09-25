@@ -10,10 +10,8 @@ maps to a parameter the contract declares — a convenience flag that invents a
 parameter name would produce a 400.
 """
 
-import contextlib
-import mimetypes
-import os
 import re
+from collections.abc import Callable
 from pathlib import Path
 from typing import Any, NoReturn
 
@@ -28,6 +26,15 @@ from dailybot_cli.api_client import (
     APIError,
     PaginatedResult,
     as_query_datetime,
+)
+from dailybot_cli.commands._attachments import (
+    MIB,
+    guess_content_type,
+    read_upload,
+    run_attach,
+    run_delete,
+    run_get,
+    run_list,
 )
 from dailybot_cli.commands._beta import mark_beta
 from dailybot_cli.commands._destructive import confirm_without_preview, preview_then_confirm
@@ -1348,25 +1355,6 @@ def task_activity(
     )
 
 
-_ATTACHMENT_COLUMNS: list[tuple[str, str, bool]] = [
-    ("File", "filename", False),
-    ("Type", "content_type", False),
-    ("Bytes", "size", True),
-    ("Status", "status", True),
-    ("UUID", "uuid", True),
-]
-_MIB: int = 1024 * 1024
-DEFAULT_CONTENT_TYPE: str = "application/octet-stream"
-# Downloaded files are created owner-writable, world-readable, like any saved file.
-DOWNLOAD_FILE_MODE: int = 0o644
-
-
-def _guess_content_type(path: Path) -> str:
-    """The file's MIME type from its name; `application/octet-stream` when unknown."""
-    guessed, _encoding = mimetypes.guess_type(path.name)
-    return guessed or DEFAULT_CONTENT_TYPE
-
-
 @task.command("attach")
 @click.argument("task_uuid", metavar="TASK")
 @click.argument(
@@ -1378,7 +1366,7 @@ def _guess_content_type(path: Path) -> str:
     "--caption",
     default=None,
     help=f"Short caption. Uses the one-request upload, limited to "
-    f"{ATTACHMENT_MULTIPART_MAX_BYTES // _MIB} MiB.",
+    f"{ATTACHMENT_MULTIPART_MAX_BYTES // MIB} MiB.",
 )
 @click.option("--json", "json_mode", is_flag=True, help="Emit machine-readable JSON to stdout.")
 def task_attach(task_uuid: str, file_path: Path, caption: str | None, json_mode: bool) -> None:
@@ -1395,57 +1383,40 @@ def task_attach(task_uuid: str, file_path: Path, caption: str | None, json_mode:
       dailybot task attach ENG-142 ./crash.log
       dailybot task attach ENG-142 ./screenshot.png --caption "After the fix" --json
     """
-    size: int = file_path.stat().st_size
-    limit: int = ATTACHMENT_MULTIPART_MAX_BYTES if caption else ATTACHMENT_MAX_SIZE_BYTES
-    if size == 0:
-        raise click.UsageError(f"{file_path.name} is empty; there is nothing to attach.")
-    if size > limit:
-        where: str = "with --caption" if caption else "per file"
-        raise click.UsageError(
-            f"{file_path.name} is {size / _MIB:.1f} MiB; the limit {where} is "
-            f"{limit // _MIB} MiB. Nothing was uploaded."
+    if caption:
+        run_attach(
+            lambda client, **file: client.upload_attachment_multipart(task_uuid, **file),
+            file_path,
+            caption=caption,
+            limit=ATTACHMENT_MULTIPART_MAX_BYTES,
+            where="with --caption",
+            json_mode=json_mode,
+            require_auth=require_auth,
         )
-    content_type: str = _guess_content_type(file_path)
-    # Read at most one byte past the limit: a file that grew after the size check
-    # (a log still being written) is refused instead of being read in full.
-    with file_path.open("rb") as source:
-        data: bytes = source.read(limit + 1)
-    if len(data) > limit:
-        raise click.UsageError(
-            f"{file_path.name} grew past the {limit // _MIB} MiB limit while it was being "
-            "read. Nothing was uploaded."
-        )
+        return
+    data: bytes = read_upload(file_path, ATTACHMENT_MAX_SIZE_BYTES, where="per file")
+    content_type: str = guess_content_type(file_path)
     client = require_auth()
     try:
-        if caption:
-            with console.status("Uploading the file..."):
-                result: dict[str, Any] = client.upload_attachment_multipart(
-                    task_uuid,
-                    filename=file_path.name,
-                    content_type=content_type,
-                    data=data,
-                    caption=caption,
-                )
-        else:
-            with console.status("Reserving an upload target..."):
-                presign: dict[str, Any] = client.presign_attachment(
-                    task_uuid, filename=file_path.name, content_type=content_type, size=size
-                )
-            attachment_uuid: str = str((presign.get("attachment") or {}).get("uuid") or "")
-            if not attachment_uuid:
-                raise click.ClickException(
-                    "The server reserved no attachment, so nothing was uploaded."
-                )
-            with console.status("Uploading the file..."):
-                client.upload_attachment_bytes(presign, data)
-            with console.status("Confirming..."):
-                result = client.confirm_attachment(task_uuid, attachment_uuid)
+        with console.status("Reserving an upload target..."):
+            presign: dict[str, Any] = client.presign_attachment(
+                task_uuid, filename=file_path.name, content_type=content_type, size=len(data)
+            )
+        attachment_uuid: str = str((presign.get("attachment") or {}).get("uuid") or "")
+        if not attachment_uuid:
+            raise click.ClickException(
+                "The server reserved no attachment, so nothing was uploaded."
+            )
+        with console.status("Uploading the file..."):
+            client.upload_attachment_bytes(presign, data)
+        with console.status("Confirming..."):
+            result: dict[str, Any] = client.confirm_attachment(task_uuid, attachment_uuid)
     except APIError as exc:
         _write_error(exc, json_mode)
     if json_mode:
         emit_json(result)
         return
-    print_success(f"Attached {file_path.name} ({size} bytes).")
+    print_success(f"Attached {file_path.name} ({len(data)} bytes).")
 
 
 @task.command("attachments")
@@ -1459,16 +1430,11 @@ def task_attachments(task_uuid: str, json_mode: bool) -> None:
       dailybot task attachments ENG-142
       dailybot task attachments ENG-142 --json
     """
-    client = require_auth()
-    try:
-        with console.status("Reading the attachments..."):
-            data: Any = client.list_task_attachments(task_uuid)
-    except APIError as exc:
-        _write_error(exc, json_mode)
-    if json_mode:
-        emit_json(data)
-        return
-    print_tasks_rows("Attachments", rows_of(data), _ATTACHMENT_COLUMNS, empty="No attachments.")
+    run_list(
+        lambda client: client.list_task_attachments(task_uuid),
+        json_mode=json_mode,
+        require_auth=require_auth,
+    )
 
 
 @task.group("attachment")
@@ -1482,50 +1448,7 @@ def task_attachment() -> None:
     """
 
 
-def _write_download(output: Path, content: bytes, *, force: bool, json_mode: bool) -> None:
-    """Write downloaded bytes to `output` without surprises.
-
-    Without --force the file is created exclusively and a symlink is never
-    followed, so a file (or link) that appeared during the download is left alone.
-    A path that cannot be written is an actionable error, not a crash.
-    """
-    flags: int = os.O_WRONLY | os.O_CREAT | getattr(os, "O_NOFOLLOW", 0)
-    flags |= os.O_TRUNC if force else os.O_EXCL
-    created: bool = False
-    try:
-        descriptor: int = os.open(output, flags, DOWNLOAD_FILE_MODE)
-        created = not force
-        with os.fdopen(descriptor, "wb") as handle:
-            handle.write(content)
-    except FileExistsError as exc:
-        raise click.UsageError(
-            f"{output} already exists. Pass --force to overwrite it. Nothing was written."
-        ) from exc
-    except OSError as exc:
-        if created:
-            # This call made the file, so a half-written one is ours to remove: left
-            # behind, it would make the next attempt refuse without --force.
-            with contextlib.suppress(OSError):
-                os.unlink(output)
-        message: str = f"Could not write {output}: {exc.strerror or exc}. Nothing was saved."
-        if json_mode:
-            emit_json(
-                {
-                    "status": "error",
-                    "code": "output_not_writable",
-                    "detail": str(exc),
-                    "message": message,
-                }
-            )
-        else:
-            print_error(message)
-        raise SystemExit(EXIT_USAGE_ERROR) from exc
-
-
-@task_attachment.command("get")
-@click.argument("task_uuid", metavar="TASK")
-@click.argument("attachment_uuid", metavar="ATTACHMENT")
-@click.option(
+_OUTPUT_OPTION: Callable[[Any], Any] = click.option(
     "-o",
     "--output",
     "output",
@@ -1533,6 +1456,12 @@ def _write_download(output: Path, content: bytes, *, force: bool, json_mode: boo
     required=True,
     help="Where to write the file.",
 )
+
+
+@task_attachment.command("get")
+@click.argument("task_uuid", metavar="TASK")
+@click.argument("attachment_uuid", metavar="ATTACHMENT")
+@_OUTPUT_OPTION
 @click.option("--force", is_flag=True, help="Overwrite the output file if it exists.")
 @click.option("--json", "json_mode", is_flag=True, help="Emit machine-readable JSON to stdout.")
 def attachment_get(
@@ -1545,19 +1474,14 @@ def attachment_get(
       dailybot task attachment get ENG-142 <attachment-uuid> -o ./crash.log
       dailybot task attachment get ENG-142 <attachment-uuid> -o ./crash.log --force --json
     """
-    if output.exists() and not force:
-        raise click.UsageError(f"{output} already exists. Pass --force to overwrite it.")
-    client = require_auth()
-    try:
-        with console.status("Downloading..."):
-            content: bytes = client.download_attachment(task_uuid, attachment_uuid)
-    except APIError as exc:
-        _write_error(exc, json_mode)
-    _write_download(output, content, force=force, json_mode=json_mode)
-    if json_mode:
-        emit_json({"path": str(output), "bytes": len(content), "attachment": attachment_uuid})
-        return
-    print_success(f"Saved {len(content)} bytes to {output}.")
+    run_get(
+        lambda client: client.download_attachment(task_uuid, attachment_uuid),
+        output,
+        attachment_uuid=attachment_uuid,
+        force=force,
+        json_mode=json_mode,
+        require_auth=require_auth,
+    )
 
 
 @task_attachment.command("delete")
@@ -1576,24 +1500,147 @@ def attachment_delete(
       dailybot task attachment delete ENG-142 <attachment-uuid> --dry-run
       dailybot task attachment delete ENG-142 <attachment-uuid> --yes
     """
-    if not confirm_without_preview(
+    run_delete(
+        lambda client: client.delete_task_attachment(task_uuid, attachment_uuid),
         f"delete attachment {attachment_uuid} from task {task_uuid}; the stored file goes too "
         "unless something else uses it.",
-        assume_yes=assume_yes,
+        receipt={"task": task_uuid, "attachment": attachment_uuid},
         dry_run=dry_run,
+        assume_yes=assume_yes,
         json_mode=json_mode,
-    ):
-        return
-    client = require_auth()
-    try:
-        with console.status("Deleting the attachment..."):
-            client.delete_task_attachment(task_uuid, attachment_uuid)
-    except APIError as exc:
-        _write_error(exc, json_mode)
-    if json_mode:
-        emit_json({"deleted": True, "task": task_uuid, "attachment": attachment_uuid})
-        return
-    print_success("Attachment deleted.")
+        require_auth=require_auth,
+    )
+
+
+@task.command("comment-attach")
+@click.argument("task_uuid", metavar="TASK")
+@click.argument("comment_uuid", metavar="COMMENT")
+@click.argument(
+    "file_path",
+    metavar="FILE",
+    type=click.Path(exists=True, dir_okay=False, readable=True, path_type=Path),
+)
+@click.option("--caption", default=None, help="Short caption shown with the file.")
+@click.option("--json", "json_mode", is_flag=True, help="Emit machine-readable JSON to stdout.")
+def comment_attach(
+    task_uuid: str, comment_uuid: str, file_path: Path, caption: str | None, json_mode: bool
+) -> None:
+    """Attach a file to a comment. Only the comment's author can.
+
+    \b
+    One request, up to 5 MiB. Your Dailybot credentials go only to the API.
+
+    \b
+    Examples:
+      dailybot task comment-attach ENG-142 <comment-uuid> ./trace.txt
+      dailybot task comment-attach ENG-142 <comment-uuid> ./shot.png --caption "Before" --json
+    """
+    run_attach(
+        lambda client, **file: client.upload_comment_attachment(task_uuid, comment_uuid, **file),
+        file_path,
+        caption=caption,
+        limit=ATTACHMENT_MULTIPART_MAX_BYTES,
+        where="per file on a comment",
+        json_mode=json_mode,
+        require_auth=require_auth,
+    )
+
+
+@task.command("comment-attachments")
+@click.argument("task_uuid", metavar="TASK")
+@click.argument("comment_uuid", metavar="COMMENT")
+@click.option("--json", "json_mode", is_flag=True, help="Emit machine-readable JSON to stdout.")
+def comment_attachments(task_uuid: str, comment_uuid: str, json_mode: bool) -> None:
+    """List a comment's attachments.
+
+    \b
+    Examples:
+      dailybot task comment-attachments ENG-142 <comment-uuid>
+      dailybot task comment-attachments ENG-142 <comment-uuid> --json
+    """
+    run_list(
+        lambda client: client.list_comment_attachments(task_uuid, comment_uuid),
+        json_mode=json_mode,
+        require_auth=require_auth,
+    )
+
+
+@task.group("comment-attachment")
+def comment_attachment() -> None:
+    """Download or delete one attachment on a comment.
+
+    \b
+    Examples:
+      dailybot task comment-attachment get ENG-142 <comment-uuid> <attachment-uuid> -o ./trace.txt
+      dailybot task comment-attachment delete ENG-142 <comment-uuid> <attachment-uuid> --dry-run
+    """
+
+
+@comment_attachment.command("get")
+@click.argument("task_uuid", metavar="TASK")
+@click.argument("comment_uuid", metavar="COMMENT")
+@click.argument("attachment_uuid", metavar="ATTACHMENT")
+@_OUTPUT_OPTION
+@click.option("--force", is_flag=True, help="Overwrite the output file if it exists.")
+@click.option("--json", "json_mode", is_flag=True, help="Emit machine-readable JSON to stdout.")
+def comment_attachment_get(
+    task_uuid: str,
+    comment_uuid: str,
+    attachment_uuid: str,
+    output: Path,
+    force: bool,
+    json_mode: bool,
+) -> None:
+    """Download a comment's attachment to a file. Never overwrites without --force.
+
+    \b
+    Examples:
+      dailybot task comment-attachment get ENG-142 <comment-uuid> <attachment-uuid> -o ./trace.txt
+    """
+    run_get(
+        lambda client: client.download_comment_attachment(task_uuid, comment_uuid, attachment_uuid),
+        output,
+        attachment_uuid=attachment_uuid,
+        force=force,
+        json_mode=json_mode,
+        require_auth=require_auth,
+    )
+
+
+@comment_attachment.command("delete")
+@click.argument("task_uuid", metavar="TASK")
+@click.argument("comment_uuid", metavar="COMMENT")
+@click.argument("attachment_uuid", metavar="ATTACHMENT")
+@click.option("--dry-run", is_flag=True, help="Say what would happen and send nothing.")
+@click.option("-y", "--yes", "assume_yes", is_flag=True, help="Skip the confirmation.")
+@click.option("--json", "json_mode", is_flag=True, help="Emit machine-readable JSON to stdout.")
+def comment_attachment_delete(
+    task_uuid: str,
+    comment_uuid: str,
+    attachment_uuid: str,
+    dry_run: bool,
+    assume_yes: bool,
+    json_mode: bool,
+) -> None:
+    """Remove an attachment from a comment. This cannot be undone.
+
+    \b
+    The uploader, the comment's author or an organization admin can.
+
+    \b
+    Examples:
+      dailybot task comment-attachment delete ENG-142 <comment-uuid> <attachment-uuid> --dry-run
+      dailybot task comment-attachment delete ENG-142 <comment-uuid> <attachment-uuid> --yes
+    """
+    run_delete(
+        lambda client: client.delete_comment_attachment(task_uuid, comment_uuid, attachment_uuid),
+        f"delete attachment {attachment_uuid} from comment {comment_uuid} on task {task_uuid}.",
+        receipt={"task": task_uuid, "comment": comment_uuid, "attachment": attachment_uuid},
+        dry_run=dry_run,
+        assume_yes=assume_yes,
+        json_mode=json_mode,
+        require_auth=require_auth,
+    )
 
 
 @task.command("archive")

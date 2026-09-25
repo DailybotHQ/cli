@@ -58,6 +58,10 @@ ADMIN_COMMANDS: list[list[str]] = [
     ["goal", "restore", G],
     ["goal", "link", G, P],
     ["goal", "unlink", G, P, "--yes"],
+    ["project", "attach", P, __file__],
+    ["project", "attachment", "delete", P, S, "--yes"],
+    ["goal", "attach", G, __file__],
+    ["goal", "attachment", "delete", G, S, "--yes"],
 ]
 
 # The person-only doors that have a CLI command.
@@ -132,5 +136,6 @@ def test_a_person_door_refuses_a_key_before_the_request(argv: list[str]) -> None
 
 
 def test_the_lists_match_the_server_counts() -> None:
-    # 25 admin doors, minus the two member-role PATCHes with no command.
-    assert len(ADMIN_COMMANDS) == 23
+    # 29 admin doors (25, plus attach / delete on projects and goals), minus the two
+    # member-role PATCHes that have no command.
+    assert len(ADMIN_COMMANDS) == 27

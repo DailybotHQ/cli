@@ -2923,48 +2923,52 @@ class DailyBotClient:
         )
         return result
 
-    def upload_attachment_multipart(
+    # --- Attachments: one set of doors per parent ---------------------------
+    # A task, a comment, a project and a goal each own an `attachments/`
+    # collection with the same row shape. `parent` is the validated relative
+    # path of the owner (`tasks/ENG-1`, `tasks/ENG-1/comments/<uuid>`,
+    # `projects/<uuid>`, `goals/<uuid>`); every segment goes through
+    # `_path_segment` before it gets here.
+
+    def _upload_attachment_to(
         self,
-        task_uuid: str,
+        parent: str,
         *,
         filename: str,
         content_type: str,
         data: bytes,
         caption: str | None = None,
     ) -> dict[str, Any]:
-        """POST …/attachments/ as multipart — one request, ≤5 MiB, the door that stores a caption."""
+        """POST <parent>/attachments/ as multipart: one request, capped by the server at 5 MiB."""
         return self._handle_response(
             self._request(
                 "POST",
-                self._tasks_url(f"tasks/{_path_segment(task_uuid)}/attachments/"),
+                self._tasks_url(f"{parent}/attachments/"),
                 files={"file": (filename, data, content_type)},
                 data={"caption": caption} if caption else None,
                 timeout=ATTACHMENT_TRANSFER_TIMEOUT_SECS,
             )
         )
 
-    def list_task_attachments(self, task_uuid: str) -> Any:
-        """GET /v1/tasks/tasks/<uuid>/attachments/."""
-        return self._tasks_read(f"tasks/{_path_segment(task_uuid)}/attachments/")
+    def _list_attachments_of(self, parent: str) -> Any:
+        """GET <parent>/attachments/."""
+        return self._tasks_read(f"{parent}/attachments/")
 
-    def delete_task_attachment(self, task_uuid: str, attachment_uuid: str) -> Any:
-        """DELETE …/attachments/<uuid>/ — also removes the stored object when unshared."""
+    def _delete_attachment_of(self, parent: str, attachment_uuid: str) -> Any:
+        """DELETE <parent>/attachments/<uuid>/."""
         return self._tasks_write(
-            "DELETE",
-            f"tasks/{_path_segment(task_uuid)}/attachments/{_path_segment(attachment_uuid)}/",
+            "DELETE", f"{parent}/attachments/{_path_segment(attachment_uuid)}/"
         )
 
-    def download_attachment(self, task_uuid: str, attachment_uuid: str) -> bytes:
-        """GET …/attachments/<uuid>/content/ — the bytes.
+    def _download_attachment_of(self, parent: str, attachment_uuid: str) -> bytes:
+        """GET <parent>/attachments/<uuid>/content/: the bytes.
 
-        The API may answer 3xx to a signed storage URL. That hop is followed ONCE,
-        without credentials and without following any further redirect.
+        The API streams the file itself. A 3xx to storage is still handled
+        defensively: followed ONCE, without credentials, and no further.
         """
         response: httpx.Response = self._request(
             "GET",
-            self._tasks_url(
-                f"tasks/{_path_segment(task_uuid)}/attachments/{_path_segment(attachment_uuid)}/content/"
-            ),
+            self._tasks_url(f"{parent}/attachments/{_path_segment(attachment_uuid)}/content/"),
             timeout=ATTACHMENT_TRANSFER_TIMEOUT_SECS,
         )
         if 300 <= response.status_code < 400:
@@ -2993,6 +2997,155 @@ class DailyBotClient:
                 code="attachment_too_large",
             )
         return content
+
+    @staticmethod
+    def _task_parent(task_uuid: str) -> str:
+        return f"tasks/{_path_segment(task_uuid)}"
+
+    @staticmethod
+    def _comment_parent(task_uuid: str, comment_uuid: str) -> str:
+        return f"tasks/{_path_segment(task_uuid)}/comments/{_path_segment(comment_uuid)}"
+
+    @staticmethod
+    def _project_parent(project_uuid: str) -> str:
+        return f"projects/{_path_segment(project_uuid)}"
+
+    @staticmethod
+    def _goal_parent(goal_uuid: str) -> str:
+        return f"goals/{_path_segment(goal_uuid)}"
+
+    # Task
+    def upload_attachment_multipart(
+        self,
+        task_uuid: str,
+        *,
+        filename: str,
+        content_type: str,
+        data: bytes,
+        caption: str | None = None,
+    ) -> dict[str, Any]:
+        """POST …/attachments/ as multipart — one request, ≤5 MiB, the door that stores a caption."""
+        return self._upload_attachment_to(
+            self._task_parent(task_uuid),
+            filename=filename,
+            content_type=content_type,
+            data=data,
+            caption=caption,
+        )
+
+    def list_task_attachments(self, task_uuid: str) -> Any:
+        """GET /v1/tasks/tasks/<uuid>/attachments/."""
+        return self._list_attachments_of(self._task_parent(task_uuid))
+
+    def delete_task_attachment(self, task_uuid: str, attachment_uuid: str) -> Any:
+        """DELETE …/attachments/<uuid>/ — also removes the stored object when unshared."""
+        return self._delete_attachment_of(self._task_parent(task_uuid), attachment_uuid)
+
+    def download_attachment(self, task_uuid: str, attachment_uuid: str) -> bytes:
+        """GET …/attachments/<uuid>/content/ — the bytes of a task attachment."""
+        return self._download_attachment_of(self._task_parent(task_uuid), attachment_uuid)
+
+    # Comment (POST: the comment's author only; DELETE: uploader, author or an org admin)
+    def upload_comment_attachment(
+        self,
+        task_uuid: str,
+        comment_uuid: str,
+        *,
+        filename: str,
+        content_type: str,
+        data: bytes,
+        caption: str | None = None,
+    ) -> dict[str, Any]:
+        """POST /v1/tasks/tasks/<t>/comments/<c>/attachments/ — multipart, ≤5 MiB."""
+        return self._upload_attachment_to(
+            self._comment_parent(task_uuid, comment_uuid),
+            filename=filename,
+            content_type=content_type,
+            data=data,
+            caption=caption,
+        )
+
+    def list_comment_attachments(self, task_uuid: str, comment_uuid: str) -> Any:
+        """GET /v1/tasks/tasks/<t>/comments/<c>/attachments/."""
+        return self._list_attachments_of(self._comment_parent(task_uuid, comment_uuid))
+
+    def delete_comment_attachment(
+        self, task_uuid: str, comment_uuid: str, attachment_uuid: str
+    ) -> Any:
+        """DELETE /v1/tasks/tasks/<t>/comments/<c>/attachments/<a>/."""
+        return self._delete_attachment_of(
+            self._comment_parent(task_uuid, comment_uuid), attachment_uuid
+        )
+
+    def download_comment_attachment(
+        self, task_uuid: str, comment_uuid: str, attachment_uuid: str
+    ) -> bytes:
+        """GET /v1/tasks/tasks/<t>/comments/<c>/attachments/<a>/content/."""
+        return self._download_attachment_of(
+            self._comment_parent(task_uuid, comment_uuid), attachment_uuid
+        )
+
+    # Project (POST / DELETE: tasks:admin, a signed-in person; reads: anyone who can see it)
+    def upload_project_attachment(
+        self,
+        project_uuid: str,
+        *,
+        filename: str,
+        content_type: str,
+        data: bytes,
+        caption: str | None = None,
+    ) -> dict[str, Any]:
+        """POST /v1/tasks/projects/<p>/attachments/ — multipart, ≤5 MiB, tasks:admin."""
+        return self._upload_attachment_to(
+            self._project_parent(project_uuid),
+            filename=filename,
+            content_type=content_type,
+            data=data,
+            caption=caption,
+        )
+
+    def list_project_attachments(self, project_uuid: str) -> Any:
+        """GET /v1/tasks/projects/<p>/attachments/."""
+        return self._list_attachments_of(self._project_parent(project_uuid))
+
+    def delete_project_attachment(self, project_uuid: str, attachment_uuid: str) -> Any:
+        """DELETE /v1/tasks/projects/<p>/attachments/<a>/ — tasks:admin."""
+        return self._delete_attachment_of(self._project_parent(project_uuid), attachment_uuid)
+
+    def download_project_attachment(self, project_uuid: str, attachment_uuid: str) -> bytes:
+        """GET /v1/tasks/projects/<p>/attachments/<a>/content/."""
+        return self._download_attachment_of(self._project_parent(project_uuid), attachment_uuid)
+
+    # Goal (POST / DELETE: tasks:admin, a signed-in person; reads: anyone who can see it)
+    def upload_goal_attachment(
+        self,
+        goal_uuid: str,
+        *,
+        filename: str,
+        content_type: str,
+        data: bytes,
+        caption: str | None = None,
+    ) -> dict[str, Any]:
+        """POST /v1/tasks/goals/<g>/attachments/ — multipart, ≤5 MiB, tasks:admin."""
+        return self._upload_attachment_to(
+            self._goal_parent(goal_uuid),
+            filename=filename,
+            content_type=content_type,
+            data=data,
+            caption=caption,
+        )
+
+    def list_goal_attachments(self, goal_uuid: str) -> Any:
+        """GET /v1/tasks/goals/<g>/attachments/."""
+        return self._list_attachments_of(self._goal_parent(goal_uuid))
+
+    def delete_goal_attachment(self, goal_uuid: str, attachment_uuid: str) -> Any:
+        """DELETE /v1/tasks/goals/<g>/attachments/<a>/ — tasks:admin."""
+        return self._delete_attachment_of(self._goal_parent(goal_uuid), attachment_uuid)
+
+    def download_goal_attachment(self, goal_uuid: str, attachment_uuid: str) -> bytes:
+        """GET /v1/tasks/goals/<g>/attachments/<a>/content/."""
+        return self._download_attachment_of(self._goal_parent(goal_uuid), attachment_uuid)
 
     @staticmethod
     def _download_from_storage(location: str) -> bytes:

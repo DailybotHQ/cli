@@ -145,7 +145,7 @@ class TestPreviewMustBeAPreview:
 
 class TestLocalFiles:
     def test_a_failed_download_write_removes_the_partial_file(self, tmp_path: Any) -> None:
-        from dailybot_cli.commands.task import _write_download
+        from dailybot_cli.commands._attachments import write_download as _write_download
 
         target: Any = tmp_path / "out.bin"
 
@@ -166,7 +166,7 @@ class TestLocalFiles:
             return Full()
 
         with (
-            patch("dailybot_cli.commands.task.os.fdopen", side_effect=fdopen),
+            patch("dailybot_cli.commands._attachments.os.fdopen", side_effect=fdopen),
             pytest.raises(SystemExit),
         ):
             _write_download(target, b"data", force=False, json_mode=True)

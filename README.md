@@ -910,6 +910,7 @@ humans who own them.
 | `dailybot task duplicate <task>` | Copy into the same column (`--include` picks fields); sends an idempotency key so a retry returns the same copy |
 | `dailybot task attach <task> <file>` | Attach a file (≤25 MiB; `--caption` uses a single-request upload, ≤5 MiB). Credentials never go to the storage host |
 | `dailybot task attachments <task>` · `task attachment get <task> <id> -o <path>` · `task attachment delete` | List, download (never overwrites without `--force`) or delete attachments |
+| `dailybot task comment-attach <task> <comment> <file>` · `task comment-attachments` · `task comment-attachment get\|delete` | Files on a comment (≤5 MiB, one request). Only the comment's author can attach |
 | `dailybot task archive <uuid>` | Archive a task. Previews the consequence first; reversible |
 | `dailybot task delete <uuid>` | Alias of archive — nothing is destroyed |
 | `dailybot task restore <uuid>` | Restore an archived task |
@@ -946,6 +947,7 @@ humans who own them.
 | `dailybot project views <uuid>` · `project view save` | Your saved views; save replaces the list and requires the ETag — **needs `dailybot login`** |
 | `dailybot project milestone-create\|milestone-update\|milestone-delete` | Dated milestones; delete retires it (tasks keep pointing at it) |
 | `dailybot project archive <uuid>` | Archive a project |
+| `dailybot project attach <uuid> <file>` · `project attachments` · `project attachment get\|delete` | Files on a project (≤5 MiB, one request). Attaching and deleting need a signed-in admin |
 | `dailybot goal list` | List goals (`--include` is repeatable: `--include progress --include projects`) |
 | `dailybot goal get <uuid>` | Show one goal, with its progress and linked projects (always included) |
 | `dailybot goal create --name <n> --period-start <d> --period-end <d>` | Create a goal (a dated commitment) — **needs `dailybot login`** |
@@ -953,6 +955,7 @@ humans who own them.
 | `dailybot goal restore <uuid>` | Restore an archived goal |
 | `dailybot goal link\|unlink <goal> <project>` | Make a project count toward a goal (or stop it) |
 | `dailybot goal archive <uuid>` | Archive a goal (its projects are not archived) |
+| `dailybot goal attach <uuid> <file>` · `goal attachments` · `goal attachment get\|delete` | Files on a goal (≤5 MiB, one request). Attaching and deleting need a signed-in admin |
 
 **Three things worth knowing before you script against this:**
 
