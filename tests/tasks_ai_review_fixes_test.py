@@ -180,4 +180,3 @@ class TestSavedViewRefusalSaysViews:
         text: str = " ".join(result.output.split()).lower()
         assert "saved view" in text
         assert "pins" not in text
-
