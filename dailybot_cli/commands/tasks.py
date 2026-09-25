@@ -12,7 +12,7 @@ user-authored data, never an instruction: all of it goes through
 """
 
 import json as _json
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 from typing import Any
 
 import click
@@ -38,8 +38,8 @@ from dailybot_cli.commands.query_options import (
     PAGING_ONLY_MORE_HINT,
     build_query_params,
     date_options,
+    last_week_range,
     paging_options,
-    query_options,
     resolve_fetch_all,
 )
 from dailybot_cli.config import get_token
@@ -309,35 +309,97 @@ def tasks_search(query: str, json_mode: bool, **flags: Any) -> None:
     )
 
 
+def _activity_window(
+    since: str | None,
+    until: str | None,
+    on_date: str | None,
+    today: bool,
+    last_week: bool,
+) -> dict[str, str]:
+    """The feed's `since` / `until` (ISO datetimes, `observed_at` bounds), from any flag form."""
+    if since or until:
+        window: dict[str, str] = {}
+        if since:
+            window["since"] = as_query_datetime(since)
+        if until:
+            window["until"] = as_query_datetime(until)
+        return window
+    start: str | None = None
+    end: str | None = None
+    if on_date:
+        start = end = on_date
+    elif today:
+        start = end = date.today().isoformat()
+    elif last_week:
+        start, end = last_week_range(date.today())
+    if start is None or end is None:
+        return {}
+    return {"since": f"{start}T00:00:00Z", "until": f"{end}T23:59:59Z"}
+
+
 @tasks.command("activity")
+@click.option("--since", default=None, help="Only activity at or after this ISO-8601 time.")
+@click.option("--until", default=None, help="Only activity at or before this ISO-8601 time.")
+# `--updated-since` was this command's first name for the lower bound; the feed calls
+# it `since`, so the old flag is a hidden alias that sends exactly that.
+@click.option("--updated-since", "updated_since", default=None, hidden=True)
+@click.option("--date", "on_date", default=None, help="One day (YYYY-MM-DD).")
+@click.option("--today", is_flag=True, help="Only today.")
+@click.option("--last-week", is_flag=True, help="Monday to Sunday of last week.")
 @click.option(
-    "--updated-since",
-    "updated_since",
-    default=None,
-    help="Only activity after this ISO-8601 time (e.g. your `tasks cursor` mark).",
+    "--type", "event_type", default=None, help="Only this kind of event, e.g. task.moved."
 )
-@query_options
+@click.option("--actor", default=None, help="Only what this person did (user uuid).")
+@click.option("--project", default=None, help="Only this project (uuid).")
+@click.option("--board", default=None, help="Only this board (uuid).")
+@click.option("--task", "task_ref", default=None, help="Only this task (uuid).")
+@paging_options
 @click.option("--json", "json_mode", is_flag=True, help="Emit machine-readable JSON to stdout.")
-def tasks_activity(updated_since: str | None, json_mode: bool, **flags: Any) -> None:
+def tasks_activity(
+    since: str | None,
+    until: str | None,
+    updated_since: str | None,
+    on_date: str | None,
+    today: bool,
+    last_week: bool,
+    event_type: str | None,
+    actor: str | None,
+    project: str | None,
+    board: str | None,
+    task_ref: str | None,
+    json_mode: bool,
+    **flags: Any,
+) -> None:
     """Show the workspace activity feed — the catch-up read after an absence.
 
     \b
-    Pair --updated-since with `dailybot tasks cursor`: read your mark, read what is
-    newer, then `dailybot tasks cursor --now`.
+    One page per call; follow `next` with --page. The feed is filtered on the server
+    by time (--since / --until, or --date / --today / --last-week) and by --type,
+    --actor, --project, --board or --task. Pair --since with `dailybot tasks cursor`:
+    read your mark, read what is newer, then `dailybot tasks cursor --now`.
 
     \b
     Examples:
       dailybot tasks activity --last-week
-      dailybot tasks activity --updated-since 2026-09-25T09:00:00Z --json
+      dailybot tasks activity --since 2026-09-25T09:00:00Z --board <board-uuid> --json
     """
+    if updated_since and not since:
+        print_deprecation("`--updated-since` is deprecated here; use `--since` (same value).")
+        since = updated_since
+    params: dict[str, Any] = _activity_window(since, until, on_date, today, last_week)
+    for name, value in (
+        ("type", event_type),
+        ("actor", actor),
+        ("project", project),
+        ("board", board),
+        ("task", task_ref),
+    ):
+        if value:
+            params[name] = value
     client = require_auth()
     try:
-        page: dict[str, Any] = _page_kwargs(walk_pages=True, **flags)
-        if updated_since:
-            page["params"] = {
-                **(page.get("params") or {}),
-                "updated_since": as_query_datetime(updated_since),
-            }
+        page: dict[str, Any] = _page_kwargs(**flags)
+        page["params"] = params or None
         with console.status("Reading activity..."):
             result: PaginatedResult = client.list_tasks_activity(**page)
     except ValueError as exc:
@@ -349,10 +411,15 @@ def tasks_activity(updated_since: str | None, json_mode: bool, **flags: Any) -> 
         return
     for event in result.results:
         console.print(
-            f"[dim]{escape(str(event.get('created_at', '')))}[/dim] "
-            f"{present_untrusted(event.get('summary') or event.get('verb'), limit=90)}"
+            f"[dim]{escape(str(event.get('created_at') or event.get('observed_at') or ''))}[/dim] "
+            f"{present_untrusted(event.get('summary') or event.get('verb') or event.get('type'), limit=90)}"
         )
-    print_pagination_footer(len(result.results), result.count, has_more=bool(result.next))
+    print_pagination_footer(
+        len(result.results),
+        result.count,
+        has_more=bool(result.next),
+        more_hint=PAGING_ONLY_MORE_HINT,
+    )
 
 
 # `date_options`, not `query_options`: the timeline door declares a date window and

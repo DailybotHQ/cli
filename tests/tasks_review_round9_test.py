@@ -208,7 +208,6 @@ class TestPagingDefaultFollowsTheDecorator:
             (["board", "list"], "board", "list_boards"),
             (["project", "list"], "project", "list_projects"),
             (["goal", "list"], "goal", "list_goals"),
-            (["tasks", "activity"], "tasks", "list_tasks_activity"),
             (["project", "milestones"], "project", "list_milestones"),
             (["task", "comments", "t-1"], "task", "list_task_comments"),
         ],

@@ -221,18 +221,55 @@ class TestMentionables:
         client.list_board_mentionables.assert_not_called()
 
 
-class TestWorkspaceActivitySince:
-    def test_updated_since_reaches_the_feed(self, runner: CliRunner, client: MagicMock) -> None:
-        from dailybot_cli.api_client import PaginatedResult
+class TestWorkspaceActivityWire:
+    """GET /v1/tasks/activity/ refuses undeclared params (API 8cf13e095); exact wire."""
 
-        client.list_tasks_activity.return_value = PaginatedResult(
-            results=[], count=0, next=None, previous=None
-        )
-        result = _invoke(
-            runner,
-            client,
-            ["tasks", "activity", "--updated-since", "2026-09-25T09:00:00Z", "--json"],
-        )
+    def _sent(self, runner: CliRunner, argv: list[str]) -> dict[str, Any]:
+        real: DailyBotClient = DailyBotClient(api_url=API_URL, token="test-token")
+        envelope: dict[str, Any] = {"count": 0, "next": None, "previous": None, "results": []}
+        with patch("dailybot_cli.api_client.httpx.get", return_value=_response(envelope)) as get:
+            result = _invoke(runner, real, ["tasks", "activity", *argv, "--json"])
         assert result.exit_code == 0, result.output
-        params: dict[str, Any] = client.list_tasks_activity.call_args.kwargs["params"]
-        assert params["updated_since"].startswith("2026-09-25T09:00:00")
+        assert get.call_args.args[0] == f"{BASE}activity/"
+        return dict(get.call_args.kwargs.get("params") or {})
+
+    def test_since_and_until_are_iso_datetimes(self, runner: CliRunner) -> None:
+        params = self._sent(
+            runner, ["--since", "2026-09-20T00:00:00Z", "--until", "2026-09-21T00:00:00Z"]
+        )
+        assert params["since"].startswith("2026-09-20T00:00:00")
+        assert params["until"].startswith("2026-09-21T00:00:00")
+        assert "start_date" not in params and "end_date" not in params
+
+    def test_the_old_updated_since_sends_since(self, runner: CliRunner) -> None:
+        params = self._sent(runner, ["--updated-since", "2026-09-25T09:00:00Z"])
+        assert params["since"].startswith("2026-09-25T09:00:00")
+        assert "updated_since" not in params
+
+    def test_a_date_becomes_a_whole_day_window(self, runner: CliRunner) -> None:
+        params = self._sent(runner, ["--date", "2026-09-20"])
+        assert params == {"since": "2026-09-20T00:00:00Z", "until": "2026-09-20T23:59:59Z"}
+
+    def test_the_declared_filters_are_sent(self, runner: CliRunner) -> None:
+        params = self._sent(
+            runner,
+            [
+                "--type", "task.moved", "--actor", "u-1", "--project", "p-1",
+                "--board", "b-1", "--task", "t-1",
+            ],
+        )  # fmt: skip
+        assert params == {
+            "type": "task.moved",
+            "actor": "u-1",
+            "project": "p-1",
+            "board": "b-1",
+            "task": "t-1",
+        }
+
+    def test_no_flag_sends_no_filter(self, runner: CliRunner) -> None:
+        assert self._sent(runner, []) == {}
+
+    def test_search_is_no_longer_offered(self, runner: CliRunner) -> None:
+        output: str = runner.invoke(cli, ["tasks", "activity", "--help"]).output
+        assert "--search" not in output
+        assert "--all" not in output  # one page per call, stated in the help

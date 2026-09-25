@@ -875,7 +875,7 @@ humans who own them.
 | `dailybot tasks status` | Workspace pulse in one request — counts, your unread inbox, projects, what needs attention, recent activity, goal progress |
 | `dailybot tasks entitlements` | What the plan allows (board limit, Labels); always answers 200 |
 | `dailybot tasks search -q <text>` | Search tasks, boards and projects |
-| `dailybot tasks activity` | Activity feed — the catch-up read after an absence |
+| `dailybot tasks activity` | Activity feed, one page per call — filter by time (`--since`/`--until`, `--today`, `--last-week`) and `--type`, `--actor`, `--project`, `--board`, `--task` |
 | `dailybot tasks timeline` | Dated view of the workspace |
 | `dailybot tasks changes <board>` | What changed since a cursor (`--cursor`, or `--updated-since <iso>`). **One read per call**; exits 9 if the cursor expired (`--resync` re-snapshots) |
 | `dailybot tasks inbox` | Your Tasks notifications — **needs `dailybot login`** |

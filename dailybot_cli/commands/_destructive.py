@@ -18,6 +18,7 @@ from collections.abc import Callable
 from typing import Any
 
 import click
+from rich.markup import escape
 
 from dailybot_cli.api_client import APIError
 from dailybot_cli.commands.public_api_helpers import (
@@ -117,7 +118,10 @@ def confirm_without_preview(
         if json_mode:
             emit_json({"dry_run": True, "consequence": consequence, "previewed_by": "client"})
         else:
-            console.print(f"[bold]Dry run[/bold] — nothing was changed. Would: {consequence}")
+            # The sentence embeds caller-supplied ids, so it is data for Rich, never markup.
+            console.print(
+                f"[bold]Dry run[/bold] — nothing was changed. Would: {escape(consequence)}"
+            )
         return False
     if assume_yes:
         return True

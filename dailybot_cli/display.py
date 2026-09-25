@@ -1637,14 +1637,29 @@ def print_board_snapshot(snapshot: dict[str, Any]) -> None:
     copyably, and next to the command that consumes it.
     """
     groups: Any = snapshot.get("groups") or []
-    table: Table = Table(title="Board snapshot")
+    board: Any = snapshot.get("board") if isinstance(snapshot.get("board"), dict) else {}
+    title: str = "Board snapshot"
+    if board.get("key"):
+        title = f"Board snapshot — {escape(str(board.get('key')))}"
+    table: Table = Table(title=title)
     table.add_column("Column", style="cyan", no_wrap=True)
+    table.add_column("Category", no_wrap=True)
     table.add_column("Tasks", justify="right", no_wrap=True)
     for group in groups:
         if not isinstance(group, dict):
             continue
         items: Any = group.get("tasks") or []
-        table.add_row(present_untrusted(group.get("name"), limit=24), str(len(items)))
+        shown: int = len(items) if isinstance(items, list) else 0
+        # `task_count` is the column's true total; the page carries at most 50 cards.
+        total: Any = group.get("task_count")
+        count: str = str(total if isinstance(total, int) else shown)
+        if group.get("has_more") and isinstance(total, int) and total > shown:
+            count += f" (+{total - shown} more)"
+        table.add_row(
+            present_untrusted(group.get("name"), limit=24),
+            escape(str(group.get("category") or "")),
+            count,
+        )
     console.print(table)
     cursor: Any = snapshot.get("delta_cursor")
     if cursor:

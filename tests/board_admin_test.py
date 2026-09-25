@@ -603,3 +603,45 @@ def test_stdin_fixture_is_text() -> None:
     # Guard for the `-f -` path: click.File("r") reads text, so a JSON array
     # arrives as a str the loader can parse.
     assert json.load(io.StringIO(TestBoardViewSave.VIEWS))[0]["name"] == "Mine"
+
+
+def test_a_client_side_dry_run_never_treats_ids_as_markup() -> None:
+    # Found by the Final Review: the consequence sentence embeds caller-supplied
+    # ids, and a bracketed id used to reach Rich as markup.
+    client: MagicMock = MagicMock(spec=DailyBotClient)
+    with (
+        patch("dailybot_cli.commands.board.require_auth", return_value=client),
+        patch("dailybot_cli.commands.board.get_token", return_value="tok"),
+    ):
+        result = CliRunner().invoke(
+            cli, ["board", "member", "remove", "[bold]b[/bold]", "[red]u", "--dry-run"]
+        )
+    assert result.exit_code == 0, result.output
+    assert "[bold]b[/bold]" in result.output
+    assert "[red]u" in result.output
+
+
+class TestSnapshotRendering:
+    """The BoardSnapshot shape: groups[] with task_count (true total) and has_more."""
+
+    SNAPSHOT: dict[str, Any] = {  # noqa: RUF012
+        "board": {"uuid": BOARD, "key": "ENG", "name": "Engineering"},
+        "generated_at": "2026-09-25T15:00:00Z",
+        "delta_cursor": "2026-09-25T15:00:00Z",
+        "group_by": "state",
+        "groups": [
+            {"key": "s-1", "name": "Doing", "category": "in_progress", "task_count": 2,
+             "has_more": False, "tasks": [{"key": "ENG-1"}, {"key": "ENG-2"}]},
+            {"key": "s-2", "name": "Done", "category": "done", "task_count": 73,
+             "has_more": True, "tasks": [{"key": f"ENG-{i}"} for i in range(50)]},
+        ],
+    }  # fmt: skip
+
+    def test_true_totals_and_more(self, runner: CliRunner, client: MagicMock) -> None:
+        client.get_board_snapshot.return_value = self.SNAPSHOT
+        result = _invoke(runner, client, ["board", "snapshot", BOARD])
+        assert result.exit_code == 0, result.output
+        assert "ENG" in result.output
+        assert "73 (+23 more)" in result.output
+        assert "in_progress" in result.output
+        assert "2026-09-25T15:00:00Z" in result.output
