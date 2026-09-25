@@ -9,6 +9,157 @@ Do not edit it by hand — your edits will be overwritten on the next release.
 
 <!-- version list -->
 
+## v3.14.0 (2026-09-25)
+
+### Bug Fixes
+
+- **cli**: Address AI review round 1 on the Tasks PR
+  ([#94](https://github.com/DailybotHQ/cli/pull/94),
+  [`bf676c1`](https://github.com/DailybotHQ/cli/commit/bf676c1c8ef40aaea584d52a7cff5994b3275e82))
+
+- **cli**: Address AI review round 2 on the Tasks PR
+  ([#94](https://github.com/DailybotHQ/cli/pull/94),
+  [`bf676c1`](https://github.com/DailybotHQ/cli/commit/bf676c1c8ef40aaea584d52a7cff5994b3275e82))
+
+- **cli**: Address AI review round 3 on the Tasks PR
+  ([#94](https://github.com/DailybotHQ/cli/pull/94),
+  [`bf676c1`](https://github.com/DailybotHQ/cli/commit/bf676c1c8ef40aaea584d52a7cff5994b3275e82))
+
+- **cli**: Harden Tasks against path injection, terminal escapes and key misuse
+  ([#94](https://github.com/DailybotHQ/cli/pull/94),
+  [`bf676c1`](https://github.com/DailybotHQ/cli/commit/bf676c1c8ef40aaea584d52a7cff5994b3275e82))
+
+- **cli**: Recognize a Tasks preview only by dry_run: true
+  ([#94](https://github.com/DailybotHQ/cli/pull/94),
+  [`bf676c1`](https://github.com/DailybotHQ/cli/commit/bf676c1c8ef40aaea584d52a7cff5994b3275e82))
+
+- **client**: Keep raw bodies free of the JSON Content-Type on the auth retry
+  ([#94](https://github.com/DailybotHQ/cli/pull/94),
+  [`bf676c1`](https://github.com/DailybotHQ/cli/commit/bf676c1c8ef40aaea584d52a7cff5994b3275e82))
+
+- **tasks**: Activity filters the API declares; snapshot shows true totals; escape dry-run ids
+  ([#94](https://github.com/DailybotHQ/cli/pull/94),
+  [`bf676c1`](https://github.com/DailybotHQ/cli/commit/bf676c1c8ef40aaea584d52a7cff5994b3275e82))
+
+- **tasks**: Correct five commands against the published write contract
+  ([#94](https://github.com/DailybotHQ/cli/pull/94),
+  [`bf676c1`](https://github.com/DailybotHQ/cli/commit/bf676c1c8ef40aaea584d52a7cff5994b3275e82))
+
+- **tasks**: Owner filter token is `unowned`; hint when a key lacks Tasks scopes
+  ([#94](https://github.com/DailybotHQ/cli/pull/94),
+  [`bf676c1`](https://github.com/DailybotHQ/cli/commit/bf676c1c8ef40aaea584d52a7cff5994b3275e82))
+
+- **tasks**: Progress reads as progress; goal and project detail show what matters
+  ([#94](https://github.com/DailybotHQ/cli/pull/94),
+  [`bf676c1`](https://github.com/DailybotHQ/cli/commit/bf676c1c8ef40aaea584d52a7cff5994b3275e82))
+
+- **tasks**: Safe attachment downloads; accurate idempotency reference (Final Review)
+  ([#94](https://github.com/DailybotHQ/cli/pull/94),
+  [`bf676c1`](https://github.com/DailybotHQ/cli/commit/bf676c1c8ef40aaea584d52a7cff5994b3275e82))
+
+- **tasks**: Tasks mine scopes and goal get match the API; activity --updated-since
+  ([#94](https://github.com/DailybotHQ/cli/pull/94),
+  [`bf676c1`](https://github.com/DailybotHQ/cli/commit/bf676c1c8ef40aaea584d52a7cff5994b3275e82))
+
+- **tasks**: Write and filter by owner, never assignee or executor
+  ([#94](https://github.com/DailybotHQ/cli/pull/94),
+  [`bf676c1`](https://github.com/DailybotHQ/cli/commit/bf676c1c8ef40aaea584d52a7cff5994b3275e82))
+
+### Chores
+
+- **docker**: Share primary agent volumes and keep Codex on login PATH
+  ([#94](https://github.com/DailybotHQ/cli/pull/94),
+  [`bf676c1`](https://github.com/DailybotHQ/cli/commit/bf676c1c8ef40aaea584d52a7cff5994b3275e82))
+
+### Code Style
+
+- **tests**: Ruff format the AI review fixes test ([#94](https://github.com/DailybotHQ/cli/pull/94),
+  [`bf676c1`](https://github.com/DailybotHQ/cli/commit/bf676c1c8ef40aaea584d52a7cff5994b3275e82))
+
+### Documentation
+
+- **security**: Attachment download boundary (exclusive create, no symlink follow, size cap)
+  ([#94](https://github.com/DailybotHQ/cli/pull/94),
+  [`bf676c1`](https://github.com/DailybotHQ/cli/commit/bf676c1c8ef40aaea584d52a7cff5994b3275e82))
+
+- **tasks**: Destructive-door, idempotency and pin conventions for new Tasks commands
+  ([#94](https://github.com/DailybotHQ/cli/pull/94),
+  [`bf676c1`](https://github.com/DailybotHQ/cli/commit/bf676c1c8ef40aaea584d52a7cff5994b3275e82))
+
+### Features
+
+- **cli**: Attachments on comments, projects and goals
+  ([#94](https://github.com/DailybotHQ/cli/pull/94),
+  [`bf676c1`](https://github.com/DailybotHQ/cli/commit/bf676c1c8ef40aaea584d52a7cff5994b3275e82))
+
+- **cli**: Board member add takes a whole team with --team
+  ([#94](https://github.com/DailybotHQ/cli/pull/94),
+  [`bf676c1`](https://github.com/DailybotHQ/cli/commit/bf676c1c8ef40aaea584d52a7cff5994b3275e82))
+
+- **cli**: Filter the Tasks inbox by mentions and event type
+  ([#94](https://github.com/DailybotHQ/cli/pull/94),
+  [`bf676c1`](https://github.com/DailybotHQ/cli/commit/bf676c1c8ef40aaea584d52a7cff5994b3275e82))
+
+- **display**: Show comment replies under their thread
+  ([#94](https://github.com/DailybotHQ/cli/pull/94),
+  [`bf676c1`](https://github.com/DailybotHQ/cli/commit/bf676c1c8ef40aaea584d52a7cff5994b3275e82))
+
+- **tasks**: Board administration — columns, members, labels, saved views
+  ([#94](https://github.com/DailybotHQ/cli/pull/94),
+  [`bf676c1`](https://github.com/DailybotHQ/cli/commit/bf676c1c8ef40aaea584d52a7cff5994b3275e82))
+
+- **tasks**: Board states, members, labels and views reads
+  ([#94](https://github.com/DailybotHQ/cli/pull/94),
+  [`bf676c1`](https://github.com/DailybotHQ/cli/commit/bf676c1c8ef40aaea584d52a7cff5994b3275e82))
+
+- **tasks**: Board update ([#94](https://github.com/DailybotHQ/cli/pull/94),
+  [`bf676c1`](https://github.com/DailybotHQ/cli/commit/bf676c1c8ef40aaea584d52a7cff5994b3275e82))
+
+- **tasks**: Catch-up surface — pulse bands, inbox read, activity cursor, mentions
+  ([#94](https://github.com/DailybotHQ/cli/pull/94),
+  [`bf676c1`](https://github.com/DailybotHQ/cli/commit/bf676c1c8ef40aaea584d52a7cff5994b3275e82))
+
+- **tasks**: Favorites and single saved views ([#94](https://github.com/DailybotHQ/cli/pull/94),
+  [`bf676c1`](https://github.com/DailybotHQ/cli/commit/bf676c1c8ef40aaea584d52a7cff5994b3275e82))
+
+- **tasks**: KEY-n addressing, --sort, board tasks and the Beta notice
+  ([#94](https://github.com/DailybotHQ/cli/pull/94),
+  [`bf676c1`](https://github.com/DailybotHQ/cli/commit/bf676c1c8ef40aaea584d52a7cff5994b3275e82))
+
+- **tasks**: Projects and goals reach web parity ([#94](https://github.com/DailybotHQ/cli/pull/94),
+  [`bf676c1`](https://github.com/DailybotHQ/cli/commit/bf676c1c8ef40aaea584d52a7cff5994b3275e82))
+
+- **tasks**: Task attachments with a hard credential boundary
+  ([#94](https://github.com/DailybotHQ/cli/pull/94),
+  [`bf676c1`](https://github.com/DailybotHQ/cli/commit/bf676c1c8ef40aaea584d52a7cff5994b3275e82))
+
+- **tasks**: Task bulk --dry-run, create --board, declared operations
+  ([#94](https://github.com/DailybotHQ/cli/pull/94),
+  [`bf676c1`](https://github.com/DailybotHQ/cli/commit/bf676c1c8ef40aaea584d52a7cff5994b3275e82))
+
+- **tasks**: Task children, duplicate, events and per-task activity
+  ([#94](https://github.com/DailybotHQ/cli/pull/94),
+  [`bf676c1`](https://github.com/DailybotHQ/cli/commit/bf676c1c8ef40aaea584d52a7cff5994b3275e82))
+
+- **tasks**: Task collaboration — comments, relations, participants, watch, mute
+  ([#94](https://github.com/DailybotHQ/cli/pull/94),
+  [`bf676c1`](https://github.com/DailybotHQ/cli/commit/bf676c1c8ef40aaea584d52a7cff5994b3275e82))
+
+- **tasks**: Task duplicate sends an Idempotency-Key
+  ([#94](https://github.com/DailybotHQ/cli/pull/94),
+  [`bf676c1`](https://github.com/DailybotHQ/cli/commit/bf676c1c8ef40aaea584d52a7cff5994b3275e82))
+
+- **tasks**: Tasks Beta — agent-first CLI parity with the web
+  ([#94](https://github.com/DailybotHQ/cli/pull/94),
+  [`bf676c1`](https://github.com/DailybotHQ/cli/commit/bf676c1c8ef40aaea584d52a7cff5994b3275e82))
+
+### Testing
+
+- **tasks**: Enforce the Beta ergonomics bar on every Tasks command
+  ([#94](https://github.com/DailybotHQ/cli/pull/94),
+  [`bf676c1`](https://github.com/DailybotHQ/cli/commit/bf676c1c8ef40aaea584d52a7cff5994b3275e82))
+
+
 ## v3.13.0 (2026-09-24)
 
 ### Bug Fixes
