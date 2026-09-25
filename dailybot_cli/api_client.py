@@ -3696,13 +3696,34 @@ class DailyBotClient:
         """GET /v1/tasks/me/tasks/counts/ — needs a signed-in person."""
         return self._tasks_read("me/tasks/counts/")
 
-    def list_tasks_inbox(self, **page: Any) -> PaginatedResult:
-        """GET /v1/tasks/inbox/ — needs a signed-in person."""
-        return self._tasks_list("inbox/", **page)
+    @staticmethod
+    def _inbox_filters(mentioned: bool | None, event_type: str | None) -> dict[str, Any]:
+        """The inbox filters both doors share; absent ones are not sent at all."""
+        params: dict[str, Any] = {}
+        if mentioned is not None:
+            params["mentioned"] = "true" if mentioned else "false"
+        if event_type:
+            params["type"] = event_type
+        return params
 
-    def get_tasks_inbox_unread_count(self) -> dict[str, Any]:
-        """GET /v1/tasks/inbox/unread-count/ — needs a signed-in person."""
-        return self._tasks_read("inbox/unread-count/")
+    def list_tasks_inbox(
+        self, *, mentioned: bool | None = None, event_type: str | None = None, **page: Any
+    ) -> PaginatedResult:
+        """GET /v1/tasks/inbox/ — needs a signed-in person.
+
+        `mentioned=True` keeps only the events where someone mentioned the caller;
+        `event_type` keeps one kind (AND). Both filter server-side, so `count` and
+        paging stay exact.
+        """
+        params: dict[str, Any] = self._inbox_filters(mentioned, event_type)
+        return self._tasks_list("inbox/", params=params or None, **page)
+
+    def get_tasks_inbox_unread_count(
+        self, *, mentioned: bool | None = None, event_type: str | None = None
+    ) -> dict[str, Any]:
+        """GET /v1/tasks/inbox/unread-count/ — needs a signed-in person; same filters as the list."""
+        params: dict[str, Any] = self._inbox_filters(mentioned, event_type)
+        return self._tasks_read("inbox/unread-count/", params=params or None)
 
     def get_labels_entitlement(self) -> dict[str, Any]:
         """GET /v1/labels/entitlement/ — org Labels feature flags for the caller."""

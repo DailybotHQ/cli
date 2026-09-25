@@ -604,8 +604,20 @@ def tasks_changes(
 # filtering — the failure mode that is worse than a refusal.
 @tasks.command("inbox")
 @paging_options
+@click.option(
+    "--mentioned",
+    is_flag=True,
+    default=False,
+    help="Only notifications where someone mentioned you.",
+)
+@click.option(
+    "--type",
+    "event_type",
+    default=None,
+    help="Only this kind of notification, e.g. task.owner_changed.",
+)
 @click.option("--json", "json_mode", is_flag=True, help="Emit machine-readable JSON to stdout.")
-def tasks_inbox(json_mode: bool, **flags: Any) -> None:
+def tasks_inbox(json_mode: bool, mentioned: bool, event_type: str | None, **flags: Any) -> None:
     """Show your Tasks notifications.
 
     \b
@@ -621,7 +633,8 @@ def tasks_inbox(json_mode: bool, **flags: Any) -> None:
     \b
     Examples:
       dailybot tasks inbox
-      dailybot tasks inbox --json
+      dailybot tasks inbox --mentioned --json
+      dailybot tasks inbox --type task.owner_changed
     """
     _require_person("tasks inbox", json_mode=json_mode)
     client = require_auth()
@@ -629,7 +642,9 @@ def tasks_inbox(json_mode: bool, **flags: Any) -> None:
         page: dict[str, Any] = _page_kwargs(**flags)
         page.pop("params", None)  # paging_options supplies no filter params
         with console.status("Reading your inbox..."):
-            result: PaginatedResult = client.list_tasks_inbox(**page)
+            result: PaginatedResult = client.list_tasks_inbox(
+                mentioned=True if mentioned else None, event_type=event_type, **page
+            )
     except ValueError as exc:
         raise click.BadParameter(str(exc)) from exc
     except APIError as exc:
@@ -652,20 +667,37 @@ def tasks_inbox(json_mode: bool, **flags: Any) -> None:
 
 
 @tasks.command("inbox-unread")
+@click.option(
+    "--mentioned",
+    is_flag=True,
+    default=False,
+    help="Only notifications where someone mentioned you.",
+)
+@click.option(
+    "--type",
+    "event_type",
+    default=None,
+    help="Only this kind of notification, e.g. task.owner_changed.",
+)
 @click.option("--json", "json_mode", is_flag=True, help="Emit machine-readable JSON to stdout.")
-def tasks_inbox_unread(json_mode: bool) -> None:
+def tasks_inbox_unread(json_mode: bool, mentioned: bool, event_type: str | None) -> None:
     """How many Tasks notifications you have not read. Needs `dailybot login`.
+
+    \b
+    The same filters as `tasks inbox`, so a badge counts exactly its tab's rows.
 
     \b
     Examples:
       dailybot tasks inbox-unread
-      dailybot tasks inbox-unread --json
+      dailybot tasks inbox-unread --mentioned --json
     """
     _require_person("tasks inbox-unread", json_mode=json_mode)
     client = require_auth()
     try:
         with console.status("Counting unread..."):
-            data: dict[str, Any] = client.get_tasks_inbox_unread_count()
+            data: dict[str, Any] = client.get_tasks_inbox_unread_count(
+                mentioned=True if mentioned else None, event_type=event_type
+            )
     except APIError as exc:
         exit_for_tasks_error(exc, json_mode, door="inbox/unread-count")
     if json_mode:

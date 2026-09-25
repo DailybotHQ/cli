@@ -127,6 +127,7 @@ tests/                       # pytest suite (file naming: *_test.py)
 ├── tasks_key_refusal_sweep_test.py # every admin / person-only door refuses a key pre-request
 ├── tasks_parent_attachments_test.py # attachments on comments, projects and goals
 ├── tasks_ai_review_fixes_test.py # AI review round 1: bulk preview shape, ETag grammar, ports, streamed download
+├── tasks_inbox_filters_test.py # inbox --mentioned / --type on the list and the unread badge
 ├── tasks_favorites_views_test.py # favorites + single saved views
 ├── tasks_ergonomics_sweep_test.py # the Beta ergonomics bar on every Tasks command
 ├── board_commands_test.py   # `board` group (reads + container writes)

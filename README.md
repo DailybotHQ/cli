@@ -884,8 +884,8 @@ humans who own them.
 | `dailybot tasks activity` | Activity feed, one page per call — filter by time (`--since`/`--until`, `--today`, `--last-week`) and `--type`, `--actor`, `--project`, `--board`, `--task` |
 | `dailybot tasks timeline` | Dated view of the workspace |
 | `dailybot tasks changes <board>` | What changed since a cursor (`--cursor`, or `--updated-since <iso>`). **One read per call**; exits 9 if the cursor expired (`--resync` re-snapshots) |
-| `dailybot tasks inbox` | Your Tasks notifications — **needs `dailybot login`** |
-| `dailybot tasks inbox-read <item>` · `inbox-read-all` · `inbox-unread` | Catch up on the inbox (reading an item also reads everything older) — **needs `dailybot login`** |
+| `dailybot tasks inbox` | Your Tasks notifications (`--mentioned` for mentions only, `--type <event>`) — **needs `dailybot login`** |
+| `dailybot tasks inbox-read <item>` · `inbox-read-all` · `inbox-unread` | Catch up on the inbox (reading an item also reads everything older). `inbox-unread` takes the same `--mentioned` / `--type` filters, so each badge matches its tab — **needs `dailybot login`** |
 | `dailybot tasks cursor [--now \| --set <time>]` | Your "read up to here" mark for the activity feed — **needs `dailybot login`** |
 | `dailybot tasks favorites` | Your pinned boards and saved views — **needs `dailybot login`** |
 | `dailybot tasks view get\|update\|delete\|star\|unstar <view>` | One saved view by uuid: read, edit (`--view-mode`, `--group-by`, `--filters-file`…), delete, pin — **needs `dailybot login`** |
