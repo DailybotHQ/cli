@@ -114,9 +114,8 @@ class TestTheSnapshotDeltaSeam:
 
 
 class TestDeferredDoors:
-    # `visit` is a signed exclusion (a UI ordering signal, not an agent act).
-    # `mentionables` lands with the inbox/catch-up surface; drop it from here then.
-    @pytest.mark.parametrize("sub", ["mentionables", "visit"])
+    # `visit` is a signed exclusion: a UI ordering signal, not an agent act.
+    @pytest.mark.parametrize("sub", ["visit"])
     def test_deferred_doors_are_not_built(self, runner: CliRunner, sub: str) -> None:
         # Recorded as deferred in the task log, not silently half-built.
         assert sub not in runner.invoke(cli, ["board", "--help"]).output

@@ -2264,9 +2264,39 @@ class DailyBotClient:
 
     # --- Workspace-level reads ---
 
-    def get_tasks_pulse(self) -> dict[str, Any]:
-        """GET /v1/tasks/pulse/ — the workspace snapshot an agent reads first."""
-        return self._tasks_read("pulse/")
+    def get_tasks_pulse(self, *, include: list[str] | None = None) -> dict[str, Any]:
+        """GET /v1/tasks/pulse/ — the workspace snapshot an agent reads first.
+
+        `include` asks for the extra bands (projects, attention, activity,
+        goal_progress) in the same single request.
+        """
+        params: dict[str, Any] | None = {"include": ",".join(include)} if include else None
+        return self._tasks_read("pulse/", params=params)
+
+    def mark_inbox_item_read(self, item_uuid: str) -> dict[str, Any]:
+        """POST /v1/tasks/inbox/<uuid>/read/ — person-only; marks it AND everything older."""
+        result: dict[str, Any] = self._tasks_write("POST", f"inbox/{item_uuid}/read/")
+        return result
+
+    def mark_inbox_read_all(self) -> dict[str, Any]:
+        """POST /v1/tasks/inbox/read-all/ — person-only."""
+        result: dict[str, Any] = self._tasks_write("POST", "inbox/read-all/")
+        return result
+
+    def get_activity_cursor(self) -> dict[str, Any]:
+        """GET /v1/tasks/me/activity-cursor/ — person-only; `last_seen_at` or null."""
+        return self._tasks_read("me/activity-cursor/")
+
+    def set_activity_cursor(self, last_seen_at: str) -> dict[str, Any]:
+        """PUT /v1/tasks/me/activity-cursor/ — person-only; "I have read up to here"."""
+        result: dict[str, Any] = self._tasks_write(
+            "PUT", "me/activity-cursor/", json={"last_seen_at": last_seen_at}
+        )
+        return result
+
+    def list_board_mentionables(self, board_uuid: str) -> Any:
+        """GET /v1/tasks/boards/<uuid>/mentionables/ — who this viewer may @mention."""
+        return self._tasks_read(f"boards/{board_uuid}/mentionables/")
 
     def get_tasks_entitlements(self) -> dict[str, Any]:
         """GET /v1/tasks/entitlements/ — never answers 402 by contract."""

@@ -55,6 +55,7 @@ tests/
 ├── tasks_commands_test.py         # `tasks` group: status/entitlements/search/activity/timeline
 ├── tasks_delta_test.py            # `tasks changes`: cursor lifecycle, window expiry
 ├── tasks_person_shaped_test.py    # inbox / mine / counts: person-only refusals
+├── tasks_catchup_test.py         # pulse bands, inbox read/unread, activity cursor, mentionables
 ├── task_commands_test.py          # `task` group: reads, writes, collaboration, bulk, archive
 ├── tasks_owner_wire_test.py      # owner vocabulary: exact query/body on the wire (P0 guard)
 ├── tasks_beta_ergonomics_test.py # KEY-n args, --sort, board tasks, --updated-since, exit codes, Beta

@@ -68,7 +68,8 @@ dailybot_cli/                # Source package
     │                        #   stop / dismiss (agent harness lifecycle hooks)
     ├── tasks.py             # `tasks` group: workspace-level — status / entitlements /
     │                        #   search / activity / timeline / changes (delta) /
-    │                        #   inbox / mine / counts (the last three need a person)
+    │                        #   inbox / inbox-read / inbox-read-all / inbox-unread / cursor /
+    │                        #   mine / counts (inbox, cursor, mine and counts need a person)
     ├── task.py              # `task` group: object-level — list / get / create / update /
     │                        #   move / set-owner / comment(s) / comment-edit / comment-delete /
     │                        #   link / relations / unlink / labels / participants / watch / mute /
@@ -110,6 +111,7 @@ tests/                       # pytest suite (file naming: *_test.py)
 ├── tasks_commands_test.py   # `tasks` group reads
 ├── tasks_delta_test.py      # `tasks changes` cursor lifecycle + window expiry
 ├── tasks_person_shaped_test.py  # person-only Tasks doors
+├── tasks_catchup_test.py    # pulse bands, inbox read, activity cursor, mentionables
 ├── task_commands_test.py    # `task` group (reads, writes, collaboration, bulk, archive)
 ├── tasks_owner_wire_test.py # owner vocabulary — exact wire (no assignee/executor)
 ├── tasks_beta_ergonomics_test.py # KEY-n, --sort, board tasks, exit codes, Beta notice

@@ -814,7 +814,7 @@ This is the most confusing thing about the family, so it is a table rather than 
 | comments, relations, labels, bulk | — | organization-scoped writes |
 | project & goal reads, `project updates`, `update-post` | — | organization-scoped |
 | milestones list / complete / reopen | — | organization-scoped |
-| — | `tasks mine`, `tasks counts`, `tasks inbox`, `me/recents`, `me/activity-cursor` | **person-shaped**: a key is an organization with nobody to be, so "my X" has no answer |
+| — | `tasks mine`, `tasks counts`, `tasks inbox` / `inbox-read` / `inbox-read-all` / `inbox-unread`, `tasks cursor`, `board mentionables` | **person-shaped**: a key is an organization with nobody to be, so "my X" has no answer |
 | — | `task participants add` / `remove`, `task watch` / `unwatch`, `task mute` / `unmute` | published policy: no key may change **who is notified** |
 | — | board **member** add / remove, all **project member** doors (list too), saved-view saves, board labels | published policy: no key may change or reveal **who can see**; views and label usage belong to a person |
 | — | `board create`, `project create`, `goal create` | need `tasks:admin`, which **cannot be stored on a key at all** |

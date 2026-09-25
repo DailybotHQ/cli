@@ -58,7 +58,10 @@ class TestStatus:
         client.get_tasks_pulse.return_value = {"open": 96, "overdue": 20, "blocked": 2}
         result = _invoke(runner, client, ["tasks", "status"])
         assert result.exit_code == 0
-        client.get_tasks_pulse.assert_called_once_with()
+        # One request, carrying every band the status view renders.
+        client.get_tasks_pulse.assert_called_once_with(
+            include=["projects", "attention", "activity", "goal_progress"]
+        )
 
     def test_json_mode_emits_the_raw_document(self, runner: CliRunner, client: MagicMock) -> None:
         client.get_tasks_pulse.return_value = {"open": 96, "scope": "viewer_visible"}

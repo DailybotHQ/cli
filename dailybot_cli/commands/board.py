@@ -361,6 +361,63 @@ def board_views(board_uuid: str, etag_only: bool, json_mode: bool) -> None:
         print_info(f"ETag: {etag} (pass it to `board view save --if-match`)")
 
 
+_MENTIONABLE_COLUMNS: list[tuple[str, str, bool]] = [
+    ("Name", "name", False),
+    ("Kind", "kind", True),
+    ("UUID", "uuid", True),
+    ("Mention as", "mention", True),
+]
+
+
+@board.command("mentionables")
+@click.argument("board_uuid", metavar="BOARD")
+@click.option(
+    "-q",
+    "--query",
+    default=None,
+    help="Only people whose name contains this text (case-insensitive).",
+)
+@click.option("--json", "json_mode", is_flag=True, help="Emit machine-readable JSON to stdout.")
+def board_mentionables(board_uuid: str, query: str | None, json_mode: bool) -> None:
+    """Who you can @mention on this board, with the token to write. Needs `dailybot login`.
+
+    \b
+    Resolve a name to a uuid here, then write `<@DB@{uuid}>` in a comment or a project
+    update to mention that person.
+
+    \b
+    Examples:
+      dailybot board mentionables <board-uuid> -q jane
+      dailybot board mentionables <board-uuid> --json
+    """
+    _require_person(
+        "board mentionables",
+        "answers who THIS viewer may address, and an organization API key is nobody.",
+        json_mode=json_mode,
+    )
+    client = require_auth()
+    try:
+        with console.status("Reading who you can mention..."):
+            data: Any = client.list_board_mentionables(board_uuid)
+    except APIError as exc:
+        exit_for_tasks_error(exc, json_mode)
+    rows: list[dict[str, Any]] = rows_of(data)
+    if query:
+        wanted: str = query.casefold()
+        rows = [row for row in rows if wanted in str(row.get("name", "")).casefold()]
+    if json_mode:
+        # Unfiltered: the server's payload as-is. Filtered: the matching rows, as a list.
+        emit_json(rows if query else data)
+        return
+    shown: list[dict[str, Any]] = [
+        {**row, "mention": f"<@DB@{row['uuid']}>"}
+        if row.get("uuid") and row.get("kind") in (None, "user")
+        else row
+        for row in rows
+    ]
+    print_tasks_rows("Mentionable", shown, _MENTIONABLE_COLUMNS, empty="Nobody matches.")
+
+
 # ---------------------------------------------------------------------------
 # Columns (workflow states)
 # ---------------------------------------------------------------------------

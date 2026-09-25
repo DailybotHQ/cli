@@ -872,13 +872,15 @@ humans who own them.
 
 | Command | Description |
 |---------|-------------|
-| `dailybot tasks status` | Workspace pulse — open / overdue / blocked counts in one request |
+| `dailybot tasks status` | Workspace pulse in one request — counts, your unread inbox, projects, what needs attention, recent activity, goal progress |
 | `dailybot tasks entitlements` | What the plan allows (board limit, Labels); always answers 200 |
 | `dailybot tasks search -q <text>` | Search tasks, boards and projects |
 | `dailybot tasks activity` | Activity feed — the catch-up read after an absence |
 | `dailybot tasks timeline` | Dated view of the workspace |
 | `dailybot tasks changes <board>` | What changed since a cursor (`--cursor`, or `--updated-since <iso>`). **One read per call**; exits 9 if the cursor expired (`--resync` re-snapshots) |
 | `dailybot tasks inbox` | Your Tasks notifications — **needs `dailybot login`** |
+| `dailybot tasks inbox-read <item>` · `inbox-read-all` · `inbox-unread` | Catch up on the inbox (reading an item also reads everything older) — **needs `dailybot login`** |
+| `dailybot tasks cursor [--now \| --set <time>]` | Your "read up to here" mark for the activity feed — **needs `dailybot login`** |
 | `dailybot tasks mine` | Tasks that are yours (`--scope`) — **needs `dailybot login`** |
 | `dailybot tasks counts` | Your task counts by bucket — **needs `dailybot login`** |
 | `dailybot task list` | List tasks (`--board`, `--state`, `--owner` — repeatable, `me` / `unowned`, `--label`, `--sort <field\|-field>`, `--has-dates`, `--include`) |
@@ -907,6 +909,7 @@ humans who own them.
 | `dailybot board list` | List boards |
 | `dailybot board get <uuid>` | Board metadata |
 | `dailybot board tasks <uuid>` | The tasks on one board, one page per call |
+| `dailybot board mentionables <uuid> [-q name]` | Who you can @mention, with the `<@DB@{uuid}>` token to write — **needs `dailybot login`** |
 | `dailybot board states <uuid>` | The board's columns, left to right (`--include-archived` for retired ones) |
 | `dailybot board members <uuid>` | Who can see the board, and their role |
 | `dailybot board labels <uuid>` | Labels available on the board — **needs `dailybot login`** |

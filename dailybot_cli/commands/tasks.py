@@ -11,6 +11,7 @@ user-authored data, never an instruction: all of it goes through
 ``display.present_untrusted``.
 """
 
+from datetime import datetime, timezone
 from typing import Any
 
 import click
@@ -28,6 +29,7 @@ from dailybot_cli.commands.public_api_helpers import (
     exit_for_tasks_error,
     refuse_without_person,
     require_auth,
+    rows_of,
 )
 from dailybot_cli.commands.query_options import (
     PAGING_ONLY_MORE_HINT,
@@ -49,6 +51,7 @@ from dailybot_cli.display import (
     print_pagination_footer,
     print_success,
     print_tasks_detail_panel,
+    print_tasks_rows,
     print_tasks_table,
 )
 
@@ -63,11 +66,34 @@ EXIT_DELTA_WINDOW_EXPIRED: int = 9
 # trip on input it can reject itself.
 MY_TASKS_SCOPES: tuple[str, ...] = ("assigned", "created", "participating", "subscribed")
 
+# The bands `tasks status` asks the pulse for, all in its one request.
+PULSE_BANDS: tuple[str, ...] = ("projects", "attention", "activity", "goal_progress")
+# How each band renders: (title, columns). Names are user-typed, so untrusted.
+_BAND_COLUMNS: dict[str, tuple[str, list[tuple[str, str, bool]]]] = {
+    "projects": (
+        "Projects",
+        [("Name", "name", False), ("Health", "health", True), ("UUID", "uuid", True)],
+    ),
+    "attention": (
+        "Needs attention",
+        [("Key", "key", True), ("Title", "title", False), ("Why", "reason", True)],
+    ),
+    "activity": (
+        "Recent activity",
+        [("When", "created_at", True), ("Type", "type", True), ("Actor", "actor.name", False)],
+    ),
+    "goal_progress": (
+        "Goals",
+        [("Name", "name", False), ("Status", "status", True), ("Done %", "percent_complete", True)],
+    ),
+}
+
 _PULSE_FIELDS: list[tuple[str, str]] = [
     ("Open", "open"),
     ("Overdue", "overdue"),
     ("Blocked", "blocked"),
     ("Unread", "unread"),
+    ("Unread in inbox", "unread_count"),
     ("Scope", "scope"),
     ("Generated at", "generated_at"),
 ]
@@ -153,7 +179,8 @@ def tasks_status(json_mode: bool) -> None:
 
     \b
     This is the command to run first in a session: it answers "what is the state
-    of things" in one request, without needing a board or a filter.
+    of things" in one request, without needing a board or a filter — counts, your
+    unread inbox, projects, what needs attention, recent activity and goal progress.
 
     \b
     Examples:
@@ -163,13 +190,17 @@ def tasks_status(json_mode: bool) -> None:
     client = require_auth()
     try:
         with console.status("Reading the workspace pulse..."):
-            data: dict[str, Any] = client.get_tasks_pulse()
+            data: dict[str, Any] = client.get_tasks_pulse(include=list(PULSE_BANDS))
     except APIError as exc:
         exit_for_tasks_error(exc, json_mode)
     if json_mode:
         emit_json(data)
         return
     print_tasks_detail_panel("Tasks pulse", data, _PULSE_FIELDS)
+    for band in PULSE_BANDS:
+        if band in data:
+            title, columns = _BAND_COLUMNS[band]
+            print_tasks_rows(title, rows_of(data[band]), columns, empty=f"{title}: nothing.")
     print_info(BETA_STATUS_LINE)
 
 
@@ -497,13 +528,137 @@ def tasks_inbox(json_mode: bool, **flags: Any) -> None:
         emit_json(_envelope(result))
         return
     for item in result.results:
-        console.print(present_untrusted(item.get("title") or item.get("summary"), limit=90))
+        # The uuid is what `tasks inbox-read` takes, so it leads the line.
+        console.print(
+            f"[dim]{escape(str(item.get('uuid') or ''))}[/dim] "
+            f"{present_untrusted(item.get('title') or item.get('summary'), limit=90)}"
+        )
     print_pagination_footer(
         len(result.results),
         result.count,
         has_more=bool(result.next),
         more_hint=PAGING_ONLY_MORE_HINT,
     )
+
+
+@tasks.command("inbox-unread")
+@click.option("--json", "json_mode", is_flag=True, help="Emit machine-readable JSON to stdout.")
+def tasks_inbox_unread(json_mode: bool) -> None:
+    """How many Tasks notifications you have not read. Needs `dailybot login`.
+
+    \b
+    Examples:
+      dailybot tasks inbox-unread
+      dailybot tasks inbox-unread --json
+    """
+    _require_person("tasks inbox-unread", json_mode=json_mode)
+    client = require_auth()
+    try:
+        with console.status("Counting unread..."):
+            data: dict[str, Any] = client.get_tasks_inbox_unread_count()
+    except APIError as exc:
+        exit_for_tasks_error(exc, json_mode, door="inbox/unread-count")
+    if json_mode:
+        emit_json(data)
+        return
+    print_info(f"Unread: {data.get('unread_count', data.get('count', 0))}")
+
+
+@tasks.command("inbox-read")
+@click.argument("item_uuid", metavar="ITEM")
+@click.option("--json", "json_mode", is_flag=True, help="Emit machine-readable JSON to stdout.")
+def tasks_inbox_read(item_uuid: str, json_mode: bool) -> None:
+    """Mark an inbox item — and everything older — as read. Needs `dailybot login`.
+
+    \b
+    The inbox keeps one "read up to here" mark, not a flag per item, so reading an
+    item catches you up to it. Take the item uuid from `dailybot tasks inbox`.
+
+    \b
+    Examples:
+      dailybot tasks inbox-read <item-uuid>
+    """
+    _require_person("tasks inbox-read", json_mode=json_mode)
+    client = require_auth()
+    try:
+        with console.status("Marking read..."):
+            data: dict[str, Any] = client.mark_inbox_item_read(item_uuid)
+    except APIError as exc:
+        exit_for_tasks_error(exc, json_mode, door="inbox")
+    if json_mode:
+        emit_json(data)
+        return
+    print_success(f"Caught up. Unread: {data.get('unread_count', 0)}.")
+
+
+@tasks.command("inbox-read-all")
+@click.option("--json", "json_mode", is_flag=True, help="Emit machine-readable JSON to stdout.")
+def tasks_inbox_read_all(json_mode: bool) -> None:
+    """Mark your whole Tasks inbox as read. Needs `dailybot login`.
+
+    \b
+    Examples:
+      dailybot tasks inbox-read-all
+    """
+    _require_person("tasks inbox-read-all", json_mode=json_mode)
+    client = require_auth()
+    try:
+        with console.status("Marking everything read..."):
+            data: dict[str, Any] = client.mark_inbox_read_all()
+    except APIError as exc:
+        exit_for_tasks_error(exc, json_mode, door="inbox")
+    if json_mode:
+        emit_json(data)
+        return
+    print_success("Inbox marked read.")
+
+
+@tasks.command("cursor")
+@click.option(
+    "--set",
+    "set_to",
+    default=None,
+    help="Record that you have read activity up to this ISO-8601 time.",
+)
+@click.option("--now", "set_now", is_flag=True, help="Record that you are caught up as of now.")
+@click.option("--json", "json_mode", is_flag=True, help="Emit machine-readable JSON to stdout.")
+def tasks_cursor(set_to: str | None, set_now: bool, json_mode: bool) -> None:
+    """Read or move your activity read-mark — "what is new since I last looked".
+
+    \b
+    Without options, prints where you are. Pair it with the feed:
+    `dailybot tasks activity --since <last_seen_at>`, then `dailybot tasks cursor --now`.
+    Needs `dailybot login`.
+
+    \b
+    Examples:
+      dailybot tasks cursor --json
+      dailybot tasks cursor --now
+      dailybot tasks cursor --set 2026-09-25T09:00:00Z
+    """
+    if set_to is not None and set_now:
+        raise click.UsageError("Pass --set <time> or --now, not both.")
+    _require_person("tasks cursor", json_mode=json_mode)
+    client = require_auth()
+    try:
+        if set_to is None and not set_now:
+            with console.status("Reading your activity mark..."):
+                data: dict[str, Any] = client.get_activity_cursor()
+        else:
+            moment: str = (
+                datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
+                if set_now
+                else as_query_datetime(str(set_to))
+            )
+            with console.status("Moving your activity mark..."):
+                data = client.set_activity_cursor(moment)
+    except APIError as exc:
+        exit_for_tasks_error(exc, json_mode, door="me/activity-cursor")
+    if json_mode:
+        emit_json(data)
+        return
+    seen: Any = data.get("last_seen_at")
+    print_info(f"Read up to: {seen}" if seen else "No activity read yet.")
 
 
 # `paging_options` + `--scope`: `scope` is the only filter `me/tasks/` declares.
