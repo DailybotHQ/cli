@@ -83,3 +83,29 @@ class TestCommands:
         kwargs: dict[str, Any] = client.get_tasks_inbox_unread_count.call_args.kwargs
         assert kwargs["event_type"] == "task.owner_changed"
         assert kwargs["mentioned"] is None
+
+
+class TestCommentReplies:
+    """The comment list now carries `parent_comment`: replies render under their thread."""
+
+    def test_a_reply_is_marked_and_a_top_level_comment_is_not(self) -> None:
+        from rich.console import Console
+
+        from dailybot_cli import display
+
+        buffer: Console = Console(record=True, width=200, color_system=None)
+        comments: list[dict[str, Any]] = [
+            {"uuid": "c-1", "author": {"full_name": "Jane Doe"}, "body": "Root"},
+            {
+                "uuid": "c-2",
+                "author": {"full_name": "John Roe"},
+                "body": "Reply",
+                "parent_comment": "c-1",
+            },
+        ]
+        with patch.object(display, "console", buffer):
+            display.print_task_comments(comments)
+        lines: list[str] = [line for line in buffer.export_text().splitlines() if line.strip()]
+        assert not lines[0].lstrip().startswith("↳")
+        assert lines[1].lstrip().startswith("↳")
+        assert "Reply" in lines[1]
