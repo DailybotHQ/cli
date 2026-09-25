@@ -883,13 +883,13 @@ humans who own them.
 | `dailybot tasks counts` | Your task counts by bucket — **needs `dailybot login`** |
 | `dailybot task list` | List tasks (`--board`, `--state`, `--owner` — repeatable, `me` / `unowned`, `--label`, `--sort <field\|-field>`, `--has-dates`, `--include`) |
 | `dailybot task get <task>` | Show one task — every `<task>` accepts a key (`ENG-142`) or a uuid |
-| `dailybot task create --title <t>` | Create a task (`--owner <user\|me>`); sends an idempotency key so a retry cannot duplicate |
-| `dailybot task update <uuid>` | Change fields — partial update, never an overwrite |
-| `dailybot task move <uuid>` | Move to another column (`--state`) or board (`--board`) |
+| `dailybot task create --title <t>` | Create a task (`--owner <user\|me>`, `--priority 1-5`); sends an idempotency key so a retry cannot duplicate |
+| `dailybot task update <task>` | Change fields — partial update, never an overwrite (`--priority` is 1 urgent … 5 none) |
+| `dailybot task move <task>` | Move to another column (`--state` takes a name, a category like `done`, or a uuid) or board (`--board`) |
 | `dailybot task set-owner <task> <user\|me>` | Set the task's owner — the accountable person (`task assign --to` still works, deprecated) |
 | `dailybot task comment <uuid> <body>` | Comment (`-` reads the body from stdin) |
 | `dailybot task comments <uuid>` | List a task's comments |
-| `dailybot task link <a> <b> --type <rel>` | Relate two tasks |
+| `dailybot task link <a> <b> --type <rel>` | Relate two tasks (`blocks`, `relates_to`, `duplicates`) |
 | `dailybot task labels <uuid> --mode add\|remove\|replace` | Change a task's labels |
 | `dailybot task participants add <uuid> --user <u>` | Add a participant — **needs `dailybot login`** |
 | `dailybot task archive <uuid>` | Archive a task. Previews the consequence first; reversible |
@@ -923,7 +923,7 @@ humans who own them.
 | `dailybot project archive <uuid>` | Archive a project |
 | `dailybot goal list` | List goals (`--include` is repeatable: `--include progress --include projects`) |
 | `dailybot goal get <uuid>` | Show one goal |
-| `dailybot goal create --name <n>` | Create a goal — **needs `dailybot login`** |
+| `dailybot goal create --name <n> --period-start <d> --period-end <d>` | Create a goal (a dated commitment) — **needs `dailybot login`** |
 | `dailybot goal archive <uuid>` | Archive a goal (its projects are not archived) |
 
 **Three things worth knowing before you script against this:**

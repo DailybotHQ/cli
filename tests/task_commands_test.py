@@ -248,9 +248,14 @@ class TestTaskUpdate:
 
 class TestTaskMoveAndAssign:
     def test_move_to_a_state_uses_the_move_door(self, runner: CliRunner, client: MagicMock) -> None:
+        # A column name is resolved to its uuid against the task's board first.
+        client.get_task.return_value = {"uuid": "t-1", "board": "b-1"}
+        client.list_board_states.return_value = [
+            {"uuid": "s-done", "name": "Done", "category": "done", "position": 3}
+        ]
         client.move_task.return_value = {"uuid": "t-1", "_idempotency_replayed": False}
         _invoke(runner, client, ["task", "move", "t-1", "--state", "done"])
-        assert client.move_task.call_args[1]["state"] == "done"
+        assert client.move_task.call_args[1]["state"] == "s-done"
 
     def test_assign_alias_writes_owner(self, runner: CliRunner, client: MagicMock) -> None:
         # `executor` is read-only on the wire; the accountable person is `owner`.

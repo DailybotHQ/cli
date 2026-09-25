@@ -53,7 +53,12 @@ CAPABILITIES: list[tuple[int, str, list[str], str]] = [
     (6, "task get", ["task", "get", "t-1"], "get_task"),
     (7, "task create", ["task", "create", "--title", "x"], "create_task"),
     (8, "task update", ["task", "update", "t-1", "--title", "y"], "update_task"),
-    (9, "task move", ["task", "move", "t-1", "--state", "done"], "move_task"),
+    (
+        9,
+        "task move",
+        ["task", "move", "t-1", "--state", "0b9c7a52-6a7e-4d43-9d0b-1f5f0e7c2a10"],
+        "move_task",
+    ),
     (10, "task assign", ["task", "assign", "t-1", "--to", "u-1"], "update_task"),
     (11, "task comment", ["task", "comment", "t-1", "hi"], "comment_on_task"),
     (12, "task link", ["task", "link", "t-1", "t-2", "--type", "blocks"], "relate_tasks"),
@@ -260,7 +265,21 @@ PERSON_ONLY: list[tuple[list[str], str, str, int]] = [
     (["tasks", "counts"], "tasks", "tasks", 3),
     (["board", "create", "--name", "x"], "board", "board", 4),
     (["project", "create", "--name", "x"], "project", "project", 4),
-    (["goal", "create", "--name", "x"], "goal", "project", 4),
+    (
+        [
+            "goal",
+            "create",
+            "--name",
+            "x",
+            "--period-start",
+            "2026-10-01",
+            "--period-end",
+            "2026-12-31",
+        ],
+        "goal",
+        "project",
+        4,
+    ),
 ]
 
 

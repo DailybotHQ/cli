@@ -25,6 +25,7 @@ from dailybot_cli.main import cli
 API_URL: str = "http://test-api.example.com"
 README_PATH: Path = Path(__file__).resolve().parent.parent / "README.md"
 TASK_KEY: str = "ENG-142"
+STATE_UUID: str = "0b9c7a52-6a7e-4d43-9d0b-1f5f0e7c2a10"
 
 # The canonical Beta copy, as product ships it (Markdown).
 CANONICAL_BETA: str = (
@@ -64,7 +65,7 @@ def _plain(text: str) -> str:
 KEY_CASES: list[tuple[list[str], str]] = [
     (["task", "get", TASK_KEY], "get_task"),
     (["task", "update", TASK_KEY, "--title", "x"], "update_task"),
-    (["task", "move", TASK_KEY, "--state", "done"], "move_task"),
+    (["task", "move", TASK_KEY, "--state", STATE_UUID], "move_task"),
     (["task", "set-owner", TASK_KEY, "me"], "update_task"),
     (["task", "comment", TASK_KEY, "hello"], "comment_on_task"),
     (["task", "comments", TASK_KEY], "list_task_comments"),

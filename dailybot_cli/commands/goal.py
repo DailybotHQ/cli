@@ -1,5 +1,6 @@
 """Goal commands (``/v1/tasks/goals/*``)."""
 
+from datetime import datetime
 from typing import Any
 
 import click
@@ -132,26 +133,63 @@ def goal_get(goal_uuid: str, include: tuple[str, ...], json_mode: bool) -> None:
             print_projects_table(projects, rollup=render_rollup)
 
 
+# Goals are dated commitments: the contract requires both ends of the period.
+GOAL_DATE_FORMAT: str = "%Y-%m-%d"
+
+
 @goal.command("create")
 @click.option("-n", "--name", required=True, help="Goal name.")
+@click.option(
+    "--period-start",
+    type=click.DateTime(formats=[GOAL_DATE_FORMAT]),
+    required=True,
+    help="First day of the goal's period (YYYY-MM-DD).",
+)
+@click.option(
+    "--period-end",
+    type=click.DateTime(formats=[GOAL_DATE_FORMAT]),
+    required=True,
+    help="Last day of the goal's period (YYYY-MM-DD).",
+)
 @click.option("-d", "--description", default=None, help="Goal description.")
+@click.option("--owner", default=None, help="Accountable person (user uuid).")
+@click.option("--team", default=None, help="Team the goal belongs to (uuid).")
 @click.option("--idempotency-key", default=None, help="Reuse a key to make a retry safe.")
 @click.option("--json", "json_mode", is_flag=True, help="Emit machine-readable JSON to stdout.")
 def goal_create(
-    name: str, description: str | None, idempotency_key: str | None, json_mode: bool
+    name: str,
+    period_start: datetime,
+    period_end: datetime,
+    description: str | None,
+    owner: str | None,
+    team: str | None,
+    idempotency_key: str | None,
+    json_mode: bool,
 ) -> None:
     """Create a goal. Needs a signed-in person.
 
     \b
+    A goal is a dated commitment, so both ends of its period are required. It starts
+    as `not_started`; declare its status later with `dailybot goal update --status`.
+
+    \b
     Examples:
-      dailybot goal create --name "Q4 reliability"
+      dailybot goal create -n "Q4 reliability" --period-start 2026-10-01 --period-end 2026-12-31
     """
+    if period_end < period_start:
+        raise click.UsageError("--period-end is before --period-start.")
     _require_person_for_admin("goal create", json_mode=json_mode)
     client = require_auth()
     try:
         with console.status("Creating the goal..."):
             data: dict[str, Any] = client.create_goal(
-                name=name, description=description, idempotency_key=idempotency_key
+                name=name,
+                period_start=period_start.strftime(GOAL_DATE_FORMAT),
+                period_end=period_end.strftime(GOAL_DATE_FORMAT),
+                description=description,
+                owner=owner,
+                team=team,
+                idempotency_key=idempotency_key,
             )
     except APIError as exc:
         exit_for_tasks_error(exc, json_mode)

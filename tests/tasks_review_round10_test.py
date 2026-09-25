@@ -163,7 +163,21 @@ class TestOneConstantAndNoDeadHelpers:
         [
             (["board", "create", "-n", "B"], "board", "create_board", "name"),
             (["project", "create", "-n", "P"], "project", "create_project", "name"),
-            (["goal", "create", "-n", "G"], "goal", "create_goal", "name"),
+            (
+                [
+                    "goal",
+                    "create",
+                    "-n",
+                    "G",
+                    "--period-start",
+                    "2026-10-01",
+                    "--period-end",
+                    "2026-12-31",
+                ],
+                "goal",
+                "create_goal",
+                "name",
+            ),
             (["task", "create", "-t", "T"], "task", "create_task", "title"),
         ],
     )

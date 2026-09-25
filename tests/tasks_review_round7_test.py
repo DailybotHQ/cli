@@ -125,7 +125,19 @@ class TestPreflightExitMatchesTheServer:
         [
             (["board", "create", "--name", "b"], "board"),
             (["project", "create", "--name", "p"], "project"),
-            (["goal", "create", "--name", "g"], "project"),
+            (
+                [
+                    "goal",
+                    "create",
+                    "--name",
+                    "g",
+                    "--period-start",
+                    "2026-10-01",
+                    "--period-end",
+                    "2026-12-31",
+                ],
+                "project",
+            ),
         ],
     )
     def test_admin_doors_exit_four(self, runner: CliRunner, argv: list[str], module: str) -> None:

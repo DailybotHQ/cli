@@ -2468,6 +2468,22 @@ class DailyBotClient:
             idempotency_key=idempotency_key,
         )
 
+    def move_task_to_board(
+        self, task_uuid: str, *, board: str, state: str | None = None
+    ) -> dict[str, Any]:
+        """POST /v1/tasks/tasks/<uuid>/move-board/ — cross-board; no key accepted.
+
+        Without `state` the server picks the column with the same category on the
+        target board.
+        """
+        payload: dict[str, Any] = {"board": board}
+        if state:
+            payload["state"] = state
+        result: dict[str, Any] = self._tasks_write(
+            "POST", f"tasks/{task_uuid}/move-board/", json=payload
+        )
+        return result
+
     def move_task(
         self, task_uuid: str, *, idempotency_key: str | None = None, **fields: Any
     ) -> dict[str, Any]:
@@ -2549,7 +2565,7 @@ class DailyBotClient:
         return self._tasks_write(
             "POST",
             f"tasks/{task_uuid}/relations/",
-            json={"related_task": other, "relation_type": relation},
+            json={"relation_type": relation, "target_task": other},
             idempotent=True,
             idempotency_key=idempotency_key,
         )

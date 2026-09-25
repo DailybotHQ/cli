@@ -22,6 +22,7 @@ from dailybot_cli.commands.public_api_helpers import (
     exit_for_tasks_error,
     refuse_without_person,
     require_auth,
+    rows_of,
 )
 from dailybot_cli.commands.query_options import (
     PAGING_ONLY_MORE_HINT,
@@ -185,15 +186,6 @@ def board_tasks(board_uuid: str, json_mode: bool, **flags: Any) -> None:
     )
 
 
-def _rows(data: Any) -> list[dict[str, Any]]:
-    """The rows of a board sub-collection, whether it arrives as a list or an envelope."""
-    if isinstance(data, list):
-        return [row for row in data if isinstance(row, dict)]
-    if isinstance(data, dict) and isinstance(data.get("results"), list):
-        return [row for row in data["results"] if isinstance(row, dict)]
-    return []
-
-
 def _require_person(action: str, reason: str, *, json_mode: bool) -> None:
     """Refuse an API key on a person-only board door, before any request is spent."""
     if get_token() is None:
@@ -247,7 +239,7 @@ def _read_board_collection(
     if json_mode:
         emit_json(data)
         return
-    print_tasks_rows(title, _rows(data), columns, empty=empty)
+    print_tasks_rows(title, rows_of(data), columns, empty=empty)
 
 
 @board.command("states")
@@ -364,7 +356,7 @@ def board_views(board_uuid: str, etag_only: bool, json_mode: bool) -> None:
     if json_mode:
         emit_json(data)
         return
-    print_tasks_rows("Views", _rows(data), _VIEW_COLUMNS, empty="This board has no saved views.")
+    print_tasks_rows("Views", rows_of(data), _VIEW_COLUMNS, empty="This board has no saved views.")
     if etag:
         print_info(f"ETag: {etag} (pass it to `board view save --if-match`)")
 
@@ -590,7 +582,7 @@ def board_state_reorder(board_uuid: str, state_uuids: tuple[str, ...], json_mode
     if json_mode:
         emit_json(data)
         return
-    print_tasks_rows("States", _rows(data), _STATE_COLUMNS, empty="No live columns.")
+    print_tasks_rows("States", rows_of(data), _STATE_COLUMNS, empty="No live columns.")
 
 
 # ---------------------------------------------------------------------------
@@ -828,7 +820,7 @@ def board_view_save(
     if json_mode:
         emit_json(data)
         return
-    print_tasks_rows("Views", _rows(data), _VIEW_COLUMNS, empty="No saved views.")
+    print_tasks_rows("Views", rows_of(data), _VIEW_COLUMNS, empty="No saved views.")
 
 
 @board.command("snapshot")
@@ -883,7 +875,9 @@ def _require_person_for_admin(action: str, *, json_mode: bool) -> None:
 
 @board.command("create")
 @click.option("-n", "--name", required=True, help="Board name.")
-@click.option("-d", "--description", default=None, help="Board description.")
+# Boards have no description field (BoardWrite declares none), so the flag the CLI
+# once offered could only earn a 400. It stays, hidden, to refuse with the reason.
+@click.option("-d", "--description", default=None, hidden=True)
 @click.option("--idempotency-key", default=None, help="Reuse a key to make a retry safe.")
 @click.option("--json", "json_mode", is_flag=True, help="Emit machine-readable JSON to stdout.")
 def board_create(
@@ -899,13 +893,16 @@ def board_create(
     Examples:
       dailybot board create --name "Design"
     """
+    if description is not None:
+        raise click.UsageError(
+            "Boards have no description. Put the context in a project "
+            "(`dailybot project create -d ...`) and create the board under it."
+        )
     _require_person_for_admin("board create", json_mode=json_mode)
     client = require_auth()
     try:
         with console.status("Creating the board..."):
-            data: dict[str, Any] = client.create_board(
-                name=name, description=description, idempotency_key=idempotency_key
-            )
+            data: dict[str, Any] = client.create_board(name=name, idempotency_key=idempotency_key)
     except APIError as exc:
         exit_for_tasks_error(exc, json_mode)
     if json_mode:

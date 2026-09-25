@@ -58,6 +58,7 @@ tests/
 ├── task_commands_test.py          # `task` group: reads, writes, collaboration, bulk, archive
 ├── tasks_owner_wire_test.py      # owner vocabulary: exact query/body on the wire (P0 guard)
 ├── tasks_beta_ergonomics_test.py # KEY-n args, --sort, board tasks, --updated-since, exit codes, Beta
+├── tasks_contract_fixes_test.py  # commands corrected against the write contract (exact wire)
 ├── board_commands_test.py         # `board` group: reads + container writes
 ├── board_admin_test.py           # `board` administration: states, members, labels, views
 ├── project_goal_commands_test.py  # `project` + `goal`: reads, roll-ups, updates, milestones

@@ -685,6 +685,15 @@ def tasks_write_exit_code(exc: APIError) -> int:
     return _TASKS_WRITE_EXIT_BY_STATUS.get(exc.status_code, 1)
 
 
+def rows_of(data: Any) -> list[dict[str, Any]]:
+    """The rows of a Tasks collection, whether it arrives as a list or a paginated envelope."""
+    if isinstance(data, list):
+        return [row for row in data if isinstance(row, dict)]
+    if isinstance(data, dict) and isinstance(data.get("results"), list):
+        return [row for row in data["results"] if isinstance(row, dict)]
+    return []
+
+
 def exit_for_tasks_error(exc: APIError, json_mode: bool, *, door: str | None = None) -> NoReturn:
     """Surface a Tasks refusal and exit with the documented code.
 

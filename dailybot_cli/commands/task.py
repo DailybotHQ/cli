@@ -11,6 +11,7 @@ parameter name would produce a 400.
 """
 
 import json as _json
+import re
 from typing import Any, NoReturn
 
 import click
@@ -31,6 +32,7 @@ from dailybot_cli.commands.public_api_helpers import (
     exit_for_tasks_error,
     refuse_without_person,
     require_auth,
+    rows_of,
 )
 from dailybot_cli.commands.query_options import (
     PAGING_ONLY_MORE_HINT,
@@ -83,6 +85,78 @@ TASK_SORT_FIELDS: tuple[str, ...] = (
     "created_at",
     "completed_at",
 )
+
+
+# Task priority on the wire: 1=urgent, 2=high, 3=medium, 4=low, 5=none.
+PRIORITY_HELP: str = "Priority 1-5: 1 urgent, 2 high, 3 medium, 4 low, 5 none."
+PRIORITY_TYPE: click.IntRange = click.IntRange(min=1, max=5)
+
+# Relation types the contract declares. `relates-to` (the spelling this CLI's help
+# once taught) is accepted and normalised, so an old script keeps working.
+RELATION_TYPES: tuple[str, ...] = ("blocks", "relates_to", "duplicates")
+
+# A column's fixed meaning. `move/` takes a state uuid only, so a name or one of
+# these is resolved client-side against the board's live columns.
+STATE_CATEGORIES: tuple[str, ...] = ("backlog", "todo", "in_progress", "done", "canceled")
+_UUID_RE: re.Pattern[str] = re.compile(
+    r"^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+)
+
+
+def _parse_relation(_ctx: click.Context, _param: click.Parameter, value: str) -> str:
+    """Normalise `relates-to` to `relates_to` and refuse anything undeclared."""
+    normalised: str = value.strip().lower().replace("-", "_")
+    if normalised not in RELATION_TYPES:
+        raise click.BadParameter(
+            f"{value!r} is not a relation. Use one of: {', '.join(RELATION_TYPES)}."
+        )
+    return normalised
+
+
+def _board_of(task: dict[str, Any]) -> str:
+    """The board uuid a task sits on (a string, or an object carrying `uuid`)."""
+    board: Any = task.get("board")
+    if isinstance(board, dict):
+        board = board.get("uuid")
+    if not board:
+        raise click.ClickException("The task did not say which board it is on; pass --board.")
+    return str(board)
+
+
+def resolve_state(states: Any, value: str) -> str:
+    """Turn a column name or category into the state uuid `move/` requires.
+
+    A uuid passes through. Otherwise: a case-insensitive name match among live
+    columns wins; failing that, a category picks its lowest-position live column.
+    An ambiguous name or no match is a usage error that lists what exists, so the
+    caller can retry with a uuid. Resolving here keeps scripts working across a
+    column rename only when they pass the category or the uuid — which is the point
+    of the category.
+    """
+    if _UUID_RE.match(value):
+        return value
+    live: list[dict[str, Any]] = [row for row in rows_of(states) if not row.get("is_archived")]
+    wanted: str = value.strip().casefold()
+    named: list[dict[str, Any]] = [r for r in live if str(r.get("name", "")).casefold() == wanted]
+    if len(named) == 1:
+        return str(named[0]["uuid"])
+    if len(named) > 1:
+        candidates: str = ", ".join(f"{r.get('name')} ({r.get('uuid')})" for r in named)
+        raise click.UsageError(
+            f"{value!r} names more than one column: {candidates}. Pass the uuid."
+        )
+    if wanted in STATE_CATEGORIES:
+        in_category: list[dict[str, Any]] = sorted(
+            (r for r in live if r.get("category") == wanted),
+            key=lambda r: int(r.get("position") or 0),
+        )
+        if in_category:
+            return str(in_category[0]["uuid"])
+    columns: str = ", ".join(f"{r.get('name')} [{r.get('category')}]" for r in live) or "none"
+    raise click.UsageError(
+        f"No column named {value!r} on this board. Columns: {columns}. "
+        f"Pass a name, a category ({', '.join(STATE_CATEGORIES)}) or a state uuid."
+    )
 
 
 def _parse_sort(_ctx: click.Context, _param: click.Parameter, value: str | None) -> str | None:
@@ -303,6 +377,7 @@ def _write_error(exc: APIError, json_mode: bool = False) -> NoReturn:
 @click.option("--owner", default=None, help=OWNER_HELP)
 @click.option("--assignee", default=None, hidden=True, help=ASSIGNEE_DEPRECATION)
 @click.option("--due", default=None, help="Due date (YYYY-MM-DD).")
+@click.option("--priority", type=PRIORITY_TYPE, default=None, help=PRIORITY_HELP)
 @click.option(
     "--idempotency-key",
     default=None,
@@ -321,6 +396,7 @@ def task_create(
     owner: str | None,
     assignee: str | None,
     due: str | None,
+    priority: int | None,
     idempotency_key: str | None,
     json_mode: bool,
 ) -> None:
@@ -351,6 +427,7 @@ def task_create(
                 state=state,
                 owner=owner or assignee,
                 due_date=due,
+                priority=priority,
                 idempotency_key=idempotency_key,
             )
     except APIError as exc:
@@ -368,7 +445,7 @@ def task_create(
 @click.option("-d", "--description", default=None, help="New description.")
 @click.option("--state", default=None, help="New workflow state.")
 @click.option("--due", default=None, help="New due date (YYYY-MM-DD).")
-@click.option("--priority", default=None, help="New priority.")
+@click.option("--priority", type=PRIORITY_TYPE, default=None, help=PRIORITY_HELP)
 @click.option("--owner", default=None, help=OWNER_HELP)
 @click.option("--idempotency-key", default=None, help="Reuse a key to make a retry safe.")
 @click.option("--json", "json_mode", is_flag=True, help="Emit machine-readable JSON to stdout.")
@@ -378,7 +455,7 @@ def task_update(
     description: str | None,
     state: str | None,
     due: str | None,
-    priority: str | None,
+    priority: int | None,
     owner: str | None,
     idempotency_key: str | None,
     json_mode: bool,
@@ -423,9 +500,17 @@ def task_update(
 
 @task.command("move")
 @click.argument("task_uuid", metavar="TASK")
-@click.option("--state", default=None, help="Target workflow state (column).")
-@click.option("--board", default=None, help="Target board.")
-@click.option("--idempotency-key", default=None, help="Reuse a key to make a retry safe.")
+@click.option(
+    "--state",
+    default=None,
+    help="Target column: a name, a category (todo, in_progress, done, …) or a state uuid.",
+)
+@click.option("--board", default=None, help="Target board, for a move to another board.")
+@click.option(
+    "--idempotency-key",
+    default=None,
+    help="Reuse a key to make a retry safe (same-board moves; a cross-board move takes none).",
+)
 @click.option("--json", "json_mode", is_flag=True, help="Emit machine-readable JSON to stdout.")
 def task_move(
     task_uuid: str,
@@ -434,22 +519,44 @@ def task_move(
     idempotency_key: str | None,
     json_mode: bool,
 ) -> None:
-    """Move a task to another column or board.
+    """Move a task to another column, or to another board.
+
+    \b
+    --state takes a column name (case-insensitive), a category — which picks that
+    category's first column — or a state uuid. A name or category costs one read
+    of the board's columns; a uuid costs none.
+
+    \b
+    With --board the task changes board; without --state it lands in the column
+    with the same category there.
 
     \b
     Examples:
       dailybot task move ENG-142 --state done
+      dailybot task move ENG-142 --state "In review" --json
       dailybot task move ENG-142 --board <board-uuid>
     """
     if state is None and board is None:
         raise click.UsageError("Pass --state or --board (or both) to say where it should go.")
     client = require_auth()
-    fields: dict[str, Any] = {k: v for k, v in {"state": state, "board": board}.items() if v}
     try:
+        state_uuid: str | None = None
+        if state is not None:
+            if _UUID_RE.match(state):
+                state_uuid = state
+            else:
+                with console.status("Reading the board's columns..."):
+                    target: str = board or _board_of(client.get_task(task_uuid))
+                    state_uuid = resolve_state(client.list_board_states(target), state)
         with console.status("Moving the task..."):
-            data: dict[str, Any] = client.move_task(
-                task_uuid, idempotency_key=idempotency_key, **fields
-            )
+            if board is not None:
+                data: dict[str, Any] = client.move_task_to_board(
+                    task_uuid, board=board, state=state_uuid
+                )
+            else:
+                data = client.move_task(
+                    task_uuid, idempotency_key=idempotency_key, state=state_uuid
+                )
     except APIError as exc:
         _write_error(exc, json_mode)
     if json_mode:
@@ -603,7 +710,13 @@ def task_comments(task_uuid: str, json_mode: bool, **flags: Any) -> None:
 @task.command("link")
 @click.argument("task_uuid", metavar="TASK")
 @click.argument("other_uuid", metavar="OTHER_TASK")
-@click.option("--type", "relation", required=True, help="Relation type, e.g. blocks / relates-to.")
+@click.option(
+    "--type",
+    "relation",
+    required=True,
+    callback=_parse_relation,
+    help="blocks, relates_to or duplicates.",
+)
 @click.option("--idempotency-key", default=None, help="Reuse a key to make a retry safe.")
 @click.option("--json", "json_mode", is_flag=True, help="Emit machine-readable JSON to stdout.")
 def task_link(
