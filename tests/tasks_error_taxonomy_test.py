@@ -104,13 +104,17 @@ class TestAdminScopeIsUnstorable:
     """C-8 — task 1 measured this refusal against an ADMIN_ORG owner too."""
 
     def test_the_message_blames_the_credential_kind_not_the_role(self) -> None:
+        from unittest.mock import patch
+
         exc = APIError(
             status_code=403,
             detail="x",
             code="insufficient_scope",
             extra={"required_scope": "tasks:admin"},
         )
-        message: str = resolve_error_message(exc)
+        # Key path only — a signed-in person takes the open-org guest/role branch.
+        with patch("dailybot_cli.commands.public_api_helpers.get_token", return_value=None):
+            message: str = resolve_error_message(exc)
         assert "api key" in message.lower()
         assert "dailybot login" in message
         # An org admin reading "you must be an admin" would hunt for a setting

@@ -186,7 +186,7 @@ def goal_create(
     idempotency_key: str | None,
     json_mode: bool,
 ) -> None:
-    """Create a goal. Needs a signed-in person.
+    """Create a goal. Needs a signed-in person (any non-guest member).
 
     \b
     A goal is a dated commitment, so both ends of its period are required. It starts
