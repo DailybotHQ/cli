@@ -695,11 +695,13 @@ _MEMBER_WRITE_REASON: str = (
 
 @board.group("member")
 def board_member() -> None:
-    """Add or remove the people who can see a board. Needs `dailybot login`.
+    """Invite or remove who can see a board. Needs `dailybot login`.
 
     \b
-    There is no board-level role: organization roles plus board visibility are the
-    whole access model, so a membership can be added or removed but not edited.
+    Membership is the privacy control: a `members` board is invisible (404) to
+    anyone without a grant. Org-wide boards are a shared workspace. There is no
+    board-level role to edit — invite or remove only. An organization API key
+    cannot change membership.
 
     \b
     Examples:
@@ -965,20 +967,19 @@ def board_snapshot(board_uuid: str, json_mode: bool) -> None:
 
 
 def _require_person_for_admin(action: str, *, json_mode: bool) -> None:
-    """Refuse a key on a door that needs `tasks:admin`.
+    """Refuse an organization API key on a structure or membership door.
 
-    The scope cannot be granted to an API key at all — the validator refuses to
-    store it, and the door refuses it independently. The plan's live probe measured
-    an `ADMIN_ORG` **owner** refused exactly like a member, so the message must
-    blame the **credential kind**. Telling an organization admin they "need to be an
-    admin" would send them looking for a setting that cannot exist.
+    Open-org Tasks: every non-guest member holds `tasks:admin` on a person session,
+    so the CLI never asks for an organization-admin role. An organization API key
+    still cannot store that scope (or change membership / participants), so the
+    message blames the **credential kind** — run `dailybot login` as a member.
     """
     # See tasks.py `_require_person`: gate on the absence of a person token.
     if get_token() is None:
         refuse_without_person(
-            f"`{action}` needs the `tasks:admin` scope, which an organization API key can "
-            "never hold — it cannot even be stored on one. Run `dailybot login` and retry "
-            "as a signed-in person.",
+            f"`{action}` needs a signed-in person. An organization API key can never hold "
+            "the `tasks:admin` scope (it cannot even be stored on one), and keys cannot "
+            "change membership. Run `dailybot login` and retry as a non-guest member.",
             json_mode=json_mode,
             admin=True,
         )
@@ -1011,11 +1012,11 @@ def board_create(
     idempotency_key: str | None,
     json_mode: bool,
 ) -> None:
-    """Create a board in a project. Needs a signed-in organization admin.
+    """Create a board in a project. Needs a signed-in person (any non-guest member).
 
     \b
-    An organization API key cannot do this: the `tasks:admin` scope it requires can
-    never be held by a key. Run `dailybot login` first.
+    An organization API key cannot do this — run `dailybot login` first. Visibility
+    and who can see the board are controlled by invite/remove, not by org role.
 
     \b
     Examples:
