@@ -94,7 +94,7 @@ This repo (`cli`) uses **AI Diff Reviewer v3** (pinned `v3.1.1`, skill and Actio
 - **Merge gate check name:** `AI review gate` (stable — this is the one to mark required)
 - **Review job check name:** `AI review — grok` (carries the provider; renaming the provider renames this context, so the branch ruleset has to move with it)
 - **Provider:** `grok` (xAI Grok CLI), model pinned to `grok-4.5`, bounded by `agent-max-turns: 60`
-- **v3 gate:** `block-on-critical` blocks only on **verified** criticals (unconfirmed claims publish as annotated warnings); an `incomplete` or `timeout` review fails the gate. Budgets are risk-tiered (`budget-profile: auto`); `high-risk-paths` lifts credential / auth / transport / release-pipeline changes to the `critical` tier
+- **v3 gate:** `block-on-critical` blocks only on **verified** criticals (unconfirmed claims publish as annotated warnings); an `incomplete` or `timeout` review fails the gate. The verifier **fails open**: if it errors or times out, a claimed critical still publishes (as an annotated warning) but does not block, and v3.1.0 removed `strict-unverified-criticals`, the knob that could fail closed. This is an accepted v3 trade-off — before merging, read the marker's `Verifier:` line and treat any `unverified` claimed critical as blocking by hand Budgets are risk-tiered (`budget-profile: auto`); `high-risk-paths` lifts credential / auth / transport / release-pipeline changes to the `critical` tier
 - **Structured output:** every run uploads `review-output/3.0` as an artifact — read it (or the marker's Check status block) instead of scraping the review body; `Recommendation: approve` in the body is not evidence the check passed
 - **Secret:** `XAI_API_KEY`
 - **Emergency bypass:** `skip-ai-review` (protect with a ruleset if the gate is required)
@@ -115,6 +115,12 @@ The workflow triggers only on `opened` and `labeled` — **not** `synchronize`
 2. **Check the marker SHA before trusting a green gate.** The live
    `<!-- ai-pr-reviewer-marker -->` comment records the SHA it reviewed; if it
    is not the PR's current HEAD, the verdict is stale — re-label before merging.
+3. **Close the loop in one step.** `/ai-diff-reviewer-address-review` (the
+   vendored `address-review` sub-skill) checks that the review is fresh for the
+   current HEAD, walks the findings with an apply / defer / skip plan, then — on
+   one explicit yes — commits, pushes and toggles `Ready` off/on. Use
+   `/ai-diff-reviewer-apply-review` instead when you only want to read the
+   findings (it never commits or pushes).
 
 ## Fork and external-contributor PRs skip the gate
 
