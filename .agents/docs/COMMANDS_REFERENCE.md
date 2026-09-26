@@ -26,7 +26,7 @@ The full plan-execute-verify loop, delegating to the vendored `deepworkplan` ski
 
 ## AI Diff Reviewer (Flow B)
 
-Vendored skill at [`../skills/ai-diff-reviewer/`](../skills/ai-diff-reviewer/) (**v2.3.1**). CI gate: apply the **`Ready`** label on a PR to `main` (see [`.github/workflows/pr-review.yml`](../../.github/workflows/pr-review.yml); requires `XAI_API_KEY`). Extension: [`.review/extension.md`](../../.review/extension.md).
+Vendored skill at [`../skills/ai-diff-reviewer/`](../skills/ai-diff-reviewer/) (**v3.1.1**). CI gate: apply the **`Ready`** label on a PR to `main` (see [`.github/workflows/pr-review.yml`](../../.github/workflows/pr-review.yml); requires `XAI_API_KEY`). Extension: [`.review/extension.md`](../../.review/extension.md).
 
 | Command / phrase | Routes to | What it does | Example trigger |
 |------------------|-----------|--------------|-----------------|
@@ -35,6 +35,7 @@ Vendored skill at [`../skills/ai-diff-reviewer/`](../skills/ai-diff-reviewer/) (
 | `/ai-diff-reviewer-setup` | `../skills/ai-diff-reviewer/setup/SKILL.md` | Re-run the CI workflow wizard | "Set up AI Diff Reviewer for this repo" |
 | `/ai-diff-reviewer-open-pr` | `../skills/ai-diff-reviewer/open-pr/SKILL.md` | Draft PR title/body from the branch diff | "Open a PR for this branch" |
 | `/ai-diff-reviewer-apply-review` | `../skills/ai-diff-reviewer/apply-review/SKILL.md` | Walk CI findings per-finding (apply / defer / skip); never commits | "Apply the CI review findings" |
+| `/ai-diff-reviewer-address-review` | `../skills/ai-diff-reviewer/address-review/SKILL.md` | Resolve CI findings, commit, push, and re-arm the `Ready` label in one consented loop | "Resolve the reviewer comments and re-run the review" |
 
 Every new plan ends with one mandatory **Final Review** task (per the DWP spec): the security pass over the plan's own changes (a critical finding blocks completion), final-state validation, and skills/agents reconciliation. The Executive Report is now optional/on-request. Plans authored under an earlier skill version that still end with the legacy three tasks (Security Review, Skills & Agents Discovery, Executive Report) remain conformant.
 

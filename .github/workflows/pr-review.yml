@@ -45,8 +45,12 @@ on:
     types: [opened, labeled]
 
 concurrency:
+  # No cancel-in-progress: every label event on the PR (including the
+  # `pr-reviewed` label this workflow applies itself) starts a new run in
+  # this group, and cancelling would kill an in-flight grok review. Queued
+  # runs for non-`Ready` labels are cheap no-ops (scope says should_run=false).
   group: pr-review-${{ github.event.pull_request.number }}
-  cancel-in-progress: true
+  cancel-in-progress: false
 
 permissions:
   contents: read
@@ -191,27 +195,50 @@ jobs:
           # surface. The reviewer talks to the GitHub API in-process.
           persist-credentials: false
       # Pinned to the exact tag recorded in skills-lock.json for the vendored
-      # skill — a floating @v2 could change prompts/default.md while the local
-      # skill stays behind, silently breaking the parity claim above. Bump
-      # this pin and the vendored skill together, in one PR.
-      - uses: DailybotHQ/ai-diff-reviewer@v2.3.1
+      # skill — the moving @v3 alias could change prompts/default.md while the
+      # local skill stays behind, silently breaking the parity claim above.
+      # Bump this pin and the vendored skill together, in one PR.
+      - uses: DailybotHQ/ai-diff-reviewer@v3.1.1
         with:
           # Grok, not Cursor. The Cursor CLI exposes no turn-count flag, so its
-          # only bound is the action's 900 s invocation timeout — which this PR's
+          # only bound is the action's 900 s invocation timeout — which a large
           # diff stopped fitting into (five consecutive timeouts, zero findings).
-          # `agent-max-turns` is enforced NATIVELY on grok (`--max-turns N`), so
-          # the run is bounded by work done rather than by wall clock.
+          # The turn cap is enforced NATIVELY on grok (`--max-turns N`), so the
+          # run is bounded by work done rather than by wall clock.
           provider: grok
           api-key: ${{ secrets.XAI_API_KEY }}
           github-token: ${{ secrets.GITHUB_TOKEN }}
-          # Pinned, not left to the default: `grok-4.5` is the provider default
-          # today, and upstream's 2026-09-16 benchmark has it tying grok-4.6 on
-          # defects found with no false positives at a quarter of the runtime.
-          # Naming it means a later default change cannot move this gate silently.
+          # Pinned, not left to the `balanced` alias (v3 default): `grok-4.5`
+          # is what `balanced` resolves to on grok today. Naming it means a
+          # later alias change cannot move this gate silently.
           model: grok-4.5
-          # The bound Cursor could not give us. Generous enough for a full pass;
-          # a review that stops at the cap says so instead of dying at 900 s.
+          # v3 risk-tiered budget (BC-13): patch bytes, verifier sample and
+          # output tokens follow the change's risk tier. Explicit as living
+          # documentation — `auto` is the default.
+          budget-profile: auto
+          # Paths that hold credentials, auth resolution, HTTP transport or the
+          # release pipeline raise the tier to `critical` (raise only).
+          high-risk-paths: |
+            dailybot_cli/config.py
+            dailybot_cli/api_client.py
+            dailybot_cli/main.py
+            dailybot_cli/commands/auth.py
+            dailybot_cli/commands/public_api_helpers.py
+            dailybot_cli/commands/agent.py
+            dailybot_cli/commands/_attachments.py
+            .github/workflows/**
+            install.sh
+            install.ps1
+          # Overrides the tier's native turn count (8 / 20 / 30 / 40). v3 marks
+          # a review that stops at its cap `incomplete`, which is RED under
+          # block-on-critical — and the large Tasks PRs this repo ships blew
+          # past 40 turns under v2. A cap is not a target: small diffs still
+          # finish in a few turns.
           agent-max-turns: 60
+          # v3 verified criticals (BC-07): a claimed critical blocks only once
+          # a second, code-grounded pass confirms it; unconfirmed claims stay
+          # visible as annotated warnings. Explicit — `on` is the default.
+          verifier: 'on'
           label-gate: Ready
           author-association: OWNER,MEMBER,COLLABORATOR
           applied-label: pr-reviewed

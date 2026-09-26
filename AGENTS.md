@@ -187,6 +187,21 @@ If `dailybot` is not on PATH after `pip install -e .`, your virtualenv may not b
 
 > **Never run `pip install` against the user's system Python without their consent.** Always use a virtualenv, `pipx`, or `uv tool` for development.
 
+## Working principles
+
+Work with autonomy, ownership, and sound judgment. These are defaults within the current request — they never override the Mandatory Rules below, host permissions, plan gates, read-only flows, or this repo's approval rules (no push to `main`, the `[skip release]` policy, consent before replacing existing content).
+
+- **Own the outcome.** Carry authorized work through investigation, implementation, and validation (`pytest`, `ruff`, `mypy`) until it is done or a concrete blocker stops you.
+- **Be resourceful before asking.** Read the code, `docs/`, tests, and git history first; don't hand the user questions the repo can answer.
+- **Make routine decisions independently.** Choose sensible approaches within scope, state consequential assumptions, and don't ask to confirm steps already authorized.
+- **Ask when judgment or authorization is missing.** Bring the investigation, the options, and your recommendation — e.g. a breaking change to the auth resolution order (Rule 14) or a stored-file schema (Rule 16).
+- **Make approvals concrete.** Finish the preparation first, then name the exact action needing approval (publishing a release, force-push, deleting user content) and why.
+- **Work through obstacles.** Investigate failures and try reasonable recovery within scope; keep doing independent authorized work; escalate when progress needs user input or an external change.
+- **Respect intent and scope.** Analysis stays analysis. Propose unrelated improvements separately; preserve the user's work and decisions.
+- **Apply proportionate rigor.** Fix root causes, keep Click callbacks thin, avoid unrelated churn; match validation depth to the change's impact.
+- **Communicate directly and precisely.** Lead with the result; separate verified facts from assumptions and open uncertainty.
+- **Verify before declaring completion.** Check the result against the request, run the relevant gates, and report what was validated and what was not. Never claim a check that did not run.
+
 ## CRITICAL: Mandatory Rules
 
 ### 1. English Only
@@ -416,6 +431,7 @@ The repo has a top-level `tmp/` directory reserved for any throwaway artifact: s
 **Rules for AI agents:**
 
 - **Always** drop temporary files inside `tmp/`. Never write scratch files to the repo root, to `docs/`, to `dailybot_cli/`, or anywhere else.
+- **Exception — plan output goes in the plan.** Anything produced *about* a Deep Work Plan (analysis, skills ledger, security review, gate logs, audit reports) belongs in that plan's own `.dwp/plans/PLAN_{name}/analysis_results/`, never in `tmp/` or the repo root. When a tool defaults its report path to the working directory, pass its output flag into the plan folder. `tmp/` is for work no plan will ever read back.
 - The folder is gitignored except for `tmp/.gitkeep` (which preserves the empty directory in git). Anything else you put inside is invisible to `git status` and will not be committed by accident.
 - Don't promote a file out of `tmp/` unless you've decided it's a real, permanent artifact (and then move it deliberately to its proper home).
 - Don't delete `tmp/.gitkeep`.
@@ -613,7 +629,7 @@ When invoked: look up in `.agents/docs/skills_agents_catalog.md`, READ the proce
 
 ## Working with Deep Work Plans (DWP)
 
-For any non-trivial change (more than ~3 files, more than one logical step, anything spanning auth + API client + commands + docs, anything you'd otherwise want a TodoList for), **drive the work through a Deep Work Plan** instead of free-form coding. The repo ships the [DWP skill pack](.agents/skills/deepworkplan/) (vendored at **v5.3.0**) and the matching `dwp-*` slash commands. A plan is either **Lite** (task records inline in the plan's `README.md`, the default for most work) or **Full** (one file per task, for long-horizon work) — both carry the same contract: stable task ids, a Touched Surface, acceptance criteria, validation gates, completion evidence, and one Final Review.
+For any non-trivial change (more than ~3 files, more than one logical step, anything spanning auth + API client + commands + docs, anything you'd otherwise want a TodoList for), **drive the work through a Deep Work Plan** instead of free-form coding. The repo ships the [DWP skill pack](.agents/skills/deepworkplan/) (vendored at **v5.5.4**) and the matching `dwp-*` slash commands. A plan is either **Lite** (task records inline in the plan's `README.md`, the default for most work) or **Full** (one file per task, for long-horizon work) — both carry the same contract: stable task ids, a Touched Surface, acceptance criteria, validation gates, completion evidence, and one Final Review.
 
 ### The loop
 
@@ -660,18 +676,22 @@ You do not need to author the Final Review manually; `/dwp-create` adds it to ev
 
 ### AI Diff Reviewer (Flow B — dual-surface)
 
-This repo opts into the DWP **AI Diff Reviewer** addon ([`DailybotHQ/ai-diff-reviewer`](https://github.com/DailybotHQ/ai-diff-reviewer) **v2**):
+This repo opts into the DWP **AI Diff Reviewer** addon ([`DailybotHQ/ai-diff-reviewer`](https://github.com/DailybotHQ/ai-diff-reviewer) **v3**, pinned to `v3.1.1` for both the vendored skill and the Action):
 
 | Surface | What | How |
 |---------|------|-----|
-| **Local** | Augments the mandatory Security Review | Vendored skill at [`.agents/skills/ai-diff-reviewer/`](.agents/skills/ai-diff-reviewer/) + [`.review/extension.md`](.review/extension.md). Invoke *"Review my current branch"*. Soft-fail if skill/extension/invocation errors; `critical` findings from a completed pass still block Security Review. |
+| **Local** | Augments the mandatory Security Review | Vendored skill at [`.agents/skills/ai-diff-reviewer/`](.agents/skills/ai-diff-reviewer/) + [`.review/extension.md`](.review/extension.md). Invoke *"Review my current branch"*. Soft-fail if skill/extension/invocation errors; **verified** `critical` findings from a completed pass still block Security Review, and an `incomplete`/`timeout` review is never a clean pass. |
 | **CI** | PR merge gate | [`.github/workflows/pr-review.yml`](.github/workflows/pr-review.yml) — apply the **`Ready`** label on a PR targeting `main` to run the review (remove + re-add to re-run). Stable check name: **`AI review gate`**. Emergency bypass label: `skip-ai-review` (protect with a ruleset if the gate is required). |
 
 **Secret required for CI:** `XAI_API_KEY` (repo Settings → Secrets and variables → Actions). Without it, applying `Ready` fails the merge gate loudly.
 
-**Provider: `grok` (xAI Grok CLI), pinned to `grok-4.5`.** It replaced `cursor` because the Cursor CLI exposes no turn-count flag, so its only bound is the action's 900-second invocation timeout — and a large diff simply stops fitting, failing the gate with zero findings. `agent-max-turns` is enforced natively on `grok`, so the run is bounded by work done rather than by wall clock. The job's display name is the required-check context: renaming the provider means updating the branch ruleset to match.
+**Provider: `grok` (xAI Grok CLI), pinned to `grok-4.5`.** It replaced `cursor` because the Cursor CLI exposes no turn-count flag, so its only bound is the action's 900-second invocation timeout — and a large diff simply stops fitting, failing the gate with zero findings. `agent-max-turns` is enforced natively on `grok`, so the run is bounded by work done rather than by wall clock. It stays at 60 turns (above v3's 40-turn `critical` tier) because v3 marks a review that stops at its cap `incomplete`, which fails the gate.
 
-**Post-CI walkthrough (optional):** after CI posts findings, invoke the vendored `apply-review` sub-skill to walk findings per-finding (apply / defer / skip). Read-only by default; never commits or pushes.
+**v3 gate semantics.** A claimed `critical` blocks only once the verifier confirms it (unconfirmed claims publish as annotated warnings); an `incomplete` or `timeout` review is red under `block-on-critical`. Budgets are risk-tiered (`budget-profile: auto`) and `high-risk-paths` raises credential, auth, transport and release-pipeline changes to the `critical` tier. A body saying `Recommendation: approve` is not evidence the check passed — read the tracking marker's Check status block.
+
+The job's display name is the required-check context: renaming the provider means updating the branch ruleset to match.
+
+**Post-CI walkthrough (optional):** after CI posts findings, invoke the vendored `apply-review` sub-skill to walk findings per-finding (apply / defer / skip). Read-only by default; never commits or pushes. To close the whole loop in one consented invocation — resolve findings, commit, push, and re-apply `Ready` — use `address-review` (`/ai-diff-reviewer-address-review`).
 
 How to read review comments without acting on stale feedback: [`docs/PR_REVIEW_WORKFLOW.md`](docs/PR_REVIEW_WORKFLOW.md).
 
@@ -679,7 +699,7 @@ How to read review comments without acting on stale feedback: [`docs/PR_REVIEW_W
 
 There are two independent things to keep current: the **skill package** (the code under `.agents/skills/deepworkplan/`) and the **harness content** it generated (`AGENTS.md`, `docs/`, `.agents/`). Use `/dwp-upgrade` to check for and install a newer skill package (read-only check; installs only with explicit consent). Use `/deepworkplan-onboard` to reconcile the harness content against the currently-installed skill's standard (non-destructive; a no-op if already current — see the `DWP standard:` line below). To author a new repo-specific skill/agent: `/skill-create` or `/agent-create` (both delegate to the DWP `author` sub-skill, which keeps `.agents/docs/skills_agents_catalog.md` and `COMMANDS_REFERENCE.md` in sync).
 
-DWP standard: 5.0.0 (onboarded 2026-06-12; upgraded 2026-09-14; skill 5.3.0)
+DWP standard: 5.0.0 (onboarded 2026-06-12; upgraded 2026-09-25; skill 5.5.4)
 
 ## Documentation Maintenance
 

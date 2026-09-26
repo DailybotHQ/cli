@@ -759,5 +759,15 @@ setup_sshd_for_herdr() {
 
 setup_sshd_for_herdr "/home/dev-user"
 
+# Host ~/.gitconfig is mounted read-only and only lists /app. /workspace is
+# owned by the Mac user, so Git refuses it until this is set at system scope.
+if [ "$(id -u)" = "0" ]; then
+  git config --system --get-all safe.directory 2>/dev/null | grep -qx '\*' \
+    || git config --system --add safe.directory '*'
+else
+  sudo git config --system --get-all safe.directory 2>/dev/null | grep -qx '\*' \
+    || sudo git config --system --add safe.directory '*'
+fi
+
 # Execute the main command
 exec "$@"
