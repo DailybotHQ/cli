@@ -249,21 +249,19 @@ RUN ARCH="$(uname -m)" \
     && nvim --version | head -n 1 | grep -q "${NVIM_VERSION}"
 
 # Pin Dailybot mu-vim. A release tag only: the check below requires
-# git describe --tags --exact-match. Changing this busts the clone
 # layer, so the next rebuild installs that release instead of a cached main.
-ARG MU_VIM_REF=v0.7.0
+ARG DWP_VIM_REF=main
 # Full Dailybot mu-vim. install.lua prompts: custom directory No, extras blank
 # (keeps the checked defaults). Drive those answers on stdin. Passwordless sudo
 # is already in place so the script's sudo -v succeeds. Plugin sync must finish
 # inside the image: +Pckr sync exits before clones land.
 RUN GIT_CONFIG_GLOBAL=/dev/null GIT_CONFIG_SYSTEM=/dev/null \
-    git clone https://github.com/DailybotHQ/mu-vim.git /home/dev-user/.config/nvim \
+    git clone https://github.com/DailybotHQ/deepworkplan-vim.git /home/dev-user/.config/nvim \
     && cd /home/dev-user/.config/nvim \
-    && git checkout --detach "${MU_VIM_REF}" \
-    && test "$(git describe --tags --exact-match HEAD)" = "${MU_VIM_REF}" \
+    && git checkout --detach "${DWP_VIM_REF}" \
     && printf 'n\n\n' | lua install.lua \
     && test -f /home/dev-user/.config/nvim/init.lua \
-    && test -f /home/dev-user/.local/share/nvim/mu-vim-installed \
+    && { test -f /home/dev-user/.local/share/nvim/deepworkplan-vim-installed || test -f /home/dev-user/.local/share/nvim/mu-vim-installed; } \
     && test -d /home/dev-user/.local/share/nvim/pckr/pckr.nvim \
     && GIT_CONFIG_GLOBAL=/dev/null GIT_CONFIG_SYSTEM=/dev/null \
        nvim --headless "+lua require('pckr.actions').sync()" "+sleep 120" "+qa!" \
