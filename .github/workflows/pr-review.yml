@@ -223,6 +223,7 @@ jobs:
             dailybot_cli/api_client.py
             dailybot_cli/main.py
             dailybot_cli/commands/auth.py
+            dailybot_cli/commands/public_api_helpers.py
             dailybot_cli/commands/agent.py
             dailybot_cli/commands/_attachments.py
             .github/workflows/**
