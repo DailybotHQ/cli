@@ -9,6 +9,21 @@ Do not edit it by hand — your edits will be overwritten on the next release.
 
 <!-- version list -->
 
+## v3.15.0 (2026-09-26)
+
+### Bug Fixes
+
+- **dev**: Derive Herdr workspace peer aliases from the live Mac config
+  ([#99](https://github.com/DailybotHQ/cli/pull/99),
+  [`c7ffc10`](https://github.com/DailybotHQ/cli/commit/c7ffc104a6a4d2dc4afbfb3fddfe40c30580a761))
+
+### Features
+
+- **tasks**: Open-org structure writes for non-guest members
+  ([#99](https://github.com/DailybotHQ/cli/pull/99),
+  [`c7ffc10`](https://github.com/DailybotHQ/cli/commit/c7ffc104a6a4d2dc4afbfb3fddfe40c30580a761))
+
+
 ## v3.14.3 (2026-09-26)
 
 ### Bug Fixes
