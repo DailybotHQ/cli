@@ -439,24 +439,50 @@ for name in re.findall(r'^\s*name:\s*([A-Za-z0-9_.-]+)\s*$', body, re.M):
 PY
 }
 
-# Detect only. Never creates. Runs for the verbs that start containers.
+# Copy each docker/local/**/.env*.example to the matching .env when missing.
+# Created at 0600 (umask 077) so a later paste of API keys is not world-readable.
+ensure_env_from_examples() {
+  local f target
+  while IFS= read -r f; do
+    [ -n "$f" ] || continue
+    target="${f%.example}"
+    if [ ! -f "$target" ]; then
+      if ! (umask 077 && : > "$target"); then
+        die "could not create $target"
+      fi
+      cat "$f" > "$target"
+      note "created ${target#"$REPO_ROOT"/} from ${f#"$REPO_ROOT"/} (0600)"
+    fi
+  done < <(env_examples)
+}
+
+ensure_external_networks() {
+  local net
+  while IFS= read -r net; do
+    [ -n "$net" ] || continue
+    if docker network inspect "$net" >/dev/null 2>&1; then
+      continue
+    fi
+    docker network create "$net" >/dev/null
+    note "created docker network $net"
+  done < <(external_networks)
+}
+
+# Runs before verbs that start containers. Missing .env files are created from
+# .env.example; missing compose external networks are created. Remaining gaps
+# (no example file at all) still fail with a clear path.
 fast_check() {
   local missing="" f target
+  ensure_env_from_examples
   while IFS= read -r f; do
     [ -n "$f" ] || continue
     target="${f%.example}"
     [ -f "$target" ] || missing="${missing}${missing:+, }${target#"$REPO_ROOT"/}"
   done < <(env_examples)
   if [ -n "$missing" ]; then
-    die "local environment not ready (missing $missing) — run: bash dev.sh setup"
+    die "local environment not ready (missing $missing and no matching .env.example)"
   fi
-  local net
-  while IFS= read -r net; do
-    [ -n "$net" ] || continue
-    if ! docker network inspect "$net" >/dev/null 2>&1; then
-      die "docker network '$net' is missing — run: bash dev.sh setup"
-    fi
-  done < <(external_networks)
+  ensure_external_networks
 }
 
 # --------------------------------------------------------------------------
@@ -491,22 +517,7 @@ except BaseException:
 
 cmd_setup() {
   local created=0 f target net
-  while IFS= read -r f; do
-    [ -n "$f" ] || continue
-    target="${f%.example}"
-    if [ ! -f "$target" ]; then
-      cp "$f" "$target"
-      # These files are where API tokens end up once the developer fills them
-      # in. cp leaves them at the umask default, typically 0644 — readable by
-      # every account on the machine. Narrow them at creation, while they are
-      # still empty, rather than after a secret is already in them.
-      if ! chmod 600 "$target" 2>/dev/null; then
-        printf 'dev.sh: could not restrict %s to 0600 — it may be readable by other accounts on this machine\n' "${target#"$REPO_ROOT"/}" >&2
-      fi
-      note "created ${target#"$REPO_ROOT"/}"
-      created=$((created + 1))
-    fi
-  done < <(env_examples)
+  ensure_env_from_examples
 
   # Match the repositories' own utils.sh: only files that already declare the
   # key are stamped. Values are never printed.
@@ -525,16 +536,7 @@ cmd_setup() {
     stamp_permissions "$target" "$perms" || die "could not update SERVICE_PERMISSIONS in $target"
   done < <(env_examples)
 
-  while IFS= read -r net; do
-    [ -n "$net" ] || continue
-    if docker network inspect "$net" >/dev/null 2>&1; then
-      note "network $net already present"
-    else
-      docker network create "$net" >/dev/null
-      note "created network $net"
-      created=$((created + 1))
-    fi
-  done < <(external_networks)
+  ensure_external_networks
 
   if [ ! -d "$REPO_ROOT/.devcontainer" ] && [ -d "$REPO_ROOT/.devcontainer_example" ]; then
     mkdir -p "$REPO_ROOT/.devcontainer"
@@ -848,8 +850,9 @@ cmd_ls() {
 }
 
 # Herdr dials peers with strict checking and ignores the peers-file
-# accept-new. A machine created after this container started has no key in
-# known_hosts, so trust it once here before asking for agents.
+# accept-new. It also requires the ED25519 host key. A machine created after
+# this container started, or one whose known_hosts only has the RSA key,
+# fails as unreachable. Trust the ED25519 key before asking for agents.
 herdr_trust_peer_keys() {
   local peers="${HOME}/.ssh_host/config.d/dailybot-peers"
   local workspace_peers="${HOME}/.ssh/${HERDR_WORKSPACE_PEERS_REL}"
@@ -874,18 +877,24 @@ herdr_trust_peer_keys() {
       2202[2-9]|2203[0-2]|22[4-9][0-9][0-9]) ;;
       *) continue ;;
     esac
-    if ssh-keygen -F "[host.docker.internal]:${peer_port}" -f "$known" >/dev/null 2>&1; then
-      if ssh-keygen -F "[host.docker.internal]:${peer_port}" -f "$known" 2>/dev/null | grep -q 'ssh-ed25519'; then
-        continue
-      fi
+    # Debian hashes known_hosts, so a plaintext grep never sees the type.
+    # ssh-keygen -F prints the stored line; skip only when that line is the
+    # ED25519 key Herdr's strict client requires. An older RSA/ECDSA line
+    # for the same port must not hide a missing ED25519 key.
+    if ssh-keygen -F "[host.docker.internal]:${peer_port}" -f "$known" 2>/dev/null \
+      | grep -q 'ssh-ed25519'; then
+      continue
     fi
-    # Dial the published port directly. The peers alias User is often wrong
-    # for this container, and a publickey refusal must not hide the key that
-    # accept-new already stored. Herdr authenticates with its own key.
-    # Herdr's client wants the ED25519 key. accept-new stores it.
-    ssh -o BatchMode=yes -o StrictHostKeyChecking=accept-new -o ConnectTimeout=4 \
-      -o PreferredAuthentications=publickey -p "${peer_port}" \
-      host.docker.internal true >/dev/null 2>&1 || true
+    # keyscan writes the plaintext ED25519 line. accept-new stores whatever
+    # type the server offers first, which on these images is often RSA, and
+    # Herdr then refuses the port. A down peer is skipped.
+    if ! ssh-keyscan -T 4 -t ed25519 -p "${peer_port}" host.docker.internal 2>/dev/null \
+      | grep -v '^#' >>"$known"; then
+      ssh -o BatchMode=yes -o StrictHostKeyChecking=accept-new \
+        -o HostKeyAlgorithms=ssh-ed25519 -o ConnectTimeout=4 \
+        -o PreferredAuthentications=publickey -p "${peer_port}" \
+        host.docker.internal true >/dev/null 2>&1 || true
+    fi
   done
   return 0
 }
