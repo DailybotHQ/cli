@@ -24,6 +24,10 @@ services:
       - "host.docker.internal:host-gateway"
     environment:
       - DOCKER_DEV_ENV=vscode
+      # Host ~/.gitconfig is mounted read-only and only lists /app.
+      - GIT_CONFIG_COUNT=1
+      - GIT_CONFIG_KEY_0=safe.directory
+      - GIT_CONFIG_VALUE_0=*
     networks:
       - dailybot
     ports:

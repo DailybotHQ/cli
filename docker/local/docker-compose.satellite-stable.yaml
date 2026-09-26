@@ -5,6 +5,10 @@ services:
   clivscodesatellite:
     ports: !override
       - '127.0.0.1:${HERDR_SSH_HOST_PORT}:22'
+    environment:
+      GIT_CONFIG_COUNT: "1"
+      GIT_CONFIG_KEY_0: safe.directory
+      GIT_CONFIG_VALUE_0: "*"
 
 volumes:
   claude_data:
