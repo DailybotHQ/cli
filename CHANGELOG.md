@@ -9,6 +9,44 @@ Do not edit it by hand — your edits will be overwritten on the next release.
 
 <!-- version list -->
 
+## v3.14.3 (2026-09-26)
+
+### Bug Fixes
+
+- **docker**: Allow git in every container working directory
+  ([#98](https://github.com/DailybotHQ/cli/pull/98),
+  [`b2dda6f`](https://github.com/DailybotHQ/cli/commit/b2dda6f4bbf5acefc3511961c5c952f2ea14401a))
+
+- **docker**: Write safe.directory once per container
+  ([#98](https://github.com/DailybotHQ/cli/pull/98),
+  [`b2dda6f`](https://github.com/DailybotHQ/cli/commit/b2dda6f4bbf5acefc3511961c5c952f2ea14401a))
+
+### Chores
+
+- **skills**: Upgrade DWP to v5.5.4 and AI Diff Reviewer to v3.1.1
+  ([#98](https://github.com/DailybotHQ/cli/pull/98),
+  [`b2dda6f`](https://github.com/DailybotHQ/cli/commit/b2dda6f4bbf5acefc3511961c5c952f2ea14401a))
+
+### Continuous Integration
+
+- **review**: Raise public_api_helpers.py to the critical risk tier
+  ([#98](https://github.com/DailybotHQ/cli/pull/98),
+  [`b2dda6f`](https://github.com/DailybotHQ/cli/commit/b2dda6f4bbf5acefc3511961c5c952f2ea14401a))
+
+### Documentation
+
+- Close the verifier fail-open sentence ([#98](https://github.com/DailybotHQ/cli/pull/98),
+  [`b2dda6f`](https://github.com/DailybotHQ/cli/commit/b2dda6f4bbf5acefc3511961c5c952f2ea14401a))
+
+- Document verifier fail-open and the address-review loop
+  ([#98](https://github.com/DailybotHQ/cli/pull/98),
+  [`b2dda6f`](https://github.com/DailybotHQ/cli/commit/b2dda6f4bbf5acefc3511961c5c952f2ea14401a))
+
+- **review**: Defer three vendored-skill findings upstream
+  ([#98](https://github.com/DailybotHQ/cli/pull/98),
+  [`b2dda6f`](https://github.com/DailybotHQ/cli/commit/b2dda6f4bbf5acefc3511961c5c952f2ea14401a))
+
+
 ## v3.14.2 (2026-09-25)
 
 ### Bug Fixes
