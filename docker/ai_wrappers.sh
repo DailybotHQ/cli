@@ -71,12 +71,29 @@ PY
 function _ensure_codex_daemon_current() {
     local root="${HOME}/.codex/packages/app-server-daemon"
     local current="${root}/current"
+    [[ -d "$root" ]] || return 0
     local latest=""
     # mtime order, not lexical: semver-like names (0.9 vs 0.10) sort wrong alphabetically.
     latest=$(ls -1dt "${root}/releases/"* 2>/dev/null | head -1) || true
     [[ -n "$latest" ]] || return 0
     local rel="releases/$(basename "$latest")"
-    if [[ ! -L "$current" || "$(readlink "$current")" != "$rel" ]]; then
+    # Never point current at a partial extract (same guard as the entrypoint).
+    [[ -x "${root}/${rel}/bin/codex" ]] || return 0
+    local need_relink=0
+    if [[ ! -L "$current" ]]; then
+        need_relink=1
+    else
+        local tgt
+        tgt=$(readlink "$current")
+        case "$tgt" in
+            /*) need_relink=1 ;;
+            "$rel") need_relink=0 ;;
+            *)
+                [[ -x "${current}/bin/codex" ]] || need_relink=1
+                ;;
+        esac
+    fi
+    if [[ "$need_relink" -eq 1 ]]; then
         rm -f "$current"
         ln -s "$rel" "$current"
     fi

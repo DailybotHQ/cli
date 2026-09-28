@@ -1494,11 +1494,21 @@ if panes:
 }
 
 _hl_close_label() {
-  local mid="$1" lab="$2" wid
+  local mid="$1" lab="$2" wid left
   wid="$(_hl_ws_id "$mid" "$lab")"
   [ -n "$wid" ] || return 0
-  herdr workspace close "$wid" >/dev/null 2>&1 || true
+  if ! herdr workspace close "$wid" >/dev/null 2>&1; then
+    note "herdr-layout: could not close $lab ($wid) — close failed"
+    return 1
+  fi
+  # Confirm it is gone; a failed or async close must not look like success.
+  left="$(_hl_ws_id "$mid" "$lab")"
+  if [ -n "$left" ]; then
+    note "herdr-layout: $lab still present after close ($left)"
+    return 1
+  fi
   note "herdr-layout: closed $lab"
+  return 0
 }
 
 cmd_herdr_layout() {
@@ -1532,6 +1542,10 @@ H
   if [ "${HERDR_LAYOUT_INNER:-0}" != 1 ] && [ ! -f /.dockerenv ] && [ -z "${DOCKER_DEV_ENV:-}" ]; then
     write_override
     [ -n "$DC_SERVICE" ] || die "herdr-layout: no vscode service in this repository"
+    # Stack must be up — dc exec fails opaquely otherwise.
+    if ! dc ps --status running --services 2>/dev/null | grep -qx "$DC_SERVICE"; then
+      die "herdr-layout: $DC_SERVICE is not running — run: bash dev.sh up"
+    fi
     if [ "$reset" -eq 0 ] && [ "$keep" -eq 0 ] && [ -t 0 ]; then
       printf 'Reset existing Home / Editor / Development / Agents panes? [y/N] '
       read -r ans || true
@@ -1565,12 +1579,15 @@ H
   note "herdr-layout: local machine  cwd $cwd"
   if [ "$reset" -eq 1 ]; then
     note "herdr-layout: resetting Home · Editor · Development · Agents"
-    local lab
+    local lab close_failed=0
     # Only the four standard labels (+ legacy "Home (~)"). Do not close
     # undocumented labels like "~" or "app" — those may be real workspaces.
     for lab in Home "Home (~)" Editor Development Agents; do
-      _hl_close_label "$mid" "$lab"
+      _hl_close_label "$mid" "$lab" || close_failed=1
     done
+    if [ "$close_failed" -ne 0 ]; then
+      die "herdr-layout: --reset could not close every standard workspace; fix Herdr and retry"
+    fi
   fi
 
   local home_ws editor_ws dev_ws agents_ws line pane tab_id tests_pane n
@@ -1609,8 +1626,12 @@ H
     [ -n "$tab_id" ] && herdr tab rename "$tab_id" Development >/dev/null 2>&1 || true
     herdr pane rename "$pane" server >/dev/null 2>&1 || true
     tests_pane="$(_hl_pane_split "$mid" "$pane" "$cwd" right)"
-    [ -n "$tests_pane" ] && herdr pane rename "$tests_pane" tests >/dev/null 2>&1 || true
-    note "herdr-layout: created Development (server | tests)"
+    if [ -n "$tests_pane" ]; then
+      herdr pane rename "$tests_pane" tests >/dev/null 2>&1 || true
+      note "herdr-layout: created Development (server | tests)"
+    else
+      note "herdr-layout: created Development without tests split (pane split returned no id)"
+    fi
   else
     note "herdr-layout: Development already present"
     # Keep mode: fill a missing tests split without recreating the workspace.

@@ -157,8 +157,10 @@ open a shell with `bash dev.sh shell`. It reads the service list from
 `.devcontainer/devcontainer.json`, so that one file is the only place it is
 declared. Coding CLIs install only when their `INSTALL_*_CLI` flag is `true`
 (default `false`). `nvim` is deepworkplan-vim (pinned release tag) from
-`lua install.lua`. This is contributor tooling only: it ships nothing to users
-of the CLI, and every command above still runs on the host without it. See
+`lua install.lua`. Optional Herdr sidebar layout: `bash dev.sh herdr-layout`
+(Home · Editor · Development · Agents; `--keep` / `--reset`). This is
+contributor tooling only: it ships nothing to users of the CLI, and every
+command above still runs on the host without it. See
 [`docs/LOCAL_ENVIRONMENT.md`](docs/LOCAL_ENVIRONMENT.md).
 
 **Discover other Herdr agents** only from that contributor container, with `dbdev agents`. `bash dev.sh agents` is the same list. On the Mac, `dbdev agents` prints the same table. The table is live: rerun it, do not rebuild to refresh it. One row is one agent. **ID** is the machine id (hex). **PANE** (`w5:p2`) is that conversation. Five agents on one machine are five rows. The row marked `<- you` is the session that printed the list, and the footer says `you are #N`. Talk to one with:

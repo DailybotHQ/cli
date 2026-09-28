@@ -17,7 +17,7 @@ bash dev.sh setup
 That creates what the stack needs and nothing else:
 
 - every `.env` under `docker/local/` that is missing, copied from its
-  `.env.example` sibling;
+  `.env.example` sibling (mode `0600`);
 - the external docker network, when this repository's compose file declares one;
 - `.devcontainer/` from the tracked `.devcontainer_example/`, and `.vscode/` from
   `.vscode_example/` where the repository has one;
@@ -29,6 +29,11 @@ That creates what the stack needs and nothing else:
 It is safe to run again. It **never overwrites an existing file** and **never
 prints an environment value**. A second run says `everything was already in
 place`.
+
+`up` / `build` / `rebuild` also create **missing** `.env` stubs and external
+networks on the way in (same 0600 rule) so a cold tree is not blocked on a
+forgotten `setup`. Prefer `setup` the first time so `.devcontainer/`,
+`.vscode/`, and the shutdown-action pin land too.
 
 You do not need to run it before `config`, `ps`, `logs`, `ls` or `doctor` —
 those work on a tree that was never set up, which is what makes `doctor` useful
@@ -60,6 +65,9 @@ bash dev.sh down      # stop and remove this repo's containers
 | `ls` | Every repository this launcher can address, and how many of each one's services are up. |
 | `config` | The resolved configuration. Writes nothing, starts nothing. |
 | `doctor` | Environment diagnosis. Writes nothing, starts nothing. |
+| `agents` | Live Herdr machines and agents (same as `dbdev agents`). |
+| `ask <#> "…"` | Send a prompt to agent `#` (or `<machine-id> <pane> "…"`). |
+| `herdr-layout` | Create the standard Herdr sidebar on this machine: Home · Editor · Development (server \| tests) · Agents (Agent 1..4). `--keep` fills gaps; `--reset` closes those four then recreates them. From the host it `docker exec`s into the vscode service (stack must be up). |
 
 ---
 
