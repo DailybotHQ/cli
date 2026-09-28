@@ -866,11 +866,13 @@ Replies to agent emails land as messages retrievable via `dailybot agent message
 Projects, boards and tasks. Two groups: **`dailybot tasks`** answers questions about the
 workspace, **`dailybot task`** reads or changes one task.
 
-**Structure changes need a signed-in organization admin.** Creating, updating, archiving or
-restoring boards, columns, projects and goals, board and project membership, and linking
-goals to projects all need the `tasks:admin` scope, which an organization API key can never
-hold. With only `DAILYBOT_API_KEY` those commands stop before sending anything; run
-`dailybot login` first.
+**Structure changes need a signed-in person (any non-guest member).** Creating, updating,
+archiving or restoring boards, columns, projects and goals, board and project membership,
+and linking goals to projects all work for every non-guest member after `dailybot login`.
+An organization API key can never hold `tasks:admin` and cannot change membership or
+participants — with only `DAILYBOT_API_KEY` those commands stop before sending anything.
+**Privacy is membership**, not org role: a `members` project or board is 404 (not visible)
+to anyone without a grant; invite a person or a team to close it.
 
 The command an agent should reach for first is **`dailybot project update-post`** — it is
 how the team sees what was done. An agent that moves tasks silently is invisible to the
@@ -925,12 +927,12 @@ humans who own them.
 | `dailybot board labels <uuid>` | Labels available on the board — **needs `dailybot login`** |
 | `dailybot board views <uuid>` | Your saved views on the board, plus the ETag a save needs (`--etag` prints only that) |
 | `dailybot board state create\|update\|archive\|restore\|reorder` | Manage columns. `archive` previews first and takes `--migrate-to <state>` to move the column's cards |
-| `dailybot board member add <board> <user>` (or `--team <team>`) · `board member remove <board> <user>` | Who can see the board — **needs `dailybot login` as an admin**. A team grant follows the team live. There is no board role to edit |
+| `dailybot board member add <board> <user>` (or `--team <team>`) · `board member remove <board> <user>` | Who can see the board — **needs `dailybot login`**. Membership is the privacy control (not org role). A team grant follows the team live. Last grant on a private board stays (`last_grant_cannot_be_removed`) |
 | `dailybot board label create <board> -n <name>` | Create an organization label from the board — **needs `dailybot login`** |
 | `dailybot board view save <board> -f views.json --if-match <etag>` | Replace your saved views (the whole list) — **needs `dailybot login`** |
 | `dailybot board snapshot <uuid>` | The whole board in one request; carries the `delta_cursor` that `tasks changes` consumes |
 | `dailybot board update <uuid>` | Name, key (the old key stays reserved), visibility, estimate scale, auto-archive, project |
-| `dailybot board create --name <n> --project <uuid> --key <KEY>` | Create a board in a project; the key prefixes its tasks (`DSN-1`) — **needs `dailybot login` as an admin** |
+| `dailybot board create --name <n> --project <uuid> --key <KEY>` | Create a board in a project; the key prefixes its tasks (`DSN-1`) — **needs `dailybot login`** (any non-guest member) |
 | `dailybot board archive <uuid>` | Archive a board. **Cascade-archives its live tasks**, and restoring does not bring them back |
 | `dailybot board restore <uuid>` | Restore a board (cascaded tasks stay archived) |
 | `dailybot project list` | List projects (`--include progress`) |
@@ -947,7 +949,7 @@ humans who own them.
 | `dailybot project views <uuid>` · `project view save` | Your saved views; save replaces the list and requires the ETag — **needs `dailybot login`** |
 | `dailybot project milestone-create\|milestone-update\|milestone-delete` | Dated milestones; delete retires it (tasks keep pointing at it) |
 | `dailybot project archive <uuid>` | Archive a project |
-| `dailybot project attach <uuid> <file>` · `project attachments` · `project attachment get\|delete` | Files on a project (≤5 MiB, one request). Attaching and deleting need a signed-in admin |
+| `dailybot project attach <uuid> <file>` · `project attachments` · `project attachment get\|delete` | Files on a project (≤5 MiB, one request). Attaching and deleting need `dailybot login` |
 | `dailybot goal list` | List goals (`--include` is repeatable: `--include progress --include projects`) |
 | `dailybot goal get <uuid>` | Show one goal, with its progress and linked projects (always included) |
 | `dailybot goal create --name <n> --period-start <d> --period-end <d>` | Create a goal (a dated commitment) — **needs `dailybot login`** |
@@ -955,13 +957,14 @@ humans who own them.
 | `dailybot goal restore <uuid>` | Restore an archived goal |
 | `dailybot goal link\|unlink <goal> <project>` | Make a project count toward a goal (or stop it) |
 | `dailybot goal archive <uuid>` | Archive a goal (its projects are not archived) |
-| `dailybot goal attach <uuid> <file>` · `goal attachments` · `goal attachment get\|delete` | Files on a goal (≤5 MiB, one request). Attaching and deleting need a signed-in admin |
+| `dailybot goal attach <uuid> <file>` · `goal attachments` · `goal attachment get\|delete` | Files on a goal (≤5 MiB, one request). Attaching and deleting need `dailybot login` |
 
 **Three things worth knowing before you script against this:**
 
 - **Some doors need a person.** An organization API key has no answer for "my tasks" or
-  "my inbox", and it can never hold `tasks:admin` — so container creates need
-  `dailybot login`. This is true even for an organization admin's own key.
+  "my inbox", can never hold `tasks:admin`, and cannot change membership or participants —
+  so container creates and invites need `dailybot login` as a non-guest member. A 404 means
+  not visible (wrong id, private without a grant, or another org) — never "not allowed".
 - **Roll-ups are opt-in.** A field you did not request with `--include` is **absent** from
   the payload. Absent, `null` and `0` are three different answers, and the CLI renders them
   as three different things.

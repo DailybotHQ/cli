@@ -382,13 +382,17 @@ def project_milestone_reopen(
 
 
 def _require_person_for_admin(action: str, *, json_mode: bool) -> None:
-    """Refuse a key on a `tasks:admin` door — see board.py for the full reasoning."""
+    """Refuse an organization API key on a structure or membership door.
+
+    See board.py: open-org Tasks gives every non-guest member structure access on
+    a person session; keys still cannot store `tasks:admin` or change membership.
+    """
     # See tasks.py `_require_person`: gate on the absence of a person token.
     if get_token() is None:
         refuse_without_person(
-            f"`{action}` needs the `tasks:admin` scope, which an organization API key can "
-            "never hold — it cannot even be stored on one. Run `dailybot login` and retry "
-            "as a signed-in person.",
+            f"`{action}` needs a signed-in person. An organization API key can never hold "
+            "the `tasks:admin` scope (it cannot even be stored on one), and keys cannot "
+            "change membership. Run `dailybot login` and retry as a non-guest member.",
             json_mode=json_mode,
             admin=True,
         )
@@ -538,8 +542,10 @@ def project_update(
     """Change a project's name, lead, health, dates or visibility.
 
     \b
-    Only the fields you pass are sent. Needs the `tasks:admin` scope. To post a
-    status note for the team, use `dailybot project update-post` instead.
+    Only the fields you pass are sent. Any signed-in non-guest member can update;
+    an organization API key cannot. Setting `--visibility members` privatizes the
+    project and auto-grants you; invite others with `project member add`. To post
+    a status note for the team, use `dailybot project update-post` instead.
 
     \b
     Examples:
@@ -657,8 +663,11 @@ def project_member() -> None:
     """Invite or remove people and teams on a project. Needs `dailybot login`.
 
     \b
-    There is no project role to edit: organization roles plus visibility are the
-    access model.
+    Membership is the privacy control: a `members` project is not visible (404)
+    to anyone without a grant. Org-wide projects are a shared workspace. Invite a
+    person or a team to close a private project; the last grant cannot be removed
+    (`last_grant_cannot_be_removed`). There is no project role to edit. An
+    organization API key cannot change membership.
 
     \b
     Examples:
@@ -970,7 +979,7 @@ def project_milestone_delete(
 
 # ---------------------------------------------------------------------------
 # Attachments. Reading needs only visibility; attaching and deleting are
-# `tasks:admin` doors, which refuse an organization API key before any request.
+# Structure doors: refuse an organization API key before any request (keys lack tasks:admin).
 # ---------------------------------------------------------------------------
 
 
@@ -986,7 +995,7 @@ def project_milestone_delete(
 def project_attach(
     project_uuid: str, file_path: Path, caption: str | None, json_mode: bool
 ) -> None:
-    """Attach a file to a project. Needs a signed-in organization admin.
+    """Attach a file to a project. Needs a signed-in person (any non-guest member).
 
     \b
     One request, up to 5 MiB. Your Dailybot credentials go only to the API.
@@ -1078,7 +1087,7 @@ def project_attachment_get(
 def project_attachment_delete(
     project_uuid: str, attachment_uuid: str, dry_run: bool, assume_yes: bool, json_mode: bool
 ) -> None:
-    """Remove an attachment from a project. This cannot be undone. Needs an admin.
+    """Remove an attachment from a project. This cannot be undone. Needs a signed-in person.
 
     \b
     Examples:

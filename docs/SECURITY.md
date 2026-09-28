@@ -127,10 +127,13 @@ and every door that needs it refuses a key with `403 insufficient_scope`. That i
 structure change: creating, updating, archiving or restoring boards, columns, projects and
 goals, board and project membership, and linking goals to projects. The CLI refuses a key on
 all of them before any request is sent (exit 4, the server's own answer), and
-`tests/tasks_key_refusal_sweep_test.py` pins the list. This holds **even for an organization admin's own
-key** — verified against a live instance. CLI messages therefore blame the *credential
-kind*, never the user's role: telling an org admin they "need to be an admin" would send
-them looking for a setting that cannot exist.
+`tests/tasks_key_refusal_sweep_test.py` pins the list. **Open-org Tasks:** every non-guest
+member already holds `tasks:admin` on a person session — structure writes succeed after
+`dailybot login` without an organization-admin role. Guests stay refused. Membership is the
+remaining privacy control: a `members` project or board is 404 (not visible) without a
+grant; keys still cannot change membership or participants. CLI messages blame the
+*credential kind* for key refusals and never tell a signed-in member they "need to be an
+admin".
 
 **A person refused is never replayed as the organization.** The client normally retries a
 401/403 once with the other stored credential. On a Tasks door, a 403 to a signed-in person

@@ -165,8 +165,12 @@ ERROR_CODE_MESSAGES: dict[str, str] = {
         "there — do not send this one again."
     ),
     # Isolation: 404 for anything invisible, never 403. Saying "permission" here
-    # would both mislead and disclose that the object exists.
-    "not_found": "Not found. Check the identifier, or it may belong to another organization.",
+    # would both mislead and disclose that the object exists. Membership-private
+    # projects/boards report the same way — treat 404 as not visible, not not allowed.
+    "not_found": (
+        "Not found or not visible to you. Check the identifier, invite status, or it may "
+        "belong to another organization."
+    ),
     "form_response_change_state_forbidden": (
         "You don't have permission to change the state of this submission. "
         "The form's audience may restrict transitions to specific users / teams. "
@@ -579,10 +583,13 @@ _PERSON_SHAPED_GUIDANCE: str = (
     "to be. Run `dailybot login` and retry."
 )
 
+# Keys still cannot store `tasks:admin`. Every non-guest member holds it on a
+# person session, so structure creates/updates go through `dailybot login` — not
+# an organization-admin role check in the CLI.
 _ADMIN_SCOPE_GUIDANCE: str = (
-    "This action needs the `tasks:admin` scope, which an organization API key can never "
-    "hold — it cannot even be stored on one. Run `dailybot login` and retry as a signed-in "
-    "person."
+    "This action needs a signed-in person: an organization API key can never hold the "
+    "`tasks:admin` scope (it cannot even be stored on one). Run `dailybot login` and retry "
+    "as a non-guest member. Membership and participant changes stay person-only too."
 )
 
 
@@ -686,14 +693,16 @@ def resolve_error_message(
     if exc.code == "insufficient_scope":
         required: Any = (exc.extra or {}).get("required_scope")
         if required == "tasks:admin":
-            # The "a key can never hold this" sentence is only true of a key. A
-            # signed-in member hitting the same refusal needs a role, not another
-            # login — telling them to `dailybot login` sends them in a circle.
+            # Open-org Tasks: every non-guest member already holds tasks:admin.
+            # A signed-in refusal is almost always a guest (or another role without
+            # structure access) — never "ask an admin to grant admin". Keys still
+            # cannot store the scope at all.
             if get_token() is not None:
                 return (
-                    "This action needs the `tasks:admin` scope and your account does not "
-                    "hold it. This is a role limit, not a credential problem — ask an "
-                    "organization admin to grant it. Signing in again will not change it."
+                    "Your account cannot change Tasks structure. Guests are refused; every "
+                    "non-guest member can create and manage goals, projects, boards and "
+                    "memberships. This is a role limit, not a credential problem — signing "
+                    "in again will not change it."
                 )
             return _ADMIN_SCOPE_GUIDANCE
         if tasks_surface and get_token() is None:

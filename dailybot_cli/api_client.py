@@ -2574,7 +2574,7 @@ class DailyBotClient:
         team_uuid: str | None = None,
         idempotency_key: str | None = None,
     ) -> Any:
-        """POST …/members/ — `tasks:admin`; a person OR a whole team; 200 when already in.
+        """POST …/members/ — person session (keys cannot change membership); 200 when already in.
 
         The body carries exactly one of `user_uuid` / `team_uuid` (both or neither is
         a 400 `invalid_filter_value`).
@@ -3212,7 +3212,7 @@ class DailyBotClient:
             self._comment_parent(task_uuid, comment_uuid), attachment_uuid
         )
 
-    # Project (POST / DELETE: tasks:admin, a signed-in person; reads: anyone who can see it)
+    # Project attachments (POST / DELETE: signed-in person; reads: anyone who can see it)
     def upload_project_attachment(
         self,
         project_uuid: str,
@@ -3222,7 +3222,7 @@ class DailyBotClient:
         data: bytes,
         caption: str | None = None,
     ) -> dict[str, Any]:
-        """POST /v1/tasks/projects/<p>/attachments/ — multipart, ≤5 MiB, tasks:admin."""
+        """POST /v1/tasks/projects/<p>/attachments/ — multipart, ≤5 MiB, person session."""
         return self._upload_attachment_to(
             self._project_parent(project_uuid),
             filename=filename,
@@ -3236,14 +3236,14 @@ class DailyBotClient:
         return self._list_attachments_of(self._project_parent(project_uuid))
 
     def delete_project_attachment(self, project_uuid: str, attachment_uuid: str) -> Any:
-        """DELETE /v1/tasks/projects/<p>/attachments/<a>/ — tasks:admin."""
+        """DELETE /v1/tasks/projects/<p>/attachments/<a>/ — person session."""
         return self._delete_attachment_of(self._project_parent(project_uuid), attachment_uuid)
 
     def download_project_attachment(self, project_uuid: str, attachment_uuid: str) -> bytes:
         """GET /v1/tasks/projects/<p>/attachments/<a>/content/."""
         return self._download_attachment_of(self._project_parent(project_uuid), attachment_uuid)
 
-    # Goal (POST / DELETE: tasks:admin, a signed-in person; reads: anyone who can see it)
+    # Goal attachments (POST / DELETE: signed-in person; reads: anyone who can see it)
     def upload_goal_attachment(
         self,
         goal_uuid: str,
@@ -3253,7 +3253,7 @@ class DailyBotClient:
         data: bytes,
         caption: str | None = None,
     ) -> dict[str, Any]:
-        """POST /v1/tasks/goals/<g>/attachments/ — multipart, ≤5 MiB, tasks:admin."""
+        """POST /v1/tasks/goals/<g>/attachments/ — multipart, ≤5 MiB, person session."""
         return self._upload_attachment_to(
             self._goal_parent(goal_uuid),
             filename=filename,
@@ -3267,7 +3267,7 @@ class DailyBotClient:
         return self._list_attachments_of(self._goal_parent(goal_uuid))
 
     def delete_goal_attachment(self, goal_uuid: str, attachment_uuid: str) -> Any:
-        """DELETE /v1/tasks/goals/<g>/attachments/<a>/ — tasks:admin."""
+        """DELETE /v1/tasks/goals/<g>/attachments/<a>/ — person session."""
         return self._delete_attachment_of(self._goal_parent(goal_uuid), attachment_uuid)
 
     def download_goal_attachment(self, goal_uuid: str, attachment_uuid: str) -> bytes:
@@ -3446,7 +3446,7 @@ class DailyBotClient:
     def update_project(
         self, project_uuid: str, *, idempotency_key: str | None = None, **fields: Any
     ) -> dict[str, Any]:
-        """PATCH /v1/tasks/projects/<uuid>/ — partial; `tasks:admin`; accepts a key."""
+        """PATCH /v1/tasks/projects/<uuid>/ — partial; person session. Visibility persists; privatizing auto-grants the actor."""
         result: dict[str, Any] = self._tasks_write(
             "PATCH",
             f"projects/{_path_segment(project_uuid)}/",
@@ -3617,15 +3617,15 @@ class DailyBotClient:
 
     # --- Container writes (board / project / goal) ---
     #
-    # These need `tasks:admin`, which an organization API key can NEVER hold: the
-    # validator refuses to store it and the door refuses it independently. The
-    # plan's live probe measured an ADMIN_ORG *owner* refused identically, so the
-    # CLI must blame the credential kind rather than the user's role.
+    # Open-org Tasks: every non-guest member holds `tasks:admin` on a person
+    # session. An organization API key can NEVER store that scope, so the CLI
+    # refuses a key before the request and blames the credential kind. Membership
+    # and participant writes stay person-only too.
 
     def create_board(
         self, *, name: str, idempotency_key: str | None = None, **fields: Any
     ) -> dict[str, Any]:
-        """POST /v1/tasks/boards/ — accepts a key header; needs tasks:admin."""
+        """POST /v1/tasks/boards/ — person session; keys lack tasks:admin."""
         payload: dict[str, Any] = {
             "name": name,
             **{k: v for k, v in fields.items() if v is not None},
@@ -3677,7 +3677,7 @@ class DailyBotClient:
     def create_project(
         self, *, name: str, idempotency_key: str | None = None, **fields: Any
     ) -> dict[str, Any]:
-        """POST /v1/tasks/projects/ — accepts a key header; needs tasks:admin."""
+        """POST /v1/tasks/projects/ — person session; keys lack tasks:admin."""
         payload: dict[str, Any] = {
             "name": name,
             **{k: v for k, v in fields.items() if v is not None},
@@ -3701,7 +3701,7 @@ class DailyBotClient:
     def create_goal(
         self, *, name: str, idempotency_key: str | None = None, **fields: Any
     ) -> dict[str, Any]:
-        """POST /v1/tasks/goals/ — accepts a key header; needs tasks:admin."""
+        """POST /v1/tasks/goals/ — person session; keys lack tasks:admin."""
         payload: dict[str, Any] = {
             "name": name,
             **{k: v for k, v in fields.items() if v is not None},

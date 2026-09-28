@@ -429,7 +429,7 @@ def goal_unlink(
 
 # ---------------------------------------------------------------------------
 # Attachments. Reading needs only visibility; attaching and deleting are
-# `tasks:admin` doors, which refuse an organization API key before any request.
+# Structure doors: refuse an organization API key before any request (keys lack tasks:admin).
 # ---------------------------------------------------------------------------
 
 
@@ -443,7 +443,7 @@ def goal_unlink(
 @click.option("--caption", default=None, help="Short caption shown with the file.")
 @click.option("--json", "json_mode", is_flag=True, help="Emit machine-readable JSON to stdout.")
 def goal_attach(goal_uuid: str, file_path: Path, caption: str | None, json_mode: bool) -> None:
-    """Attach a file to a goal. Needs a signed-in organization admin.
+    """Attach a file to a goal. Needs a signed-in person (any non-guest member).
 
     \b
     One request, up to 5 MiB. Your Dailybot credentials go only to the API.
@@ -535,7 +535,7 @@ def goal_attachment_get(
 def goal_attachment_delete(
     goal_uuid: str, attachment_uuid: str, dry_run: bool, assume_yes: bool, json_mode: bool
 ) -> None:
-    """Remove an attachment from a goal. This cannot be undone. Needs an admin.
+    """Remove an attachment from a goal. This cannot be undone. Needs a signed-in person.
 
     \b
     Examples:
