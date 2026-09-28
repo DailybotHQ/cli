@@ -110,9 +110,12 @@ ensure_codex_daemon_current() {
     local current="${root}/current"
     [ -d "$root" ] || return 0
     local latest
-    latest=$(ls -1d "${root}/releases/"* 2>/dev/null | sort | tail -1)
+    # mtime order, not lexical: semver-like names (0.9 vs 0.10) sort wrong alphabetically.
+    latest=$(ls -1dt "${root}/releases/"* 2>/dev/null | head -1)
     [ -n "$latest" ] || return 0
     local rel="releases/$(basename "$latest")"
+    # Never point current at a partial extract.
+    [ -x "${root}/${rel}/bin/codex" ] || return 0
     local need_relink=0
     if [ ! -L "$current" ]; then
         need_relink=1

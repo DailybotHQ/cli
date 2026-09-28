@@ -169,8 +169,9 @@ then rebuild.
 | `INSTALL_CLINE_CLI` | Cline |
 | `INSTALL_GROK_CLI` | Grok |
 
-`nvim` for `dev-user` is the full Dailybot mu-vim config. The image clones
-`https://github.com/DailybotHQ/mu-vim.git` into `~/.config/nvim` and runs
+`nvim` for `dev-user` is the full [deepworkplan-vim](https://github.com/DailybotHQ/deepworkplan-vim)
+config (pinned to a published release tag via `DWP_VIM_REF`, not a floating
+branch). The image clones that repo into `~/.config/nvim` and runs
 `lua install.lua`, then a headless plugin sync. The binary is the Neovim
 0.12.5 tarball in `~/.local`, ahead of any apt package the installer adds.
 `EDITOR`, `VISUAL`, and `GIT_EDITOR` are `nvim`.

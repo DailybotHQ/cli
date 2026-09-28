@@ -14,8 +14,8 @@ SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 
 # One apt layer for this image. Later RUN steps must not call apt-get update.
 # python:slim has no curl, so this RUN cannot fetch a keyring first.
-# mu-vim's install.lua may still update if a package is missing; listing its
-# known packages here makes that update a no-op.
+# deepworkplan-vim's install.lua may still update if a package is missing;
+# listing its known packages here makes that update a no-op.
 # Do not install the neovim apt package: remoteUser gets the official tarball.
 # gh is the official release tarball below. Debian trixie's sqv rejects the
 # GitHub CLI apt repo key.
@@ -24,7 +24,7 @@ RUN apt-get update && apt-get install --no-install-recommends -y \
     sudo git bash-completion nano ssh openssh-server curl gnupg ca-certificates \
     # Build tools (for native npm packages)
     build-essential \
-    # mu-vim / editor helpers (lua5.4 runs install.lua; rg and fd are required)
+    # deepworkplan-vim / editor helpers (lua5.4 runs install.lua; rg and fd are required)
     lua5.4 ripgrep fd-find \
     python3-neovim luarocks \
     unzip tar xz-utils \
@@ -194,7 +194,7 @@ RUN mkdir -p /home/dev-user/.claude_data \
              /home/dev-user/.ssh \
     && chown -R dev-user:dev-user /home/dev-user
 
-# User-scoped git, herdr, and mu-vim. Coding CLIs above run only when flagged.
+# User-scoped git, herdr, and deepworkplan-vim. Coding CLIs above run only when flagged.
 USER dev-user
 RUN git config --global init.defaultBranch main \
     && git config --global pull.rebase false \
@@ -248,10 +248,11 @@ RUN ARCH="$(uname -m)" \
     && test "$(command -v nvim)" = /home/dev-user/.local/bin/nvim \
     && nvim --version | head -n 1 | grep -q "${NVIM_VERSION}"
 
-# Pin Dailybot mu-vim. A release tag only: the check below requires
-# layer, so the next rebuild installs that release instead of a cached main.
-ARG DWP_VIM_REF=main
-# Full Dailybot mu-vim. install.lua prompts: custom directory No, extras blank
+# Pin deepworkplan-vim to a published release tag. The exact-match check
+# fails the build if DWP_VIM_REF is a floating branch tip, so every rebuild
+# gets the same editor config instead of whatever main is today.
+ARG DWP_VIM_REF=v0.2.0
+# Full deepworkplan-vim. install.lua prompts: custom directory No, extras blank
 # (keeps the checked defaults). Drive those answers on stdin. Passwordless sudo
 # is already in place so the script's sudo -v succeeds. Plugin sync must finish
 # inside the image: +Pckr sync exits before clones land.
@@ -259,6 +260,7 @@ RUN GIT_CONFIG_GLOBAL=/dev/null GIT_CONFIG_SYSTEM=/dev/null \
     git clone https://github.com/DailybotHQ/deepworkplan-vim.git /home/dev-user/.config/nvim \
     && cd /home/dev-user/.config/nvim \
     && git checkout --detach "${DWP_VIM_REF}" \
+    && git describe --tags --exact-match | grep -qx "${DWP_VIM_REF}" \
     && printf 'n\n\n' | lua install.lua \
     && test -f /home/dev-user/.config/nvim/init.lua \
     && { test -f /home/dev-user/.local/share/nvim/deepworkplan-vim-installed || test -f /home/dev-user/.local/share/nvim/mu-vim-installed; } \

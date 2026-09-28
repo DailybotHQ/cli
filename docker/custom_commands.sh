@@ -25,7 +25,8 @@ function _ensure_codex_daemon_current() {
     local root="${HOME}/.codex/packages/app-server-daemon"
     local current="${root}/current"
     local latest=""
-    latest=$(ls -1d "${root}/releases/"* 2>/dev/null | sort | tail -1) || true
+    # mtime order, not lexical: semver-like names (0.9 vs 0.10) sort wrong alphabetically.
+    latest=$(ls -1dt "${root}/releases/"* 2>/dev/null | head -1) || true
     [[ -n "$latest" ]] || return 0
     local rel="releases/$(basename "$latest")"
     if [[ ! -L "$current" || "$(readlink "$current")" != "$rel" ]]; then
