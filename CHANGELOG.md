@@ -9,6 +9,37 @@ Do not edit it by hand — your edits will be overwritten on the next release.
 
 <!-- version list -->
 
+## v3.16.0 (2026-09-28)
+
+### Bug Fixes
+
+- **dev**: Address AI review on contributor tooling
+  ([#102](https://github.com/DailybotHQ/cli/pull/102),
+  [`93e101a`](https://github.com/DailybotHQ/cli/commit/93e101aa39e1c033ef4dc156d4f9440f35b3b100))
+
+- **dev**: Create missing .env files from .env.example
+  ([#102](https://github.com/DailybotHQ/cli/pull/102),
+  [`93e101a`](https://github.com/DailybotHQ/cli/commit/93e101aa39e1c033ef4dc156d4f9440f35b3b100))
+
+- **dev**: Derive Herdr workspace peer aliases from the live Mac config
+  ([#102](https://github.com/DailybotHQ/cli/pull/102),
+  [`93e101a`](https://github.com/DailybotHQ/cli/commit/93e101aa39e1c033ef4dc156d4f9440f35b3b100))
+
+- **dev**: Install DeepWorkPlan Vim in the container image
+  ([#102](https://github.com/DailybotHQ/cli/pull/102),
+  [`93e101a`](https://github.com/DailybotHQ/cli/commit/93e101aa39e1c033ef4dc156d4f9440f35b3b100))
+
+- **dev**: Second-pass AI review on herdr-layout and Codex current
+  ([#102](https://github.com/DailybotHQ/cli/pull/102),
+  [`93e101a`](https://github.com/DailybotHQ/cli/commit/93e101aa39e1c033ef4dc156d4f9440f35b3b100))
+
+### Features
+
+- **dev**: Codex --no-daemon wrapper, herdr-layout, skill upgrades
+  ([#102](https://github.com/DailybotHQ/cli/pull/102),
+  [`93e101a`](https://github.com/DailybotHQ/cli/commit/93e101aa39e1c033ef4dc156d4f9440f35b3b100))
+
+
 ## v3.15.0 (2026-09-26)
 
 ### Bug Fixes
