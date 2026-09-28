@@ -21,7 +21,39 @@ function print.error {
 #   codexx -l|--last    - Resume the last session
 #   codexx -r|--resume  - Interactive session selection
 #   codexx -r <id>      - Resume a specific session by ID
+function _ensure_codex_daemon_current() {
+    local root="${HOME}/.codex/packages/app-server-daemon"
+    local current="${root}/current"
+    [[ -d "$root" ]] || return 0
+    local latest=""
+    # mtime order, not lexical: semver-like names (0.9 vs 0.10) sort wrong alphabetically.
+    latest=$(ls -1dt "${root}/releases/"* 2>/dev/null | head -1) || true
+    [[ -n "$latest" ]] || return 0
+    local rel="releases/$(basename "$latest")"
+    # Never point current at a partial extract (same guard as the entrypoint).
+    [[ -x "${root}/${rel}/bin/codex" ]] || return 0
+    local need_relink=0
+    if [[ ! -L "$current" ]]; then
+        need_relink=1
+    else
+        local tgt
+        tgt=$(readlink "$current")
+        case "$tgt" in
+            /*) need_relink=1 ;;
+            "$rel") need_relink=0 ;;
+            *)
+                [[ -x "${current}/bin/codex" ]] || need_relink=1
+                ;;
+        esac
+    fi
+    if [[ "$need_relink" -eq 1 ]]; then
+        rm -f "$current"
+        ln -s "$rel" "$current"
+    fi
+}
+
 function codexx() {
+    _ensure_codex_daemon_current
     local resume_mode=""
     local session_id=""
 
@@ -49,20 +81,20 @@ function codexx() {
     case "$resume_mode" in
         last)
             print.success "Resuming last Codex session..."
-            codex resume --last --dangerously-bypass-approvals-and-sandbox "$@"
+            command codex resume --last --dangerously-bypass-approvals-and-sandbox --no-daemon "$@"
             ;;
         resume)
             if [[ -n "$session_id" ]]; then
                 print.success "Resuming Codex session: $session_id..."
-                codex resume "$session_id" --dangerously-bypass-approvals-and-sandbox "$@"
+                command codex resume "$session_id" --dangerously-bypass-approvals-and-sandbox --no-daemon "$@"
             else
                 print.success "Selecting Codex session to resume..."
-                codex resume --all --dangerously-bypass-approvals-and-sandbox "$@"
+                command codex resume --all --dangerously-bypass-approvals-and-sandbox --no-daemon "$@"
             fi
             ;;
         *)
             print.success "Starting Codex with full permissions..."
-            codex --dangerously-bypass-approvals-and-sandbox "$@"
+            command codex --dangerously-bypass-approvals-and-sandbox --no-daemon "$@"
             ;;
     esac
 }

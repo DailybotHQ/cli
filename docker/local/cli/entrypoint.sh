@@ -100,6 +100,44 @@ setup_codex_persistence_for_user() {
 setup_codex_persistence_for_user "/home/dev-user"
 chown -R dev-user:dev-user /home/dev-user/.codex_data /home/dev-user/.codex 2>/dev/null || true
 
+# Codex app-server-daemon "current" must be a RELATIVE symlink into releases/.
+# Hub (/home/dev-user) and node containers share dailybotplatformlocal_codex_data.
+# An absolute current -> /home/dev-user/... only works in the hub and breaks
+# every /home/node container (codexx: daemon executable not found).
+ensure_codex_daemon_current() {
+    local user_home="$1"
+    local root="${user_home}/.codex/packages/app-server-daemon"
+    local current="${root}/current"
+    [ -d "$root" ] || return 0
+    local latest
+    # mtime order, not lexical: semver-like names (0.9 vs 0.10) sort wrong alphabetically.
+    latest=$(ls -1dt "${root}/releases/"* 2>/dev/null | head -1)
+    [ -n "$latest" ] || return 0
+    local rel="releases/$(basename "$latest")"
+    # Never point current at a partial extract.
+    [ -x "${root}/${rel}/bin/codex" ] || return 0
+    local need_relink=0
+    if [ ! -L "$current" ]; then
+        need_relink=1
+    else
+        local tgt
+        tgt=$(readlink "$current")
+        case "$tgt" in
+            /*) need_relink=1 ;;
+            "$rel") need_relink=0 ;;
+            *)
+                [ -x "${current}/bin/codex" ] || need_relink=1
+                ;;
+        esac
+    fi
+    if [ "$need_relink" = "1" ]; then
+        rm -f "$current"
+        ln -s "$rel" "$current"
+        echo "Codex: pointed current -> $rel"
+    fi
+}
+ensure_codex_daemon_current "/home/dev-user"
+
 # Setup Cursor CLI persistence with symlinks for a given user
 # This ensures Cursor CLI config persists across container rebuilds
 # Cursor stores data in two locations:

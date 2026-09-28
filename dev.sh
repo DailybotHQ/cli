@@ -32,7 +32,7 @@ while [ -L "$_self" ]; do
 done
 SELF_DIR="$(cd -P "$(dirname "$_self")" && pwd)"
 
-VERBS=" setup up down stop start restart ps logs shell exec build rebuild ls config doctor agents ask help "
+VERBS=" setup up down stop start restart ps logs shell exec build rebuild ls config doctor agents ask herdr-layout help "
 
 # --------------------------------------------------------------------------
 # Argument parsing
@@ -439,24 +439,56 @@ for name in re.findall(r'^\s*name:\s*([A-Za-z0-9_.-]+)\s*$', body, re.M):
 PY
 }
 
-# Detect only. Never creates. Runs for the verbs that start containers.
+# Copy each docker/local/**/.env*.example to the matching .env when missing.
+# Created at 0600 (umask 077) so a later paste of API keys is not world-readable.
+# Sets _ensure_created to the number of files/networks this call created
+# so cmd_setup can fold them into its summary counter.
+ensure_env_from_examples() {
+  local f target
+  _ensure_created=0
+  while IFS= read -r f; do
+    [ -n "$f" ] || continue
+    target="${f%.example}"
+    if [ ! -f "$target" ]; then
+      if ! (umask 077 && : > "$target"); then
+        die "could not create $target"
+      fi
+      cat "$f" > "$target"
+      note "created ${target#"$REPO_ROOT"/} from ${f#"$REPO_ROOT"/} (0600)"
+      _ensure_created=$((_ensure_created + 1))
+    fi
+  done < <(env_examples)
+}
+
+ensure_external_networks() {
+  local net
+  _ensure_created=0
+  while IFS= read -r net; do
+    [ -n "$net" ] || continue
+    if docker network inspect "$net" >/dev/null 2>&1; then
+      continue
+    fi
+    docker network create "$net" >/dev/null
+    note "created docker network $net"
+    _ensure_created=$((_ensure_created + 1))
+  done < <(external_networks)
+}
+
+# Runs before verbs that start containers. Missing .env files are created from
+# .env.example; missing compose external networks are created. Remaining gaps
+# (no example file at all) still fail with a clear path.
 fast_check() {
   local missing="" f target
+  ensure_env_from_examples
   while IFS= read -r f; do
     [ -n "$f" ] || continue
     target="${f%.example}"
     [ -f "$target" ] || missing="${missing}${missing:+, }${target#"$REPO_ROOT"/}"
   done < <(env_examples)
   if [ -n "$missing" ]; then
-    die "local environment not ready (missing $missing) — run: bash dev.sh setup"
+    die "local environment not ready (missing $missing and no matching .env.example)"
   fi
-  local net
-  while IFS= read -r net; do
-    [ -n "$net" ] || continue
-    if ! docker network inspect "$net" >/dev/null 2>&1; then
-      die "docker network '$net' is missing — run: bash dev.sh setup"
-    fi
-  done < <(external_networks)
+  ensure_external_networks
 }
 
 # --------------------------------------------------------------------------
@@ -491,22 +523,8 @@ except BaseException:
 
 cmd_setup() {
   local created=0 f target net
-  while IFS= read -r f; do
-    [ -n "$f" ] || continue
-    target="${f%.example}"
-    if [ ! -f "$target" ]; then
-      cp "$f" "$target"
-      # These files are where API tokens end up once the developer fills them
-      # in. cp leaves them at the umask default, typically 0644 — readable by
-      # every account on the machine. Narrow them at creation, while they are
-      # still empty, rather than after a secret is already in them.
-      if ! chmod 600 "$target" 2>/dev/null; then
-        printf 'dev.sh: could not restrict %s to 0600 — it may be readable by other accounts on this machine\n' "${target#"$REPO_ROOT"/}" >&2
-      fi
-      note "created ${target#"$REPO_ROOT"/}"
-      created=$((created + 1))
-    fi
-  done < <(env_examples)
+  ensure_env_from_examples
+  created=$((created + _ensure_created))
 
   # Match the repositories' own utils.sh: only files that already declare the
   # key are stamped. Values are never printed.
@@ -525,16 +543,8 @@ cmd_setup() {
     stamp_permissions "$target" "$perms" || die "could not update SERVICE_PERMISSIONS in $target"
   done < <(env_examples)
 
-  while IFS= read -r net; do
-    [ -n "$net" ] || continue
-    if docker network inspect "$net" >/dev/null 2>&1; then
-      note "network $net already present"
-    else
-      docker network create "$net" >/dev/null
-      note "created network $net"
-      created=$((created + 1))
-    fi
-  done < <(external_networks)
+  ensure_external_networks
+  created=$((created + _ensure_created))
 
   if [ ! -d "$REPO_ROOT/.devcontainer" ] && [ -d "$REPO_ROOT/.devcontainer_example" ]; then
     mkdir -p "$REPO_ROOT/.devcontainer"
@@ -848,8 +858,9 @@ cmd_ls() {
 }
 
 # Herdr dials peers with strict checking and ignores the peers-file
-# accept-new. A machine created after this container started has no key in
-# known_hosts, so trust it once here before asking for agents.
+# accept-new. It also requires the ED25519 host key. A machine created after
+# this container started, or one whose known_hosts only has the RSA key,
+# fails as unreachable. Trust the ED25519 key before asking for agents.
 herdr_trust_peer_keys() {
   local peers="${HOME}/.ssh_host/config.d/dailybot-peers"
   local workspace_peers="${HOME}/.ssh/${HERDR_WORKSPACE_PEERS_REL}"
@@ -874,18 +885,24 @@ herdr_trust_peer_keys() {
       2202[2-9]|2203[0-2]|22[4-9][0-9][0-9]) ;;
       *) continue ;;
     esac
-    if ssh-keygen -F "[host.docker.internal]:${peer_port}" -f "$known" >/dev/null 2>&1; then
-      if ssh-keygen -F "[host.docker.internal]:${peer_port}" -f "$known" 2>/dev/null | grep -q 'ssh-ed25519'; then
-        continue
-      fi
+    # Debian hashes known_hosts, so a plaintext grep never sees the type.
+    # ssh-keygen -F prints the stored line; skip only when that line is the
+    # ED25519 key Herdr's strict client requires. An older RSA/ECDSA line
+    # for the same port must not hide a missing ED25519 key.
+    if ssh-keygen -F "[host.docker.internal]:${peer_port}" -f "$known" 2>/dev/null \
+      | grep -q 'ssh-ed25519'; then
+      continue
     fi
-    # Dial the published port directly. The peers alias User is often wrong
-    # for this container, and a publickey refusal must not hide the key that
-    # accept-new already stored. Herdr authenticates with its own key.
-    # Herdr's client wants the ED25519 key. accept-new stores it.
-    ssh -o BatchMode=yes -o StrictHostKeyChecking=accept-new -o ConnectTimeout=4 \
-      -o PreferredAuthentications=publickey -p "${peer_port}" \
-      host.docker.internal true >/dev/null 2>&1 || true
+    # keyscan writes the plaintext ED25519 line. accept-new stores whatever
+    # type the server offers first, which on these images is often RSA, and
+    # Herdr then refuses the port. A down peer is skipped.
+    if ! ssh-keyscan -T 4 -t ed25519 -p "${peer_port}" host.docker.internal 2>/dev/null \
+      | grep -v '^#' >>"$known"; then
+      ssh -o BatchMode=yes -o StrictHostKeyChecking=accept-new \
+        -o HostKeyAlgorithms=ssh-ed25519 -o ConnectTimeout=4 \
+        -o PreferredAuthentications=publickey -p "${peer_port}" \
+        host.docker.internal true >/dev/null 2>&1 || true
+    fi
   done
   return 0
 }
@@ -1355,6 +1372,320 @@ print("reply address: bash dev.sh ask %s %s \"...\"" % (from_machine, from_pane)
 PY
 }
 
+# Standard Herdr sidebar: Home · Editor · Development · Agents.
+# Intended to run inside the vscode container (herdr talks to this machine).
+# From the Mac, the same verb docker-execs into this repo's main service.
+_hl_json_field() {
+  python3 -c '
+import json, sys
+raw = sys.stdin.read()
+start = raw.find("{")
+end = raw.rfind("}")
+if start < 0 or end < start:
+    raise SystemExit(0)
+d = json.loads(raw[start:end + 1])
+cur = d
+for part in sys.argv[1].split("."):
+    if not isinstance(cur, dict):
+        cur = ""
+        break
+    cur = cur.get(part)
+if cur is None or isinstance(cur, (dict, list)):
+    cur = ""
+print(cur)
+' "$1"
+}
+
+_hl_ws_id() {
+  local mid="$1" want="$2"
+  herdr workspace list 2>/dev/null | python3 -c '
+import json,sys
+raw=sys.stdin.read(); s=raw.find("{"); e=raw.rfind("}")
+if s<0: raise SystemExit(0)
+d=json.loads(raw[s:e+1])
+ws=(d.get("result") or {}).get("workspaces") or d.get("workspaces") or []
+want=sys.argv[1]
+for w in ws:
+    if (w.get("label") or "")==want:
+        print(w.get("workspace_id") or "")
+        break
+' "$want" 2>/dev/null || true
+}
+
+_hl_ws_create() {
+  local mid="$1" cwd="$2" label="$3" raw
+  raw="$(herdr workspace create --cwd "$cwd" --label "$label" --no-focus 2>&1)" || true
+  printf '%s' "$raw" | python3 -c '
+import json,sys
+raw=sys.stdin.read(); s=raw.find("{"); e=raw.rfind("}")
+if s<0: raise SystemExit(0)
+d=json.loads(raw[s:e+1]); r=d.get("result") or d
+ws=(r.get("workspace") or {}); rp=(r.get("root_pane") or {}); tab=(r.get("tab") or {})
+print("%s\t%s\t%s" % (ws.get("workspace_id") or rp.get("workspace_id") or "", rp.get("pane_id") or "", tab.get("tab_id") or rp.get("tab_id") or ""))
+' 2>/dev/null || true
+}
+
+_hl_tab_create() {
+  local mid="$1" wid="$2" cwd="$3" label="$4" raw
+  raw="$(herdr tab create --workspace "$wid" --cwd "$cwd" --label "$label" --no-focus 2>&1)" || true
+  printf '%s' "$raw" | python3 -c '
+import json,sys
+raw=sys.stdin.read(); s=raw.find("{"); e=raw.rfind("}")
+if s<0: raise SystemExit(0)
+d=json.loads(raw[s:e+1]); r=d.get("result") or d
+tab=(r.get("tab") or {}); rp=(r.get("root_pane") or r.get("pane") or {})
+print("%s\t%s" % (tab.get("tab_id") or rp.get("tab_id") or "", rp.get("pane_id") or ""))
+' 2>/dev/null || true
+}
+
+_hl_pane_split() {
+  local mid="$1" pane="$2" cwd="$3" direction="${4:-right}"
+  local raw
+  raw="$(herdr pane split "$pane" --direction "$direction" --cwd "$cwd" --no-focus 2>&1)" || true
+  printf '%s' "$raw" | _hl_json_field 'result.pane.pane_id'
+}
+
+# True when workspace $1 already has a tab whose label is exactly $2.
+_hl_tab_has_label() {
+  local wid="$1" want="$2"
+  herdr tab list --workspace "$wid" 2>/dev/null | python3 -c '
+import json,sys
+raw=sys.stdin.read(); s=raw.find("{"); e=raw.rfind("}")
+if s<0: raise SystemExit(1)
+d=json.loads(raw[s:e+1])
+tabs=(d.get("result") or {}).get("tabs") or d.get("tabs") or []
+want=sys.argv[1]
+for t in tabs:
+    if (t.get("label") or "")==want:
+        raise SystemExit(0)
+raise SystemExit(1)
+' "$want" 2>/dev/null
+}
+
+# Print pane_id of the first pane in workspace $1 whose label is $2, else empty.
+_hl_pane_id_by_label() {
+  local wid="$1" want="$2"
+  herdr pane list --workspace "$wid" 2>/dev/null | python3 -c '
+import json,sys
+raw=sys.stdin.read(); s=raw.find("{"); e=raw.rfind("}")
+if s<0: raise SystemExit(0)
+d=json.loads(raw[s:e+1])
+panes=(d.get("result") or {}).get("panes") or d.get("panes") or []
+want=sys.argv[1]
+for p in panes:
+    if (p.get("label") or "")==want:
+        print(p.get("pane_id") or "")
+        break
+' "$want" 2>/dev/null || true
+}
+
+# First pane_id in workspace $1 (any label), else empty.
+_hl_first_pane() {
+  local wid="$1"
+  herdr pane list --workspace "$wid" 2>/dev/null | python3 -c '
+import json,sys
+raw=sys.stdin.read(); s=raw.find("{"); e=raw.rfind("}")
+if s<0: raise SystemExit(0)
+d=json.loads(raw[s:e+1])
+panes=(d.get("result") or {}).get("panes") or d.get("panes") or []
+if panes:
+    print(panes[0].get("pane_id") or "")
+' 2>/dev/null || true
+}
+
+_hl_close_label() {
+  local mid="$1" lab="$2" wid left
+  wid="$(_hl_ws_id "$mid" "$lab")"
+  [ -n "$wid" ] || return 0
+  if ! herdr workspace close "$wid" >/dev/null 2>&1; then
+    note "herdr-layout: could not close $lab ($wid) — close failed"
+    return 1
+  fi
+  # Confirm it is gone; a failed or async close must not look like success.
+  left="$(_hl_ws_id "$mid" "$lab")"
+  if [ -n "$left" ]; then
+    note "herdr-layout: $lab still present after close ($left)"
+    return 1
+  fi
+  note "herdr-layout: closed $lab"
+  return 0
+}
+
+cmd_herdr_layout() {
+  local reset=0 keep=0 arg ans
+  for arg in "${ARGS[@]+"${ARGS[@]}"}"; do
+    case "$arg" in
+      --reset|--replace|--wipe) reset=1 ;;
+      --keep) keep=1 ;;
+      -h|--help)
+        cat <<'H'
+herdr-layout — create the standard Herdr sidebar on this machine.
+
+  bash dev.sh herdr-layout           with a TTY: ask whether to reset (default N = keep);
+                                     non-TTY: keep existing, create what is missing
+  bash dev.sh herdr-layout --keep    keep existing; create only missing panes/tabs
+  bash dev.sh herdr-layout --reset   close Home/Editor/Development/Agents, then recreate
+
+Layout: Home · Editor · Development (server | tests) · Agents (Agent 1..4)
+
+Run it inside the container, or from the Mac (it docker-execs into the vscode service).
+H
+        return 0
+        ;;
+      *) die "herdr-layout: unknown flag '$arg' (use --reset or --keep)" ;;
+    esac
+  done
+  if [ "$reset" -eq 1 ] && [ "$keep" -eq 1 ]; then
+    die "herdr-layout: use either --reset or --keep"
+  fi
+
+  if [ "${HERDR_LAYOUT_INNER:-0}" != 1 ] && [ ! -f /.dockerenv ] && [ -z "${DOCKER_DEV_ENV:-}" ]; then
+    write_override
+    [ -n "$DC_SERVICE" ] || die "herdr-layout: no vscode service in this repository"
+    # Stack must be up — dc exec fails opaquely otherwise.
+    if ! dc ps --status running --services 2>/dev/null | grep -qx "$DC_SERVICE"; then
+      die "herdr-layout: $DC_SERVICE is not running — run: bash dev.sh up"
+    fi
+    if [ "$reset" -eq 0 ] && [ "$keep" -eq 0 ] && [ -t 0 ]; then
+      printf 'Reset existing Home / Editor / Development / Agents panes? [y/N] '
+      read -r ans || true
+      case "$ans" in y|Y|yes|YES) reset=1 ;; esac
+    fi
+    local inner_flag="--keep"
+    [ "$reset" -eq 1 ] && inner_flag="--reset"
+    local script="${DC_WORKSPACE:-/workspace}/dev.sh"
+    local -a opts=()
+    [ -n "$DC_USER" ] && opts+=(--user "$DC_USER" -e "HOME=/home/$DC_USER" -e "USER=$DC_USER" -e "LOGNAME=$DC_USER")
+    [ -n "$DC_WORKSPACE" ] && opts+=(-w "$DC_WORKSPACE")
+    opts+=(-e HERDR_LAYOUT_INNER=1)
+    note "herdr-layout: running inside $DC_SERVICE ($inner_flag)"
+    dc exec ${opts[@]+"${opts[@]}"} "$DC_SERVICE" bash "$script" herdr-layout "$inner_flag"
+    return $?
+  fi
+
+  command -v herdr >/dev/null 2>&1 || die "herdr is not on PATH inside this container"
+  command -v python3 >/dev/null 2>&1 || die "python3 is required for herdr-layout"
+
+  if [ "$reset" -eq 0 ] && [ "$keep" -eq 0 ] && [ -t 0 ]; then
+    printf 'Reset existing Home / Editor / Development / Agents panes? [y/N] '
+    read -r ans || true
+    case "$ans" in y|Y|yes|YES) reset=1 ;; esac
+  fi
+
+  local cwd="${DC_WORKSPACE:-}"
+  [ -n "$cwd" ] || cwd="$(pwd)"
+  local mid=""
+
+  note "herdr-layout: local machine  cwd $cwd"
+  if [ "$reset" -eq 1 ]; then
+    note "herdr-layout: resetting Home · Editor · Development · Agents"
+    local lab close_failed=0
+    # Only the four standard labels (+ legacy "Home (~)"). Do not close
+    # undocumented labels like "~" or "app" — those may be real workspaces.
+    for lab in Home "Home (~)" Editor Development Agents; do
+      _hl_close_label "$mid" "$lab" || close_failed=1
+    done
+    if [ "$close_failed" -ne 0 ]; then
+      die "herdr-layout: --reset could not close every standard workspace; fix Herdr and retry"
+    fi
+  fi
+
+  local home_ws editor_ws dev_ws agents_ws line pane tab_id tests_pane n
+
+  home_ws="$(_hl_ws_id "$mid" Home)"
+  if [ -z "$home_ws" ]; then
+    line="$(_hl_ws_create "$mid" "$cwd" Home)"
+    home_ws="$(printf '%s' "$line" | cut -f1)"
+    pane="$(printf '%s' "$line" | cut -f2)"
+    [ -n "$home_ws" ] || die "herdr-layout: could not create Home"
+    [ -n "$pane" ] && herdr pane rename "$pane" home >/dev/null 2>&1 || true
+    note "herdr-layout: created Home"
+  else
+    note "herdr-layout: Home already present"
+  fi
+
+  editor_ws="$(_hl_ws_id "$mid" Editor)"
+  if [ -z "$editor_ws" ]; then
+    line="$(_hl_ws_create "$mid" "$cwd" Editor)"
+    editor_ws="$(printf '%s' "$line" | cut -f1)"
+    pane="$(printf '%s' "$line" | cut -f2)"
+    [ -n "$editor_ws" ] || die "herdr-layout: could not create Editor"
+    [ -n "$pane" ] && herdr pane rename "$pane" editor >/dev/null 2>&1 || true
+    note "herdr-layout: created Editor"
+  else
+    note "herdr-layout: Editor already present"
+  fi
+
+  dev_ws="$(_hl_ws_id "$mid" Development)"
+  if [ -z "$dev_ws" ]; then
+    line="$(_hl_ws_create "$mid" "$cwd" Development)"
+    dev_ws="$(printf '%s' "$line" | cut -f1)"
+    pane="$(printf '%s' "$line" | cut -f2)"
+    tab_id="$(printf '%s' "$line" | cut -f3)"
+    [ -n "$dev_ws" ] && [ -n "$pane" ] || die "herdr-layout: could not create Development"
+    [ -n "$tab_id" ] && herdr tab rename "$tab_id" Development >/dev/null 2>&1 || true
+    herdr pane rename "$pane" server >/dev/null 2>&1 || true
+    tests_pane="$(_hl_pane_split "$mid" "$pane" "$cwd" right)"
+    if [ -n "$tests_pane" ]; then
+      herdr pane rename "$tests_pane" tests >/dev/null 2>&1 || true
+      note "herdr-layout: created Development (server | tests)"
+    else
+      note "herdr-layout: created Development without tests split (pane split returned no id)"
+    fi
+  else
+    note "herdr-layout: Development already present"
+    # Keep mode: fill a missing tests split without recreating the workspace.
+    if [ -z "$(_hl_pane_id_by_label "$dev_ws" tests)" ]; then
+      pane="$(_hl_pane_id_by_label "$dev_ws" server)"
+      [ -n "$pane" ] || pane="$(_hl_first_pane "$dev_ws")"
+      if [ -n "$pane" ]; then
+        tests_pane="$(_hl_pane_split "$mid" "$pane" "$cwd" right)"
+        if [ -n "$tests_pane" ]; then
+          herdr pane rename "$tests_pane" tests >/dev/null 2>&1 || true
+          note "herdr-layout: added Development / tests split"
+        fi
+      fi
+    fi
+  fi
+
+  agents_ws="$(_hl_ws_id "$mid" Agents)"
+  if [ -z "$agents_ws" ]; then
+    line="$(_hl_ws_create "$mid" "$cwd" Agents)"
+    agents_ws="$(printf '%s' "$line" | cut -f1)"
+    pane="$(printf '%s' "$line" | cut -f2)"
+    tab_id="$(printf '%s' "$line" | cut -f3)"
+    [ -n "$agents_ws" ] && [ -n "$pane" ] || die "herdr-layout: could not create Agents"
+    [ -n "$tab_id" ] && herdr tab rename "$tab_id" "Agent 1" >/dev/null 2>&1 || true
+    note "herdr-layout: created Agents / Agent 1"
+    for n in 2 3 4; do
+      line="$(_hl_tab_create "$mid" "$agents_ws" "$cwd" "Agent ${n}")"
+      tab_id="$(printf '%s' "$line" | cut -f1)"
+      pane="$(printf '%s' "$line" | cut -f2)"
+      [ -n "$tab_id" ] || die "herdr-layout: could not create Agent $n"
+      note "herdr-layout: created Agents / Agent $n"
+    done
+  else
+    note "herdr-layout: Agents already present"
+    # Keep mode: create only the missing Agent N tabs (1..4).
+    for n in 1 2 3 4; do
+      if _hl_tab_has_label "$agents_ws" "Agent ${n}"; then
+        continue
+      fi
+      line="$(_hl_tab_create "$mid" "$agents_ws" "$cwd" "Agent ${n}")"
+      tab_id="$(printf '%s' "$line" | cut -f1)"
+      pane="$(printf '%s' "$line" | cut -f2)"
+      if [ -z "$tab_id" ]; then
+        note "herdr-layout: could not create Agent $n (skipped)"
+        continue
+      fi
+      note "herdr-layout: created Agents / Agent $n"
+    done
+  fi
+
+  [ -n "$home_ws" ] && herdr workspace focus "$home_ws" >/dev/null 2>&1 || true
+  note "herdr-layout: ready — Home · Editor · Development · Agents"
+}
+
 cmd_help() {
   cat <<'USAGE'
 dev.sh — start this repository's dev containers without VS Code.
@@ -1381,6 +1712,10 @@ Verbs
                         same as: dbdev agents
   ask <#> "..."         send agent # a prompt plus your reply address
                         ask <id> <pane> "..." is the same, using the table columns
+  herdr-layout          create Home · Editor · Development · Agents on this
+                        machine. --keep leaves current panes and fills gaps;
+                        --reset closes those four then recreates them.
+                        Bare with a TTY asks whether to reset (default N).
   help                  this text
 
 Flags
@@ -1420,6 +1755,7 @@ run_one() {
     doctor)  cmd_doctor ;;
     agents) cmd_herdr_agents ;;
     ask)    cmd_herdr_ask "${ARGS[@]+"${ARGS[@]}"}" ;;
+    herdr-layout) cmd_herdr_layout ;;
     *)       die "unknown verb '$VERB' — run: bash dev.sh help" ;;
   esac
 }
