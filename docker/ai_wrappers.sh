@@ -61,19 +61,33 @@ wire_api = "responses"
 PY
     if [[ "$provider" == azure ]]; then export AZURE_OPENAI_API_KEY; else export XAI_API_KEY; fi
     case "${1:-}" in
-        -c|--continue) shift; command codex -p "$provider" resume --last --dangerously-bypass-approvals-and-sandbox "$@" ;;
-        -l|--last) shift; command codex -p "$provider" resume --last --dangerously-bypass-approvals-and-sandbox "$@" ;;
-        -r|--resume) shift; if [[ -n "${1:-}" && "$1" != -* ]]; then local id="$1"; shift; command codex -p "$provider" resume "$id" --dangerously-bypass-approvals-and-sandbox "$@"; else command codex -p "$provider" resume --all --dangerously-bypass-approvals-and-sandbox "$@"; fi ;;
-        *) command codex -p "$provider" --dangerously-bypass-approvals-and-sandbox "$@" ;;
+        -c|--continue) shift; command codex -p "$provider" resume --last --dangerously-bypass-approvals-and-sandbox --no-daemon "$@" ;;
+        -l|--last) shift; command codex -p "$provider" resume --last --dangerously-bypass-approvals-and-sandbox --no-daemon "$@" ;;
+        -r|--resume) shift; if [[ -n "${1:-}" && "$1" != -* ]]; then local id="$1"; shift; command codex -p "$provider" resume "$id" --dangerously-bypass-approvals-and-sandbox --no-daemon "$@"; else command codex -p "$provider" resume --all --dangerously-bypass-approvals-and-sandbox --no-daemon "$@"; fi ;;
+        *) command codex -p "$provider" --dangerously-bypass-approvals-and-sandbox --no-daemon "$@" ;;
     esac
 }
 
+function _ensure_codex_daemon_current() {
+    local root="${HOME}/.codex/packages/app-server-daemon"
+    local current="${root}/current"
+    local latest=""
+    latest=$(ls -1d "${root}/releases/"* 2>/dev/null | sort | tail -1) || true
+    [[ -n "$latest" ]] || return 0
+    local rel="releases/$(basename "$latest")"
+    if [[ ! -L "$current" || "$(readlink "$current")" != "$rel" ]]; then
+        rm -f "$current"
+        ln -s "$rel" "$current"
+    fi
+}
+
 function codexx() {
+    _ensure_codex_daemon_current
     case "${1:-}" in
-        -c|--continue) shift; print.success "Continuing the most recent Codex session with full permissions..."; command codex resume --last --dangerously-bypass-approvals-and-sandbox "$@" ;;
-        -l|--last) shift; print.success "Resuming last Codex session with full permissions..."; command codex resume --last --dangerously-bypass-approvals-and-sandbox "$@" ;;
-        -r|--resume) shift; if [[ -n "${1:-}" && "$1" != -* ]]; then local id="$1"; shift; command codex resume "$id" --dangerously-bypass-approvals-and-sandbox "$@"; else command codex resume --all --dangerously-bypass-approvals-and-sandbox "$@"; fi ;;
-        *) print.success "Starting Codex with full permissions..."; command codex --dangerously-bypass-approvals-and-sandbox "$@" ;;
+        -c|--continue) shift; print.success "Continuing the most recent Codex session with full permissions..."; command codex resume --last --dangerously-bypass-approvals-and-sandbox --no-daemon "$@" ;;
+        -l|--last) shift; print.success "Resuming last Codex session with full permissions..."; command codex resume --last --dangerously-bypass-approvals-and-sandbox --no-daemon "$@" ;;
+        -r|--resume) shift; if [[ -n "${1:-}" && "$1" != -* ]]; then local id="$1"; shift; command codex resume "$id" --dangerously-bypass-approvals-and-sandbox --no-daemon "$@"; else command codex resume --all --dangerously-bypass-approvals-and-sandbox --no-daemon "$@"; fi ;;
+        *) print.success "Starting Codex with full permissions..."; command codex --dangerously-bypass-approvals-and-sandbox --no-daemon "$@" ;;
     esac
 }
 function codex-azure() { _ai_require codex || return 1; _provider_env_or_die azure || return 1; _codex_provider azure "${AZURE_OPENAI_DEFAULT_MODEL:-${AZURE_OPENAI_MODEL_DAILY:-gpt-5.4-mini-azure}}" "$@"; }

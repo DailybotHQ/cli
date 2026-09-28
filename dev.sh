@@ -32,7 +32,7 @@ while [ -L "$_self" ]; do
 done
 SELF_DIR="$(cd -P "$(dirname "$_self")" && pwd)"
 
-VERBS=" setup up down stop start restart ps logs shell exec build rebuild ls config doctor agents ask help "
+VERBS=" setup up down stop start restart ps logs shell exec build rebuild ls config doctor agents ask herdr-layout help "
 
 # --------------------------------------------------------------------------
 # Argument parsing
@@ -1364,6 +1364,223 @@ print("reply address: bash dev.sh ask %s %s \"...\"" % (from_machine, from_pane)
 PY
 }
 
+# Standard Herdr sidebar: Home · Editor · Development · Agents.
+# Intended to run inside the vscode container (herdr talks to this machine).
+# From the Mac, the same verb docker-execs into this repo's main service.
+_hl_json_field() {
+  python3 -c '
+import json, sys
+raw = sys.stdin.read()
+start = raw.find("{")
+end = raw.rfind("}")
+if start < 0 or end < start:
+    raise SystemExit(0)
+d = json.loads(raw[start:end + 1])
+cur = d
+for part in sys.argv[1].split("."):
+    if not isinstance(cur, dict):
+        cur = ""
+        break
+    cur = cur.get(part)
+if cur is None or isinstance(cur, (dict, list)):
+    cur = ""
+print(cur)
+' "$1"
+}
+
+_hl_ws_id() {
+  local mid="$1" want="$2"
+  herdr workspace list 2>/dev/null | python3 -c '
+import json,sys
+raw=sys.stdin.read(); s=raw.find("{"); e=raw.rfind("}")
+if s<0: raise SystemExit(0)
+d=json.loads(raw[s:e+1])
+ws=(d.get("result") or {}).get("workspaces") or d.get("workspaces") or []
+want=sys.argv[1]
+for w in ws:
+    if (w.get("label") or "")==want:
+        print(w.get("workspace_id") or "")
+        break
+' "$want" 2>/dev/null || true
+}
+
+_hl_ws_create() {
+  local mid="$1" cwd="$2" label="$3" raw
+  raw="$(herdr workspace create --cwd "$cwd" --label "$label" --no-focus 2>&1)" || true
+  printf '%s' "$raw" | python3 -c '
+import json,sys
+raw=sys.stdin.read(); s=raw.find("{"); e=raw.rfind("}")
+if s<0: raise SystemExit(0)
+d=json.loads(raw[s:e+1]); r=d.get("result") or d
+ws=(r.get("workspace") or {}); rp=(r.get("root_pane") or {}); tab=(r.get("tab") or {})
+print("%s\t%s\t%s" % (ws.get("workspace_id") or rp.get("workspace_id") or "", rp.get("pane_id") or "", tab.get("tab_id") or rp.get("tab_id") or ""))
+' 2>/dev/null || true
+}
+
+_hl_tab_create() {
+  local mid="$1" wid="$2" cwd="$3" label="$4" raw
+  raw="$(herdr tab create --workspace "$wid" --cwd "$cwd" --label "$label" --no-focus 2>&1)" || true
+  printf '%s' "$raw" | python3 -c '
+import json,sys
+raw=sys.stdin.read(); s=raw.find("{"); e=raw.rfind("}")
+if s<0: raise SystemExit(0)
+d=json.loads(raw[s:e+1]); r=d.get("result") or d
+tab=(r.get("tab") or {}); rp=(r.get("root_pane") or r.get("pane") or {})
+print("%s\t%s" % (tab.get("tab_id") or rp.get("tab_id") or "", rp.get("pane_id") or ""))
+' 2>/dev/null || true
+}
+
+_hl_pane_split() {
+  local mid="$1" pane="$2" cwd="$3" direction="${4:-right}"
+  local raw
+  raw="$(herdr pane split "$pane" --direction "$direction" --cwd "$cwd" --no-focus 2>&1)" || true
+  printf '%s' "$raw" | _hl_json_field 'result.pane.pane_id'
+}
+
+_hl_close_label() {
+  local mid="$1" lab="$2" wid
+  wid="$(_hl_ws_id "$mid" "$lab")"
+  [ -n "$wid" ] || return 0
+  herdr workspace close "$wid" >/dev/null 2>&1 || true
+  note "herdr-layout: closed $lab"
+}
+
+cmd_herdr_layout() {
+  local reset=0 keep=0 arg ans
+  for arg in "${ARGS[@]+"${ARGS[@]}"}"; do
+    case "$arg" in
+      --reset|--replace|--wipe) reset=1 ;;
+      --keep) keep=1 ;;
+      -h|--help)
+        cat <<'H'
+herdr-layout — create the standard Herdr sidebar on this machine.
+
+  bash dev.sh herdr-layout           keep existing panes; create what is missing
+  bash dev.sh herdr-layout --keep    same, explicit
+  bash dev.sh herdr-layout --reset   close Home/Editor/Development/Agents, then recreate
+
+Layout: Home · Editor · Development (server | tests) · Agents (Agent 1..4)
+
+Run it inside the container, or from the Mac (it docker-execs into the vscode service).
+With no flag and a TTY, you are asked whether to reset current panes.
+H
+        return 0
+        ;;
+      *) die "herdr-layout: unknown flag '$arg' (use --reset or --keep)" ;;
+    esac
+  done
+  if [ "$reset" -eq 1 ] && [ "$keep" -eq 1 ]; then
+    die "herdr-layout: use either --reset or --keep"
+  fi
+
+  if [ "${HERDR_LAYOUT_INNER:-0}" != 1 ] && [ ! -f /.dockerenv ] && [ -z "${DOCKER_DEV_ENV:-}" ]; then
+    write_override
+    [ -n "$DC_SERVICE" ] || die "herdr-layout: no vscode service in this repository"
+    if [ "$reset" -eq 0 ] && [ "$keep" -eq 0 ] && [ -t 0 ]; then
+      printf 'Reset existing Home / Editor / Development / Agents panes? [y/N] '
+      read -r ans || true
+      case "$ans" in y|Y|yes|YES) reset=1 ;; esac
+    fi
+    local inner_flag="--keep"
+    [ "$reset" -eq 1 ] && inner_flag="--reset"
+    local script="${DC_WORKSPACE:-/workspace}/dev.sh"
+    local -a opts=()
+    [ -n "$DC_USER" ] && opts+=(--user "$DC_USER" -e "HOME=/home/$DC_USER" -e "USER=$DC_USER" -e "LOGNAME=$DC_USER")
+    [ -n "$DC_WORKSPACE" ] && opts+=(-w "$DC_WORKSPACE")
+    opts+=(-e HERDR_LAYOUT_INNER=1)
+    note "herdr-layout: running inside $DC_SERVICE ($inner_flag)"
+    dc exec ${opts[@]+"${opts[@]}"} "$DC_SERVICE" bash "$script" herdr-layout "$inner_flag"
+    return $?
+  fi
+
+  command -v herdr >/dev/null 2>&1 || die "herdr is not on PATH inside this container"
+  command -v python3 >/dev/null 2>&1 || die "python3 is required for herdr-layout"
+
+  if [ "$reset" -eq 0 ] && [ "$keep" -eq 0 ] && [ -t 0 ]; then
+    printf 'Reset existing Home / Editor / Development / Agents panes? [y/N] '
+    read -r ans || true
+    case "$ans" in y|Y|yes|YES) reset=1 ;; esac
+  fi
+
+  local cwd="${DC_WORKSPACE:-}"
+  [ -n "$cwd" ] || cwd="$(pwd)"
+  local mid=""
+
+  note "herdr-layout: local machine  cwd $cwd"
+  if [ "$reset" -eq 1 ]; then
+    note "herdr-layout: resetting Home · Editor · Development · Agents"
+    local lab
+    for lab in Home "Home (~)" Editor Development Agents "~" app; do
+      _hl_close_label "$mid" "$lab"
+    done
+  fi
+
+  local home_ws editor_ws dev_ws agents_ws line pane tab_id tests_pane n
+
+  home_ws="$(_hl_ws_id "$mid" Home)"
+  if [ -z "$home_ws" ]; then
+    line="$(_hl_ws_create "$mid" "$cwd" Home)"
+    home_ws="$(printf '%s' "$line" | cut -f1)"
+    pane="$(printf '%s' "$line" | cut -f2)"
+    [ -n "$home_ws" ] || die "herdr-layout: could not create Home"
+    [ -n "$pane" ] && herdr pane rename "$pane" home >/dev/null 2>&1 || true
+    note "herdr-layout: created Home"
+  else
+    note "herdr-layout: Home already present"
+  fi
+
+  editor_ws="$(_hl_ws_id "$mid" Editor)"
+  if [ -z "$editor_ws" ]; then
+    line="$(_hl_ws_create "$mid" "$cwd" Editor)"
+    editor_ws="$(printf '%s' "$line" | cut -f1)"
+    pane="$(printf '%s' "$line" | cut -f2)"
+    [ -n "$editor_ws" ] || die "herdr-layout: could not create Editor"
+    [ -n "$pane" ] && herdr pane rename "$pane" editor >/dev/null 2>&1 || true
+    note "herdr-layout: created Editor"
+  else
+    note "herdr-layout: Editor already present"
+  fi
+
+  dev_ws="$(_hl_ws_id "$mid" Development)"
+  if [ -z "$dev_ws" ]; then
+    line="$(_hl_ws_create "$mid" "$cwd" Development)"
+    dev_ws="$(printf '%s' "$line" | cut -f1)"
+    pane="$(printf '%s' "$line" | cut -f2)"
+    tab_id="$(printf '%s' "$line" | cut -f3)"
+    [ -n "$dev_ws" ] && [ -n "$pane" ] || die "herdr-layout: could not create Development"
+    [ -n "$tab_id" ] && herdr tab rename "$tab_id" Development >/dev/null 2>&1 || true
+    herdr pane rename "$pane" server >/dev/null 2>&1 || true
+    tests_pane="$(_hl_pane_split "$mid" "$pane" "$cwd" right)"
+    [ -n "$tests_pane" ] && herdr pane rename "$tests_pane" tests >/dev/null 2>&1 || true
+    note "herdr-layout: created Development (server | tests)"
+  else
+    note "herdr-layout: Development already present"
+  fi
+
+  agents_ws="$(_hl_ws_id "$mid" Agents)"
+  if [ -z "$agents_ws" ]; then
+    line="$(_hl_ws_create "$mid" "$cwd" Agents)"
+    agents_ws="$(printf '%s' "$line" | cut -f1)"
+    pane="$(printf '%s' "$line" | cut -f2)"
+    tab_id="$(printf '%s' "$line" | cut -f3)"
+    [ -n "$agents_ws" ] && [ -n "$pane" ] || die "herdr-layout: could not create Agents"
+    [ -n "$tab_id" ] && herdr tab rename "$tab_id" "Agent 1" >/dev/null 2>&1 || true
+    note "herdr-layout: created Agents / Agent 1"
+    for n in 2 3 4; do
+      line="$(_hl_tab_create "$mid" "$agents_ws" "$cwd" "Agent ${n}")"
+      tab_id="$(printf '%s' "$line" | cut -f1)"
+      pane="$(printf '%s' "$line" | cut -f2)"
+      [ -n "$tab_id" ] || die "herdr-layout: could not create Agent $n"
+      note "herdr-layout: created Agents / Agent $n"
+    done
+  else
+    note "herdr-layout: Agents already present"
+  fi
+
+  [ -n "$home_ws" ] && herdr workspace focus "$home_ws" >/dev/null 2>&1 || true
+  note "herdr-layout: ready — Home · Editor · Development · Agents"
+}
+
 cmd_help() {
   cat <<'USAGE'
 dev.sh — start this repository's dev containers without VS Code.
@@ -1390,6 +1607,9 @@ Verbs
                         same as: dbdev agents
   ask <#> "..."         send agent # a prompt plus your reply address
                         ask <id> <pane> "..." is the same, using the table columns
+  herdr-layout          create Home · Editor · Development · Agents on this
+                        machine. --keep (default) leaves current panes;
+                        --reset closes those four then recreates them
   help                  this text
 
 Flags
@@ -1429,6 +1649,7 @@ run_one() {
     doctor)  cmd_doctor ;;
     agents) cmd_herdr_agents ;;
     ask)    cmd_herdr_ask "${ARGS[@]+"${ARGS[@]}"}" ;;
+    herdr-layout) cmd_herdr_layout ;;
     *)       die "unknown verb '$VERB' — run: bash dev.sh help" ;;
   esac
 }

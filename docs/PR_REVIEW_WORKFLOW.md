@@ -86,7 +86,7 @@ If the PR doesn't have automated review (e.g., human-only, or `Ready` never appl
 
 ## What This Repo Does
 
-This repo (`cli`) uses **AI Diff Reviewer v3** (pinned `v3.1.1`, skill and Action) in Flow B (local skill + CI):
+This repo (`cli`) uses **AI Diff Reviewer v3** (pinned `v3.2.2`, skill and Action) in Flow B (local skill + CI):
 
 - **CI workflow:** [`.github/workflows/pr-review.yml`](../.github/workflows/pr-review.yml)
 - **Trigger:** apply the **`Ready`** label on a PR targeting `main` (remove + re-add to re-run)
