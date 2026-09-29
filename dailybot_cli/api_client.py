@@ -100,6 +100,8 @@ SAME_ORIGIN_UPLOAD_METHODS: frozenset[str] = frozenset({"PUT", "POST"})
 # BLAST_RADIUS.md records this as THE volume guard for unattended destructive
 # loops — the CLI adds no second ceiling of its own.
 TASKS_BULK_MAX_ITEMS: int = 100
+# Body field an attachment rename (PATCH …/attachments/<uuid>/) carries.
+ATTACHMENT_RENAME_FIELD: str = "filename"
 # Collections the task detail door can embed in one read (first page each).
 TASK_BRIEFING_INCLUDES: tuple[str, ...] = (
     "relations",
@@ -3320,6 +3322,143 @@ class DailyBotClient:
     def download_project_attachment(self, project_uuid: str, attachment_uuid: str) -> bytes:
         """GET /v1/tasks/projects/<p>/attachments/<a>/content/."""
         return self._download_attachment_of(self._project_parent(project_uuid), attachment_uuid)
+
+    # Milestone and project-update attachments: the same row shape as project ones.
+    @staticmethod
+    def _milestone_parent(project_uuid: str, milestone_uuid: str) -> str:
+        return f"projects/{_path_segment(project_uuid)}/milestones/{_path_segment(milestone_uuid)}"
+
+    @staticmethod
+    def _update_parent(project_uuid: str, update_uuid: str) -> str:
+        return f"projects/{_path_segment(project_uuid)}/updates/{_path_segment(update_uuid)}"
+
+    def _rename_attachment_of(self, parent: str, attachment_uuid: str, *, filename: str) -> Any:
+        """PATCH <parent>/attachments/<uuid>/ — rename the file."""
+        return self._tasks_write(
+            "PATCH",
+            f"{parent}/attachments/{_path_segment(attachment_uuid)}/",
+            json={ATTACHMENT_RENAME_FIELD: filename},
+        )
+
+    def upload_milestone_attachment(
+        self,
+        project_uuid: str,
+        milestone_uuid: str,
+        *,
+        filename: str,
+        content_type: str,
+        data: bytes,
+        caption: str | None = None,
+    ) -> dict[str, Any]:
+        """POST …/milestones/<m>/attachments/ as multipart (≤5 MiB)."""
+        return self._upload_attachment_to(
+            self._milestone_parent(project_uuid, milestone_uuid),
+            filename=filename,
+            content_type=content_type,
+            data=data,
+            caption=caption,
+        )
+
+    def list_milestone_attachments(self, project_uuid: str, milestone_uuid: str) -> Any:
+        """GET …/milestones/<m>/attachments/."""
+        return self._list_attachments_of(self._milestone_parent(project_uuid, milestone_uuid))
+
+    def download_milestone_attachment(
+        self, project_uuid: str, milestone_uuid: str, attachment_uuid: str
+    ) -> bytes:
+        """GET …/milestones/<m>/attachments/<a>/content/."""
+        return self._download_attachment_of(
+            self._milestone_parent(project_uuid, milestone_uuid), attachment_uuid
+        )
+
+    def rename_milestone_attachment(
+        self, project_uuid: str, milestone_uuid: str, attachment_uuid: str, *, filename: str
+    ) -> Any:
+        """PATCH …/milestones/<m>/attachments/<a>/."""
+        return self._rename_attachment_of(
+            self._milestone_parent(project_uuid, milestone_uuid), attachment_uuid, filename=filename
+        )
+
+    def delete_milestone_attachment(
+        self, project_uuid: str, milestone_uuid: str, attachment_uuid: str
+    ) -> Any:
+        """DELETE …/milestones/<m>/attachments/<a>/."""
+        return self._delete_attachment_of(
+            self._milestone_parent(project_uuid, milestone_uuid), attachment_uuid
+        )
+
+    def get_project_update(self, project_uuid: str, update_uuid: str) -> dict[str, Any]:
+        """GET /v1/tasks/projects/<p>/updates/<u>/."""
+        return self._tasks_read(f"{self._update_parent(project_uuid, update_uuid)}/")
+
+    def edit_project_update(
+        self,
+        project_uuid: str,
+        update_uuid: str,
+        *,
+        body: str | None = None,
+        health: str | None = None,
+    ) -> Any:
+        """PATCH /v1/tasks/projects/<p>/updates/<u>/ — author only (`update_not_author`)."""
+        payload: dict[str, Any] = {}
+        if body is not None:
+            payload["body"] = body
+        if health is not None:
+            payload["health"] = health
+        return self._tasks_write(
+            "PATCH", f"{self._update_parent(project_uuid, update_uuid)}/", json=payload
+        )
+
+    def delete_project_update(self, project_uuid: str, update_uuid: str) -> Any:
+        """DELETE /v1/tasks/projects/<p>/updates/<u>/ — the author or an org admin."""
+        return self._tasks_write("DELETE", f"{self._update_parent(project_uuid, update_uuid)}/")
+
+    def upload_update_attachment(
+        self,
+        project_uuid: str,
+        update_uuid: str,
+        *,
+        filename: str,
+        content_type: str,
+        data: bytes,
+        caption: str | None = None,
+    ) -> dict[str, Any]:
+        """POST …/updates/<u>/attachments/ as multipart (≤5 MiB) — author only."""
+        return self._upload_attachment_to(
+            self._update_parent(project_uuid, update_uuid),
+            filename=filename,
+            content_type=content_type,
+            data=data,
+            caption=caption,
+        )
+
+    def list_update_attachments(self, project_uuid: str, update_uuid: str) -> Any:
+        """GET …/updates/<u>/attachments/."""
+        return self._list_attachments_of(self._update_parent(project_uuid, update_uuid))
+
+    def download_update_attachment(
+        self, project_uuid: str, update_uuid: str, attachment_uuid: str
+    ) -> bytes:
+        """GET …/updates/<u>/attachments/<a>/content/."""
+        return self._download_attachment_of(
+            self._update_parent(project_uuid, update_uuid), attachment_uuid
+        )
+
+    def rename_update_attachment(
+        self, project_uuid: str, update_uuid: str, attachment_uuid: str, *, filename: str
+    ) -> Any:
+        """PATCH …/updates/<u>/attachments/<a>/."""
+        return self._rename_attachment_of(
+            self._update_parent(project_uuid, update_uuid), attachment_uuid, filename=filename
+        )
+
+    def delete_update_attachment(
+        self, project_uuid: str, update_uuid: str, attachment_uuid: str
+    ) -> Any:
+        """DELETE …/updates/<u>/attachments/<a>/."""
+        return self._delete_attachment_of(
+            self._update_parent(project_uuid, update_uuid), attachment_uuid
+        )
 
     # Goal attachments (POST / DELETE: signed-in person; reads: anyone who can see it)
     def upload_goal_attachment(

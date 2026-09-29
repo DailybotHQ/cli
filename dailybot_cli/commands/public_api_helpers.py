@@ -57,6 +57,10 @@ ERROR_CODE_MESSAGES: dict[str, str] = {
     # recorded in the plan's PERMISSION_MATRIX_OBSERVED.md, not against prose.
     #
     # Agent attribution (--agent-name / DAILYBOT_AGENT_NAME)
+    "update_not_author": (
+        "Only the person who posted this project update can edit it or change its "
+        "attachments (an organization admin can delete it). Post a new update instead."
+    ),
     "invalid_agent_attribution": (
         "The agent name was refused. Use a plain name of 128 characters or fewer: "
         "letters, numbers, spaces and . - _ ( ) ' # + / & , : only. The name must "

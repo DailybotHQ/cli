@@ -953,6 +953,8 @@ humans who own them.
 | `dailybot project get <uuid>` | Show one project |
 | `dailybot project updates [<project>]` | Batched update digest, or one project's feed |
 | `dailybot project update-post <uuid> <body>` | **Post a project update** — how the team sees what was done (`--health`; sends an idempotency key) |
+| `dailybot project update-get\|update-edit\|update-delete <project> <update>` | Read one update (author, `via <agent>`, health, files); edit its text or health (author only); delete it (author or org admin; `--dry-run`) |
+| `dailybot project update-attach\|update-attachments <project> <update>` · `update-attachment get\|rename\|delete` | Files on an update (≤5 MiB, author only). For an inline image, attach it, then `update-edit` the body with `attachment:<uuid>` |
 | `dailybot project milestones [<uuid>]` | List milestones |
 | `dailybot project milestone-complete <p> <m>` | Complete a milestone. **Its open tasks stay open** |
 | `dailybot project milestone-reopen <p> <m>` | Reopen a milestone |
@@ -962,6 +964,7 @@ humans who own them.
 | `dailybot project members <uuid>` · `project member add\|remove` | Who can see the project — people or whole teams (`--team`) — `members` works with a personal API key; `member add\|remove` **needs a person: `dailybot login` or a personal API key** |
 | `dailybot project views <uuid>` · `project view save` | Your saved views; save replaces the list and requires the ETag — **needs a person: `dailybot login` or a personal API key** |
 | `dailybot project milestone-create\|milestone-update\|milestone-delete` | Dated milestones; delete retires it (tasks keep pointing at it) |
+| `dailybot project milestone-attach\|milestone-attachments <project> <milestone>` · `milestone-attachment get\|rename\|delete` | Files on a milestone (≤5 MiB); reference one in the description with `attachment:<uuid>` |
 | `dailybot project archive <uuid>` | Archive a project |
 | `dailybot project attach <uuid> <file>` · `project attachments` · `project attachment get\|delete` | Files on a project (≤5 MiB, one request). Attaching and deleting need a person (`dailybot login` or a personal API key) |
 | `dailybot goal list` | List goals (`--include` is repeatable: `--include progress --include projects`) |

@@ -7,7 +7,13 @@ from typing import Any
 import click
 
 from dailybot_cli.api_client import ATTACHMENT_MULTIPART_MAX_BYTES, APIError, PaginatedResult
-from dailybot_cli.commands._attachments import run_attach, run_delete, run_get, run_list
+from dailybot_cli.commands._attachments import (
+    run_attach,
+    run_delete,
+    run_get,
+    run_list,
+    run_rename,
+)
 from dailybot_cli.commands._beta import mark_beta
 from dailybot_cli.commands._destructive import confirm_without_preview, preview_then_confirm
 from dailybot_cli.commands._rollups import render_rollup
@@ -22,16 +28,15 @@ from dailybot_cli.commands.public_api_helpers import (
 from dailybot_cli.commands.query_options import build_query_params, query_options, resolve_fetch_all
 from dailybot_cli.display import (
     console,
-    present_untrusted,
     print_info,
     print_milestones_table,
     print_pagination_footer,
+    print_project_updates,
     print_projects_table,
     print_raw_value,
     print_success,
     print_tasks_detail_panel,
     print_tasks_rows,
-    safe_text,
 )
 
 # Split deliberately. `projects` is a goal-shaped selector: a project has no
@@ -193,11 +198,7 @@ def project_updates(project_uuid: str | None, json_mode: bool, **flags: Any) -> 
     if json_mode:
         emit_json(_envelope(result))
         return
-    for update in result.results:
-        console.print(
-            f"[dim]{safe_text(update.get('created_at', ''))}[/dim] "
-            f"{present_untrusted(update.get('body'), limit=160)}"
-        )
+    print_project_updates(result.results)
     print_pagination_footer(len(result.results), result.count, has_more=bool(result.next))
 
 
@@ -929,8 +930,8 @@ def project_milestone_delete(
 
 
 # ---------------------------------------------------------------------------
-# Attachments. Reading needs only visibility; attaching and deleting are
-# Structure doors: refuse an organization API key before any request (keys lack tasks:admin).
+# Attachments. Reading needs only visibility; attaching and deleting need a
+# person (a login or a personal API key) who can change the project.
 # ---------------------------------------------------------------------------
 
 
@@ -1048,6 +1049,439 @@ def project_attachment_delete(
         lambda client: client.delete_project_attachment(project_uuid, attachment_uuid),
         f"delete attachment {attachment_uuid} from project {project_uuid}.",
         receipt={"project": project_uuid, "attachment": attachment_uuid},
+        dry_run=dry_run,
+        assume_yes=assume_yes,
+        json_mode=json_mode,
+        require_auth=require_auth,
+    )
+
+
+# ---------------------------------------------------------------------------
+# Milestone attachments. Anyone who can see the project and edit its milestones
+# (a login or a personal API key) can attach, rename and delete.
+# ---------------------------------------------------------------------------
+
+_OUTPUT_OPTION = click.option(
+    "-o",
+    "--output",
+    "output",
+    type=click.Path(dir_okay=False, writable=True, path_type=Path),
+    required=True,
+    help="Where to write the file.",
+)
+
+
+@project.command("milestone-attach")
+@click.argument("project_uuid", metavar="PROJECT")
+@click.argument("milestone_uuid", metavar="MILESTONE")
+@click.argument(
+    "file_path",
+    metavar="FILE",
+    type=click.Path(exists=True, dir_okay=False, readable=True, path_type=Path),
+)
+@click.option("--caption", default=None, help="Short caption shown with the file.")
+@click.option("--json", "json_mode", is_flag=True, help="Emit machine-readable JSON to stdout.")
+def project_milestone_attach(
+    project_uuid: str, milestone_uuid: str, file_path: Path, caption: str | None, json_mode: bool
+) -> None:
+    """Attach a file to a milestone. Needs a person: `dailybot login` or a personal API key.
+
+    \b
+    One request, up to 5 MiB. Reference it in the milestone description with
+    `attachment:<uuid>` to show it inline.
+
+    \b
+    Examples:
+      dailybot project milestone-attach <project-uuid> <milestone-uuid> ./spec.pdf
+    """
+    run_attach(
+        lambda client, **file: client.upload_milestone_attachment(
+            project_uuid, milestone_uuid, **file
+        ),
+        file_path,
+        caption=caption,
+        limit=ATTACHMENT_MULTIPART_MAX_BYTES,
+        where="per file on a milestone",
+        json_mode=json_mode,
+        require_auth=require_auth,
+    )
+
+
+@project.command("milestone-attachments")
+@click.argument("project_uuid", metavar="PROJECT")
+@click.argument("milestone_uuid", metavar="MILESTONE")
+@click.option("--json", "json_mode", is_flag=True, help="Emit machine-readable JSON to stdout.")
+def project_milestone_attachments(project_uuid: str, milestone_uuid: str, json_mode: bool) -> None:
+    """List a milestone's attachments.
+
+    \b
+    Examples:
+      dailybot project milestone-attachments <project-uuid> <milestone-uuid> --json
+    """
+    run_list(
+        lambda client: client.list_milestone_attachments(project_uuid, milestone_uuid),
+        json_mode=json_mode,
+        require_auth=require_auth,
+    )
+
+
+@project.group("milestone-attachment")
+def project_milestone_attachment() -> None:
+    """Download, rename or delete one attachment on a milestone.
+
+    \b
+    Examples:
+      dailybot project milestone-attachment get <project> <milestone> <attachment> -o ./spec.pdf
+      dailybot project milestone-attachment rename <project> <milestone> <attachment> spec-v2.pdf
+      dailybot project milestone-attachment delete <project> <milestone> <attachment> --dry-run
+    """
+
+
+@project_milestone_attachment.command("get")
+@click.argument("project_uuid", metavar="PROJECT")
+@click.argument("milestone_uuid", metavar="MILESTONE")
+@click.argument("attachment_uuid", metavar="ATTACHMENT")
+@_OUTPUT_OPTION
+@click.option("--force", is_flag=True, help="Overwrite the output file if it exists.")
+@click.option("--json", "json_mode", is_flag=True, help="Emit machine-readable JSON to stdout.")
+def project_milestone_attachment_get(
+    project_uuid: str,
+    milestone_uuid: str,
+    attachment_uuid: str,
+    output: Path,
+    force: bool,
+    json_mode: bool,
+) -> None:
+    """Download a milestone's attachment to a file. Never overwrites without --force.
+
+    \b
+    Examples:
+      dailybot project milestone-attachment get <project> <milestone> <attachment> -o ./spec.pdf
+    """
+    run_get(
+        lambda client: client.download_milestone_attachment(
+            project_uuid, milestone_uuid, attachment_uuid
+        ),
+        output,
+        attachment_uuid=attachment_uuid,
+        force=force,
+        json_mode=json_mode,
+        require_auth=require_auth,
+    )
+
+
+@project_milestone_attachment.command("rename")
+@click.argument("project_uuid", metavar="PROJECT")
+@click.argument("milestone_uuid", metavar="MILESTONE")
+@click.argument("attachment_uuid", metavar="ATTACHMENT")
+@click.argument("filename")
+@click.option("--json", "json_mode", is_flag=True, help="Emit machine-readable JSON to stdout.")
+def project_milestone_attachment_rename(
+    project_uuid: str, milestone_uuid: str, attachment_uuid: str, filename: str, json_mode: bool
+) -> None:
+    """Rename a milestone's attachment (1 to 255 characters).
+
+    \b
+    Examples:
+      dailybot project milestone-attachment rename <project> <milestone> <attachment> spec-v2.pdf
+    """
+    run_rename(
+        lambda client, name: client.rename_milestone_attachment(
+            project_uuid, milestone_uuid, attachment_uuid, filename=name
+        ),
+        filename,
+        json_mode=json_mode,
+        require_auth=require_auth,
+    )
+
+
+@project_milestone_attachment.command("delete")
+@click.argument("project_uuid", metavar="PROJECT")
+@click.argument("milestone_uuid", metavar="MILESTONE")
+@click.argument("attachment_uuid", metavar="ATTACHMENT")
+@click.option("--dry-run", is_flag=True, help="Say what would happen and send nothing.")
+@click.option("-y", "--yes", "assume_yes", is_flag=True, help="Skip the confirmation.")
+@click.option("--json", "json_mode", is_flag=True, help="Emit machine-readable JSON to stdout.")
+def project_milestone_attachment_delete(
+    project_uuid: str,
+    milestone_uuid: str,
+    attachment_uuid: str,
+    dry_run: bool,
+    assume_yes: bool,
+    json_mode: bool,
+) -> None:
+    """Remove an attachment from a milestone. This cannot be undone.
+
+    \b
+    Examples:
+      dailybot project milestone-attachment delete <project> <milestone> <attachment> --dry-run
+      dailybot project milestone-attachment delete <project> <milestone> <attachment> --yes
+    """
+    run_delete(
+        lambda client: client.delete_milestone_attachment(
+            project_uuid, milestone_uuid, attachment_uuid
+        ),
+        f"delete attachment {attachment_uuid} from milestone {milestone_uuid}.",
+        receipt={
+            "project": project_uuid,
+            "milestone": milestone_uuid,
+            "attachment": attachment_uuid,
+        },
+        dry_run=dry_run,
+        assume_yes=assume_yes,
+        json_mode=json_mode,
+        require_auth=require_auth,
+    )
+
+
+# ---------------------------------------------------------------------------
+# One project update: read, edit (author only), delete (author or org admin),
+# and its attachments (author only). `--agent-name` stamps every write.
+# ---------------------------------------------------------------------------
+
+
+@project.command("update-get")
+@click.argument("project_uuid", metavar="PROJECT")
+@click.argument("update_uuid", metavar="UPDATE")
+@click.option("--json", "json_mode", is_flag=True, help="Emit machine-readable JSON to stdout.")
+def project_update_get(project_uuid: str, update_uuid: str, json_mode: bool) -> None:
+    """Show one project update, with its author, agent, health and attachments.
+
+    \b
+    Examples:
+      dailybot project update-get <project-uuid> <update-uuid> --json
+    """
+    client = require_auth()
+    try:
+        with console.status("Reading the update..."):
+            data: dict[str, Any] = client.get_project_update(project_uuid, update_uuid)
+    except APIError as exc:
+        exit_for_tasks_error(exc, json_mode)
+    if json_mode:
+        emit_json(data)
+        return
+    print_project_updates([data])
+
+
+@project.command("update-edit")
+@click.argument("project_uuid", metavar="PROJECT")
+@click.argument("update_uuid", metavar="UPDATE")
+@click.argument("body", required=False)
+@click.option(
+    "--health",
+    type=click.Choice(PROJECT_HEALTH),
+    default=None,
+    help="Change the health this update claims.",
+)
+@click.option("--json", "json_mode", is_flag=True, help="Emit machine-readable JSON to stdout.")
+def project_update_edit(
+    project_uuid: str, update_uuid: str, body: str | None, health: str | None, json_mode: bool
+) -> None:
+    """Edit your project update's text and/or health. Only its author can.
+
+    \b
+    Pass `-` as the body to read it from stdin. To show an attached image inline,
+    put `attachment:<uuid>` in the body.
+
+    \b
+    Examples:
+      dailybot project update-edit <project-uuid> <update-uuid> "Shipped, with the fix"
+      dailybot project update-edit <project-uuid> <update-uuid> --health at_risk
+    """
+    if body is None and health is None:
+        raise click.UsageError("Pass a new BODY, --health, or both. Nothing was sent.")
+    client = require_auth()
+    try:
+        with console.status("Editing the update..."):
+            data: Any = client.edit_project_update(
+                project_uuid,
+                update_uuid,
+                body=_read_body(body) if body is not None else None,
+                health=health,
+            )
+    except APIError as exc:
+        exit_for_tasks_error(exc, json_mode)
+    if json_mode:
+        emit_json(data)
+        return
+    report_write(data, "Project update edited")
+
+
+@project.command("update-delete")
+@click.argument("project_uuid", metavar="PROJECT")
+@click.argument("update_uuid", metavar="UPDATE")
+@click.option("--dry-run", is_flag=True, help="Say what would happen and send nothing.")
+@click.option("-y", "--yes", "assume_yes", is_flag=True, help="Skip the confirmation.")
+@click.option("--json", "json_mode", is_flag=True, help="Emit machine-readable JSON to stdout.")
+def project_update_delete(
+    project_uuid: str, update_uuid: str, dry_run: bool, assume_yes: bool, json_mode: bool
+) -> None:
+    """Delete a project update. Its author or an organization admin can. Cannot be undone.
+
+    \b
+    Examples:
+      dailybot project update-delete <project-uuid> <update-uuid> --dry-run
+      dailybot project update-delete <project-uuid> <update-uuid> --yes
+    """
+    run_delete(
+        lambda client: client.delete_project_update(project_uuid, update_uuid),
+        f"delete project update {update_uuid} and its attachments.",
+        receipt={"project": project_uuid, "update": update_uuid},
+        dry_run=dry_run,
+        assume_yes=assume_yes,
+        json_mode=json_mode,
+        require_auth=require_auth,
+    )
+
+
+@project.command("update-attach")
+@click.argument("project_uuid", metavar="PROJECT")
+@click.argument("update_uuid", metavar="UPDATE")
+@click.argument(
+    "file_path",
+    metavar="FILE",
+    type=click.Path(exists=True, dir_okay=False, readable=True, path_type=Path),
+)
+@click.option("--caption", default=None, help="Short caption shown with the file.")
+@click.option("--json", "json_mode", is_flag=True, help="Emit machine-readable JSON to stdout.")
+def project_update_attach(
+    project_uuid: str, update_uuid: str, file_path: Path, caption: str | None, json_mode: bool
+) -> None:
+    """Attach a file to your project update. Only its author can.
+
+    \b
+    One request, up to 5 MiB. For an inline image: post the update, attach the
+    file, then `update-edit` the body with `attachment:<uuid>`.
+
+    \b
+    Examples:
+      dailybot project update-attach <project-uuid> <update-uuid> ./chart.png
+    """
+    run_attach(
+        lambda client, **file: client.upload_update_attachment(project_uuid, update_uuid, **file),
+        file_path,
+        caption=caption,
+        limit=ATTACHMENT_MULTIPART_MAX_BYTES,
+        where="per file on a project update",
+        json_mode=json_mode,
+        require_auth=require_auth,
+    )
+
+
+@project.command("update-attachments")
+@click.argument("project_uuid", metavar="PROJECT")
+@click.argument("update_uuid", metavar="UPDATE")
+@click.option("--json", "json_mode", is_flag=True, help="Emit machine-readable JSON to stdout.")
+def project_update_attachments(project_uuid: str, update_uuid: str, json_mode: bool) -> None:
+    """List a project update's attachments.
+
+    \b
+    Examples:
+      dailybot project update-attachments <project-uuid> <update-uuid> --json
+    """
+    run_list(
+        lambda client: client.list_update_attachments(project_uuid, update_uuid),
+        json_mode=json_mode,
+        require_auth=require_auth,
+    )
+
+
+@project.group("update-attachment")
+def project_update_attachment() -> None:
+    """Download, rename or delete one attachment on a project update.
+
+    \b
+    Examples:
+      dailybot project update-attachment get <project> <update> <attachment> -o ./chart.png
+      dailybot project update-attachment rename <project> <update> <attachment> chart-q4.png
+      dailybot project update-attachment delete <project> <update> <attachment> --yes
+    """
+
+
+@project_update_attachment.command("get")
+@click.argument("project_uuid", metavar="PROJECT")
+@click.argument("update_uuid", metavar="UPDATE")
+@click.argument("attachment_uuid", metavar="ATTACHMENT")
+@_OUTPUT_OPTION
+@click.option("--force", is_flag=True, help="Overwrite the output file if it exists.")
+@click.option("--json", "json_mode", is_flag=True, help="Emit machine-readable JSON to stdout.")
+def project_update_attachment_get(
+    project_uuid: str,
+    update_uuid: str,
+    attachment_uuid: str,
+    output: Path,
+    force: bool,
+    json_mode: bool,
+) -> None:
+    """Download a project update's attachment. Never overwrites without --force.
+
+    \b
+    Examples:
+      dailybot project update-attachment get <project> <update> <attachment> -o ./chart.png
+    """
+    run_get(
+        lambda client: client.download_update_attachment(
+            project_uuid, update_uuid, attachment_uuid
+        ),
+        output,
+        attachment_uuid=attachment_uuid,
+        force=force,
+        json_mode=json_mode,
+        require_auth=require_auth,
+    )
+
+
+@project_update_attachment.command("rename")
+@click.argument("project_uuid", metavar="PROJECT")
+@click.argument("update_uuid", metavar="UPDATE")
+@click.argument("attachment_uuid", metavar="ATTACHMENT")
+@click.argument("filename")
+@click.option("--json", "json_mode", is_flag=True, help="Emit machine-readable JSON to stdout.")
+def project_update_attachment_rename(
+    project_uuid: str, update_uuid: str, attachment_uuid: str, filename: str, json_mode: bool
+) -> None:
+    """Rename a project update's attachment (author only; 1 to 255 characters).
+
+    \b
+    Examples:
+      dailybot project update-attachment rename <project> <update> <attachment> chart-q4.png
+    """
+    run_rename(
+        lambda client, name: client.rename_update_attachment(
+            project_uuid, update_uuid, attachment_uuid, filename=name
+        ),
+        filename,
+        json_mode=json_mode,
+        require_auth=require_auth,
+    )
+
+
+@project_update_attachment.command("delete")
+@click.argument("project_uuid", metavar="PROJECT")
+@click.argument("update_uuid", metavar="UPDATE")
+@click.argument("attachment_uuid", metavar="ATTACHMENT")
+@click.option("--dry-run", is_flag=True, help="Say what would happen and send nothing.")
+@click.option("-y", "--yes", "assume_yes", is_flag=True, help="Skip the confirmation.")
+@click.option("--json", "json_mode", is_flag=True, help="Emit machine-readable JSON to stdout.")
+def project_update_attachment_delete(
+    project_uuid: str,
+    update_uuid: str,
+    attachment_uuid: str,
+    dry_run: bool,
+    assume_yes: bool,
+    json_mode: bool,
+) -> None:
+    """Remove an attachment from a project update (author, or an org admin). Cannot be undone.
+
+    \b
+    Examples:
+      dailybot project update-attachment delete <project> <update> <attachment> --dry-run
+      dailybot project update-attachment delete <project> <update> <attachment> --yes
+    """
+    run_delete(
+        lambda client: client.delete_update_attachment(project_uuid, update_uuid, attachment_uuid),
+        f"delete attachment {attachment_uuid} from project update {update_uuid}.",
+        receipt={"project": project_uuid, "update": update_uuid, "attachment": attachment_uuid},
         dry_run=dry_run,
         assume_yes=assume_yes,
         json_mode=json_mode,
