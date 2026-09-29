@@ -1,9 +1,10 @@
-"""Shared attachment flows for tasks, comments, projects and goals.
+"""Shared attachment flows for tasks, comments, projects, goals, milestones and updates.
 
-Four parents own an `attachments/` collection with the same row shape, so the
+Six parents own an `attachments/` collection with the same row shape, so the
 commands share one implementation of each step: read the local file under a
 hard limit, upload, list, download to a path that is never overwritten by
-surprise, and delete with a stated consequence. Each command supplies only the
+surprise, rename within the server's bounds, and delete with a stated
+consequence. Each command supplies only the
 client call for its parent.
 """
 
@@ -188,6 +189,34 @@ def run_get(
         emit_json({"path": str(output), "bytes": len(content), "attachment": attachment_uuid})
         return
     print_success(f"Saved {len(content)} bytes to {output}.")
+
+
+ATTACHMENT_NAME_MAX_CHARS: int = 255
+
+
+def run_rename(
+    rename: Callable[[Any, str], Any],
+    filename: str,
+    *,
+    json_mode: bool,
+    require_auth: Callable[[], Any],
+) -> None:
+    """Rename one attachment. The name is checked locally against the server's bounds."""
+    cleaned: str = filename.strip()
+    if not cleaned or len(cleaned) > ATTACHMENT_NAME_MAX_CHARS:
+        raise click.UsageError(
+            f"The new name must be 1 to {ATTACHMENT_NAME_MAX_CHARS} characters. Nothing was sent."
+        )
+    client: Any = require_auth()
+    try:
+        with console.status("Renaming the attachment..."):
+            data: Any = rename(client, cleaned)
+    except APIError as exc:
+        exit_for_tasks_error(exc, json_mode)
+    if json_mode:
+        emit_json(data)
+        return
+    print_success(f"Attachment renamed to {cleaned}.")
 
 
 def run_delete(

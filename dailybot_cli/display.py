@@ -2062,15 +2062,52 @@ def print_milestones_table(milestones: list[dict[str, Any]], *, rollup: Any = No
     table.add_column("Name")
     table.add_column("Status", no_wrap=True)
     table.add_column("Open", no_wrap=True)
+    table.add_column("Files", no_wrap=True)
     table.add_column("UUID", no_wrap=True)
     for row in milestones:
+        files: Any = row.get("attachment_count")
         table.add_row(
             present_untrusted(row.get("name")),
             present_untrusted(row.get("status"), limit=16),
             rollup(row, "open_task_count") if rollup else "",
+            str(files) if isinstance(files, int) else "",
             safe_text(row.get("uuid") or ""),
         )
     console.print(table)
+
+
+def print_project_updates(updates: list[dict[str, Any]]) -> None:
+    """Render project updates: the person, the agent companion, health, and files.
+
+    The body is user-authored text and is quoted as data. The person who posted
+    stays primary; `via <agent>` names the agent that executed the post.
+    """
+    if not updates:
+        print_info("No updates.")
+        return
+    for update in updates:
+        author: Any = update.get("created_by") or update.get("author") or {}
+        who: str = present_untrusted(
+            _person_name(author) if isinstance(author, dict) else author, limit=40
+        )
+        agent: Any = update.get("executed_by_agent")
+        if isinstance(agent, dict) and agent.get("name"):
+            who += f" [dim]via {present_untrusted(agent.get('name'), limit=40)}[/dim]"
+        meta: list[str] = [safe_text(update.get("created_at") or "")]
+        if update.get("health"):
+            meta.append(safe_text(update.get("health")))
+        if update.get("edited_at"):
+            meta.append("edited")
+        attachments: Any = update.get("attachments")
+        count: Any = update.get("attachment_count")
+        if isinstance(attachments, list) and attachments:
+            meta.append(f"{len(attachments)} file(s)")
+        elif isinstance(count, int) and count > 0:
+            meta.append(f"{count} file(s)")
+        console.print(f"[dim]{' · '.join(m for m in meta if m)}[/dim] {who}")
+        console.print(f"  {present_untrusted(update.get('body'), limit=400)}")
+        if update.get("uuid"):
+            console.print(f"  [dim]{safe_text(update.get('uuid'))}[/dim]")
 
 
 def _threaded(comments: list[dict[str, Any]]) -> list[dict[str, Any]]:
