@@ -212,7 +212,9 @@ def tasks_attachments_resolve(attachment_uuids: tuple[str, ...], json_mode: bool
 
     \b
     Attachments you cannot see, or that do not exist, are simply absent from the
-    answer. A returned `url` can be short-lived: use it, never store it.
+    answer. Treat a returned `url` as opaque and never store it (it may expire, or
+    be a link that anyone holding it can open): keep the attachment uuid and
+    resolve again. `url_expires_at` is null or an ISO timestamp.
 
     \b
     Examples:
