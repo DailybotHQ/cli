@@ -60,8 +60,9 @@ class TestAnAgentKeyRefusedByTheServer:
         assert result.exit_code == EXIT_NOT_AUTHENTICATED, result.output
         assert "personal API key" in " ".join(json.loads(result.output)["message"].split())
 
-    def test_agent_key_on_a_notification_door_is_a_credential_problem(self) -> None:
+    def test_agent_key_on_a_notification_door_exits_four(self) -> None:
         client: MagicMock = MagicMock(spec=DailyBotClient)
+        client.get_me.return_value = {"uuid": "00000000-0000-0000-0000-000000000009"}
         client.add_task_participant.side_effect = APIError(
             403, "no", code="insufficient_scope", extra={"required_scope": "tasks:write"}
         )
@@ -70,8 +71,10 @@ class TestAnAgentKeyRefusedByTheServer:
             patch("dailybot_cli.commands.public_api_helpers.get_person_token", return_value=None),
         ):
             result = CliRunner().invoke(cli, ["task", "mute", "ENG-1", "--json"])
-        assert result.exit_code in (EXIT_NOT_AUTHENTICATED, EXIT_PERMISSION_DENIED), result.output
-        assert json.loads(result.output)["status"] == "error"
+        assert result.exit_code == EXIT_PERMISSION_DENIED, result.output
+        body: dict[str, Any] = json.loads(result.output)
+        assert body["code"] == "insufficient_scope"
+        assert "personal API key" in " ".join(body["message"].split())
 
 
 class TestAGuestRefusedByTheServer:
