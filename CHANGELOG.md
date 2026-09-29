@@ -9,6 +9,21 @@ Do not edit it by hand — your edits will be overwritten on the next release.
 
 <!-- version list -->
 
+## v3.21.0 (2026-09-29)
+
+### Chores
+
+- **skills**: Sync vendored dailybot skill pack to v3.18.1
+  ([#110](https://github.com/DailybotHQ/cli/pull/110),
+  [`6c6bc0d`](https://github.com/DailybotHQ/cli/commit/6c6bc0d1739623b2ad44dd138a331a6495c152c1))
+
+### Features
+
+- **tasks**: Milestone attachments and project update edit, delete, files
+  ([#109](https://github.com/DailybotHQ/cli/pull/109),
+  [`84b1c75`](https://github.com/DailybotHQ/cli/commit/84b1c7568a6fd90e439fda9009d93ebb1a656764))
+
+
 ## v3.20.0 (2026-09-29)
 
 ### Features
