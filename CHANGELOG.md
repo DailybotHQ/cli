@@ -9,6 +9,60 @@ Do not edit it by hand — your edits will be overwritten on the next release.
 
 <!-- version list -->
 
+## v3.17.0 (2026-09-29)
+
+### Bug Fixes
+
+- **dev**: Derive Herdr workspace peer aliases from the live Mac config
+  ([#101](https://github.com/DailybotHQ/cli/pull/101),
+  [`09c252b`](https://github.com/DailybotHQ/cli/commit/09c252bfe076596983d3b18ba70e852feb1be314))
+
+- **tasks**: Address open-org AI review warnings
+  ([#101](https://github.com/DailybotHQ/cli/pull/101),
+  [`09c252b`](https://github.com/DailybotHQ/cli/commit/09c252bfe076596983d3b18ba70e852feb1be314))
+
+- **tasks**: Open-org review follow-ups on tasks_final_improvements
+  ([#101](https://github.com/DailybotHQ/cli/pull/101),
+  [`09c252b`](https://github.com/DailybotHQ/cli/commit/09c252bfe076596983d3b18ba70e852feb1be314))
+
+### Features
+
+- **tasks**: Open-org structure writes for non-guest members
+  ([#101](https://github.com/DailybotHQ/cli/pull/101),
+  [`09c252b`](https://github.com/DailybotHQ/cli/commit/09c252bfe076596983d3b18ba70e852feb1be314))
+
+
+## v3.16.0 (2026-09-28)
+
+### Bug Fixes
+
+- **dev**: Address AI review on contributor tooling
+  ([#102](https://github.com/DailybotHQ/cli/pull/102),
+  [`93e101a`](https://github.com/DailybotHQ/cli/commit/93e101aa39e1c033ef4dc156d4f9440f35b3b100))
+
+- **dev**: Create missing .env files from .env.example
+  ([#102](https://github.com/DailybotHQ/cli/pull/102),
+  [`93e101a`](https://github.com/DailybotHQ/cli/commit/93e101aa39e1c033ef4dc156d4f9440f35b3b100))
+
+- **dev**: Derive Herdr workspace peer aliases from the live Mac config
+  ([#102](https://github.com/DailybotHQ/cli/pull/102),
+  [`93e101a`](https://github.com/DailybotHQ/cli/commit/93e101aa39e1c033ef4dc156d4f9440f35b3b100))
+
+- **dev**: Install DeepWorkPlan Vim in the container image
+  ([#102](https://github.com/DailybotHQ/cli/pull/102),
+  [`93e101a`](https://github.com/DailybotHQ/cli/commit/93e101aa39e1c033ef4dc156d4f9440f35b3b100))
+
+- **dev**: Second-pass AI review on herdr-layout and Codex current
+  ([#102](https://github.com/DailybotHQ/cli/pull/102),
+  [`93e101a`](https://github.com/DailybotHQ/cli/commit/93e101aa39e1c033ef4dc156d4f9440f35b3b100))
+
+### Features
+
+- **dev**: Codex --no-daemon wrapper, herdr-layout, skill upgrades
+  ([#102](https://github.com/DailybotHQ/cli/pull/102),
+  [`93e101a`](https://github.com/DailybotHQ/cli/commit/93e101aa39e1c033ef4dc156d4f9440f35b3b100))
+
+
 ## v3.15.0 (2026-09-26)
 
 ### Bug Fixes

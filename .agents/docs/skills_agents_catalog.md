@@ -18,7 +18,7 @@ Slash commands. Invoked as `/<name>` (Claude Code) or `#<name>` (Codex/Cursor/Ge
 
 ### Dailybot agent skill pack (vendored from [`DailybotHQ/agent-skill`](https://github.com/DailybotHQ/agent-skill))
 
-The full pack lives under [`.agents/skills/dailybot/`](../skills/dailybot/) (router + seventeen sub-skills; vendored at **v3.15.0**). Every sub-skill requires `dailybot-cli >= 3.9.0` — the pack baseline; `dailybot-tasks` is the one that needs more (`>= 3.14.0`, Tasks Beta parity with the web). The router auto-routes by intent — read [`skills/dailybot/SKILL.md`](../skills/dailybot/SKILL.md) and let it pick the right sub-skill. Direct sub-skill entry points:
+The full pack lives under [`.agents/skills/dailybot/`](../skills/dailybot/) (router + seventeen sub-skills; vendored at **v3.16.1**). Every sub-skill requires `dailybot-cli >= 3.9.0` — the pack baseline; `dailybot-tasks` is the one that needs more (`>= 3.14.2`, Tasks Beta parity with the web). The router auto-routes by intent — read [`skills/dailybot/SKILL.md`](../skills/dailybot/SKILL.md) and let it pick the right sub-skill. Direct sub-skill entry points:
 
 | Slug | Procedure | Use when |
 |------|-----------|----------|
@@ -37,12 +37,12 @@ The full pack lives under [`.agents/skills/dailybot/`](../skills/dailybot/) (rou
 | `dailybot-workflow` | [`skills/dailybot/workflow/SKILL.md`](../skills/dailybot/workflow/SKILL.md) | Listing / reading / triggering org workflows — `workflow list` (incl. `--filter api_trigger`) / `workflow get` / `workflow trigger` (plan-gated) |
 | `dailybot-labels` | [`skills/dailybot/labels/SKILL.md`](../skills/dailybot/labels/SKILL.md) | Organization Labels — create/list/update/archive/delete and assign (or batch) to forms, check-ins, and workflows/automations (web chip-picker parity; `dailybot-cli >= 3.9.0`) |
 | `dailybot-featured` | [`skills/dailybot/featured/SKILL.md`](../skills/dailybot/featured/SKILL.md) | Private per-user Featured stars on forms, automations, and check-ins (not org Labels; `dailybot-cli >= 3.9.0`) |
-| `dailybot-tasks` | [`skills/dailybot/tasks/SKILL.md`](../skills/dailybot/tasks/SKILL.md) | Managing Dailybot Tasks — boards, backlog, sprint/kanban columns, projects, goals, milestones and project updates (`dailybot tasks` for the workspace, `dailybot task` for one task, plus `board`/`project`/`goal`). Needs `dailybot-cli >= 3.14.0` |
+| `dailybot-tasks` | [`skills/dailybot/tasks/SKILL.md`](../skills/dailybot/tasks/SKILL.md) | Managing Dailybot Tasks — boards, backlog, sprint/kanban columns, projects, goals, milestones and project updates (`dailybot tasks` for the workspace, `dailybot task` for one task, plus `board`/`project`/`goal`). Needs `dailybot-cli >= 3.14.2` |
 | `dailybot-env` | [`skills/dailybot/env/SKILL.md`](../skills/dailybot/env/SKILL.md) | Managing per-repo API keys in the opt-in, gitignored `.dailybot/env.json` (`env add/use/show/list/remove/off/on`) — be "logged into different orgs in different repos" |
 
 ### Deep Work Plan skill pack (vendored from [`DailybotHQ/deepworkplan-skill`](https://github.com/DailybotHQ/deepworkplan-skill))
 
-The full pack lives under [`.agents/skills/deepworkplan/`](../skills/deepworkplan/) (router + 9 sub-skills + addons). Vendored at **v5.5.4**. The router auto-routes by intent — read [`skills/deepworkplan/SKILL.md`](../skills/deepworkplan/SKILL.md) and let it pick the right sub-skill. Each sub-skill is independently invocable, and each has a short `dwp-*` alias in [`.agents/commands/`](../commands/) for ergonomic typing.
+The full pack lives under [`.agents/skills/deepworkplan/`](../skills/deepworkplan/) (router + 9 sub-skills + addons). Vendored at **v6.0.1** (DWP standard **6.0.0**). The router auto-routes by intent — read [`skills/deepworkplan/SKILL.md`](../skills/deepworkplan/SKILL.md) and let it pick the right sub-skill. Each sub-skill is independently invocable, and each has a short `dwp-*` alias in [`.agents/commands/`](../commands/) for ergonomic typing.
 
 | Slug | Procedure | Use when |
 |------|-----------|----------|
@@ -61,7 +61,7 @@ The full pack lives under [`.agents/skills/deepworkplan/`](../skills/deepworkpla
 
 ### AI Diff Reviewer (vendored from [`DailybotHQ/ai-diff-reviewer`](https://github.com/DailybotHQ/ai-diff-reviewer))
 
-Vendored at **v3.1.1** under [`.agents/skills/ai-diff-reviewer/`](../skills/ai-diff-reviewer/). Flow B is enabled: local Security Review augmentation + CI gate via [`.github/workflows/pr-review.yml`](../../.github/workflows/pr-review.yml) (trigger label **`Ready`**; secret `XAI_API_KEY`; extension [`.review/extension.md`](../../.review/extension.md)).
+Vendored at **v3.2.2** under [`.agents/skills/ai-diff-reviewer/`](../skills/ai-diff-reviewer/). Flow B is enabled: local Security Review augmentation + CI gate via [`.github/workflows/pr-review.yml`](../../.github/workflows/pr-review.yml) (trigger label **`Ready`**; secret `XAI_API_KEY`; provider **`grok`** / `grok-4.5`; extension [`.review/extension.md`](../../.review/extension.md)).
 
 | Slug | Procedure | Use when |
 |------|-----------|----------|
