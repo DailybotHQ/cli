@@ -9,6 +9,15 @@ Do not edit it by hand — your edits will be overwritten on the next release.
 
 <!-- version list -->
 
+## v3.22.0 (2026-09-29)
+
+### Features
+
+- **tasks**: Full Tasks coverage, security hardening, skill pack v3.19.0
+  ([#111](https://github.com/DailybotHQ/cli/pull/111),
+  [`8d0330f`](https://github.com/DailybotHQ/cli/commit/8d0330f808da7366c59194af5c7643ac9b3da0d3))
+
+
 ## v3.21.1 (2026-09-29)
 
 ### Documentation
