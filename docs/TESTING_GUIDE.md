@@ -71,6 +71,7 @@ tests/
 ├── tasks_agent_attribution_test.py # --agent-name stamp
 ├── task_brief_test.py              # task brief
 ├── token_host_binding_test.py      # login token bound to its issuing host
+├── milestones_updates_test.py      # milestone files/restore; project update detail, edit, delete, files
 ├── tasks_parent_attachments_test.py # attachments on comments, projects and goals (5 MiB, admin doors)
 ├── tasks_ai_review_fixes_test.py # AI review round 1: bulk preview shape, ETag grammar, ports, streamed download
 ├── tasks_inbox_filters_test.py # inbox --mentioned / --type on the list and the unread badge
