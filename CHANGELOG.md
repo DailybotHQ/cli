@@ -9,6 +9,23 @@ Do not edit it by hand — your edits will be overwritten on the next release.
 
 <!-- version list -->
 
+## v3.21.1 (2026-09-29)
+
+### Documentation
+
+- **docs**: Complete Tasks command index and a coding-agent guide
+  ([#112](https://github.com/DailybotHQ/cli/pull/112),
+  [`a75debe`](https://github.com/DailybotHQ/cli/commit/a75debee62bf99bd13c976d7fa93f7e829fc02f6))
+
+- **tasks**: Milestone-attach follows milestone rules, not the person rule
+  ([#112](https://github.com/DailybotHQ/cli/pull/112),
+  [`a75debe`](https://github.com/DailybotHQ/cli/commit/a75debee62bf99bd13c976d7fa93f7e829fc02f6))
+
+- **tasks**: The index and --help say which commands need a person
+  ([#112](https://github.com/DailybotHQ/cli/pull/112),
+  [`a75debe`](https://github.com/DailybotHQ/cli/commit/a75debee62bf99bd13c976d7fa93f7e829fc02f6))
+
+
 ## v3.21.0 (2026-09-29)
 
 ### Chores
