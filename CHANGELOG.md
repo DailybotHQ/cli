@@ -9,6 +9,15 @@ Do not edit it by hand — your edits will be overwritten on the next release.
 
 <!-- version list -->
 
+## v3.17.1 (2026-09-29)
+
+### Bug Fixes
+
+- **tasks**: Address open-org AI review warnings
+  ([#100](https://github.com/DailybotHQ/cli/pull/100),
+  [`84987f9`](https://github.com/DailybotHQ/cli/commit/84987f940be6163cf7f5375465a91f384a7c9d8c))
+
+
 ## v3.17.0 (2026-09-29)
 
 ### Bug Fixes
