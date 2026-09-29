@@ -9,6 +9,29 @@ Do not edit it by hand — your edits will be overwritten on the next release.
 
 <!-- version list -->
 
+## v3.18.0 (2026-09-29)
+
+### Bug Fixes
+
+- **dev**: Derive Herdr workspace peer aliases from the live Mac config
+  ([#103](https://github.com/DailybotHQ/cli/pull/103),
+  [`6505f55`](https://github.com/DailybotHQ/cli/commit/6505f5528bc0ae6728be1ef0a7cbfae2688f816f))
+
+- **tasks**: Address open-org AI review warnings
+  ([#103](https://github.com/DailybotHQ/cli/pull/103),
+  [`6505f55`](https://github.com/DailybotHQ/cli/commit/6505f5528bc0ae6728be1ef0a7cbfae2688f816f))
+
+- **tasks**: Open-org Tasks improvements and review follow-ups
+  ([#103](https://github.com/DailybotHQ/cli/pull/103),
+  [`6505f55`](https://github.com/DailybotHQ/cli/commit/6505f5528bc0ae6728be1ef0a7cbfae2688f816f))
+
+### Features
+
+- **tasks**: Open-org structure writes for non-guest members
+  ([#103](https://github.com/DailybotHQ/cli/pull/103),
+  [`6505f55`](https://github.com/DailybotHQ/cli/commit/6505f5528bc0ae6728be1ef0a7cbfae2688f816f))
+
+
 ## v3.17.1 (2026-09-29)
 
 ### Bug Fixes
