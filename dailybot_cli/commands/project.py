@@ -460,7 +460,7 @@ def project_create(
     idempotency_key: str | None,
     json_mode: bool,
 ) -> None:
-    """Create a project. Needs a signed-in person.
+    """Create a project. Needs a signed-in person (any non-guest member).
 
     \b
     Examples:

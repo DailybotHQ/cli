@@ -702,7 +702,8 @@ def resolve_error_message(
                     "Your account cannot change Tasks structure. Guests are refused; every "
                     "non-guest member can create and manage goals, projects, boards and "
                     "memberships. This is a role limit, not a credential problem — signing "
-                    "in again will not change it."
+                    "in again will not change it. If you are a guest, ask an organization "
+                    "admin to change your role."
                 )
             return _ADMIN_SCOPE_GUIDANCE
         if tasks_surface and get_token() is None:

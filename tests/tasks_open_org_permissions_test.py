@@ -38,6 +38,8 @@ def test_signed_in_tasks_admin_refusal_does_not_ask_for_admin_grant() -> None:
     assert "grant it" not in lower
     assert "be an admin" not in lower
     assert "organization admin to grant" not in lower
+    # Remediation without reviving a grant-admin path.
+    assert "change your role" in lower
 
 
 def test_key_tasks_admin_refusal_still_blames_the_key() -> None:
@@ -55,12 +57,24 @@ def test_key_tasks_admin_refusal_still_blames_the_key() -> None:
     assert "be an admin" not in lower
 
 
-def test_board_create_help_does_not_require_organization_admin() -> None:
-    result: Any = CliRunner().invoke(cli, ["board", "create", "--help"])
+def _assert_structure_create_help(argv: list[str]) -> None:
+    result: Any = CliRunner().invoke(cli, [*argv, "--help"])
     assert result.exit_code == 0
     out: str = result.output.lower()
     assert "organization admin" not in out
-    assert "non-guest member" in out or "signed-in person" in out
+    assert "non-guest member" in out
+
+
+def test_board_create_help_does_not_require_organization_admin() -> None:
+    _assert_structure_create_help(["board", "create"])
+
+
+def test_project_create_help_does_not_require_organization_admin() -> None:
+    _assert_structure_create_help(["project", "create"])
+
+
+def test_goal_create_help_does_not_require_organization_admin() -> None:
+    _assert_structure_create_help(["goal", "create"])
 
 
 def test_project_create_as_person_reaches_the_server() -> None:
@@ -105,6 +119,35 @@ def test_goal_create_as_person_reaches_the_server() -> None:
         )
     assert result.exit_code == 0, result.output
     client.create_goal.assert_called_once()
+
+
+def test_board_create_as_person_reaches_the_server() -> None:
+    client: MagicMock = MagicMock(spec=DailyBotClient)
+    client.create_board.return_value = {
+        "uuid": "00000000-0000-0000-0000-000000000097",
+        "name": "Design",
+        "key": "DSN",
+    }
+    with (
+        patch("dailybot_cli.commands.board.require_auth", return_value=client),
+        patch("dailybot_cli.commands.board.get_token", return_value="tok"),
+    ):
+        result: Any = CliRunner().invoke(
+            cli,
+            [
+                "board",
+                "create",
+                "--name",
+                "Design",
+                "--project",
+                "00000000-0000-0000-0000-000000000002",
+                "--key",
+                "DSN",
+                "--json",
+            ],
+        )
+    assert result.exit_code == 0, result.output
+    client.create_board.assert_called_once()
 
 
 def test_key_still_refused_on_project_create() -> None:
