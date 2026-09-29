@@ -52,7 +52,7 @@ def _invoke(
     with (
         patch(f"dailybot_cli.commands.{module}.require_auth", return_value=client),
         patch(
-            f"dailybot_cli.commands.{module}.get_token",
+            f"dailybot_cli.commands.{module}.get_person_token",
             return_value="tok" if person else None,
             create=True,
         ),

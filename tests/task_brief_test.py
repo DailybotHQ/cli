@@ -195,3 +195,36 @@ class TestBriefCommand:
         client.get_task_briefing.side_effect = APIError(404, "Not found.", code="not_found")
         result: Any = self._invoke(["ENG-404"], client)
         assert result.exit_code == 5
+
+
+class TestHumanBriefingShowsEverySection:
+    def test_participants_activity_and_children_render(self) -> None:
+        from dailybot_cli.display import console, print_task_briefing
+
+        brief: dict[str, Any] = {
+            "task": {"uuid": TASK_UUID, "key": "ENG-12", "title": "t"},
+            "comments": [],
+            "comments_total": 0,
+            "attachments": [],
+            "relations": [],
+            "participants": [{"user": {"name": "Jane Doe"}, "role": "watcher"}],
+            "participants_has_more": False,
+            "activity": [
+                {
+                    "type": "task.updated",
+                    "actor": {"name": "Jane Doe"},
+                    "created_at": "2026-09-29T10:00:00Z",
+                }
+            ],
+            "activity_has_more": True,
+            "children": [{"key": "ENG-13", "title": "sub"}],
+            "children_has_more": False,
+            "untrusted_content": True,
+        }
+        with console.capture() as cap:
+            print_task_briefing(brief)
+        flat: str = " ".join(cap.get().split())
+        assert "Participants (1)" in flat and '"Jane Doe"' in flat
+        assert "Recent activity" in flat and "task.updated" in flat
+        assert "dailybot task activity ENG-12" in flat
+        assert "Sub-tasks (1)" in flat and "ENG-13" in flat

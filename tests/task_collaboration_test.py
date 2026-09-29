@@ -66,7 +66,9 @@ def _invoke(
 ) -> Any:
     with (
         patch("dailybot_cli.commands.task.require_auth", return_value=client),
-        patch("dailybot_cli.commands.task.get_token", return_value="tok" if person else None),
+        patch(
+            "dailybot_cli.commands.task.get_person_token", return_value="tok" if person else None
+        ),
     ):
         return runner.invoke(cli, args, input=stdin)
 

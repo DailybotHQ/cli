@@ -98,7 +98,9 @@ class TestWire:
 def _invoke(module: str, argv: list[str], client: Any, *, person: bool = True) -> Any:
     with (
         patch(f"dailybot_cli.commands.{module}.require_auth", return_value=client),
-        patch("dailybot_cli.commands.project.get_token", return_value="tok" if person else None),
+        patch(
+            "dailybot_cli.commands.project.get_person_token", return_value="tok" if person else None
+        ),
     ):
         return CliRunner().invoke(cli, argv)
 

@@ -1736,6 +1736,56 @@ def print_task_briefing(brief: dict[str, Any]) -> None:
                     f"  {safe_text(relation.get('type') or relation.get('relation') or '')} "
                     f"{safe_text(other.get('key') or other.get('uuid') or '')}"
                 )
+    ref: str = safe_text(task.get("key") or task.get("uuid") or "<task>")
+    participants: Any = brief.get("participants") or []
+    if participants:
+        console.print(f"\n[bold]Participants ({len(participants)})[/bold]")
+        for participant in participants:
+            if isinstance(participant, dict):
+                person: Any = (
+                    participant.get("user")
+                    if isinstance(participant.get("user"), dict)
+                    else participant
+                )
+                console.print(
+                    f"  {present_untrusted(_person_name(person), limit=40)} "
+                    f"[dim]{safe_text(participant.get('role') or '')}[/dim]"
+                )
+        _more_hint(brief, "participants", f"dailybot task participants list {ref}")
+    activity: Any = brief.get("activity") or []
+    if activity:
+        console.print(f"\n[bold]Recent activity ({len(activity)})[/bold]")
+        for item in activity:
+            if isinstance(item, dict):
+                actor: Any = item.get("actor") if isinstance(item.get("actor"), dict) else {}
+                agent: Any = item.get("executed_by_agent")
+                via: str = (
+                    f" [dim]via {present_untrusted(agent.get('name'), limit=40)}[/dim]"
+                    if isinstance(agent, dict) and agent.get("name")
+                    else ""
+                )
+                console.print(
+                    f"  [dim]{safe_text(item.get('created_at') or '')}[/dim] "
+                    f"{safe_text(item.get('type') or item.get('verb') or '')} "
+                    f"{present_untrusted(_person_name(actor), limit=40)}{via}"
+                )
+        _more_hint(brief, "activity", f"dailybot task activity {ref}")
+    children: Any = brief.get("children") or []
+    if children:
+        console.print(f"\n[bold]Sub-tasks ({len(children)})[/bold]")
+        for child in children:
+            if isinstance(child, dict):
+                console.print(
+                    f"  {safe_text(child.get('key') or child.get('uuid') or '')} "
+                    f"{present_untrusted(child.get('title'), limit=80)}"
+                )
+        _more_hint(brief, "children", f"dailybot task children {ref}")
+
+
+def _more_hint(brief: dict[str, Any], name: str, command: str) -> None:
+    """Point at the dedicated command when the briefing carried only a first page."""
+    if brief.get(f"{name}_has_more"):
+        console.print(f"  [dim]More: {command}[/dim]")
 
 
 def _agent_names(executors: Any) -> str:

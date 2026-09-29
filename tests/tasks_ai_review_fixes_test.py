@@ -179,7 +179,7 @@ class TestBoardMemberAddTakesATeam:
         client.add_board_member.return_value = {"subject_type": "team"}
         with (
             patch("dailybot_cli.commands.board.require_auth", return_value=client),
-            patch("dailybot_cli.commands.board.get_token", return_value="tok"),
+            patch("dailybot_cli.commands.board.get_person_token", return_value="tok"),
         ):
             result = CliRunner().invoke(cli, ["board", "member", "add", BOARD, *argv, "--json"])
         return result, client
@@ -434,7 +434,7 @@ class TestBoardCreateRequirements:
         client.create_board.return_value = {"uuid": BOARD, "key": "DSN", "name": "Design"}
         with (
             patch("dailybot_cli.commands.board.require_auth", return_value=client),
-            patch("dailybot_cli.commands.board.get_token", return_value="tok"),
+            patch("dailybot_cli.commands.board.get_person_token", return_value="tok"),
         ):
             result = CliRunner().invoke(cli, ["board", "create", *argv, "--json"])
         return result, client

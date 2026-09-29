@@ -9,7 +9,7 @@ import click
 import questionary
 
 from dailybot_cli.api_client import APIError, DailyBotClient
-from dailybot_cli.config import get_agent_auth, get_org_plan, get_token, load_credentials
+from dailybot_cli.config import get_agent_auth, get_org_plan, get_person_token, load_credentials
 from dailybot_cli.display import error_console, print_error, print_info
 
 # Plan tiers the server treats as "free" (matched case-insensitively). Kept
@@ -706,7 +706,7 @@ def resolve_error_message(
             # A signed-in refusal is almost always a guest (or another role without
             # structure access) — never "ask an admin to grant admin". Keys still
             # cannot store the scope at all.
-            if get_token() is not None:
+            if get_person_token() is not None:
                 return (
                     "Your account cannot change Tasks structure. Guests are refused; every "
                     "non-guest member can create and manage goals, projects, boards and "
@@ -715,7 +715,7 @@ def resolve_error_message(
                     "admin to change your role."
                 )
             return _ADMIN_SCOPE_GUIDANCE
-        if tasks_surface and get_token() is None:
+        if tasks_surface and get_person_token() is None:
             # No person is signed in, so the credential is an organization API key —
             # and a new key holds no Tasks scopes at all until they are granted to it.
             scope: str = f" (it needs `{required}`)" if required else ""

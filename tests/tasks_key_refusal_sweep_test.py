@@ -126,7 +126,7 @@ def _invoke_with_key_only(argv: list[str]) -> tuple[Any, MagicMock]:
     for module in MODULES:
         patches.append(patch(f"dailybot_cli.commands.{module}.require_auth", return_value=client))
     for module in MODULES:
-        target: str = f"dailybot_cli.commands.{module}.get_token"
+        target: str = f"dailybot_cli.commands.{module}.get_person_token"
         patches.append(patch(target, return_value=None, create=True))
     for active in patches:
         active.start()

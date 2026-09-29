@@ -72,7 +72,9 @@ def _invoke(
 ) -> Any:
     with (
         patch("dailybot_cli.commands.board.require_auth", return_value=client),
-        patch("dailybot_cli.commands.board.get_token", return_value="tok" if person else None),
+        patch(
+            "dailybot_cli.commands.board.get_person_token", return_value="tok" if person else None
+        ),
     ):
         return runner.invoke(cli, args, input=stdin)
 
@@ -609,7 +611,7 @@ def test_a_client_side_dry_run_never_treats_ids_as_markup() -> None:
     client: MagicMock = MagicMock(spec=DailyBotClient)
     with (
         patch("dailybot_cli.commands.board.require_auth", return_value=client),
-        patch("dailybot_cli.commands.board.get_token", return_value="tok"),
+        patch("dailybot_cli.commands.board.get_person_token", return_value="tok"),
     ):
         result = CliRunner().invoke(
             cli, ["board", "member", "remove", "[bold]b[/bold]", "[red]u", "--dry-run"]

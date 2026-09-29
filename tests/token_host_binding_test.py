@@ -45,6 +45,11 @@ class TestGetLoginTokenFor:
         assert get_login_token_for(PROD) == "prod-session-token"
         assert get_login_token_for(PROD + "/") == "prod-session-token"
 
+    def test_a_default_port_is_the_same_origin(self) -> None:
+        _login()
+        assert get_login_token_for("https://api.dailybot.com:443") == "prod-session-token"
+        assert get_login_token_for("https://api.dailybot.com:8443") is None
+
     def test_another_host_gets_nothing(self) -> None:
         _login()
         assert get_login_token_for(LOCAL) is None
@@ -95,3 +100,31 @@ class TestClientNeverCarriesTheTokenElsewhere:
     def test_the_home_host_still_uses_the_token(self) -> None:
         _login()
         assert DailyBotClient(api_url=PROD).token == "prod-session-token"
+
+
+class TestPreflightsAskTheCurrentHost:
+    """A production login on disk must not satisfy a testing host's person preflight."""
+
+    def test_person_token_follows_the_current_api(self) -> None:
+        _login()
+        config.set_api_url_override(LOCAL)
+        assert config.get_person_token() is None
+        config.set_api_url_override(PROD)
+        assert config.get_person_token() == "prod-session-token"
+
+    def test_structure_write_on_a_testing_host_is_refused_before_the_request(self) -> None:
+        import json as _json
+
+        from click.testing import CliRunner
+
+        from dailybot_cli.main import cli
+
+        _login()
+        client: MagicMock = MagicMock(spec=DailyBotClient)
+        with patch("dailybot_cli.commands.project.require_auth", return_value=client):
+            result = CliRunner().invoke(
+                cli, ["--api-url", LOCAL, "project", "create", "--name", "X", "--json"]
+            )
+        assert result.exit_code == 4, result.output
+        assert client.mock_calls == []
+        assert _json.loads(result.output)["code"] == "insufficient_scope"

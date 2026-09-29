@@ -85,7 +85,11 @@ class TestPaginationFooterNamesAFlagTheCommandHas:
         module: str = "tasks" if argv[0] == "tasks" else "task"
         with (
             patch(f"dailybot_cli.commands.{module}.require_auth", return_value=client),
-            patch(f"dailybot_cli.commands.{module}.get_token", return_value="bearer", create=True),
+            patch(
+                f"dailybot_cli.commands.{module}.get_person_token",
+                return_value="bearer",
+                create=True,
+            ),
         ):
             result = runner.invoke(cli, argv)
         assert "--all" not in result.stdout
@@ -110,7 +114,11 @@ class TestJsonModeKeepsStdoutParseable:
     def _archive(self, runner: CliRunner, client: MagicMock, argv: list[str], module: str) -> Any:
         with (
             patch(f"dailybot_cli.commands.{module}.require_auth", return_value=client),
-            patch(f"dailybot_cli.commands.{module}.get_token", return_value="bearer", create=True),
+            patch(
+                f"dailybot_cli.commands.{module}.get_person_token",
+                return_value="bearer",
+                create=True,
+            ),
         ):
             return runner.invoke(cli, argv)
 

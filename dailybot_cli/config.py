@@ -181,10 +181,17 @@ def get_token() -> str | None:
     return None
 
 
+_DEFAULT_PORTS: dict[str, int] = {"https": 443, "http": 80}
+
+
 def _origin(url: str) -> tuple[str, str, int | None]:
-    """Scheme, host and port of a URL — what decides where a credential travels."""
+    """Scheme, host and port of a URL — what decides where a credential travels.
+
+    A scheme's default port is filled in, so `https://h` and `https://h:443` agree.
+    """
     parts: SplitResult = urlsplit(url.strip())
-    return parts.scheme.lower(), (parts.hostname or "").lower(), parts.port
+    scheme: str = parts.scheme.lower()
+    return scheme, (parts.hostname or "").lower(), parts.port or _DEFAULT_PORTS.get(scheme)
 
 
 def get_login_token_for(api_url: str) -> str | None:
@@ -208,6 +215,17 @@ def get_login_token_for(api_url: str) -> str | None:
         return None
     token: Any = creds.get("token")
     return str(token) if token else None
+
+
+def get_person_token() -> str | None:
+    """The login token that will actually reach the current API host, or ``None``.
+
+    Local pre-flights that ask "is a signed-in person behind this request?"
+    must use this, not :func:`get_token`: with a production login on disk and a
+    testing profile active, the client never sends that session to the testing
+    host, so a host-blind check would wave through a key-only request.
+    """
+    return get_login_token_for(get_api_url())
 
 
 def load_config() -> dict[str, Any]:

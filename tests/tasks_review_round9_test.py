@@ -48,7 +48,7 @@ def _token_patch(module: str) -> Any:
     `goal.get_token` raises; patching the wrong module's would silently do nothing.
     """
     lookup: str = "project" if module == "goal" else module
-    return patch(f"dailybot_cli.commands.{lookup}.get_token", return_value="b", create=True)
+    return patch(f"dailybot_cli.commands.{lookup}.get_person_token", return_value="b", create=True)
 
 
 def _plan_refusal() -> APIError:
@@ -168,7 +168,7 @@ class TestEveryCreateSurfacesItsKey:
         }
         with (
             patch("dailybot_cli.commands.board.require_auth", return_value=client),
-            patch("dailybot_cli.commands.board.get_token", return_value="b"),
+            patch("dailybot_cli.commands.board.get_person_token", return_value="b"),
         ):
             result = runner.invoke(
                 cli,
@@ -360,7 +360,7 @@ class TestUntrustedTextIsEscapedExactlyOnce:
         }
         with (
             patch("dailybot_cli.commands.board.require_auth", return_value=client),
-            patch("dailybot_cli.commands.board.get_token", return_value="b"),
+            patch("dailybot_cli.commands.board.get_person_token", return_value="b"),
         ):
             result = runner.invoke(
                 cli,

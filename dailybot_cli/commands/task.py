@@ -60,7 +60,7 @@ from dailybot_cli.commands.query_options import (
     query_options,
     resolve_fetch_all,
 )
-from dailybot_cli.config import get_token
+from dailybot_cli.config import get_person_token
 from dailybot_cli.display import (
     console,
     error_console,
@@ -732,7 +732,7 @@ def _require_person_for(action: str, *, json_mode: bool) -> None:
     """
     # Gate on the absence of a person token, not on the presence of a key: both
     # can be configured at once, and Bearer is sent first when it exists.
-    if get_token() is None:
+    if get_person_token() is None:
         refuse_without_person(
             f"`{action}` changes who is notified, and no organization API key may do that — "
             "there is no person behind it to be accountable. Run `dailybot login` and retry.",
@@ -1076,7 +1076,7 @@ def task_unmute(task_uuid: str, json_mode: bool) -> None:
 @click.argument("task_uuid", metavar="TASK")
 @click.option("--json", "json_mode", is_flag=True, help="Emit machine-readable JSON to stdout.")
 def task_watch(task_uuid: str, json_mode: bool) -> None:
-    """Follow a task's notifications without being on it. Needs `dailybot login`.
+    """Follow a task's notifications without being on it. Needs a person: `dailybot login` or a personal API key.
 
     \b
     Watching is private: nobody is told you started following the task.
@@ -1101,7 +1101,7 @@ def task_watch(task_uuid: str, json_mode: bool) -> None:
 @click.argument("task_uuid", metavar="TASK")
 @click.option("--json", "json_mode", is_flag=True, help="Emit machine-readable JSON to stdout.")
 def task_unwatch(task_uuid: str, json_mode: bool) -> None:
-    """Stop following a task. Needs `dailybot login`.
+    """Stop following a task. Needs a person: `dailybot login` or a personal API key.
 
     \b
     Examples:

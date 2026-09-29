@@ -53,7 +53,7 @@ def _invoke(runner: CliRunner, client: MagicMock, argv: list[str], module: str) 
     lookup: str = "project" if module == "goal" else module
     with (
         patch(f"dailybot_cli.commands.{module}.require_auth", return_value=client),
-        patch(f"dailybot_cli.commands.{lookup}.get_token", return_value="b", create=True),
+        patch(f"dailybot_cli.commands.{lookup}.get_person_token", return_value="b", create=True),
     ):
         return runner.invoke(cli, argv)
 

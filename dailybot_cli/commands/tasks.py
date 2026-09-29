@@ -592,9 +592,9 @@ def tasks_inbox(json_mode: bool, mentioned: bool, event_type: str | None, **flag
     """Show your Tasks notifications.
 
     \b
-    Needs a signed-in person: run `dailybot login`. An organization API key cannot
-    read this door — it has an organization but nobody to be, so "my notifications"
-    has no answer.
+    Needs a person: `dailybot login` or a personal API key. An agent or
+    organization key has nobody behind it, so "my notifications" has no answer
+    and the server refuses it.
 
     \b
     Paging is one page per call: this command has no `--all`, and `--limit` sizes
@@ -651,7 +651,7 @@ def tasks_inbox(json_mode: bool, mentioned: bool, event_type: str | None, **flag
 )
 @click.option("--json", "json_mode", is_flag=True, help="Emit machine-readable JSON to stdout.")
 def tasks_inbox_unread(json_mode: bool, mentioned: bool, event_type: str | None) -> None:
-    """How many Tasks notifications you have not read. Needs `dailybot login`.
+    """How many Tasks notifications you have not read. Needs a person: `dailybot login` or a personal API key.
 
     \b
     The same filters as `tasks inbox`, so a badge counts exactly its tab's rows.
@@ -679,7 +679,7 @@ def tasks_inbox_unread(json_mode: bool, mentioned: bool, event_type: str | None)
 @click.argument("item_uuid", metavar="ITEM")
 @click.option("--json", "json_mode", is_flag=True, help="Emit machine-readable JSON to stdout.")
 def tasks_inbox_read(item_uuid: str, json_mode: bool) -> None:
-    """Mark an inbox item — and everything older — as read. Needs `dailybot login`.
+    """Mark an inbox item — and everything older — as read. Needs a person: `dailybot login` or a personal API key.
 
     \b
     The inbox keeps one "read up to here" mark, not a flag per item, so reading an
@@ -704,7 +704,7 @@ def tasks_inbox_read(item_uuid: str, json_mode: bool) -> None:
 @tasks.command("inbox-read-all")
 @click.option("--json", "json_mode", is_flag=True, help="Emit machine-readable JSON to stdout.")
 def tasks_inbox_read_all(json_mode: bool) -> None:
-    """Mark your whole Tasks inbox as read. Needs `dailybot login`.
+    """Mark your whole Tasks inbox as read. Needs a person: `dailybot login` or a personal API key.
 
     \b
     Examples:
@@ -737,7 +737,7 @@ def tasks_cursor(set_to: str | None, set_now: bool, json_mode: bool) -> None:
     \b
     Without options, prints where you are. Pair it with the feed:
     `dailybot tasks activity --since <last_seen_at>`, then `dailybot tasks cursor --now`.
-    Needs `dailybot login`.
+    Needs a person: `dailybot login` or a personal API key.
 
     \b
     Examples:
@@ -783,7 +783,7 @@ VIEW_VISIBILITIES: tuple[str, ...] = ("personal", "shared", "board_default")
 @tasks.command("favorites")
 @click.option("--json", "json_mode", is_flag=True, help="Emit machine-readable JSON to stdout.")
 def tasks_favorites(json_mode: bool) -> None:
-    """List your pinned boards and saved views. Needs `dailybot login`.
+    """List your pinned boards and saved views. Needs a person: `dailybot login` or a personal API key.
 
     \b
     Pin with `dailybot board star <board>` or `dailybot tasks view star <view>`.
@@ -806,7 +806,7 @@ def tasks_favorites(json_mode: bool) -> None:
 
 @tasks.group("view")
 def tasks_view() -> None:
-    """Read, edit, delete or pin one saved view by its uuid. Needs `dailybot login`.
+    """Read, edit, delete or pin one saved view by its uuid. Needs a person: `dailybot login` or a personal API key.
 
     \b
     List a board's or project's views with `dailybot board views` / `project views`.
@@ -995,8 +995,8 @@ def tasks_mine(scope: str | None, json_mode: bool, **flags: Any) -> None:
     """List the tasks that are yours.
 
     \b
-    Needs a signed-in person: run `dailybot login`. An organization API key is
-    refused here, because "my tasks" is defined relative to the calling user.
+    Needs a person: `dailybot login` or a personal API key. An agent or
+    organization key is refused by the server: "my tasks" needs a person.
 
     \b
     Paging is one page per call: this command has no `--all`, and `--limit` sizes
@@ -1038,7 +1038,7 @@ def tasks_counts(json_mode: bool) -> None:
     """Show how many tasks are yours, by bucket.
 
     \b
-    Needs a signed-in person: run `dailybot login`.
+    Needs a person: `dailybot login` or a personal API key.
 
     \b
     Examples:

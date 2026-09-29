@@ -144,7 +144,9 @@ class TestEveryPhaseOneCapabilityIsReachable:
         module: str = _MODULE_FOR[args[0]]
         with (
             patch(f"dailybot_cli.commands.{module}.require_auth", return_value=client),
-            patch(f"dailybot_cli.commands.{module}.get_token", return_value="tok", create=True),
+            patch(
+                f"dailybot_cli.commands.{module}.get_person_token", return_value="tok", create=True
+            ),
         ):
             result = runner.invoke(cli, args)
         assert result.exit_code == 0, f"capability {num} ({label}) failed: {result.output}"
@@ -334,7 +336,9 @@ class TestRoleMatrixIsTableDriven:
         with (
             patch(f"dailybot_cli.commands.{auth_module}.require_auth", return_value=client),
             patch(
-                f"dailybot_cli.commands.{guard_module}.get_token", return_value=None, create=True
+                f"dailybot_cli.commands.{guard_module}.get_person_token",
+                return_value=None,
+                create=True,
             ),
         ):
             result = runner.invoke(cli, args)
