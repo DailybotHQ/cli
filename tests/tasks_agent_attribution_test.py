@@ -110,9 +110,7 @@ class TestTasksWriteStamp:
 
     def test_too_long_is_refused_locally_without_a_request(self) -> None:
         with patch("httpx.post") as mock_post, pytest.raises(APIError) as caught:
-            _client("a" * (TASKS_AGENT_NAME_MAX_LENGTH + 1)).comment_on_task(
-                TASK_UUID, body="hi"
-            )
+            _client("a" * (TASKS_AGENT_NAME_MAX_LENGTH + 1)).comment_on_task(TASK_UUID, body="hi")
         assert caught.value.code == INVALID_AGENT_ATTRIBUTION_CODE
         mock_post.assert_not_called()
 
