@@ -31,7 +31,7 @@ def _invoke(runner: CliRunner, client: MagicMock, args: list[str]) -> Any:
     # refuse an organization API key before any request.
     with (
         patch("dailybot_cli.commands.board.require_auth", return_value=client),
-        patch("dailybot_cli.commands.board.get_person_token", return_value="tok"),
+        patch("dailybot_cli.commands.board.get_person_token", return_value="tok", create=True),
     ):
         return runner.invoke(cli, args)
 
@@ -144,84 +144,9 @@ def _invoke_auth(runner: CliRunner, client: MagicMock, args: list[str], auth: st
     token: str | None = None if auth == "api_key" else "tok"
     with (
         patch("dailybot_cli.commands.board.require_auth", return_value=client),
-        patch("dailybot_cli.commands.board.get_person_token", return_value=token),
+        patch("dailybot_cli.commands.board.get_person_token", return_value=token, create=True),
     ):
         return runner.invoke(cli, args)
-
-
-class TestContainerCreateNeedsAPerson:
-    """C-8 — measured: an ADMIN_ORG owner is refused too."""
-
-    def test_an_api_key_is_refused_before_the_request(
-        self, runner: CliRunner, client: MagicMock
-    ) -> None:
-        result = _invoke_auth(
-            runner,
-            client,
-            [
-                "board",
-                "create",
-                "--project",
-                "00000000-0000-0000-0000-000000000002",
-                "--key",
-                "DSN",
-                "--name",
-                "Design",
-            ],
-            "api_key",
-        )
-        # 4, not 3: a `tasks:admin` refusal is a 403 on the wire, and the pre-flight
-        # must be indistinguishable from the server's own answer.
-        assert result.exit_code == 4
-        client.create_board.assert_not_called()
-
-    def test_the_message_blames_the_credential_kind(
-        self, runner: CliRunner, client: MagicMock
-    ) -> None:
-        result = _invoke_auth(
-            runner,
-            client,
-            [
-                "board",
-                "create",
-                "--project",
-                "00000000-0000-0000-0000-000000000002",
-                "--key",
-                "DSN",
-                "--name",
-                "x",
-            ],
-            "api_key",
-        )
-        # Rich wraps at the terminal width, so a phrase can straddle a newline.
-        # Collapse whitespace before asserting on wording.
-        out: str = " ".join(result.output.lower().split())
-        assert "api key" in out
-        assert "dailybot login" in out
-
-    def test_it_does_not_tell_an_org_admin_to_become_an_admin(
-        self, runner: CliRunner, client: MagicMock
-    ) -> None:
-        # Task 1 measured an ADMIN_ORG owner refused identically. "You must be an
-        # admin" would send them hunting for a setting that cannot exist.
-        result = _invoke_auth(
-            runner,
-            client,
-            [
-                "board",
-                "create",
-                "--project",
-                "00000000-0000-0000-0000-000000000002",
-                "--key",
-                "DSN",
-                "--name",
-                "x",
-            ],
-            "api_key",
-        )
-        out: str = " ".join(result.output.lower().split())
-        assert "must be an admin" not in out
-        assert "be an org admin" not in out
 
 
 class TestGuestIsDistinctFromScope:

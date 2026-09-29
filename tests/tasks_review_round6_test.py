@@ -23,9 +23,7 @@ from click.testing import CliRunner
 from dailybot_cli.api_client import APIError, DailyBotClient, PaginatedResult
 from dailybot_cli.commands.project import GOAL_INCLUDE_VALUES, PROJECT_INCLUDE_VALUES
 from dailybot_cli.commands.public_api_helpers import (
-    EXIT_NOT_AUTHENTICATED,
     EXIT_NOT_FOUND,
-    EXIT_PERMISSION_DENIED,
     resolve_error_message,
 )
 from dailybot_cli.main import cli
@@ -43,104 +41,6 @@ def client() -> MagicMock:
 
 def _empty() -> PaginatedResult:
     return PaginatedResult(results=[], count=0, next=None, previous=None)
-
-
-class TestPreflightRefusalsHonourJson:
-    """Findings 1-4: four copies of the same pre-flight ignored `--json`.
-
-    `exit_for_tasks_error` promises a parseable document on every refusal path.
-    The client-side pre-flight bypassed it entirely — `dailybot board create --json`
-    under a key-only session exited 3 with **empty stdout**.
-    """
-
-    @pytest.mark.parametrize(
-        ("argv", "module", "expected_exit"),
-        [
-            (["task", "mute", "t-1", "--json"], "task", EXIT_NOT_AUTHENTICATED),
-            (["task", "unmute", "t-1", "--json"], "task", EXIT_NOT_AUTHENTICATED),
-            (["project", "views", "p-1", "--json"], "project", EXIT_NOT_AUTHENTICATED),
-            (
-                [
-                    "board",
-                    "create",
-                    "--project",
-                    "00000000-0000-0000-0000-000000000002",
-                    "--key",
-                    "DSN",
-                    "--name",
-                    "b",
-                    "--json",
-                ],
-                "board",
-                EXIT_PERMISSION_DENIED,
-            ),
-            (["project", "create", "--name", "p", "--json"], "project", EXIT_PERMISSION_DENIED),
-            # `goal create` reuses project's helper, so the token lookup resolves in
-            # project's namespace — patching goal's would silently do nothing.
-            (
-                [
-                    "goal",
-                    "create",
-                    "--name",
-                    "g",
-                    "--period-start",
-                    "2026-10-01",
-                    "--period-end",
-                    "2026-12-31",
-                    "--json",
-                ],
-                "project",
-                EXIT_PERMISSION_DENIED,
-            ),
-            (
-                ["task", "participants", "add", "t-1", "--user", "u-1", "--json"],
-                "task",
-                EXIT_NOT_AUTHENTICATED,
-            ),
-        ],
-    )
-    def test_stdout_carries_the_error_envelope(
-        self, runner: CliRunner, argv: list[str], module: str, expected_exit: int
-    ) -> None:
-        with patch(
-            f"dailybot_cli.commands.{module}.get_person_token", return_value=None, create=True
-        ):
-            result = runner.invoke(cli, argv)
-        assert result.exit_code == expected_exit
-        body: Any = json.loads(result.stdout)
-        assert body["status"] == "error"
-        assert body["message"]
-
-    def test_the_code_matches_what_the_server_would_say(self, runner: CliRunner) -> None:
-        # A caller branching on `code` must not have to know whether the request
-        # was spent client-side or refused by the server.
-        with patch("dailybot_cli.commands.task.get_person_token", return_value=None):
-            person = json.loads(runner.invoke(cli, ["task", "mute", "t-1", "--json"]).stdout)
-        with patch("dailybot_cli.commands.board.get_person_token", return_value=None):
-            admin = json.loads(
-                runner.invoke(
-                    cli,
-                    [
-                        "board",
-                        "create",
-                        "--project",
-                        "00000000-0000-0000-0000-000000000002",
-                        "--key",
-                        "DSN",
-                        "--name",
-                        "b",
-                        "--json",
-                    ],
-                ).stdout
-            )
-        assert person["code"] == "actor_required"
-        assert admin["code"] == "insufficient_scope"
-
-    def test_without_json_the_prose_still_goes_to_stderr(self, runner: CliRunner) -> None:
-        with patch("dailybot_cli.commands.task.get_person_token", return_value=None):
-            result = runner.invoke(cli, ["task", "mute", "t-1"])
-        assert result.stdout == ""
-        assert "dailybot login" in result.stderr
 
 
 class TestTheMissingCursorBranchHonoursJson:
@@ -281,14 +181,20 @@ class TestAdminScopeMessageDiagnosesTheRightThing:
 
     def test_a_signed_in_member_is_told_to_ask_an_admin(self) -> None:
         with patch(
-            "dailybot_cli.commands.public_api_helpers.get_person_token", return_value="bearer"
+            "dailybot_cli.commands.public_api_helpers.get_person_token",
+            return_value="bearer",
+            create=True,
         ):
             message: str = resolve_error_message(self._refusal())
         assert "role limit" in message
         assert "can never hold" not in message
 
     def test_a_key_only_session_keeps_the_credential_diagnosis(self) -> None:
-        with patch("dailybot_cli.commands.public_api_helpers.get_person_token", return_value=None):
+        with patch(
+            "dailybot_cli.commands.public_api_helpers.get_person_token",
+            return_value=None,
+            create=True,
+        ):
             message: str = resolve_error_message(self._refusal())
         assert "can never hold" in message
         assert "dailybot login" in message
@@ -301,6 +207,8 @@ class TestAdminScopeMessageDiagnosesTheRightThing:
             extra={"required_scope": "tasks:write"},
         )
         with patch(
-            "dailybot_cli.commands.public_api_helpers.get_person_token", return_value="bearer"
+            "dailybot_cli.commands.public_api_helpers.get_person_token",
+            return_value="bearer",
+            create=True,
         ):
             assert "tasks:write" in resolve_error_message(exc)

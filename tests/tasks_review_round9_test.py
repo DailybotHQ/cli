@@ -168,7 +168,7 @@ class TestEveryCreateSurfacesItsKey:
         }
         with (
             patch("dailybot_cli.commands.board.require_auth", return_value=client),
-            patch("dailybot_cli.commands.board.get_person_token", return_value="b"),
+            patch("dailybot_cli.commands.board.get_person_token", return_value="b", create=True),
         ):
             result = runner.invoke(
                 cli,
@@ -360,7 +360,7 @@ class TestUntrustedTextIsEscapedExactlyOnce:
         }
         with (
             patch("dailybot_cli.commands.board.require_auth", return_value=client),
-            patch("dailybot_cli.commands.board.get_person_token", return_value="b"),
+            patch("dailybot_cli.commands.board.get_person_token", return_value="b", create=True),
         ):
             result = runner.invoke(
                 cli,

@@ -49,7 +49,6 @@ from dailybot_cli.commands.public_api_helpers import (
     emit_json,
     exit_for_tasks_error,
     load_json_input,
-    refuse_without_person,
     require_auth,
     rows_of,
 )
@@ -60,7 +59,6 @@ from dailybot_cli.commands.query_options import (
     query_options,
     resolve_fetch_all,
 )
-from dailybot_cli.config import get_person_token
 from dailybot_cli.display import (
     console,
     error_console,
@@ -724,22 +722,6 @@ def task_assign(task_ref: str, owner: str, idempotency_key: str | None, json_mod
     _set_owner(task_ref, owner, idempotency_key, json_mode)
 
 
-def _require_person_for(action: str, *, json_mode: bool) -> None:
-    """Refuse a key on a person-only door.
-
-    Published policy: two writes no organization API key may ever make — changing
-    who can see, and changing who is notified. Participants are the second.
-    """
-    # Gate on the absence of a person token, not on the presence of a key: both
-    # can be configured at once, and Bearer is sent first when it exists.
-    if get_person_token() is None:
-        refuse_without_person(
-            f"`{action}` changes who is notified, and no organization API key may do that — "
-            "there is no person behind it to be accountable. Run `dailybot login` and retry.",
-            json_mode=json_mode,
-        )
-
-
 def _read_body(value: str) -> str:
     """Read a body argument, or stdin when it is `-`."""
     if value == "-":
@@ -928,7 +910,6 @@ def participants_add(
     Examples:
       dailybot task participants add ENG-142 --user <user-uuid>
     """
-    _require_person_for("task participants add", json_mode=json_mode)
     client = require_auth()
     try:
         with console.status("Adding the participant..."):
@@ -1003,7 +984,6 @@ def participants_remove(
       dailybot task participants remove ENG-142 <user-uuid> --dry-run
       dailybot task participants remove ENG-142 <user-uuid> --yes
     """
-    _require_person_for("task participants remove", json_mode=json_mode)
     if not confirm_without_preview(
         f"take user {user_uuid} off task {task_uuid}; they stop being notified about it.",
         assume_yes=assume_yes,
@@ -1025,8 +1005,6 @@ def participants_remove(
 
 def _set_own_mute(task_uuid: str, muted: bool, json_mode: bool) -> None:
     """Record the caller's mute on a task: POST participants/ for yourself with `is_muted`."""
-    action: str = "task mute" if muted else "task unmute"
-    _require_person_for(action, json_mode=json_mode)
     client = require_auth()
     try:
         with console.status("Reading who you are..."):
@@ -1050,7 +1028,7 @@ def _set_own_mute(task_uuid: str, muted: bool, json_mode: bool) -> None:
 @click.argument("task_uuid", metavar="TASK")
 @click.option("--json", "json_mode", is_flag=True, help="Emit machine-readable JSON to stdout.")
 def task_mute(task_uuid: str, json_mode: bool) -> None:
-    """Stop notifications from a task while staying on it. Needs `dailybot login`.
+    """Stop notifications from a task while staying on it. Needs a person: `dailybot login` or a personal API key.
 
     \b
     Examples:
@@ -1063,7 +1041,7 @@ def task_mute(task_uuid: str, json_mode: bool) -> None:
 @click.argument("task_uuid", metavar="TASK")
 @click.option("--json", "json_mode", is_flag=True, help="Emit machine-readable JSON to stdout.")
 def task_unmute(task_uuid: str, json_mode: bool) -> None:
-    """Resume notifications from a task you muted. Needs `dailybot login`.
+    """Resume notifications from a task you muted. Needs a person: `dailybot login` or a personal API key.
 
     \b
     Examples:

@@ -2885,7 +2885,7 @@ class DailyBotClient:
         return self._tasks_write(
             "POST",
             f"tasks/{_path_segment(task_uuid)}/labels/batch/",
-            json={"mode": mode, "labels": labels},
+            json={"mode": mode, "label_uuids": labels},
             idempotent=True,
             idempotency_key=idempotency_key,
         )

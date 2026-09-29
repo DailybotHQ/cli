@@ -116,24 +116,25 @@ instruction-shaped strings through every Tasks view in both human and JSON modes
 
 ## Tasks Credentials and Isolation
 
-**Some Tasks doors require a signed-in person.** `me/tasks`, `me/tasks/counts`,
-`me/recents`, `me/activity-cursor`, `inbox` and `inbox/unread-count` are defined relative
-to the calling user; an organization API key is an organization with nobody to be, so it
-is refused. So are the writes that change **who can see** or **who is notified**
-(participants, membership).
+**Some Tasks doors require a person.** `me/tasks`, `me/tasks/counts`, `me/recents`,
+`me/activity-cursor`, `inbox` and `inbox/unread-count` are defined relative to the calling
+user, and the writes that change **who can see** or **who is notified** (participants,
+membership) need an accountable person. A login session or a personal API key is a person;
+an agent or organization key is nobody, so the server refuses it.
 
-**`tasks:admin` can never be held by an API key.** The scope validator refuses to store it,
-and every door that needs it refuses a key with `403 insufficient_scope`. That is every
-structure change: creating, updating, archiving or restoring boards, columns, projects and
-goals, board and project membership, and linking goals to projects. The CLI refuses a key on
-all of them before any request is sent (exit 4, the server's own answer), and
-`tests/tasks_key_refusal_sweep_test.py` pins the list. **Open-org Tasks:** every non-guest
-member already holds `tasks:admin` on a person session — structure writes succeed after
-`dailybot login` without an organization-admin role. Guests stay refused. Membership is the
-remaining privacy control: a `members` project or board is 404 (not visible) without a
-grant; keys still cannot change membership or participants. CLI messages blame the
-*credential kind* for key refusals and never tell a signed-in member they "need to be an
-admin".
+**A personal API key is its person; an agent or organization key is nobody.** A key bound
+to a person acts as that person on every Tasks door, exactly like their login session:
+same role, same visibility, same answers, `tasks:admin` included for a non-guest member (the
+developer reversed ADR-9-4 for personal keys; agent and organization keys still never hold
+`tasks:admin` or act as a person). A key row that carries explicit `tasks:*` scopes is a
+ceiling the person chose; guests stay limited on both. The CLI therefore never refuses a key
+before the request: it cannot tell the kinds apart, so the server decides, and
+`tests/tasks_key_refusal_sweep_test.py` pins that every door sends the request. The server's
+refusals keep their meaning: `actor_required` (exit 3) and `insufficient_scope` /
+`guest_not_allowed` (exit 4); `tests/tasks_server_refusal_rendering_test.py` pins how the CLI
+renders them. Membership remains the privacy control: a `members` project or board is 404
+without a grant. CLI messages blame the *credential kind* or the *role*, and never tell a
+member they "need to be an admin".
 
 **A login token never leaves the host that issued it.** `dailybot login` stores the Bearer
 next to the `api_url` that issued it. When `.dailybot/env.json` or `--api-url` points the CLI
@@ -232,7 +233,7 @@ Comments, projects and goals take attachments too (`task comment-attach`, `proje
 `goal attach`). Those doors are multipart only, so the limit is 5 MiB everywhere, and it is
 checked before any request. They go only to the API origin, and their downloads share the
 same hardened path below. Attaching to or deleting from a project or a goal is a
-`tasks:admin` door, refused to an API key before any request.
+`tasks:admin` door: a login or a personal API key, never an agent or organization key.
 
 `task attachment get` follows at most **one** redirect from the API to storage, without
 credentials; a second redirect is refused, and a refusal from storage is reported as storage's

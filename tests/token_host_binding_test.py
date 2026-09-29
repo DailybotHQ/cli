@@ -111,20 +111,3 @@ class TestPreflightsAskTheCurrentHost:
         assert config.get_person_token() is None
         config.set_api_url_override(PROD)
         assert config.get_person_token() == "prod-session-token"
-
-    def test_structure_write_on_a_testing_host_is_refused_before_the_request(self) -> None:
-        import json as _json
-
-        from click.testing import CliRunner
-
-        from dailybot_cli.main import cli
-
-        _login()
-        client: MagicMock = MagicMock(spec=DailyBotClient)
-        with patch("dailybot_cli.commands.project.require_auth", return_value=client):
-            result = CliRunner().invoke(
-                cli, ["--api-url", LOCAL, "project", "create", "--name", "X", "--json"]
-            )
-        assert result.exit_code == 4, result.output
-        assert client.mock_calls == []
-        assert _json.loads(result.output)["code"] == "insufficient_scope"

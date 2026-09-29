@@ -73,7 +73,9 @@ def _invoke(
     with (
         patch("dailybot_cli.commands.board.require_auth", return_value=client),
         patch(
-            "dailybot_cli.commands.board.get_person_token", return_value="tok" if person else None
+            "dailybot_cli.commands.board.get_person_token",
+            return_value="tok" if person else None,
+            create=True,
         ),
     ):
         return runner.invoke(cli, args, input=stdin)
@@ -430,23 +432,6 @@ class TestMembers:
             real.remove_board_member(BOARD, USER)
         assert request.call_args.args[:2] == ("DELETE", f"{BASE}boards/{BOARD}/members/{USER}/")
 
-    @pytest.mark.parametrize(
-        "argv",
-        [
-            ["board", "member", "add", BOARD, USER, "--json"],
-            ["board", "member", "remove", BOARD, USER, "--yes", "--json"],
-        ],
-    )
-    def test_member_writes_refuse_a_key_before_the_request(
-        self, runner: CliRunner, client: MagicMock, argv: list[str]
-    ) -> None:
-        # Member writes are `tasks:admin` doors: refused like the server's 403.
-        result = _invoke(runner, client, argv, person=False)
-        assert result.exit_code == EXIT_PERMISSION_DENIED
-        assert json.loads(result.output)["code"] == "insufficient_scope"
-        client.add_board_member.assert_not_called()
-        client.remove_board_member.assert_not_called()
-
     def test_add_sends_the_user(self, runner: CliRunner, client: MagicMock) -> None:
         client.add_board_member.return_value = {"user_uuid": USER}
         result = _invoke(runner, client, ["board", "member", "add", BOARD, USER, "--json"])
@@ -611,7 +596,7 @@ def test_a_client_side_dry_run_never_treats_ids_as_markup() -> None:
     client: MagicMock = MagicMock(spec=DailyBotClient)
     with (
         patch("dailybot_cli.commands.board.require_auth", return_value=client),
-        patch("dailybot_cli.commands.board.get_person_token", return_value="tok"),
+        patch("dailybot_cli.commands.board.get_person_token", return_value="tok", create=True),
     ):
         result = CliRunner().invoke(
             cli, ["board", "member", "remove", "[bold]b[/bold]", "[red]u", "--dry-run"]

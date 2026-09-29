@@ -124,7 +124,7 @@ tests/                       # pytest suite (file naming: *_test.py)
 ├── tasks_bulk_dry_run_test.py # bulk --dry-run (server preview) and bulk contract fixes
 ├── tasks_path_safety_test.py # path identifiers, no Bearer→key replay, next links pinned
 ├── tasks_terminal_safety_test.py # control chars neutralized, preview shape, local file limits
-├── tasks_key_refusal_sweep_test.py # every admin / person-only door refuses a key pre-request
+├── tasks_key_refusal_sweep_test.py # no door refuses a key pre-request (a personal key is its person)
 ├── tasks_parent_attachments_test.py # attachments on comments, projects and goals
 ├── tasks_ai_review_fixes_test.py # AI review round 1: bulk preview shape, ETag grammar, ports, streamed download
 ├── tasks_inbox_filters_test.py # inbox --mentioned / --type on the list and the unread badge
@@ -138,6 +138,10 @@ tests/                       # pytest suite (file naming: *_test.py)
 ├── tasks_error_taxonomy_test.py   # Tasks error codes + credential guidance
 ├── tasks_security_test.py   # injection boundary, isolation, destructive paths
 ├── tasks_coverage_test.py   # cross-command sweep (19 capabilities, flag wiring, tables)
+├── tasks_agent_attribution_test.py # --agent-name stamp: body vs header, encoding, refusal, rendering
+├── task_brief_test.py       # task brief: embeds, dedicated-door fallback, safe downloads
+├── token_host_binding_test.py # a login token only travels to the host that issued it
+├── tasks_server_refusal_rendering_test.py # server refusals of agent keys / guests: exit + envelope
 ├── transport_errors_test.py # transport failures render as messages, not tracebacks
 └── config_test.py           # Config/credential file management
 

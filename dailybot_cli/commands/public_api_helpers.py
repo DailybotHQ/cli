@@ -593,52 +593,16 @@ _PERSON_SHAPED_GUIDANCE: str = (
     "that belongs to you, and retry."
 )
 
-# Keys still cannot store `tasks:admin`. Every non-guest member holds it on a
-# person session, so structure creates/updates go through `dailybot login` — not
-# an organization-admin role check in the CLI.
+# Every non-guest member holds `tasks:admin`, on a login session and on their own
+# personal API key alike. Only a credential with nobody behind it (an agent or
+# organization key) cannot — so the fix is a person, never an admin grant.
 _ADMIN_SCOPE_GUIDANCE: str = (
-    "This action needs a signed-in person: an organization API key can never hold the "
-    "`tasks:admin` scope (it cannot even be stored on one). Run `dailybot login` and retry "
-    "as a non-guest member. Membership and participant changes stay person-only too."
+    "This key cannot change Tasks structure. Either it is an agent or organization key, "
+    "which can never hold `tasks:admin` (use `dailybot login` or a personal API key that "
+    "belongs to you), or it is a personal key whose own scopes are narrower (for example "
+    "read-only); widen or remove that key's Tasks scopes, or use `dailybot login`. Guests are "
+    "refused either way; that is a role limit."
 )
-
-
-# Machine-readable codes for the two client-side preflight refusals. They match
-# what the server would answer for the same condition, so a caller branching on
-# `code` cannot tell whether the request was spent — and does not need to.
-PREFLIGHT_ACTOR_REQUIRED_CODE: str = "actor_required"
-PREFLIGHT_ADMIN_SCOPE_CODE: str = "insufficient_scope"
-
-
-def refuse_without_person(message: str, *, json_mode: bool, admin: bool = False) -> NoReturn:
-    """End a command that a bare API key can never satisfy.
-
-    One helper, four call sites. Each module used to carry its own copy, and every
-    copy ignored ``--json`` — so `dailybot board create --json` with a key-only
-    session exited 3 with **empty stdout** while `exit_for_tasks_error` promised a
-    parseable document on every refusal path. A caller that parses stdout on any
-    non-zero exit read that as a crash rather than a credential problem.
-
-    ``admin`` selects the code the server would have used for the same condition.
-    """
-    if json_mode:
-        emit_json(
-            {
-                "status": "error",
-                "code": (PREFLIGHT_ADMIN_SCOPE_CODE if admin else PREFLIGHT_ACTOR_REQUIRED_CODE),
-                "detail": message,
-                "message": message,
-            }
-        )
-    else:
-        print_error(message)
-    # The exit must match what the SERVER would return for the same condition, or
-    # the pre-flight becomes observable: an agent branching "3 → re-login,
-    # 4 → permission" saw 3 from the pre-flight and 4 from the server for one
-    # condition. A `tasks:admin` refusal is a 403 on the wire, so it is 4 here too;
-    # a person-shaped door answers `actor_required`, which is a credential problem
-    # and stays 3.
-    raise SystemExit(EXIT_PERMISSION_DENIED if admin else EXIT_NOT_AUTHENTICATED)
 
 
 def is_person_shaped_refusal(exc: APIError, *, door: str | None = None) -> bool:
@@ -659,9 +623,10 @@ def is_person_shaped_refusal(exc: APIError, *, door: str | None = None) -> bool:
 # New organization API keys start with no Tasks scopes; they are granted to the key
 # itself. Said once here so every Tasks refusal on a key reads the same.
 _KEY_WITHOUT_TASKS_SCOPES_GUIDANCE: str = (
-    "This API key has no Tasks scopes for this action{scope} — new keys start with none. "
-    "Ask an organization admin to grant Tasks scopes to the key, or write to "
-    "support@dailybot.com. Signing in with `dailybot login` also works for your own account."
+    "This API key has no Tasks scopes for this action{scope}. A personal API key acts as "
+    "you and needs no grant; an agent or organization key starts with none, and an "
+    "organization admin grants them to the key (or write to support@dailybot.com). Signing "
+    "in with `dailybot login` also works for your own account."
 )
 
 

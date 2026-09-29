@@ -18,7 +18,6 @@ from click.testing import CliRunner
 
 from dailybot_cli.api_client import ATTACHMENT_MULTIPART_MAX_BYTES, APIError, DailyBotClient
 from dailybot_cli.commands.public_api_helpers import (
-    EXIT_PERMISSION_DENIED,
     EXIT_USAGE_ERROR,
 )
 from dailybot_cli.main import cli
@@ -99,7 +98,9 @@ def _invoke(module: str, argv: list[str], client: Any, *, person: bool = True) -
     with (
         patch(f"dailybot_cli.commands.{module}.require_auth", return_value=client),
         patch(
-            "dailybot_cli.commands.project.get_person_token", return_value="tok" if person else None
+            "dailybot_cli.commands.project.get_person_token",
+            return_value="tok" if person else None,
+            create=True,
         ),
     ):
         return CliRunner().invoke(cli, argv)
@@ -144,22 +145,6 @@ class TestCommands:
         result = _invoke(argv[0], [*argv, str(big)], client)
         assert result.exit_code == EXIT_USAGE_ERROR
         assert "5 MiB" in result.output
-        assert client.mock_calls == []
-
-    @pytest.mark.parametrize(
-        "argv",
-        [
-            ["project", "attach", PROJECT, __file__],
-            ["goal", "attach", GOAL, __file__],
-            ["project", "attachment", "delete", PROJECT, ATT, "--yes"],
-            ["goal", "attachment", "delete", GOAL, ATT, "--yes"],
-        ],
-    )
-    def test_admin_doors_refuse_a_key(self, argv: list[str]) -> None:
-        client: MagicMock = MagicMock(spec=DailyBotClient)
-        result = _invoke(argv[0], [*argv, "--json"], client, person=False)
-        assert result.exit_code == EXIT_PERMISSION_DENIED, result.output
-        assert json.loads(result.output)["code"] == "insufficient_scope"
         assert client.mock_calls == []
 
     @pytest.mark.parametrize(

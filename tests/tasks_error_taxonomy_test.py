@@ -113,7 +113,11 @@ class TestAdminScopeIsUnstorable:
             extra={"required_scope": "tasks:admin"},
         )
         # Key path only — a signed-in person takes the open-org guest/role branch.
-        with patch("dailybot_cli.commands.public_api_helpers.get_person_token", return_value=None):
+        with patch(
+            "dailybot_cli.commands.public_api_helpers.get_person_token",
+            return_value=None,
+            create=True,
+        ):
             message: str = resolve_error_message(exc)
         assert "api key" in message.lower()
         assert "dailybot login" in message
@@ -221,7 +225,11 @@ class TestKeyWithoutTasksScopes:
     def test_a_key_is_told_it_has_no_tasks_scopes(self, required: str | None) -> None:
         from unittest.mock import patch
 
-        with patch("dailybot_cli.commands.public_api_helpers.get_person_token", return_value=None):
+        with patch(
+            "dailybot_cli.commands.public_api_helpers.get_person_token",
+            return_value=None,
+            create=True,
+        ):
             message: str = resolve_error_message(self._refusal(required), tasks_surface=True)
         assert "API key has no Tasks scopes" in message
         assert "support@dailybot.com" in message
@@ -229,7 +237,11 @@ class TestKeyWithoutTasksScopes:
     def test_a_signed_in_person_is_not_told_about_keys(self) -> None:
         from unittest.mock import patch
 
-        with patch("dailybot_cli.commands.public_api_helpers.get_person_token", return_value="tok"):
+        with patch(
+            "dailybot_cli.commands.public_api_helpers.get_person_token",
+            return_value="tok",
+            create=True,
+        ):
             message: str = resolve_error_message(self._refusal("tasks:read"), tasks_surface=True)
         assert "API key" not in message
         assert "tasks:read" in message

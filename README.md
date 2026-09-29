@@ -866,11 +866,13 @@ Replies to agent emails land as messages retrievable via `dailybot agent message
 Projects, boards and tasks. Two groups: **`dailybot tasks`** answers questions about the
 workspace, **`dailybot task`** reads or changes one task.
 
-**Structure changes need a signed-in person (any non-guest member).** Creating, updating,
-archiving or restoring boards, columns, projects and goals, board and project membership,
-and linking goals to projects all work for every non-guest member after `dailybot login`.
-An organization API key can never hold `tasks:admin` and cannot change membership or
-participants — with only `DAILYBOT_API_KEY` those commands stop before sending anything.
+**Your personal API key is you.** A login session (`dailybot login`) and a personal API key
+(one bound to you) can do everything you can do in the web app: create, update, archive and
+restore boards, columns, projects, goals and milestones, manage board and project
+membership, link goals to projects, and work every task. That is every non-guest member, no
+organization-admin prerequisite. Only an agent or organization key, with nobody behind it,
+cannot act as a person: the server refuses it (`actor_required` exit 3, `insufficient_scope`
+exit 4). Guests stay limited by their role.
 **Privacy is membership**, not org role: a `members` project or board is 404 (not visible)
 to anyone without a grant; invite a person or a team to close it.
 A board inside a `members` project follows the project's membership: whoever the project
@@ -915,9 +917,9 @@ humans who own them.
 | `dailybot task comments <uuid>` | List a task's comments |
 | `dailybot task link <a> <b> --type <rel>` | Relate two tasks (`blocks`, `relates_to`, `duplicates`) |
 | `dailybot task labels <uuid> --mode add\|remove\|replace` | Change a task's labels |
-| `dailybot task participants add\|list\|remove <task>` | Who is on a task (`--role participant\|watcher`); `list` works with a personal API key; add/remove **need `dailybot login`** |
+| `dailybot task participants add\|list\|remove <task>` | Who is on a task (`--role participant\|watcher`); all need a person: `dailybot login` or a personal API key |
 | `dailybot task watch\|unwatch <task>` | Follow a task privately — **needs a person: `dailybot login` or a personal API key** |
-| `dailybot task mute\|unmute <task>` | Silence a task and stay on it (leaving is `participants remove`) — **needs `dailybot login`** |
+| `dailybot task mute\|unmute <task>` | Silence a task and stay on it (leaving is `participants remove`) — **needs a person: `dailybot login` or a personal API key** |
 | `dailybot task relations <task>` · `task unlink <task> <relation>` | List links (direction included) / remove one; `unlink` confirms and has `--dry-run` |
 | `dailybot task comment-edit\|comment-delete <task> <comment>` | Edit (`-` reads stdin) or delete a comment; delete blanks the text and keeps the entry |
 | `dailybot task children <task>` · `task events <task>` · `task activity <task>` | Sub-tasks, raw event history, and the readable activity feed (`--updated-since`, `--type`) |
@@ -939,12 +941,12 @@ humans who own them.
 | `dailybot board labels <uuid>` | Labels available on the board — **needs a person: `dailybot login` or a personal API key** |
 | `dailybot board views <uuid>` | Your saved views on the board, plus the ETag a save needs (`--etag` prints only that) |
 | `dailybot board state create\|update\|archive\|restore\|reorder` | Manage columns. `archive` previews first and takes `--migrate-to <state>` to move the column's cards |
-| `dailybot board member add <board> <user>` (or `--team <team>`) · `board member remove <board> <user>` | Who can see the board — **needs `dailybot login`**. Membership is the privacy control (not org role). A team grant follows the team live. Last grant on a private board stays (`last_grant_cannot_be_removed`) |
+| `dailybot board member add <board> <user>` (or `--team <team>`) · `board member remove <board> <user>` | Who can see the board — **needs a person: `dailybot login` or a personal API key**. Membership is the privacy control (not org role). A team grant follows the team live. Last grant on a private board stays (`last_grant_cannot_be_removed`) |
 | `dailybot board label create <board> -n <name>` | Create an organization label from the board — **needs a person: `dailybot login` or a personal API key** |
 | `dailybot board view save <board> -f views.json --if-match <etag>` | Replace your saved views (the whole list) — **needs a person: `dailybot login` or a personal API key** |
 | `dailybot board snapshot <uuid>` | The whole board in one request; carries the `delta_cursor` that `tasks changes` consumes |
 | `dailybot board update <uuid>` | Name, key (the old key stays reserved), visibility, estimate scale, auto-archive, project |
-| `dailybot board create --name <n> --project <uuid> --key <KEY>` | Create a board in a project; the key prefixes its tasks (`DSN-1`) — **needs `dailybot login`** (any non-guest member) |
+| `dailybot board create --name <n> --project <uuid> --key <KEY>` | Create a board in a project; the key prefixes its tasks (`DSN-1`) — **needs a person: `dailybot login` or a personal API key** (any non-guest member) |
 | `dailybot board archive <uuid>` | Archive a board. **Cascade-archives its live tasks**, and restoring does not bring them back |
 | `dailybot board restore <uuid>` | Restore a board (cascaded tasks stay archived) |
 | `dailybot project list` | List projects (`--include progress`) |
@@ -954,28 +956,28 @@ humans who own them.
 | `dailybot project milestones [<uuid>]` | List milestones |
 | `dailybot project milestone-complete <p> <m>` | Complete a milestone. **Its open tasks stay open** |
 | `dailybot project milestone-reopen <p> <m>` | Reopen a milestone |
-| `dailybot project create --name <n>` | Create a project — **needs `dailybot login`** |
+| `dailybot project create --name <n>` | Create a project — **needs a person: `dailybot login` or a personal API key** |
 | `dailybot project update <uuid>` | Name, description, lead, health, dates, visibility |
 | `dailybot project restore <uuid>` | Restore an archived project (its boards and tasks stay archived) |
-| `dailybot project members <uuid>` · `project member add\|remove` | Who can see the project — people or whole teams (`--team`) — `members` works with a personal API key; `member add\|remove` **needs `dailybot login`** |
-| `dailybot project views <uuid>` · `project view save` | Your saved views; save replaces the list and requires the ETag — **needs `dailybot login`** |
+| `dailybot project members <uuid>` · `project member add\|remove` | Who can see the project — people or whole teams (`--team`) — `members` works with a personal API key; `member add\|remove` **needs a person: `dailybot login` or a personal API key** |
+| `dailybot project views <uuid>` · `project view save` | Your saved views; save replaces the list and requires the ETag — **needs a person: `dailybot login` or a personal API key** |
 | `dailybot project milestone-create\|milestone-update\|milestone-delete` | Dated milestones; delete retires it (tasks keep pointing at it) |
 | `dailybot project archive <uuid>` | Archive a project |
-| `dailybot project attach <uuid> <file>` · `project attachments` · `project attachment get\|delete` | Files on a project (≤5 MiB, one request). Attaching and deleting need `dailybot login` |
+| `dailybot project attach <uuid> <file>` · `project attachments` · `project attachment get\|delete` | Files on a project (≤5 MiB, one request). Attaching and deleting need a person (`dailybot login` or a personal API key) |
 | `dailybot goal list` | List goals (`--include` is repeatable: `--include progress --include projects`) |
 | `dailybot goal get <uuid>` | Show one goal, with its progress and linked projects (always included) |
-| `dailybot goal create --name <n> --period-start <d> --period-end <d>` | Create a goal (a dated commitment) — **needs `dailybot login`** |
+| `dailybot goal create --name <n> --period-start <d> --period-end <d>` | Create a goal (a dated commitment) — **needs a person: `dailybot login` or a personal API key** |
 | `dailybot goal update <uuid>` | Name, period, owner, team, and the declared `--status` (not_started, on_track, at_risk, off_track, achieved, missed) |
 | `dailybot goal restore <uuid>` | Restore an archived goal |
 | `dailybot goal link\|unlink <goal> <project>` | Make a project count toward a goal (or stop it) |
 | `dailybot goal archive <uuid>` | Archive a goal (its projects are not archived) |
-| `dailybot goal attach <uuid> <file>` · `goal attachments` · `goal attachment get\|delete` | Files on a goal (≤5 MiB, one request). Attaching and deleting need `dailybot login` |
+| `dailybot goal attach <uuid> <file>` · `goal attachments` · `goal attachment get\|delete` | Files on a goal (≤5 MiB, one request). Attaching and deleting need a person (`dailybot login` or a personal API key) |
 
 **Three things worth knowing before you script against this:**
 
-- **Some doors need a person.** An organization API key has no answer for "my tasks" or
-  "my inbox", can never hold `tasks:admin`, and cannot change membership or participants —
-  so container creates and invites need `dailybot login` as a non-guest member. A 404 means
+- **Some doors need a person.** A login session or a personal API key is a person; an agent
+  or organization key has no answer for "my tasks" or "my inbox", can never hold
+  `tasks:admin`, and cannot change membership or participants. A 404 means
   not visible (wrong id, private without a grant, or another org) — never "not allowed".
 - **Roll-ups are opt-in.** A field you did not request with `--include` is **absent** from
   the payload. Absent, `null` and `0` are three different answers, and the CLI renders them

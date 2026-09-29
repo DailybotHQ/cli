@@ -16,7 +16,6 @@ from click.testing import CliRunner
 
 from dailybot_cli.api_client import IDEMPOTENCY_KEY_HEADER, APIError, DailyBotClient
 from dailybot_cli.commands.public_api_helpers import (
-    EXIT_NOT_AUTHENTICATED,
     EXIT_NOT_FOUND,
     EXIT_PERMISSION_DENIED,
     EXIT_USAGE_ERROR,
@@ -67,7 +66,9 @@ def _invoke(
     with (
         patch("dailybot_cli.commands.task.require_auth", return_value=client),
         patch(
-            "dailybot_cli.commands.task.get_person_token", return_value="tok" if person else None
+            "dailybot_cli.commands.task.get_person_token",
+            return_value="tok" if person else None,
+            create=True,
         ),
     ):
         return runner.invoke(cli, args, input=stdin)
@@ -288,29 +289,6 @@ class TestParticipants:
         # A personal API key is its person on the API; the server decides.
         _invoke(runner, client, argv, person=False)
         assert client.mock_calls != []
-
-    @pytest.mark.parametrize(
-        "argv",
-        [
-            ["task", "participants", "remove", TASK, USER, "--yes", "--json"],
-            ["task", "mute", TASK, "--json"],
-            ["task", "unmute", TASK, "--json"],
-        ],
-    )
-    def test_person_only_doors_refuse_a_key_before_the_request(
-        self, runner: CliRunner, client: MagicMock, argv: list[str]
-    ) -> None:
-        result = _invoke(runner, client, argv, person=False)
-        assert result.exit_code == EXIT_NOT_AUTHENTICATED
-        assert json.loads(result.output)["status"] == "error"
-        for method in (
-            "remove_task_participant",
-            "subscribe_task",
-            "unsubscribe_task",
-            "add_task_participant",
-            "get_me",
-        ):
-            getattr(client, method).assert_not_called()
 
 
 class TestWatchAndMute:

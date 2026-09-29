@@ -325,30 +325,6 @@ class TestTaskLabels:
         assert client.batch_task_labels.call_args[1]["labels"] == ["a", "b"]
 
 
-class TestParticipantsArePersonOnly:
-    """AGENT_SURFACE.md §2 — no key may change who is notified."""
-
-    def test_an_api_key_is_refused_before_the_request(
-        self, runner: CliRunner, client: MagicMock
-    ) -> None:
-        with (
-            patch("dailybot_cli.commands.task.require_auth", return_value=client),
-            patch("dailybot_cli.commands.task.get_person_token", return_value=None),
-        ):
-            result = runner.invoke(cli, ["task", "participants", "add", "t-1", "--user", "u-1"])
-        assert result.exit_code == 3
-        client.add_task_participant.assert_not_called()
-
-    def test_it_works_under_a_person(self, runner: CliRunner, client: MagicMock) -> None:
-        client.add_task_participant.return_value = {"uuid": "p-1", "_idempotency_replayed": False}
-        with (
-            patch("dailybot_cli.commands.task.require_auth", return_value=client),
-            patch("dailybot_cli.commands.task.get_person_token", return_value="tok"),
-        ):
-            result = runner.invoke(cli, ["task", "participants", "add", "t-1", "--user", "u-1"])
-        assert result.exit_code == 0
-
-
 # ---------------------------------------------------------------------------
 # Destructive operations (plan task 13)
 # ---------------------------------------------------------------------------

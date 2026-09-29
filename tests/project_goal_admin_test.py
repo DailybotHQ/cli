@@ -20,7 +20,6 @@ from dailybot_cli.api_client import (
     PaginatedResult,
 )
 from dailybot_cli.commands.public_api_helpers import (
-    EXIT_NOT_AUTHENTICATED,
     EXIT_PERMISSION_DENIED,
     EXIT_USAGE_ERROR,
 )
@@ -69,7 +68,9 @@ def _invoke(
     with (
         patch(f"dailybot_cli.commands.{module}.require_auth", return_value=client),
         patch(
-            "dailybot_cli.commands.project.get_person_token", return_value="tok" if person else None
+            "dailybot_cli.commands.project.get_person_token",
+            return_value="tok" if person else None,
+            create=True,
         ),
     ):
         return runner.invoke(cli, args, input=stdin)
@@ -266,24 +267,6 @@ class TestProjectCommands:
         client.list_project_members.return_value = []
         _invoke(runner, client, ["project", "members", PROJECT, "--json"], person=False)
         client.list_project_members.assert_called_once()
-
-    @pytest.mark.parametrize(
-        "argv",
-        [["project", "view", "save", PROJECT, "-f", "-", "--if-match", '"1"', "--json"]],
-    )
-    def test_person_only_doors_refuse_a_key(
-        self, runner: CliRunner, client: MagicMock, argv: list[str]
-    ) -> None:
-        result = _invoke(runner, client, argv, person=False, stdin="[]")
-        assert result.exit_code == EXIT_NOT_AUTHENTICATED
-        assert json.loads(result.output)["status"] == "error"
-        for method in (
-            "list_project_members",
-            "add_project_member",
-            "remove_project_member",
-            "save_project_views",
-        ):
-            getattr(client, method).assert_not_called()
 
     @pytest.mark.parametrize("extra", [[], ["--user", USER, "--team", "t-1"]])
     def test_member_add_needs_exactly_one_subject(
