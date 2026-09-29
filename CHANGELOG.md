@@ -9,6 +9,21 @@ Do not edit it by hand — your edits will be overwritten on the next release.
 
 <!-- version list -->
 
+## v3.22.1 (2026-09-29)
+
+### Bug Fixes
+
+- **tasks**: Describe attachment urls as opaque, never stored
+  ([#115](https://github.com/DailybotHQ/cli/pull/115),
+  [`a19d518`](https://github.com/DailybotHQ/cli/commit/a19d518ff5322d809f6a3a7bd375cff46fb4997d))
+
+### Chores
+
+- **skills**: Sync vendored dailybot skill pack to v3.20.0
+  ([#114](https://github.com/DailybotHQ/cli/pull/114),
+  [`4b6aada`](https://github.com/DailybotHQ/cli/commit/4b6aada3fb59d1303fcf63aa3e1175f4772bdb16))
+
+
 ## v3.22.0 (2026-09-29)
 
 ### Features
