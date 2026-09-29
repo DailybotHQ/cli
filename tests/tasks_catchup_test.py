@@ -15,7 +15,7 @@ import pytest
 from click.testing import CliRunner
 
 from dailybot_cli.api_client import IDEMPOTENCY_KEY_HEADER, DailyBotClient
-from dailybot_cli.commands.public_api_helpers import EXIT_NOT_AUTHENTICATED, EXIT_USAGE_ERROR
+from dailybot_cli.commands.public_api_helpers import EXIT_USAGE_ERROR
 from dailybot_cli.main import cli
 
 API_URL: str = "http://test-api.example.com"
@@ -51,7 +51,11 @@ def _invoke(
 ) -> Any:
     with (
         patch(f"dailybot_cli.commands.{module}.require_auth", return_value=client),
-        patch(f"dailybot_cli.commands.{module}.get_token", return_value="tok" if person else None),
+        patch(
+            f"dailybot_cli.commands.{module}.get_token",
+            return_value="tok" if person else None,
+            create=True,
+        ),
     ):
         return runner.invoke(cli, args)
 
@@ -165,20 +169,12 @@ class TestActivityCursor:
         ["tasks", "cursor", "--now", "--json"],
     ],
 )
-def test_person_only_doors_refuse_a_key(
+def test_catch_up_doors_send_the_request_for_a_key(
     runner: CliRunner, client: MagicMock, argv: list[str]
 ) -> None:
-    result = _invoke(runner, client, argv, person=False)
-    assert result.exit_code == EXIT_NOT_AUTHENTICATED
-    assert json.loads(result.output)["status"] == "error"
-    for method in (
-        "mark_inbox_item_read",
-        "mark_inbox_read_all",
-        "get_tasks_inbox_unread_count",
-        "get_activity_cursor",
-        "set_activity_cursor",
-    ):
-        getattr(client, method).assert_not_called()
+    # A personal API key is its person on the API; the server decides.
+    _invoke(runner, client, argv, person=False)
+    assert client.mock_calls != []
 
 
 class TestMentionables:
@@ -213,12 +209,12 @@ class TestMentionables:
         )
         assert json.loads(result.output) == [self.ROWS[1]]
 
-    def test_refuses_a_key(self, runner: CliRunner, client: MagicMock) -> None:
-        result = _invoke(
+    def test_sends_the_request_for_a_key(self, runner: CliRunner, client: MagicMock) -> None:
+        client.list_board_mentionables.return_value = []
+        _invoke(
             runner, client, ["board", "mentionables", "b-1", "--json"], module="board", person=False
         )
-        assert result.exit_code == EXIT_NOT_AUTHENTICATED
-        client.list_board_mentionables.assert_not_called()
+        client.list_board_mentionables.assert_called_once()
 
 
 class TestWorkspaceActivityWire:

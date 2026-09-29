@@ -208,7 +208,7 @@ class TestOneConstantAndNoDeadHelpers:
         lookup: str = "project" if module == "goal" else module
         with (
             patch(f"dailybot_cli.commands.{module}.require_auth", return_value=client),
-            patch(f"dailybot_cli.commands.{lookup}.get_token", return_value="b"),
+            patch(f"dailybot_cli.commands.{lookup}.get_token", return_value="b", create=True),
         ):
             result = runner.invoke(cli, argv)
         assert "server-side" in result.stdout

@@ -56,9 +56,9 @@ class TestPreflightRefusalsHonourJson:
     @pytest.mark.parametrize(
         ("argv", "module", "expected_exit"),
         [
-            (["tasks", "inbox", "--json"], "tasks", EXIT_NOT_AUTHENTICATED),
-            (["tasks", "mine", "--json"], "tasks", EXIT_NOT_AUTHENTICATED),
-            (["tasks", "counts", "--json"], "tasks", EXIT_NOT_AUTHENTICATED),
+            (["task", "mute", "t-1", "--json"], "task", EXIT_NOT_AUTHENTICATED),
+            (["task", "unmute", "t-1", "--json"], "task", EXIT_NOT_AUTHENTICATED),
+            (["project", "views", "p-1", "--json"], "project", EXIT_NOT_AUTHENTICATED),
             (
                 [
                     "board",
@@ -102,7 +102,7 @@ class TestPreflightRefusalsHonourJson:
     def test_stdout_carries_the_error_envelope(
         self, runner: CliRunner, argv: list[str], module: str, expected_exit: int
     ) -> None:
-        with patch(f"dailybot_cli.commands.{module}.get_token", return_value=None):
+        with patch(f"dailybot_cli.commands.{module}.get_token", return_value=None, create=True):
             result = runner.invoke(cli, argv)
         assert result.exit_code == expected_exit
         body: Any = json.loads(result.stdout)
@@ -112,8 +112,8 @@ class TestPreflightRefusalsHonourJson:
     def test_the_code_matches_what_the_server_would_say(self, runner: CliRunner) -> None:
         # A caller branching on `code` must not have to know whether the request
         # was spent client-side or refused by the server.
-        with patch("dailybot_cli.commands.tasks.get_token", return_value=None):
-            person = json.loads(runner.invoke(cli, ["tasks", "inbox", "--json"]).stdout)
+        with patch("dailybot_cli.commands.task.get_token", return_value=None):
+            person = json.loads(runner.invoke(cli, ["task", "mute", "t-1", "--json"]).stdout)
         with patch("dailybot_cli.commands.board.get_token", return_value=None):
             admin = json.loads(
                 runner.invoke(
@@ -135,8 +135,8 @@ class TestPreflightRefusalsHonourJson:
         assert admin["code"] == "insufficient_scope"
 
     def test_without_json_the_prose_still_goes_to_stderr(self, runner: CliRunner) -> None:
-        with patch("dailybot_cli.commands.tasks.get_token", return_value=None):
-            result = runner.invoke(cli, ["tasks", "inbox"])
+        with patch("dailybot_cli.commands.task.get_token", return_value=None):
+            result = runner.invoke(cli, ["task", "mute", "t-1"])
         assert result.stdout == ""
         assert "dailybot login" in result.stderr
 
@@ -197,7 +197,7 @@ class TestOneErrorEnvelopeForTheWholeFamily:
         token_patch: Any = (
             _nullcontext()
             if module == "goal"
-            else patch(f"dailybot_cli.commands.{module}.get_token", return_value="b")
+            else patch(f"dailybot_cli.commands.{module}.get_token", return_value="b", create=True)
         )
         with (
             patch(f"dailybot_cli.commands.{module}.require_auth", return_value=client),

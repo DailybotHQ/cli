@@ -79,8 +79,9 @@ ERROR_CODE_MESSAGES: dict[str, str] = {
     ),
     "token_not_valid": "Your session token is no longer valid. Run `dailybot login`.",
     "actor_required": (
-        "This is a person-shaped door and an organization API key has nobody to be. "
-        "Run `dailybot login` and retry as a signed-in person."
+        "This is a person-shaped door and this credential has nobody behind it (an agent "
+        "or organization key). Run `dailybot login`, or use a personal API key that "
+        "belongs to you, and retry."
     ),
     # Entitlement
     "task_boards_limit_reached": (
@@ -586,8 +587,9 @@ TASKS_ERROR_CODES: frozenset[str] = frozenset(
 )
 
 _PERSON_SHAPED_GUIDANCE: str = (
-    "This door answers for a signed-in person, and an organization API key has nobody "
-    "to be. Run `dailybot login` and retry."
+    "This door answers for a person, and this credential has nobody behind it (an "
+    "agent or organization key). Run `dailybot login`, or use a personal API key "
+    "that belongs to you, and retry."
 )
 
 # Keys still cannot store `tasks:admin`. Every non-guest member holds it on a

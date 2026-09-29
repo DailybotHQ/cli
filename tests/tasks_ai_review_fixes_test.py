@@ -168,20 +168,6 @@ class TestServerTextInActivityFeeds:
         assert "\x1b" not in result.output
 
 
-class TestSavedViewRefusalSaysViews:
-    @pytest.mark.parametrize("sub", [["get"], ["update", "--name", "x"], ["delete", "--yes"]])
-    def test_the_message_is_about_saved_views(self, sub: list[str]) -> None:
-        with (
-            patch("dailybot_cli.commands._favorites.get_token", return_value=None),
-            patch("dailybot_cli.commands.tasks.get_token", return_value=None),
-        ):
-            result = CliRunner().invoke(cli, ["tasks", "view", sub[0], ATT, *sub[1:]])
-        assert result.exit_code == 3
-        text: str = " ".join(result.output.split()).lower()
-        assert "saved view" in text
-        assert "pins" not in text
-
-
 class TestBoardMemberAddTakesATeam:
     """Contract 2576eceb4: board member add takes exactly one of user_uuid / team_uuid."""
 
@@ -272,7 +258,6 @@ class TestBoardPinsResolveKeys:
         ]
         with (
             patch("dailybot_cli.commands.board.require_auth", return_value=client),
-            patch("dailybot_cli.commands._favorites.get_token", return_value="tok"),
         ):
             result = CliRunner().invoke(cli, ["board", "unstar", "ENG", "--json"])
         assert result.exit_code == 0, result.output
@@ -284,7 +269,6 @@ class TestBoardPinsResolveKeys:
         client.add_favorite.return_value = {"uuid": "f-1", "rank": 1}
         with (
             patch("dailybot_cli.commands.board.require_auth", return_value=client),
-            patch("dailybot_cli.commands._favorites.get_token", return_value="tok"),
         ):
             result = CliRunner().invoke(cli, ["board", "star", "ENG", "--json"])
         assert result.exit_code == 0, result.output
@@ -295,7 +279,6 @@ class TestBoardPinsResolveKeys:
         client.add_favorite.return_value = {"uuid": "f-1", "rank": 1}
         with (
             patch("dailybot_cli.commands.board.require_auth", return_value=client),
-            patch("dailybot_cli.commands._favorites.get_token", return_value="tok"),
         ):
             CliRunner().invoke(cli, ["board", "star", BOARD, "--json"])
         client.get_board.assert_not_called()

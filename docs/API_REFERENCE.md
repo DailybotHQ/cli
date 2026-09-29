@@ -811,23 +811,25 @@ work, a person or an agent — is **read-only**: a write carrying it is refused.
 
 This is the most confusing thing about the family, so it is a table rather than prose.
 
-| Works with an organization API key | Requires `dailybot login` | Why |
-| --- | --- | --- |
-| pulse, entitlements, search, activity, timeline | — | organization-scoped reads |
-| board list / get / snapshot / delta | — | organization-scoped reads |
-| task list / get / create / update / move / set-owner | — | organization-scoped writes |
-| comments, relations, labels, bulk | — | organization-scoped writes |
-| project & goal reads, `project updates`, `update-post` | — | organization-scoped |
-| milestones list / complete / reopen | — | organization-scoped |
-| — | `tasks mine`, `tasks counts`, `tasks inbox` / `inbox-read` / `inbox-read-all` / `inbox-unread`, `tasks cursor`, `board mentionables`, `board star` / `unstar`, `tasks favorites`, `tasks view …` | **person-shaped**: a key is an organization with nobody to be, so "my X" has no answer |
-| — | `task participants list` / `add` / `remove`, `task watch` / `unwatch`, `task mute` / `unmute` | published policy: no key may change or reveal **who is notified** |
-| — | `project members` (list), `board views` / `view save`, `project views` / `view save`, `board labels` / `label create` | published policy: no key may reveal **who can see**; views and label usage belong to a person |
-| — | **every structure change**: `board create` / `update` / `archive` / `restore`, `board state create` / `update` / `archive` / `restore` / `reorder`, `board member add` / `remove`, `project create` / `update` / `archive` / `restore`, `project member add` / `remove`, `goal create` / `update` / `archive` / `restore` / `link` / `unlink` | every **non-guest member** holds `tasks:admin` on a person session; an organization API key **cannot store it** and cannot change membership. The CLI refuses a key before the request and exits 4 (`insufficient_scope`). Privacy is invite/remove, not org role — a `members` container is 404 when you lack a grant |
-| — | label CRUD, `boards/{id}/labels/` | a product decision, still open: `usage_count` sums a per-person visibility predicate, so it has no correct value for a key |
-| — | `boards/{id}/mentionables/` | **person-shaped by definition** — it answers "who may *this viewer* address". For an assignee picker on a key, use the org roster (`dailybot user list`) or board members |
+Three kinds of credential reach Tasks: a **login session** (`dailybot login`), a
+**personal API key** (a key bound to a person; the API treats it as that person), and an
+**agent or organization key** (no person behind it).
 
-The server answers a key on any of these doors with `403 insufficient_scope`. That holds
-for every organization API key (keys never store `tasks:admin`). `board mentionables` rows carry
+| Any API key | Personal API key or login | Login only | Why |
+| --- | --- | --- | --- |
+| pulse, entitlements, search, activity, timeline | ✓ | ✓ | organization-scoped reads |
+| board list / get / snapshot / delta | ✓ | ✓ | organization-scoped reads |
+| task list / get / brief / create / update / move / set-owner | ✓ | ✓ | organization-scoped writes |
+| comments, relations, task labels, bulk | ✓ | ✓ | organization-scoped writes |
+| project & goal reads, `project updates`, `update-post` | ✓ | ✓ | organization-scoped |
+| milestones list / complete / reopen | ✓ | ✓ | organization-scoped |
+| — | `tasks mine`, `tasks counts`, `tasks inbox` / `inbox-read` / `inbox-read-all` / `inbox-unread`, `tasks cursor`, `board mentionables`, `board star` / `unstar`, `tasks favorites`, `tasks view …`, `board views` / `view save`, `board labels` / `label create`, `project members`, `task participants list`, `task watch` / `unwatch` | ✓ | **person-shaped**: "my X" needs a person. An agent or organization key is refused by the server (`actor_required`, exit 3) |
+| — | — | `task participants add` / `remove`, `task mute` / `unmute`, `project views` / `view save` | changing **who is notified** needs `tasks:write`, which no key holds; project saved views are not open to keys. The CLI refuses a key before the request (exit 3) |
+| — | — | **every structure change**: `board create` / `update` / `archive` / `restore`, `board state create` / `update` / `archive` / `restore` / `reorder`, `board member add` / `remove`, `project create` / `update` / `archive` / `restore`, `project member add` / `remove`, `goal create` / `update` / `archive` / `restore` / `link` / `unlink` | every **non-guest member** holds `tasks:admin` on a login session; **no API key can store it**, personal or not (a deliberate security decision). The CLI refuses a key before the request and exits 4 (`insufficient_scope`). Privacy is invite/remove, not org role — a `members` container is 404 when you lack a grant |
+
+For doors a personal key may use, the CLI sends the request and the server tells a personal
+key from an agent key; the CLI cannot, locally. The server answers a key on a structure door with `403 insufficient_scope`. That holds for
+every API key (keys never store `tasks:admin`). `board mentionables` rows carry
 `uuid`, `name`, `handle`, `avatar_url`, `has_photo` and `kind`, but no email.
 
 CLI messages blame the *credential kind* for key refusals. A signed-in **member** is not
@@ -855,7 +857,7 @@ Tasks is in Beta, but the CLI's machine output is a contract you can script agai
 | `0` | success |
 | `1` | unexpected failure |
 | `2` | the caller's input was refused (400, bad flag value) |
-| `3` | credential problem, or a person-only door reached with an API key |
+| `3` | credential problem, or a person-only door reached with an agent or organization key |
 | `4` | refused — permission, role, plan, or a conflict (402/403/409) |
 | `5` | not found — invisible or nonexistent |
 | `6` | back off and retry (429, 503 read-only switch) |
@@ -870,7 +872,7 @@ Dispatch on `code`, never on the English `detail`.
 
 | Code | Meaning | CLI exit |
 | --- | --- | --- |
-| `actor_required` / `insufficient_scope` on a person-shaped door | needs a signed-in person | 3 |
+| `actor_required` / `insufficient_scope` on a person-shaped door | needs a person: a login or a personal API key | 3 |
 | `insufficient_scope` with `required_scope: tasks:admin` | a key can never hold it; a signed-in guest (or other role without structure access) is refused — members already hold it | 4 |
 | `insufficient_scope` on an organization API key (other scopes) | **new keys hold no Tasks scopes** — an admin grants them to the key (or write to support@dailybot.com); `dailybot login` works for your own account | 4 |
 | `guest_not_allowed` | role limit — not a credential problem | 4 |

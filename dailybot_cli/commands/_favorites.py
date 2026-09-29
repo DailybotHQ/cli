@@ -1,7 +1,8 @@
 """Pinning boards and saved views (`/v1/tasks/me/favorites/`), shared by `board` and `tasks view`.
 
-Favorites belong to a person, so every door here is person-only. Only boards and
-saved views can be pinned — projects and goals cannot.
+Favorites belong to a person: a login session or a personal API key. An agent
+key has nobody to pin for, and the server refuses it. Only boards and saved
+views can be pinned — projects and goals cannot.
 """
 
 import re
@@ -11,35 +12,11 @@ from dailybot_cli.api_client import APIError, DailyBotClient
 from dailybot_cli.commands.public_api_helpers import (
     emit_json,
     exit_for_tasks_error,
-    refuse_without_person,
     rows_of,
 )
-from dailybot_cli.config import get_token
 from dailybot_cli.display import console, print_info, print_success
 
 FAVORITE_TARGETS: tuple[str, ...] = ("board", "view")
-
-
-def require_person_for_favorites(action: str, *, json_mode: bool) -> None:
-    """Refuse an API key before any request: a pin list belongs to a person."""
-    if get_token() is None:
-        refuse_without_person(
-            f"`{action}` pins something for a person, and an organization API key is nobody. "
-            "Run `dailybot login` and retry.",
-            json_mode=json_mode,
-        )
-
-
-def require_person_for_views(action: str, *, json_mode: bool) -> None:
-    """Refuse an API key before any request: a saved view belongs to a person."""
-    if get_token() is None:
-        refuse_without_person(
-            f"`{action}` works on a saved view, which belongs to a person, and an "
-            "organization API key is nobody. Run `dailybot login` and retry.",
-            json_mode=json_mode,
-        )
-
-
 _UUID_RE: re.Pattern[str] = re.compile(
     r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$", re.IGNORECASE
 )

@@ -730,8 +730,8 @@ def _require_person_for(action: str, *, json_mode: bool) -> None:
     Published policy: two writes no organization API key may ever make — changing
     who can see, and changing who is notified. Participants are the second.
     """
-    # See tasks.py `_require_person`: gate on the absence of a person token, not
-    # on the presence of a key — both can be configured at once.
+    # Gate on the absence of a person token, not on the presence of a key: both
+    # can be configured at once, and Bearer is sent first when it exists.
     if get_token() is None:
         refuse_without_person(
             f"`{action}` changes who is notified, and no organization API key may do that — "
@@ -973,7 +973,6 @@ def participants_list(task_uuid: str, json_mode: bool) -> None:
       dailybot task participants list ENG-142
       dailybot task participants list ENG-142 --json
     """
-    _require_person_for("task participants list", json_mode=json_mode)
     client = require_auth()
     try:
         with console.status("Reading the participants..."):
@@ -1086,7 +1085,6 @@ def task_watch(task_uuid: str, json_mode: bool) -> None:
     Examples:
       dailybot task watch ENG-142
     """
-    _require_person_for("task watch", json_mode=json_mode)
     client = require_auth()
     try:
         with console.status("Watching the task..."):
@@ -1109,7 +1107,6 @@ def task_unwatch(task_uuid: str, json_mode: bool) -> None:
     Examples:
       dailybot task unwatch ENG-142
     """
-    _require_person_for("task unwatch", json_mode=json_mode)
     client = require_auth()
     try:
         with console.status("Unwatching the task..."):

@@ -78,7 +78,6 @@ class TestCriticalListMyTasksReachesTheApi:
         # the REAL client with only httpx patched.
         with (
             patch("dailybot_cli.commands.tasks.require_auth", return_value=real_client),
-            patch("dailybot_cli.commands.tasks.get_token", return_value="tok"),
             patch("httpx.get", return_value=_ok()),
         ):
             result = runner.invoke(cli, ["tasks", "mine", "--scope", "assigned"])
@@ -109,7 +108,6 @@ class TestExitCodesMatchTheDocumentedTable:
         client.list_tasks_inbox.side_effect = APIError(500, "boom", code="server_error")
         with (
             patch("dailybot_cli.commands.tasks.require_auth", return_value=client),
-            patch("dailybot_cli.commands.tasks.get_token", return_value="tok"),
         ):
             result = runner.invoke(cli, ["tasks", "inbox"])
         assert result.exit_code != EXIT_NOT_AUTHENTICATED
@@ -120,7 +118,6 @@ class TestExitCodesMatchTheDocumentedTable:
         client.list_tasks_inbox.side_effect = APIError(403, "x", code="insufficient_scope")
         with (
             patch("dailybot_cli.commands.tasks.require_auth", return_value=client),
-            patch("dailybot_cli.commands.tasks.get_token", return_value="tok"),
         ):
             result = runner.invoke(cli, ["tasks", "inbox"])
         assert result.exit_code == EXIT_NOT_AUTHENTICATED
@@ -133,7 +130,6 @@ class TestExitCodesMatchTheDocumentedTable:
         client.list_tasks_inbox.side_effect = APIError(403, "nope", code="insufficient_scope")
         with (
             patch("dailybot_cli.commands.tasks.require_auth", return_value=client),
-            patch("dailybot_cli.commands.tasks.get_token", return_value="tok"),
         ):
             result = runner.invoke(cli, ["tasks", "inbox", "--json"])
         body: dict[str, Any] = _json.loads(result.output)
@@ -215,7 +211,6 @@ class TestCountsRespectsTheInjectionBoundary:
         client.get_my_task_counts.return_value = {"[bold red]pwned[/]": 1}
         with (
             patch("dailybot_cli.commands.tasks.require_auth", return_value=client),
-            patch("dailybot_cli.commands.tasks.get_token", return_value="tok"),
         ):
             result = runner.invoke(cli, ["tasks", "counts"])
         # The literal characters DO appear — that is the point: they are shown as

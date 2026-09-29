@@ -48,7 +48,7 @@ def _token_patch(module: str) -> Any:
     `goal.get_token` raises; patching the wrong module's would silently do nothing.
     """
     lookup: str = "project" if module == "goal" else module
-    return patch(f"dailybot_cli.commands.{lookup}.get_token", return_value="b")
+    return patch(f"dailybot_cli.commands.{lookup}.get_token", return_value="b", create=True)
 
 
 def _plan_refusal() -> APIError:
