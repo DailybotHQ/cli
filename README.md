@@ -874,6 +874,15 @@ participants — with only `DAILYBOT_API_KEY` those commands stop before sending
 **Privacy is membership**, not org role: a `members` project or board is 404 (not visible)
 to anyone without a grant; invite a person or a team to close it.
 
+**Agents work as you, and say so.** When an agent runs the CLI for you, pass its name with
+`--agent-name` (or `DAILYBOT_AGENT_NAME`). Every Tasks write stays yours, and the card shows
+the agent that executed it: comments read `Jane Doe via "Claude Code"`, and `task get` lists
+every agent that worked the card.
+
+```bash
+dailybot --agent-name "Claude Code" task comment ENG-12 "Reproduced and fixed in PR 812"
+```
+
 The command an agent should reach for first is **`dailybot project update-post`** — it is
 how the team sees what was done. An agent that moves tasks silently is invisible to the
 humans who own them.

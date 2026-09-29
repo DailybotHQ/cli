@@ -56,6 +56,13 @@ ERROR_CODE_MESSAGES: dict[str, str] = {
     # Written against what the server actually returned in the live probe
     # recorded in the plan's PERMISSION_MATRIX_OBSERVED.md, not against prose.
     #
+    # Agent attribution (--agent-name / DAILYBOT_AGENT_NAME)
+    "invalid_agent_attribution": (
+        "The agent name was refused. It must be 128 characters or fewer, and it "
+        "only works with a credential that belongs to a person (a login session "
+        "or a personal API key), not an agent key. Shorten --agent-name, or drop "
+        "it when using an agent key."
+    ),
     # Auth taxonomy
     "credential_absent": (
         "No credential was sent. Run `dailybot login`, or set an API key with "

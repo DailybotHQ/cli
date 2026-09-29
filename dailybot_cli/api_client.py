@@ -13,6 +13,7 @@ import httpx
 
 from dailybot_cli.config import (
     API_KEY_SOURCE_ENV_JSON,
+    get_agent_name,
     get_api_key,
     get_api_key_source,
     get_api_url,
@@ -102,12 +103,17 @@ TASKS_BULK_MAX_ITEMS: int = 100
 IDEMPOTENCY_KEY_HEADER: str = "Idempotency-Key"
 IDEMPOTENCY_REPLAYED_HEADER: str = "Idempotency-Replayed"
 # The agent that executed a Tasks write on a person's behalf. The person stays
-# the author; the server records this name as the executor companion. Header
-# values reach the server as latin-1, so a non-ASCII name travels
-# percent-encoded UTF-8 (space kept, `%` encoded). Wire name proposed by the API, pending its final
-# contract — change it here only.
+# the author; the server records the agent as the executor companion. JSON
+# writes carry `agent_name` in the body (canonical); multipart and body-less
+# writes carry the header, percent-encoded UTF-8 (space kept, `%` encoded)
+# because header values reach the server as latin-1. Over the cap is refused,
+# never truncated — the server answers `invalid_agent_attribution` the same way.
 TASKS_AGENT_NAME_HEADER: str = "X-Dailybot-Agent-Name"
+TASKS_AGENT_NAME_BODY_FIELD: str = "agent_name"
 TASKS_AGENT_NAME_MAX_LENGTH: int = 128
+INVALID_AGENT_ATTRIBUTION_CODE: str = "invalid_agent_attribution"
+# Writes whose JSON body carries the name; every other write uses the header.
+_AGENT_NAME_BODY_METHODS: frozenset[str] = frozenset({"POST", "PUT", "PATCH"})
 # C0 controls, DEL and C1 controls: never part of a display name.
 _AGENT_NAME_CONTROL_RE: re.Pattern[str] = re.compile(r"[\x00-\x08\x0b-\x1f\x7f-\x9f]")
 _AGENT_NAME_SPACE_RE: re.Pattern[str] = re.compile(r"\s+")
@@ -342,14 +348,14 @@ def _invalid_identifier() -> APIError:
 def clean_agent_name(name: str | None) -> str | None:
     """A display-safe agent name, or ``None`` when there is no agent.
 
-    Control characters go, whitespace collapses, and the result is capped at
-    the server's length. Blank means "no agent", never an empty stamp.
+    Control characters go and whitespace collapses. Length is not cut here: an
+    over-long name is refused at write time, like the server does. Blank means
+    "no agent", never an empty stamp.
     """
     if name is None:
         return None
     text: str = _AGENT_NAME_CONTROL_RE.sub("", name)
-    text = _AGENT_NAME_SPACE_RE.sub(" ", text).strip()
-    return text[:TASKS_AGENT_NAME_MAX_LENGTH] or None
+    return _AGENT_NAME_SPACE_RE.sub(" ", text).strip() or None
 
 
 def _path_segment(value: Any) -> str:
@@ -374,7 +380,9 @@ class DailyBotClient:
     ) -> None:
         self.api_url: str = (api_url or get_api_url()).rstrip("/")
         # Stamped on Tasks writes only; `None` sends no stamp.
-        self.agent_name: str | None = clean_agent_name(agent_name)
+        self.agent_name: str | None = clean_agent_name(
+            agent_name if agent_name is not None else get_agent_name()
+        )
         self.token: str | None = token or get_token()
         self.api_key: str | None = api_key or get_api_key()
         self.timeout: float = timeout
@@ -2273,8 +2281,11 @@ class DailyBotClient:
         sequential default would collide between two agents.
         """
         extra: dict[str, str] | None = dict(headers) if headers else None
-        if self.agent_name:
-            extra = {**(extra or {}), TASKS_AGENT_NAME_HEADER: quote(self.agent_name, safe=" ")}
+        if self._checked_agent_name():
+            if method in _AGENT_NAME_BODY_METHODS and isinstance(json, dict):
+                json = {**json, TASKS_AGENT_NAME_BODY_FIELD: self.agent_name}
+            else:
+                extra = {**(extra or {}), **self._agent_name_header()}
         sent_key: str | None = None
         # A `dry_run=true` call writes nothing, so it has nothing to make idempotent —
         # and returning a key for it invites the caller to reuse that key for the real
@@ -2311,6 +2322,22 @@ class DailyBotClient:
                 # documented "a retry cannot create a second task" true.
                 result[IDEMPOTENCY_KEY_SENT_KEY] = sent_key
         return result
+
+    def _checked_agent_name(self) -> str | None:
+        """The agent name to stamp, refused locally when the server would refuse it."""
+        if self.agent_name and len(self.agent_name) > TASKS_AGENT_NAME_MAX_LENGTH:
+            raise APIError(
+                400,
+                f"The agent name is longer than {TASKS_AGENT_NAME_MAX_LENGTH} characters.",
+                code=INVALID_AGENT_ATTRIBUTION_CODE,
+            )
+        return self.agent_name
+
+    def _agent_name_header(self) -> dict[str, str]:
+        """The stamp as a header, for writes without a JSON body."""
+        if not self._checked_agent_name():
+            return {}
+        return {TASKS_AGENT_NAME_HEADER: quote(str(self.agent_name), safe=" ")}
 
     def _tasks_read(self, path: str, *, params: dict[str, Any] | None = None) -> dict[str, Any]:
         """Issue a Tasks read (single object or non-paginated document)."""
@@ -3056,6 +3083,7 @@ class DailyBotClient:
                 self._tasks_url(f"{parent}/attachments/"),
                 files={"file": (filename, data, content_type)},
                 data={"caption": caption} if caption else None,
+                extra_headers=self._agent_name_header() or None,
                 timeout=ATTACHMENT_TRANSFER_TIMEOUT_SECS,
             )
         )

@@ -8,6 +8,9 @@ from typing import Any
 DEFAULT_API_URL: str = "https://api.dailybot.com"
 DEFAULT_APP_URL: str = "https://app.dailybot.com"
 _api_url_override: str | None = None
+# The agent executing this invocation on a person's behalf (root `--agent-name`).
+_agent_name_override: str | None = None
+AGENT_NAME_ENV_VAR: str = "DAILYBOT_AGENT_NAME"
 _app_url_override: str | None = None
 
 
@@ -15,6 +18,22 @@ def set_api_url_override(url: str) -> None:
     """Set a CLI-level API URL override (from --api-url flag)."""
     global _api_url_override
     _api_url_override = url.rstrip("/")
+
+
+def set_agent_name_override(name: str) -> None:
+    """Set the agent name for this invocation (from the root --agent-name flag)."""
+    global _agent_name_override
+    _agent_name_override = name
+
+
+def get_agent_name() -> str | None:
+    """The agent executing this invocation: ``--agent-name``, else ``DAILYBOT_AGENT_NAME``.
+
+    ``None`` means a person is acting directly and no agent is stamped.
+    """
+    if _agent_name_override is not None:
+        return _agent_name_override
+    return os.environ.get(AGENT_NAME_ENV_VAR) or None
 
 
 def set_app_url_override(url: str) -> None:

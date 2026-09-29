@@ -1662,10 +1662,26 @@ def print_task_detail(task: dict[str, Any]) -> None:
         f"[bold]UUID[/bold]       {safe_text(uuid_value)}",
         f"[bold]API link[/bold]   /v1/tasks/tasks/{safe_text(uuid_value)}/",
     ]
+    agents: str = _agent_names(task.get("executors"))
+    if agents:
+        # Every agent that executed a write here — not the singular executor.
+        lines.append(f"[bold]Agents[/bold]     {agents}")
     description: Any = task.get("description")
     if description:
         lines.append(f"[bold]Description[/bold] {present_untrusted(description, limit=400)}")
     console.print(Panel("\n".join(lines), title="Task", border_style="cyan"))
+
+
+def _agent_names(executors: Any) -> str:
+    """The `executors` list as one line of names (server order: most recent first)."""
+    if not isinstance(executors, list):
+        return ""
+    names: list[str] = [
+        present_untrusted(agent.get("name"), limit=40)
+        for agent in executors
+        if isinstance(agent, dict) and agent.get("name")
+    ]
+    return ", ".join(names)
 
 
 def print_board_snapshot(snapshot: dict[str, Any]) -> None:
@@ -1984,6 +2000,10 @@ def print_task_comments(comments: list[dict[str, Any]]) -> None:
         attribution: str = present_untrusted(author_name, limit=24)
         if comment.get("provenance") == "typed":
             attribution += " [dim](typed by a person)[/dim]"
+        agent: Any = comment.get("executed_by_agent")
+        if isinstance(agent, dict) and agent.get("name"):
+            # The person authored it; the agent executed it for them.
+            attribution += f" [dim]via {present_untrusted(agent.get('name'), limit=40)}[/dim]"
         # A reply names its thread's root in `parent_comment`; `_threaded` put it there.
         thread: str = "  ↳ " if comment.get("parent_comment") else ""
         console.print(f"{thread}{attribution}: {present_untrusted(comment.get('body'), limit=400)}")

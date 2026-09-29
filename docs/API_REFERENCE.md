@@ -13,13 +13,16 @@ This document is the contract between command callbacks and the rest of the worl
 ### Root
 
 ```
-dailybot [--api-url URL] [--version] [<command> …]
+dailybot [--api-url URL] [--agent-name NAME] [--version] [<command> …]
 ```
 
 | Flag | Env var | Default | Notes |
 |------|---------|---------|-------|
 | `--api-url` | `DAILYBOT_API_URL` | `https://api.dailybot.com` | Set before any subcommand runs |
+| `--agent-name` | `DAILYBOT_AGENT_NAME` | none | The agent acting for the person. Every Tasks write stays authored by the credential's person and is stamped as executed by this agent (body `agent_name` on JSON writes; `X-Dailybot-Agent-Name`, percent-encoded UTF-8, on multipart and body-less writes). Reads are never stamped. Max 128 characters, refused rather than truncated (`invalid_agent_attribution`). An agent key (not bound to a person) is refused with the stamp. Unset means a person is acting directly. |
 | `--version` | — | — | Reads `importlib.metadata.version("dailybot-cli")` |
+
+Agent attribution in output: `task comments` shows `<person> via "<agent>"` when `executed_by_agent` is present, and `task get` lists every agent that executed a write on the card on an **Agents** line (`executors`, most recent first). That list is separate from the singular executor (who holds the ball now).
 
 Run with no subcommand → drops into the menu-driven interactive TUI (`commands/interactive.py`).
 
