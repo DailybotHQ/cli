@@ -1259,7 +1259,8 @@ def project_milestone_attachment_delete(
 
 # ---------------------------------------------------------------------------
 # One project update: read, edit (author only), delete (author or org admin),
-# and its attachments (author only). `--agent-name` stamps every write.
+# and its attachments (attach and rename: author only; delete: author or org
+# admin). `--agent-name` stamps every write.
 # ---------------------------------------------------------------------------
 
 
