@@ -381,6 +381,26 @@ See [docs/CONFIGURATION.md § "STOP — Read this before you author `env.json`"]
 
 The implementation lives in `dailybot_cli/config.py` (`get_active_env_profile`, `get_api_key`, `get_api_url`, `get_app_url`, `load_repo_env`), `dailybot_cli/main.py::cli` (root-callback guard), `dailybot_cli/commands/agent.py::_resolve_agent_context`, and `dailybot_cli/api_client.py::_agent_headers`. See [docs/CONFIGURATION.md](docs/CONFIGURATION.md).
 
+#### 14.a Dual session — this repo (production reports + local Tasks tests)
+
+Agents working **in this CLI repository** must keep two concerns separate:
+
+| Intent | How |
+| --- | --- |
+| **Agent reports, releases, `gh`, default `dailybot`** | Production OTP (`credentials.json`). Leave `.dailybot/env.json` **disabled** (`dailybot env off`) so `dailybot agent update` hits `https://api.dailybot.com`. |
+| **Tasks / API probes against the local org** | Testing profiles in the same gitignored `env.json` (`kind: testing`). Switch with `dailybot env use <name>` or one-shot `tmp/bin/dailybot-local [profile] <cmd>` (uses then `env off`). |
+
+Profiles are named keys in `env.json` (inspect with `dailybot env list` — keys are masked). Typical testing names here: `local-8000` (admin), `local-emma`, `local-ginny`, `local-oscar`, `local-hagrid` — all `http://host.docker.internal:8000`. You may also store **live** profiles in the same file (`--kind live`) and switch with `env use` exactly as before.
+
+**Rules for agents:**
+
+1. After any local Tasks work, run `dailybot env off` (or use only `dailybot-local`, which restores prod) **before** `dailybot agent update` or a release.
+2. Never `dailybot login` while a testing profile is active — OTP would be requested against the local API.
+3. Never `cat` `env.json`. Use `dailybot env list` / `env show`.
+4. `kind` is a label (`live` \| `testing`); it does not change resolution. One `active` profile at a time; `env off` falls through to login without deleting profiles.
+
+Full user-facing spec: [docs/CONFIGURATION.md § Dual session](docs/CONFIGURATION.md#dual-session--production-default--testing-profiles). Contributor cheat-sheet: [docs/LOCAL_ENVIRONMENT.md § Dual CLI session](docs/LOCAL_ENVIRONMENT.md#5-dual-cli-session-production--local-testing). Skill: [`.agents/skills/dailybot/env/SKILL.md`](.agents/skills/dailybot/env/SKILL.md) and [`shared/env-json.md`](.agents/skills/dailybot/shared/env-json.md).
+
 ### 15. Packaging & Versioning
 
 - The CLI version is read at runtime from installed package metadata (`importlib.metadata.version("dailybot-cli")`) — see `dailybot_cli/__init__.py`.
