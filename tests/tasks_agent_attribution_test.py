@@ -233,3 +233,30 @@ class TestAttributionRendering:
             },
         )
         assert "\x1b[31m" not in out
+
+
+class TestPersonNameShapes:
+    """The server's person ref carries `name`; older payloads carried `full_name`."""
+
+    def test_comment_author_by_name(self) -> None:
+        from dailybot_cli.display import console, print_task_comments
+
+        with console.capture() as cap:
+            print_task_comments(
+                [
+                    {
+                        "uuid": "c1",
+                        "author": {"kind": "user", "name": "Emma Watson"},
+                        "executed_by_agent": {"name": "Claude Code"},
+                        "body": "x",
+                    }
+                ]
+            )
+        assert '"Emma Watson" via "Claude Code"' in cap.get()
+
+    def test_owner_by_name_in_the_table(self) -> None:
+        from dailybot_cli.display import console, print_tasks_table
+
+        with console.capture() as cap:
+            print_tasks_table([{"key": "ENG-1", "title": "t", "owner": {"name": "Emma Watson"}}])
+        assert "Emma Watson" in cap.get()

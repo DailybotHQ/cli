@@ -1618,6 +1618,11 @@ def present_untrusted(value: Any, *, limit: int | None = None) -> str:
     return '"' + escape(text.replace('"', '\\"')) + '"'
 
 
+def _person_name(person: dict[str, Any]) -> Any:
+    """A person ref's display name: `name` (the Tasks ref), or the older `full_name`."""
+    return person.get("full_name") or person.get("name")
+
+
 def _state_name(task: dict[str, Any]) -> str:
     state: Any = task.get("state")
     if isinstance(state, dict):
@@ -1637,7 +1642,7 @@ def print_tasks_table(tasks: list[dict[str, Any]]) -> None:
     table.add_column("Assignee", no_wrap=True)
     for task in tasks:
         owner: Any = task.get("executor") or task.get("owner") or {}
-        owner_name: Any = owner.get("full_name") if isinstance(owner, dict) else owner
+        owner_name: Any = _person_name(owner) if isinstance(owner, dict) else owner
         table.add_row(
             safe_text(task.get("key") or task.get("uuid") or ""),
             present_untrusted(task.get("title")),
@@ -2057,7 +2062,7 @@ def print_task_comments(comments: list[dict[str, Any]]) -> None:
         return
     for comment in _threaded(comments):
         author: Any = comment.get("author") or {}
-        author_name: Any = author.get("full_name") if isinstance(author, dict) else author
+        author_name: Any = _person_name(author) if isinstance(author, dict) else author
         attribution: str = present_untrusted(author_name, limit=24)
         if comment.get("provenance") == "typed":
             attribution += " [dim](typed by a person)[/dim]"
