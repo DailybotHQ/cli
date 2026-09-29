@@ -140,8 +140,6 @@ class TestEnvAdd:
         combined: str = result.output + (result.stderr or "")
         assert "gitignore" in combined.lower()
 
-
-
     def test_add_local_url_infers_testing_kind(self, runner: CliRunner, chdir_tmp: Path) -> None:
         from dailybot_cli.main import cli
 

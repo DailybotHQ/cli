@@ -767,9 +767,7 @@ def write_repo_profile(
 REPO_ENV_FILENAME: str = "env.json"
 ENV_PROFILE_KIND_LIVE: str = "live"
 ENV_PROFILE_KIND_TESTING: str = "testing"
-ENV_PROFILE_KINDS: frozenset[str] = frozenset(
-    {ENV_PROFILE_KIND_LIVE, ENV_PROFILE_KIND_TESTING}
-)
+ENV_PROFILE_KINDS: frozenset[str] = frozenset({ENV_PROFILE_KIND_LIVE, ENV_PROFILE_KIND_TESTING})
 # Hosts treated as local/dev when inferring ``kind`` from ``api_url``.
 _TESTING_API_HOSTS: frozenset[str] = frozenset(
     {"localhost", "127.0.0.1", "0.0.0.0", "::1", "host.docker.internal"}

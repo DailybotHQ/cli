@@ -1208,14 +1208,16 @@ class TestStatusCommand:
         assert "Not authenticated" in result.output
 
 
-
 class TestInteractiveUrlMismatchWithApiKey:
     """Dual-auth: prod Bearer on disk + local env.json key must not force OTP."""
 
     @patch("dailybot_cli.commands.interactive.questionary")
     @patch("dailybot_cli.commands.interactive._do_login")
     @patch("dailybot_cli.commands.interactive.get_api_key", return_value="local-key")
-    @patch("dailybot_cli.commands.interactive.get_api_url", return_value="http://host.docker.internal:8000")
+    @patch(
+        "dailybot_cli.commands.interactive.get_api_url",
+        return_value="http://host.docker.internal:8000",
+    )
     @patch("dailybot_cli.commands.interactive.load_credentials")
     @patch("dailybot_cli.commands.interactive.get_token", return_value="prod-token")
     @patch("dailybot_cli.commands.interactive.DailyBotClient")
@@ -1247,7 +1249,6 @@ class TestInteractiveUrlMismatchWithApiKey:
         assert "API key" in result.output
         assert "Email:" not in result.output
         assert "Let's get you logged in" not in result.output
-
 
     @patch("dailybot_cli.commands.interactive.questionary")
     @patch("dailybot_cli.commands.interactive._do_login")
