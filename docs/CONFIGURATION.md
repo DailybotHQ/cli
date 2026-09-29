@@ -172,6 +172,8 @@ Layers that already existed still work:
 
 Do **not** run `dailybot login` while a testing profile is active: OTP would be requested against the local `api_url`. Turn env off first, then login to production.
 
+The production login token stays on production: a testing profile whose `api_url` is another host never receives it, not even as a fallback after its key is refused. A structure write refused for the testing key therefore ends as `insufficient_scope` (exit 4), not as a confusing expired-session error.
+
 ### Security guarantees
 
 Cross-referenced with the top-of-section STOP block. Repeated here so this appears in every table-of-contents jump.

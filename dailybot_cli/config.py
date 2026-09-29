@@ -4,6 +4,7 @@ import json
 import os
 from pathlib import Path
 from typing import Any
+from urllib.parse import SplitResult, urlsplit
 
 DEFAULT_API_URL: str = "https://api.dailybot.com"
 DEFAULT_APP_URL: str = "https://app.dailybot.com"
@@ -178,6 +179,35 @@ def get_token() -> str | None:
     if creds:
         return creds.get("token")
     return None
+
+
+def _origin(url: str) -> tuple[str, str, int | None]:
+    """Scheme, host and port of a URL — what decides where a credential travels."""
+    parts: SplitResult = urlsplit(url.strip())
+    return parts.scheme.lower(), (parts.hostname or "").lower(), parts.port
+
+
+def get_login_token_for(api_url: str) -> str | None:
+    """The Bearer token to send to ``api_url``, or ``None``.
+
+    A token set in ``DAILYBOT_CLI_TOKEN`` is the caller's explicit choice and
+    goes wherever they point it. A token from ``dailybot login`` belongs to the
+    API that issued it (``credentials.json::api_url``; a legacy file without
+    one belongs to the default API): it is never sent to any other host, so a
+    repo ``env.json`` or ``--api-url`` pointing elsewhere cannot carry the
+    production session there, not even as a fallback credential.
+    """
+    env_token: str | None = os.environ.get("DAILYBOT_CLI_TOKEN")
+    if env_token:
+        return env_token
+    creds: dict[str, Any] | None = load_credentials()
+    if not creds:
+        return None
+    issued_by: str = str(creds.get("api_url") or DEFAULT_API_URL)
+    if _origin(issued_by) != _origin(api_url):
+        return None
+    token: Any = creds.get("token")
+    return str(token) if token else None
 
 
 def load_config() -> dict[str, Any]:

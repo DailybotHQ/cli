@@ -17,7 +17,7 @@ from dailybot_cli.config import (
     get_api_key,
     get_api_key_source,
     get_api_url,
-    get_token,
+    get_login_token_for,
 )
 
 _MAX_LIST_PAGES: int = 50  # safety cap for paginated list endpoints
@@ -393,7 +393,8 @@ class DailyBotClient:
         self.agent_name: str | None = clean_agent_name(
             agent_name if agent_name is not None else get_agent_name()
         )
-        self.token: str | None = token or get_token()
+        # A login token only travels to the API host that issued it.
+        self.token: str | None = token or get_login_token_for(self.api_url)
         self.api_key: str | None = api_key or get_api_key()
         self.timeout: float = timeout
         self._agent_auth_mode: str | None = None
