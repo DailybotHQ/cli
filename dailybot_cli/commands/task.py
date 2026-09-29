@@ -736,21 +736,34 @@ def _read_body(value: str) -> str:
 @task.command("comment")
 @click.argument("task_uuid", metavar="TASK")
 @click.argument("body")
+@click.option(
+    "--reply-to",
+    "reply_to",
+    default=None,
+    metavar="COMMENT",
+    help="Reply in the thread of this comment (its uuid).",
+)
 @click.option("--idempotency-key", default=None, help="Reuse a key to make a retry safe.")
 @click.option("--json", "json_mode", is_flag=True, help="Emit machine-readable JSON to stdout.")
-def task_comment(task_uuid: str, body: str, idempotency_key: str | None, json_mode: bool) -> None:
-    """Comment on a task. Pass `-` as the body to read it from stdin.
+def task_comment(
+    task_uuid: str, body: str, reply_to: str | None, idempotency_key: str | None, json_mode: bool
+) -> None:
+    """Comment on a task, or reply in a thread. Pass `-` as the body to read it from stdin.
 
     \b
     Examples:
       dailybot task comment ENG-142 "Deployed to staging"
+      dailybot task comment ENG-142 "Agreed, shipping it" --reply-to <comment-uuid>
       echo "long note" | dailybot task comment ENG-142 -
     """
     client = require_auth()
     try:
         with console.status("Posting the comment..."):
             data: dict[str, Any] = client.comment_on_task(
-                task_uuid, body=_read_body(body), idempotency_key=idempotency_key
+                task_uuid,
+                body=_read_body(body),
+                idempotency_key=idempotency_key,
+                parent_comment=reply_to,
             )
     except APIError as exc:
         _write_error(exc, json_mode)

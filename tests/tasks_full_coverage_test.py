@@ -151,3 +151,19 @@ class TestCommands:
         result = _invoke("tasks", ["tasks", "attachments-resolve", "a1", "b2", "--json"], client)
         assert result.exit_code == 0
         client.resolve_attachments.assert_called_once_with(["a1", "b2"])
+
+
+class TestReplies:
+    def test_reply_sends_parent_comment(self) -> None:
+        with patch("httpx.post", return_value=_response({"uuid": "c2"})) as post:
+            _client().comment_on_task(T, body="agreed", parent_comment=C)
+        assert post.call_args.kwargs["json"]["parent_comment"] == C
+
+    def test_reply_to_option(self) -> None:
+        client: MagicMock = MagicMock(spec=DailyBotClient)
+        client.comment_on_task.return_value = {"uuid": "c2"}
+        result = _invoke(
+            "task", ["task", "comment", T, "agreed", "--reply-to", C, "--json"], client
+        )
+        assert result.exit_code == 0, result.output
+        assert client.comment_on_task.call_args.kwargs["parent_comment"] == C

@@ -2931,13 +2931,21 @@ class DailyBotClient:
     # --- Collaboration ---
 
     def comment_on_task(
-        self, task_uuid: str, *, body: str, idempotency_key: str | None = None
+        self,
+        task_uuid: str,
+        *,
+        body: str,
+        idempotency_key: str | None = None,
+        parent_comment: str | None = None,
     ) -> dict[str, Any]:
-        """POST /v1/tasks/tasks/<uuid>/comments/ — accepts a key."""
+        """POST /v1/tasks/tasks/<uuid>/comments/ — accepts a key; `parent_comment` replies."""
+        payload: dict[str, Any] = {"body": body}
+        if parent_comment:
+            payload["parent_comment"] = _path_segment(parent_comment)
         return self._tasks_write(
             "POST",
             f"tasks/{_path_segment(task_uuid)}/comments/",
-            json={"body": body},
+            json=payload,
             idempotent=True,
             idempotency_key=idempotency_key,
         )
