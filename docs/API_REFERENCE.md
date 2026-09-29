@@ -896,7 +896,7 @@ Every Tasks command in this release (137), generated from the CLI's own command 
 | `dailybot task brief TASK` | Read the whole card an agent was handed: task, comments, files, links. |  |
 | `dailybot task bulk` | Apply one operation to up to 100 tasks in a single call. |  |
 | `dailybot task children TASK` | List a task's direct sub-tasks. |  |
-| `dailybot task comment TASK BODY` | Comment on a task. Pass `-` as the body to read it from stdin. |  |
+| `dailybot task comment TASK BODY` | Comment on a task, or reply in a thread. Pass `-` as the body to read it from stdin. |  |
 | `dailybot task comment-attach TASK COMMENT FILE` | Attach a file to a comment. Only the comment's author can. |  |
 | `dailybot task comment-attachment delete TASK COMMENT ATTACHMENT` | Remove an attachment from a comment. This cannot be undone. |  |
 | `dailybot task comment-attachment get TASK COMMENT ATTACHMENT` | Download a comment's attachment to a file. Never overwrites without --force. |  |
