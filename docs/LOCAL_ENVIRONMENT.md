@@ -218,3 +218,31 @@ dailybot env use live
 ```
 
 Do not `dailybot login` while a testing profile is active — OTP would hit the local API.
+
+**Before any agent report or release**, confirm you are on production:
+
+```bash
+dailybot env off
+dailybot env show        # must say "env.json is disabled"
+dailybot agent update --name "Claude Code" "…"
+```
+
+**Testing as several local people** (for example an admin and members on
+different teams, to check that a private project stays not-found for anyone
+not invited): set a trap first so the file ends disabled even if a step fails,
+then switch per person.
+
+```bash
+trap 'dailybot env off >/dev/null' EXIT
+for p in local-admin local-member-a local-member-b; do
+  dailybot env on >/dev/null && dailybot env use "$p" >/dev/null
+  dailybot team list --json      # server-scoped: each person sees only their teams
+done
+```
+
+Visibility is server-scoped by membership. A private project, board, or task
+that the person was not invited to returns not-found (exit 5), never
+"forbidden". Do not add client-side filtering to make a test pass. A
+user-bound key can still be refused on structure and membership writes where
+a signed-in session is accepted; record that as a failing case rather than
+working around it with `dailybot login` against the local API.
