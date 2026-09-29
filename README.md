@@ -873,6 +873,8 @@ An organization API key can never hold `tasks:admin` and cannot change membershi
 participants — with only `DAILYBOT_API_KEY` those commands stop before sending anything.
 **Privacy is membership**, not org role: a `members` project or board is 404 (not visible)
 to anyone without a grant; invite a person or a team to close it.
+A board inside a `members` project follows the project's membership: whoever the project
+grants (a person or a team) sees its boards, and nobody else does.
 
 **Agents work as you, and say so.** When an agent runs the CLI for you, pass its name with
 `--agent-name` (or `DAILYBOT_AGENT_NAME`). Every Tasks write stays yours, and the card shows
