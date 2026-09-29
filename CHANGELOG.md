@@ -9,6 +9,15 @@ Do not edit it by hand — your edits will be overwritten on the next release.
 
 <!-- version list -->
 
+## v3.19.1 (2026-09-29)
+
+### Bug Fixes
+
+- **tasks**: Explain every reason an agent name is refused
+  ([#107](https://github.com/DailybotHQ/cli/pull/107),
+  [`75553cc`](https://github.com/DailybotHQ/cli/commit/75553cc6d25eb00a009e6017e69b5a45571f5b3b))
+
+
 ## v3.19.0 (2026-09-29)
 
 ### Features
