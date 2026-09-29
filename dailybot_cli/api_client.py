@@ -7,7 +7,7 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Any
-from urllib.parse import urljoin, urlsplit
+from urllib.parse import quote, urljoin, urlsplit
 
 import httpx
 
@@ -101,6 +101,16 @@ SAME_ORIGIN_UPLOAD_METHODS: frozenset[str] = frozenset({"PUT", "POST"})
 TASKS_BULK_MAX_ITEMS: int = 100
 IDEMPOTENCY_KEY_HEADER: str = "Idempotency-Key"
 IDEMPOTENCY_REPLAYED_HEADER: str = "Idempotency-Replayed"
+# The agent that executed a Tasks write on a person's behalf. The person stays
+# the author; the server records this name as the executor companion. Header
+# values reach the server as latin-1, so a non-ASCII name travels
+# percent-encoded UTF-8 (space kept, `%` encoded). Wire name proposed by the API, pending its final
+# contract — change it here only.
+TASKS_AGENT_NAME_HEADER: str = "X-Dailybot-Agent-Name"
+TASKS_AGENT_NAME_MAX_LENGTH: int = 128
+# C0 controls, DEL and C1 controls: never part of a display name.
+_AGENT_NAME_CONTROL_RE: re.Pattern[str] = re.compile(r"[\x00-\x08\x0b-\x1f\x7f-\x9f]")
+_AGENT_NAME_SPACE_RE: re.Pattern[str] = re.compile(r"\s+")
 # The board delta door keeps a 7-day window; an older cursor is refused forever
 # with `delta_window_expired` + `full_resync_required`. Retrying is an infinite
 # loop — the only correct response is a fresh snapshot.
@@ -329,6 +339,19 @@ def _invalid_identifier() -> APIError:
     )
 
 
+def clean_agent_name(name: str | None) -> str | None:
+    """A display-safe agent name, or ``None`` when there is no agent.
+
+    Control characters go, whitespace collapses, and the result is capped at
+    the server's length. Blank means "no agent", never an empty stamp.
+    """
+    if name is None:
+        return None
+    text: str = _AGENT_NAME_CONTROL_RE.sub("", name)
+    text = _AGENT_NAME_SPACE_RE.sub(" ", text).strip()
+    return text[:TASKS_AGENT_NAME_MAX_LENGTH] or None
+
+
 def _path_segment(value: Any) -> str:
     """One validated path segment: a key, a uuid or a slug — never `/`, `..`, `?`, `#`."""
     text: str = str(value)
@@ -347,8 +370,11 @@ class DailyBotClient:
         api_key: str | None = None,
         timeout: float = 30.0,
         prefer_api_key: bool | None = None,
+        agent_name: str | None = None,
     ) -> None:
         self.api_url: str = (api_url or get_api_url()).rstrip("/")
+        # Stamped on Tasks writes only; `None` sends no stamp.
+        self.agent_name: str | None = clean_agent_name(agent_name)
         self.token: str | None = token or get_token()
         self.api_key: str | None = api_key or get_api_key()
         self.timeout: float = timeout
@@ -2247,6 +2273,8 @@ class DailyBotClient:
         sequential default would collide between two agents.
         """
         extra: dict[str, str] | None = dict(headers) if headers else None
+        if self.agent_name:
+            extra = {**(extra or {}), TASKS_AGENT_NAME_HEADER: quote(self.agent_name, safe=" ")}
         sent_key: str | None = None
         # A `dry_run=true` call writes nothing, so it has nothing to make idempotent —
         # and returning a key for it invites the caller to reuse that key for the real
