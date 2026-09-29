@@ -93,7 +93,7 @@ class TestKeyAddressing:
         client.list_task_comments.return_value = _page()
         with (
             patch("dailybot_cli.commands.task.require_auth", return_value=client),
-            patch("dailybot_cli.commands.task.get_person_token", return_value="tok"),
+            patch("dailybot_cli.commands.task.get_person_token", return_value="tok", create=True),
         ):
             result = runner.invoke(cli, argv)
         assert result.exit_code == 0, result.output

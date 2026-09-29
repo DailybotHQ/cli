@@ -86,7 +86,9 @@ def _invoke(runner: CliRunner, client: DailyBotClient, args: list[str], module: 
 class TestGoalCreatePeriod:
     def test_the_period_is_sent(self, runner: CliRunner, real: DailyBotClient) -> None:
         with (
-            patch("dailybot_cli.commands.project.get_person_token", return_value="tok"),
+            patch(
+                "dailybot_cli.commands.project.get_person_token", return_value="tok", create=True
+            ),
             patch(
                 "dailybot_cli.api_client.httpx.post", return_value=_response({"uuid": "g-1"}, 201)
             ) as post,
@@ -120,7 +122,9 @@ class TestGoalCreatePeriod:
         self, runner: CliRunner, real: DailyBotClient, extra: list[str]
     ) -> None:
         with (
-            patch("dailybot_cli.commands.project.get_person_token", return_value="tok"),
+            patch(
+                "dailybot_cli.commands.project.get_person_token", return_value="tok", create=True
+            ),
             patch("dailybot_cli.api_client.httpx.post") as post,
         ):
             result = _invoke(runner, real, ["goal", "create", "-n", "x", *extra], "goal")
@@ -131,7 +135,9 @@ class TestGoalCreatePeriod:
         self, runner: CliRunner, real: DailyBotClient
     ) -> None:
         with (
-            patch("dailybot_cli.commands.project.get_person_token", return_value="tok"),
+            patch(
+                "dailybot_cli.commands.project.get_person_token", return_value="tok", create=True
+            ),
             patch("dailybot_cli.api_client.httpx.post") as post,
         ):
             result = _invoke(

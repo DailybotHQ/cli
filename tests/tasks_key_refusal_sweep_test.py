@@ -1,18 +1,12 @@
-"""Every door the API refuses to an organization API key is refused before the request.
+"""No Tasks door is refused before the request because the credential is a key.
 
-The server's runtime rule has two lists. The 25 `tasks:admin` doors refuse any
-organization API key with `403 insufficient_scope`; the scope cannot even be
-stored on a key. The 34 person-only doors refuse a key because the answer is
-about a person. The CLI mirrors both lists, so a key-only session never spends
-a request on a door that cannot succeed. An admin door exits 4, like the
-server's 403. A person door exits 3, because the fix is to sign in.
-
-A personal API key (bound to a user, not an agent key) became its person on
-the API, so the person doors it now accepts are no longer refused here: the
-request goes out and the server alone tells a personal key from an agent key.
+A personal API key (bound to a person) is that person on every Tasks door,
+structure and membership included, exactly like a login session. Only the
+server can tell a personal key from an agent or organization key, so the CLI
+sends the request and renders the server's answer: `actor_required` exits 3,
+`insufficient_scope` / `guest_not_allowed` exit 4.
 """
 
-import json
 from typing import Any
 from unittest.mock import MagicMock, patch
 
@@ -20,10 +14,6 @@ import pytest
 from click.testing import CliRunner
 
 from dailybot_cli.api_client import DailyBotClient
-from dailybot_cli.commands.public_api_helpers import (
-    EXIT_NOT_AUTHENTICATED,
-    EXIT_PERMISSION_DENIED,
-)
 from dailybot_cli.main import cli
 
 B: str = "00000000-0000-0000-0000-000000000001"
@@ -138,25 +128,16 @@ def _invoke_with_key_only(argv: list[str]) -> tuple[Any, MagicMock]:
     return result, client
 
 
-@pytest.mark.parametrize("argv", ADMIN_COMMANDS, ids=lambda a: " ".join(a[:3]))
-def test_an_admin_door_refuses_a_key_before_the_request(argv: list[str]) -> None:
-    result, client = _invoke_with_key_only(argv)
-    assert result.exit_code == EXIT_PERMISSION_DENIED, result.output
-    assert client.mock_calls == [], client.mock_calls
-    assert json.loads(result.output)["code"] == "insufficient_scope"
-
-
-@pytest.mark.parametrize("argv", PERSON_COMMANDS, ids=lambda a: " ".join(a[:4]))
-def test_a_person_door_refuses_a_key_before_the_request(argv: list[str]) -> None:
-    result, client = _invoke_with_key_only(argv)
-    assert result.exit_code == EXIT_NOT_AUTHENTICATED, result.output
-    assert client.mock_calls == [], client.mock_calls
-
-
-@pytest.mark.parametrize("argv", OPEN_TO_PERSONAL_KEY_COMMANDS, ids=lambda a: " ".join(a[:4]))
-def test_a_door_open_to_a_personal_key_sends_the_request(argv: list[str]) -> None:
+@pytest.mark.parametrize(
+    "argv",
+    ADMIN_COMMANDS + PERSON_COMMANDS + OPEN_TO_PERSONAL_KEY_COMMANDS,
+    ids=lambda a: " ".join(a[:4]),
+)
+def test_every_door_sends_the_request_for_a_key(argv: list[str]) -> None:
+    # A personal API key is its person on every Tasks door; the server alone
+    # tells it from an agent or organization key, so the CLI never refuses first.
     _result, client = _invoke_with_key_only(argv)
-    assert client.mock_calls != []
+    assert client.mock_calls != [], argv
 
 
 def test_the_lists_match_the_server_counts() -> None:

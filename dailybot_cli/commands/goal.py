@@ -16,7 +16,6 @@ from dailybot_cli.commands.project import (
     GOAL_INCLUDE_VALUES,
     _envelope,
     _include_list,
-    _require_person_for_admin,
 )
 from dailybot_cli.commands.public_api_helpers import (
     emit_json,
@@ -186,7 +185,7 @@ def goal_create(
     idempotency_key: str | None,
     json_mode: bool,
 ) -> None:
-    """Create a goal. Needs a signed-in person (any non-guest member).
+    """Create a goal. Needs a person (any non-guest member): `dailybot login` or a personal API key.
 
     \b
     A goal is a dated commitment, so both ends of its period are required. It starts
@@ -198,7 +197,6 @@ def goal_create(
     """
     if period_end < period_start:
         raise click.UsageError("--period-end is before --period-start.")
-    _require_person_for_admin("goal create", json_mode=json_mode)
     client = require_auth()
     try:
         with console.status("Creating the goal..."):
@@ -234,7 +232,6 @@ def goal_archive(
     Examples:
       dailybot goal archive <goal-uuid> --dry-run
     """
-    _require_person_for_admin("goal archive", json_mode=json_mode)
     client = require_auth()
     if not preview_then_confirm(
         lambda: client.archive_goal(goal_uuid, dry_run=True),
@@ -305,7 +302,6 @@ def goal_update(
       dailybot goal update <goal-uuid> --status at_risk
       dailybot goal update <goal-uuid> --period-end 2027-01-31 --owner <user-uuid> --json
     """
-    _require_person_for_admin("goal update", json_mode=json_mode)
     if period_start and period_end and period_end < period_start:
         raise click.UsageError("--period-end is before --period-start.")
     fields: dict[str, Any] = {
@@ -349,7 +345,6 @@ def goal_restore(goal_uuid: str, json_mode: bool) -> None:
     Examples:
       dailybot goal restore <goal-uuid>
     """
-    _require_person_for_admin("goal restore", json_mode=json_mode)
     client = require_auth()
     try:
         with console.status("Restoring the goal..."):
@@ -377,7 +372,6 @@ def goal_link(goal_uuid: str, project_uuid: str, json_mode: bool) -> None:
     Examples:
       dailybot goal link <goal-uuid> <project-uuid>
     """
-    _require_person_for_admin("goal link", json_mode=json_mode)
     client = require_auth()
     try:
         with console.status("Linking the project..."):
@@ -406,7 +400,6 @@ def goal_unlink(
       dailybot goal unlink <goal-uuid> <project-uuid> --dry-run
       dailybot goal unlink <goal-uuid> <project-uuid> --yes
     """
-    _require_person_for_admin("goal unlink", json_mode=json_mode)
     if not confirm_without_preview(
         f"unlink project {project_uuid} from goal {goal_uuid}; its work stops counting toward "
         "the goal.",
@@ -443,7 +436,7 @@ def goal_unlink(
 @click.option("--caption", default=None, help="Short caption shown with the file.")
 @click.option("--json", "json_mode", is_flag=True, help="Emit machine-readable JSON to stdout.")
 def goal_attach(goal_uuid: str, file_path: Path, caption: str | None, json_mode: bool) -> None:
-    """Attach a file to a goal. Needs a signed-in person (any non-guest member).
+    """Attach a file to a goal. Needs a person (any non-guest member): `dailybot login` or a personal API key.
 
     \b
     One request, up to 5 MiB. Your Dailybot credentials go only to the API.
@@ -453,7 +446,6 @@ def goal_attach(goal_uuid: str, file_path: Path, caption: str | None, json_mode:
       dailybot goal attach <goal-uuid> ./plan.pdf
       dailybot goal attach <goal-uuid> ./roadmap.png --caption "Q4 roadmap" --json
     """
-    _require_person_for_admin("goal attach", json_mode=json_mode)
     run_attach(
         lambda client, **file: client.upload_goal_attachment(goal_uuid, **file),
         file_path,
@@ -535,14 +527,13 @@ def goal_attachment_get(
 def goal_attachment_delete(
     goal_uuid: str, attachment_uuid: str, dry_run: bool, assume_yes: bool, json_mode: bool
 ) -> None:
-    """Remove an attachment from a goal. This cannot be undone. Needs a signed-in person.
+    """Remove an attachment from a goal. This cannot be undone. Needs a person: `dailybot login` or a personal API key.
 
     \b
     Examples:
       dailybot goal attachment delete <goal-uuid> <attachment-uuid> --dry-run
       dailybot goal attachment delete <goal-uuid> <attachment-uuid> --yes
     """
-    _require_person_for_admin("goal attachment delete", json_mode=json_mode)
     run_delete(
         lambda client: client.delete_goal_attachment(goal_uuid, attachment_uuid),
         f"delete attachment {attachment_uuid} from goal {goal_uuid}.",

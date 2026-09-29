@@ -16,12 +16,10 @@ from dailybot_cli.commands.public_api_helpers import (
     emit_json,
     exit_for_tasks_error,
     load_json_input,
-    refuse_without_person,
     require_auth,
     rows_of,
 )
 from dailybot_cli.commands.query_options import build_query_params, query_options, resolve_fetch_all
-from dailybot_cli.config import get_person_token
 from dailybot_cli.display import (
     console,
     present_untrusted,
@@ -381,24 +379,6 @@ def project_milestone_reopen(
     report_write(data, "Milestone reopened")
 
 
-def _require_person_for_admin(action: str, *, json_mode: bool) -> None:
-    """Refuse an organization API key on a structure or membership door.
-
-    See board.py: open-org Tasks gives every non-guest member structure access on
-    a person session; keys still cannot store `tasks:admin` or change membership.
-    """
-    # Gate on the absence of a person token, not on the presence of a key: both
-    # can be configured at once, and Bearer is sent first when it exists.
-    if get_person_token() is None:
-        refuse_without_person(
-            f"`{action}` needs a signed-in person. An organization API key can never hold "
-            "the `tasks:admin` scope (it cannot even be stored on one), and keys cannot "
-            "change membership. Run `dailybot login` and retry as a non-guest member.",
-            json_mode=json_mode,
-            admin=True,
-        )
-
-
 def _project_fields(
     visibility: str | None,
     lead: str | None,
@@ -461,7 +441,7 @@ def project_create(
     idempotency_key: str | None,
     json_mode: bool,
 ) -> None:
-    """Create a project. Needs a signed-in person (any non-guest member).
+    """Create a project. Needs a person (any non-guest member): `dailybot login` or a personal API key.
 
     \b
     Examples:
@@ -469,7 +449,6 @@ def project_create(
       dailybot project create -n "Apollo" --lead <user-uuid> --target-date 2026-12-15 --json
     """
     extra: dict[str, Any] = _project_fields(visibility, lead, health, start_date, target_date)
-    _require_person_for_admin("project create", json_mode=json_mode)
     client = require_auth()
     try:
         with console.status("Creating the project..."):
@@ -499,7 +478,6 @@ def project_archive(
     Examples:
       dailybot project archive <project-uuid> --dry-run
     """
-    _require_person_for_admin("project archive", json_mode=json_mode)
     client = require_auth()
     if not preview_then_confirm(
         lambda: client.archive_project(project_uuid, dry_run=True),
@@ -543,8 +521,8 @@ def project_update(
     """Change a project's name, lead, health, dates or visibility.
 
     \b
-    Only the fields you pass are sent. Any signed-in non-guest member can update;
-    an organization API key cannot. Setting `--visibility members` privatizes the
+    Only the fields you pass are sent. Any non-guest member can update, with
+    `dailybot login` or a personal API key; an agent or organization key cannot. Setting `--visibility members` privatizes the
     project and auto-grants you; invite others with `project member add`. To post
     a status note for the team, use `dailybot project update-post` instead.
 
@@ -553,7 +531,6 @@ def project_update(
       dailybot project update <project-uuid> --health at_risk
       dailybot project update <project-uuid> --target-date 2027-01-15 --lead <user-uuid> --json
     """
-    _require_person_for_admin("project update", json_mode=json_mode)
     fields: dict[str, Any] = _project_fields(visibility, lead, health, start_date, target_date)
     if name is not None:
         fields["name"] = name
@@ -590,7 +567,6 @@ def project_restore(project_uuid: str, idempotency_key: str | None, json_mode: b
     Examples:
       dailybot project restore <project-uuid>
     """
-    _require_person_for_admin("project restore", json_mode=json_mode)
     client = require_auth()
     try:
         with console.status("Restoring the project..."):
@@ -606,13 +582,9 @@ def project_restore(project_uuid: str, idempotency_key: str | None, json_mode: b
 
 
 # ---------------------------------------------------------------------------
-# Members and saved views — person-only
+# Members and saved views
 # ---------------------------------------------------------------------------
 
-_MEMBER_REASON: str = (
-    "changes or reveals who can see a private project, and no organization API key may do "
-    "that — there is no person behind it to be accountable."
-)
 _MEMBER_COLUMNS: list[tuple[str, str, bool]] = [
     ("Kind", "subject_type", True),
     ("Name", "name", False),
@@ -625,15 +597,6 @@ _VIEW_COLUMNS: list[tuple[str, str, bool]] = [
     ("Mode", "view_mode", True),
     ("UUID", "uuid", True),
 ]
-
-
-def _require_person(action: str, reason: str, *, json_mode: bool) -> None:
-    """Refuse an API key on a person-only project door, before any request."""
-    if get_person_token() is None:
-        refuse_without_person(
-            f"`{action}` {reason} Run `dailybot login` and retry as a signed-in person.",
-            json_mode=json_mode,
-        )
 
 
 @project.command("members")
@@ -660,14 +623,14 @@ def project_members(project_uuid: str, json_mode: bool) -> None:
 
 @project.group("member")
 def project_member() -> None:
-    """Invite or remove people and teams on a project. Needs `dailybot login`.
+    """Invite or remove people and teams on a project. Needs a person: `dailybot login` or a personal API key.
 
     \b
     Membership is the privacy control: a `members` project is not visible (404)
     to anyone without a grant. Org-wide projects are a shared workspace. Invite a
     person or a team to close a private project; the last grant cannot be removed
-    (`last_grant_cannot_be_removed`). There is no project role to edit. An
-    organization API key cannot change membership.
+    (`last_grant_cannot_be_removed`). There is no project role to edit. An agent or
+    organization key cannot change membership.
 
     \b
     Examples:
@@ -696,7 +659,6 @@ def project_member_add(
       dailybot project member add <project-uuid> --user <user-uuid>
       dailybot project member add <project-uuid> --team <team-uuid> --json
     """
-    _require_person_for_admin("project member add", json_mode=json_mode)
     if (user_uuid is None) == (team_uuid is None):
         raise click.UsageError("Pass exactly one of --user or --team.")
     client = require_auth()
@@ -729,7 +691,6 @@ def project_member_remove(
       dailybot project member remove <project-uuid> <user-uuid> --dry-run
       dailybot project member remove <project-uuid> <user-uuid> --yes
     """
-    _require_person_for_admin("project member remove", json_mode=json_mode)
     if not confirm_without_preview(
         f"remove user {user_uuid} from project {project_uuid}; they lose sight of it if it "
         "is private.",
@@ -767,11 +728,6 @@ def project_views(project_uuid: str, etag_only: bool, json_mode: bool) -> None:
       dailybot project views <project-uuid>
       ETAG=$(dailybot project views <project-uuid> --etag)
     """
-    _require_person(
-        "project views",
-        "lists saved views, which belong to a person, and an organization API key is not one.",
-        json_mode=json_mode,
-    )
     client = require_auth()
     try:
         with console.status("Reading the views..."):
@@ -791,7 +747,7 @@ def project_views(project_uuid: str, etag_only: bool, json_mode: bool) -> None:
 
 @project.group("view")
 def project_view() -> None:
-    """Save your views of a project. Needs `dailybot login`.
+    """Save your views of a project. Needs a person: `dailybot login` or a personal API key.
 
     \b
     Examples:
@@ -834,11 +790,6 @@ def project_view_save(
         raise click.BadParameter(f"not valid JSON: {exc}", param_hint="--file") from exc
     if not isinstance(views, list):
         raise click.BadParameter("must be a JSON array of views.", param_hint="--file")
-    _require_person(
-        "project view save",
-        "saves views that belong to a person, and an organization API key is not one.",
-        json_mode=json_mode,
-    )
     client = require_auth()
     try:
         etag: str | None = if_match
@@ -995,7 +946,7 @@ def project_milestone_delete(
 def project_attach(
     project_uuid: str, file_path: Path, caption: str | None, json_mode: bool
 ) -> None:
-    """Attach a file to a project. Needs a signed-in person (any non-guest member).
+    """Attach a file to a project. Needs a person (any non-guest member): `dailybot login` or a personal API key.
 
     \b
     One request, up to 5 MiB. Your Dailybot credentials go only to the API.
@@ -1005,7 +956,6 @@ def project_attach(
       dailybot project attach <project-uuid> ./plan.pdf
       dailybot project attach <project-uuid> ./roadmap.png --caption "Q4 roadmap" --json
     """
-    _require_person_for_admin("project attach", json_mode=json_mode)
     run_attach(
         lambda client, **file: client.upload_project_attachment(project_uuid, **file),
         file_path,
@@ -1087,14 +1037,13 @@ def project_attachment_get(
 def project_attachment_delete(
     project_uuid: str, attachment_uuid: str, dry_run: bool, assume_yes: bool, json_mode: bool
 ) -> None:
-    """Remove an attachment from a project. This cannot be undone. Needs a signed-in person.
+    """Remove an attachment from a project. This cannot be undone. Needs a person: `dailybot login` or a personal API key.
 
     \b
     Examples:
       dailybot project attachment delete <project-uuid> <attachment-uuid> --dry-run
       dailybot project attachment delete <project-uuid> <attachment-uuid> --yes
     """
-    _require_person_for_admin("project attachment delete", json_mode=json_mode)
     run_delete(
         lambda client: client.delete_project_attachment(project_uuid, attachment_uuid),
         f"delete attachment {attachment_uuid} from project {project_uuid}.",

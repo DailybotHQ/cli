@@ -21,10 +21,6 @@ import pytest
 from click.testing import CliRunner
 
 from dailybot_cli.api_client import DailyBotClient, PaginatedResult
-from dailybot_cli.commands.public_api_helpers import (
-    EXIT_NOT_AUTHENTICATED,
-    EXIT_PERMISSION_DENIED,
-)
 from dailybot_cli.main import cli
 
 EXIT_TRANSPORT: int = 8
@@ -108,76 +104,6 @@ class TestBulkAgreesWithItself:
                     ).exit_code
                 )
         assert codes[0] == codes[1]
-
-
-class TestPreflightExitMatchesTheServer:
-    """Finding 2: the pre-flight was observable through the exit code.
-
-    Round 6 made the JSON `code` identical whether the refusal came from the client
-    or the server, so a caller need not know which. The exit code still differed:
-    the `tasks:admin` pre-flight exited 3 while the server's `403 insufficient_scope`
-    exited 4 — so an agent branching "3 → re-login, 4 → permission" behaved
-    differently depending on whether a request happened to be spent.
-    """
-
-    @pytest.mark.parametrize(
-        ("argv", "module"),
-        [
-            (
-                [
-                    "board",
-                    "create",
-                    "--project",
-                    "00000000-0000-0000-0000-000000000002",
-                    "--key",
-                    "DSN",
-                    "--name",
-                    "b",
-                ],
-                "board",
-            ),
-            (["project", "create", "--name", "p"], "project"),
-            (
-                [
-                    "goal",
-                    "create",
-                    "--name",
-                    "g",
-                    "--period-start",
-                    "2026-10-01",
-                    "--period-end",
-                    "2026-12-31",
-                ],
-                "project",
-            ),
-        ],
-    )
-    def test_admin_doors_exit_four(self, runner: CliRunner, argv: list[str], module: str) -> None:
-        with patch(
-            f"dailybot_cli.commands.{module}.get_person_token", return_value=None, create=True
-        ):
-            result = runner.invoke(cli, argv)
-        assert result.exit_code == EXIT_PERMISSION_DENIED
-
-    @pytest.mark.parametrize(
-        ("argv", "module"),
-        [
-            (["tasks", "inbox"], "tasks"),
-            (["tasks", "mine"], "tasks"),
-            (["tasks", "counts"], "tasks"),
-            (["task", "participants", "add", "t-1", "--user", "u-1"], "task"),
-        ],
-    )
-    def test_person_shaped_doors_still_exit_three(
-        self, runner: CliRunner, argv: list[str], module: str
-    ) -> None:
-        # These answer `actor_required`, which IS a credential problem — `dailybot
-        # login` genuinely fixes it, so 3 is the right advice here.
-        with patch(
-            f"dailybot_cli.commands.{module}.get_person_token", return_value=None, create=True
-        ):
-            result = runner.invoke(cli, argv)
-        assert result.exit_code == EXIT_NOT_AUTHENTICATED
 
 
 class TestServerTimestampsAreEscaped:

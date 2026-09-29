@@ -66,7 +66,11 @@ tests/
 ├── tasks_bulk_dry_run_test.py     # bulk --dry-run (server preview), create --board, declared operations
 ├── tasks_path_safety_test.py     # path identifiers, no Bearer→key replay on Tasks 403, next links pinned
 ├── tasks_terminal_safety_test.py # control chars neutralized, preview shape, local file limits
-├── tasks_key_refusal_sweep_test.py # admin doors refuse every key pre-request; person doors split by what a personal key may do
+├── tasks_key_refusal_sweep_test.py # no door refuses a key before the request (a personal key is its person)
+├── tasks_server_refusal_rendering_test.py # server refusals of agent keys / guests render with the right exit
+├── tasks_agent_attribution_test.py # --agent-name stamp
+├── task_brief_test.py              # task brief
+├── token_host_binding_test.py      # login token bound to its issuing host
 ├── tasks_parent_attachments_test.py # attachments on comments, projects and goals (5 MiB, admin doors)
 ├── tasks_ai_review_fixes_test.py # AI review round 1: bulk preview shape, ETag grammar, ports, streamed download
 ├── tasks_inbox_filters_test.py # inbox --mentioned / --type on the list and the unread badge
@@ -120,10 +124,10 @@ New Tasks commands must include:
 3. **JSON mode** — `--json` emits the documented keys; paginated commands emit the
    `{count, next, previous, results}` envelope.
 4. **Untrusted rendering** — any user-authored field is asserted to render as quoted data.
-5. **Credential posture** — a structure door is asserted to refuse every API key *before*
-   the request (exit 4); a door a personal API key may use is asserted to *send* the
-   request, because only the server can tell a personal key from an agent key; the few
-   person doors no key may use still refuse before the request (exit 3).
+5. **Credential posture** — every door is asserted to *send* the request with a key, because
+   a personal API key is its person and only the server can tell it from an agent or
+   organization key; the server's refusals are asserted to render with the right exit and
+   `--json` envelope (`actor_required` 3, `insufficient_scope` / `guest_not_allowed` 4).
 6. **Idempotency posture** — the header is asserted present on an accepting door and
    **absent** on an ignoring one. `tests/tasks_coverage_test.py` keeps the table-driven
    version, which is the cheapest guard against drift.

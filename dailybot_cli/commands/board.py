@@ -21,7 +21,6 @@ from dailybot_cli.commands.public_api_helpers import (
     emit_json,
     exit_for_tasks_error,
     load_json_input,
-    refuse_without_person,
     require_auth,
     rows_of,
 )
@@ -32,7 +31,6 @@ from dailybot_cli.commands.query_options import (
     query_options,
     resolve_fetch_all,
 )
-from dailybot_cli.config import get_person_token
 from dailybot_cli.display import (
     console,
     print_board_snapshot,
@@ -479,7 +477,6 @@ def board_state_create(
       dailybot board state create <board-uuid> -n "In review" --category in_progress
       dailybot board state create <board-uuid> -n Blocked --category todo --position 2 --json
     """
-    _require_person_for_admin("board state create", json_mode=json_mode)
     client = require_auth()
     try:
         with console.status("Adding the column..."):
@@ -528,7 +525,6 @@ def board_state_update(
       dailybot board state update <board-uuid> <state-uuid> --name "Shipped"
       dailybot board state update <board-uuid> <state-uuid> --position 1 --json
     """
-    _require_person_for_admin("board state update", json_mode=json_mode)
     fields: dict[str, Any] = {
         k: v
         for k, v in {"name": name, "color": color, "position": position}.items()
@@ -578,7 +574,6 @@ def board_state_archive(
       dailybot board state archive <board-uuid> <state-uuid> --dry-run
       dailybot board state archive <board-uuid> <state-uuid> --migrate-to <other-state> --yes
     """
-    _require_person_for_admin("board state archive", json_mode=json_mode)
     client = require_auth()
     if not preview_then_confirm(
         lambda: client.archive_board_state(
@@ -613,7 +608,6 @@ def board_state_restore(board_uuid: str, state_uuid: str, json_mode: bool) -> No
     Examples:
       dailybot board state restore <board-uuid> <state-uuid>
     """
-    _require_person_for_admin("board state restore", json_mode=json_mode)
     client = require_auth()
     try:
         with console.status("Restoring the column..."):
@@ -642,7 +636,6 @@ def board_state_reorder(board_uuid: str, state_uuids: tuple[str, ...], json_mode
     Examples:
       dailybot board state reorder <board-uuid> <backlog> <todo> <doing> <done>
     """
-    _require_person_for_admin("board state reorder", json_mode=json_mode)
     if len(set(state_uuids)) != len(state_uuids):
         raise click.UsageError("A column appears twice. List each live column exactly once.")
     client = require_auth()
@@ -669,7 +662,7 @@ _MEMBER_WRITE_REASON: str = (
 
 @board.group("member")
 def board_member() -> None:
-    """Invite or remove who can see a board. Needs `dailybot login`.
+    """Invite or remove who can see a board. Needs a person: `dailybot login` or a personal API key.
 
     \b
     Membership is the privacy control: a `members` board is invisible (404) to
@@ -713,7 +706,6 @@ def board_member_add(
       dailybot board member add <board-uuid> <user-uuid>
       dailybot board member add <board-uuid> --team <team-uuid> --json
     """
-    _require_person_for_admin("board member add", json_mode=json_mode)
     if (user_uuid is None) == (team_uuid is None):
         raise click.UsageError("Pass exactly one of USER or --team.")
     client = require_auth()
@@ -751,7 +743,6 @@ def board_member_remove(
       dailybot board member remove <board-uuid> <user-uuid> --dry-run
       dailybot board member remove <board-uuid> <user-uuid> --yes
     """
-    _require_person_for_admin("board member remove", json_mode=json_mode)
     if not confirm_without_preview(
         f"remove user {user_uuid} from board {board_uuid}; they lose sight of it if it is private.",
         assume_yes=assume_yes,
@@ -930,26 +921,6 @@ def board_snapshot(board_uuid: str, json_mode: bool) -> None:
     print_board_snapshot(data)
 
 
-def _require_person_for_admin(action: str, *, json_mode: bool) -> None:
-    """Refuse an organization API key on a structure or membership door.
-
-    Open-org Tasks: every non-guest member holds `tasks:admin` on a person session,
-    so the CLI never asks for an organization-admin role. An organization API key
-    still cannot store that scope (or change membership / participants), so the
-    message blames the **credential kind** — run `dailybot login` as a member.
-    """
-    # Gate on the absence of a person token, not on the presence of a key: both
-    # can be configured at once, and Bearer is sent first when it exists.
-    if get_person_token() is None:
-        refuse_without_person(
-            f"`{action}` needs a signed-in person. An organization API key can never hold "
-            "the `tasks:admin` scope (it cannot even be stored on one), and keys cannot "
-            "change membership. Run `dailybot login` and retry as a non-guest member.",
-            json_mode=json_mode,
-            admin=True,
-        )
-
-
 @board.command("create")
 @click.option("-n", "--name", required=True, help="Board name.")
 # Boards have no description field (BoardWrite declares none), so the flag the CLI
@@ -977,11 +948,11 @@ def board_create(
     idempotency_key: str | None,
     json_mode: bool,
 ) -> None:
-    """Create a board in a project. Needs a signed-in person (any non-guest member).
+    """Create a board in a project. Needs a person (any non-guest member): `dailybot login` or a personal API key.
 
     \b
-    An organization API key cannot do this — run `dailybot login` first. Visibility
-    and who can see the board are controlled by invite/remove, not by org role.
+    An agent or organization key cannot do this. Visibility and who can see the
+    board are controlled by invite/remove, not by org role.
 
     \b
     Examples:
@@ -992,7 +963,6 @@ def board_create(
             "Boards have no description. Put the context in a project "
             "(`dailybot project create -d ...`) and create the board under it."
         )
-    _require_person_for_admin("board create", json_mode=json_mode)
     client = require_auth()
     try:
         with console.status("Creating the board..."):
@@ -1054,7 +1024,6 @@ def board_update(
       dailybot board update <board-uuid> --name "Design (Q4)"
       dailybot board update <board-uuid> --key DSN --visibility members --json
     """
-    _require_person_for_admin("board update", json_mode=json_mode)
     fields: dict[str, Any] = {
         k: v
         for k, v in {
@@ -1105,7 +1074,6 @@ def board_archive(
     Examples:
       dailybot board archive <board-uuid> --dry-run
     """
-    _require_person_for_admin("board archive", json_mode=json_mode)
     client = require_auth()
     if not preview_then_confirm(
         lambda: client.archive_board(board_uuid, dry_run=True),
@@ -1146,7 +1114,6 @@ def board_restore(board_uuid: str, idempotency_key: str | None, json_mode: bool)
     Examples:
       dailybot board restore <board-uuid>
     """
-    _require_person_for_admin("board restore", json_mode=json_mode)
     client = require_auth()
     try:
         with console.status("Restoring the board..."):

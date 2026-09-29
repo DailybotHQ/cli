@@ -319,31 +319,6 @@ PERSON_ONLY: list[tuple[list[str], str, str, int]] = [
 class TestRoleMatrixIsTableDriven:
     """Fixtures come from the plan's observed matrix; mocked as always (rule 7)."""
 
-    @pytest.mark.parametrize(
-        "args,auth_module,guard_module,expected_exit",
-        PERSON_ONLY,
-        ids=[f"{a[0]}-{a[1]}" for a, _, _, _ in PERSON_ONLY],
-    )
-    def test_an_api_key_is_refused_with_the_servers_own_exit(
-        self,
-        runner: CliRunner,
-        client: MagicMock,
-        args: list[str],
-        auth_module: str,
-        guard_module: str,
-        expected_exit: int,
-    ) -> None:
-        with (
-            patch(f"dailybot_cli.commands.{auth_module}.require_auth", return_value=client),
-            patch(
-                f"dailybot_cli.commands.{guard_module}.get_person_token",
-                return_value=None,
-                create=True,
-            ),
-        ):
-            result = runner.invoke(cli, args)
-        assert result.exit_code == expected_exit, f"{args} did not refuse an API key"
-
 
 class TestJsonModeShape:
     @pytest.mark.parametrize(
