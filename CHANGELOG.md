@@ -9,6 +9,27 @@ Do not edit it by hand — your edits will be overwritten on the next release.
 
 <!-- version list -->
 
+## v3.23.0 (2026-09-29)
+
+### Bug Fixes
+
+- **tasks**: Reactor lists take paging only; dim the agent; count empty users
+  ([#117](https://github.com/DailybotHQ/cli/pull/117),
+  [`34bc29a`](https://github.com/DailybotHQ/cli/commit/34bc29a5b30ea6e4557269b041790d37b321d044))
+
+### Chores
+
+- **skills**: Sync vendored dailybot skill pack to v3.20.1
+  ([#116](https://github.com/DailybotHQ/cli/pull/116),
+  [`bef7a73`](https://github.com/DailybotHQ/cli/commit/bef7a735bed081adf140b9ebdacb26d5ea47d88e))
+
+### Features
+
+- **tasks**: Reactions on project updates and who reacted
+  ([#117](https://github.com/DailybotHQ/cli/pull/117),
+  [`34bc29a`](https://github.com/DailybotHQ/cli/commit/34bc29a5b30ea6e4557269b041790d37b321d044))
+
+
 ## v3.22.1 (2026-09-29)
 
 ### Bug Fixes
