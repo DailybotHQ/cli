@@ -206,7 +206,18 @@ class TestLimit:
         assert result.exit_code == 2
         body: dict[str, Any] = json.loads(result.output)
         assert body["code"] == "reaction_limit_reached"
-        assert "unreact" in body["message"]
+        assert "dailybot project update-unreact" in body["message"]
+        assert "dailybot task comment-unreact" in body["message"]
+        assert "The limit is 20" in body["message"]
+
+    def test_limit_without_extra_stays_generic(self) -> None:
+        client: MagicMock = MagicMock(spec=DailyBotClient)
+        client.add_comment_reaction.side_effect = APIError(
+            400, "limit", code="reaction_limit_reached"
+        )
+        result = _invoke("task", ["task", "comment-react", T, C, "🎉", "--json"], client)
+        assert result.exit_code == 2
+        assert "The limit is" not in json.loads(result.output)["message"]
 
 
 class TestListFlags:

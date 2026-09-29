@@ -1356,8 +1356,9 @@ def project_update_react(project_uuid: str, update_uuid: str, emoji: str, json_m
 
     \b
     Emoji only (no text or :shortcodes:). Reacting twice with the same emoji is
-    safe: nothing changes. One person holds a limited number of different emojis on
-    one comment or update (`reaction_limit_reached` names the limit); remove one first.
+    safe: nothing changes. One person may hold only a limited number of different
+    emojis on one project update; if the server refuses with `reaction_limit_reached`,
+    remove one of yours first (`dailybot project update-unreact`).
 
     \b
     Examples:
