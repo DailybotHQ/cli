@@ -18,7 +18,7 @@ Slash commands. Invoked as `/<name>` (Claude Code) or `#<name>` (Codex/Cursor/Ge
 
 ### Dailybot agent skill pack (vendored from [`DailybotHQ/agent-skill`](https://github.com/DailybotHQ/agent-skill))
 
-The full pack lives under [`.agents/skills/dailybot/`](../skills/dailybot/) (router + seventeen sub-skills; vendored at **v3.17.0**). Every sub-skill requires `dailybot-cli >= 3.9.0` — the pack baseline; `dailybot-tasks` is the one that needs more (`>= 3.14.2`, recommended `>= 3.18.0` for open-org structure). The router auto-routes by intent — read [`skills/dailybot/SKILL.md`](../skills/dailybot/SKILL.md) and let it pick the right sub-skill. Direct sub-skill entry points:
+The full pack lives under [`.agents/skills/dailybot/`](../skills/dailybot/) (router + seventeen sub-skills; vendored at **v3.18.0**). Every sub-skill requires `dailybot-cli >= 3.9.0` — the pack baseline; `dailybot-tasks` is the one that needs more (`>= 3.14.2`, recommended `>= 3.20.0` for agent collaboration and personal-key administration). The router auto-routes by intent — read [`skills/dailybot/SKILL.md`](../skills/dailybot/SKILL.md) and let it pick the right sub-skill. Direct sub-skill entry points:
 
 | Slug | Procedure | Use when |
 |------|-----------|----------|

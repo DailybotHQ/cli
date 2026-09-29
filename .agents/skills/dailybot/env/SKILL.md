@@ -1,7 +1,7 @@
 ---
 name: dailybot-env
 description: Manage per-repo API key overrides in `.dailybot/env.json` — an opt-in, gitignored file that carries API keys + optional URLs for one or more environments (live, local, staging). One profile is active at a time; when set, it overrides `DAILYBOT_API_KEY`, `config.json`, and the login Bearer session for the enclosing repo. Use when the developer wants to be "logged into different orgs in different repos" simultaneously, needs a local dev key just for this project, or wants to toggle between staging and prod without touching global config or env vars. Requires CLI >= 3.9.0 (pack baseline; `env` shipped in 3.7.0).
-version: "3.17.0"
+version: "3.18.0"
 documentation_url: https://www.dailybot.com/skill.md
 user-invocable: true
 metadata: {"openclaw":{"emoji":"🔑","homepage":"https://dailybot.com","requires":{"anyBins":["dailybot","curl"]},"primaryEnv":"DAILYBOT_API_KEY","install":[{"id":"cli-install-script","kind":"download","url":"https://cli.dailybot.com/install.sh","label":"Install Dailybot CLI (official script — preferred on Linux/macOS)"},{"id":"pip","kind":"pip","package":"dailybot-cli","bins":["dailybot"],"label":"Install Dailybot CLI via pip (fallback if binary fails)"}]}}
@@ -145,7 +145,7 @@ dailybot env off                    # REQUIRED before dailybot agent update
 dailybot agent update "…"           # production dashboard
 ```
 
-Do **not** `dailybot login` while a testing profile is active. Full rules: [`../shared/env-json.md` § Dual session](../shared/env-json.md#dual-session--production-reports--testing-profiles).
+Do **not** `dailybot login` while a testing profile is active. A login token only travels to the API host that issued it, so a testing profile never receives the production session, not even as a fallback; a Tasks structure write refused for the testing key (an agent or organization key, or a guest's) ends as exit 4 `insufficient_scope` or `guest_not_allowed`. Full rules: [`../shared/env-json.md` § Dual session](../shared/env-json.md#dual-session--production-reports--testing-profiles).
 
 ### Delete a profile
 
@@ -181,6 +181,7 @@ Precedence order (full table in [`../shared/env-json.md` § Auth resolution orde
 - **"The CLI is not using my env.json."** → `dailybot env show`; check `disabled`, `active`, and the walk-up path. Are you overriding with `--profile` / `--api-url` / `--app-url` flags?
 - **"The CLI refuses to run and complains about tracked env.json."** → run the exact fix printed in the error message. Staged-but-uncommitted counts as tracked. (`dailybot hook *` commands print the error but still run and exit 0 — by design, per their harness contract.)
 - **"I edited env.json by hand and now nothing works."** → `dailybot env show` surfaces schema warnings; if unrecoverable, delete the file and re-add profiles via `dailybot env add`.
+- **"A Tasks structure write fails with `insufficient_scope` on my testing profile, but I'm logged in."** → expected. Your login belongs to the production host; the CLI never sends it to another host, so the testing key alone answered, and it is an agent or organization key (nobody behind it). Use a personal API key that host issued to a non-guest member (`dailybot-cli >= 3.20.0`), or sign in against that host.
 - **"I set `disabled: "true"` and it's still active."** → `disabled` must be a JSON boolean; the CLI warns and treats a string as `false`. Use `dailybot env off`.
 
 ## See also
