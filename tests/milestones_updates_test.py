@@ -79,6 +79,13 @@ def _invoke(argv: list[str], client: MagicMock) -> Any:
         return CliRunner().invoke(cli, argv)
 
 
+class TestMilestoneRestore:
+    def test_restore_posts_to_the_restore_door(self) -> None:
+        with patch("httpx.post", return_value=_response({"uuid": M, "is_archived": False})) as post:
+            _client().restore_milestone(P, M)
+        assert post.call_args.args[0] == f"{API}/v1/tasks/projects/{P}/milestones/{M}/restore/"
+
+
 class TestCommands:
     def test_update_edit_needs_a_field(self) -> None:
         client: MagicMock = MagicMock(spec=DailyBotClient)

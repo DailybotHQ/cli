@@ -964,7 +964,7 @@ humans who own them.
 | `dailybot project members <uuid>` · `project member add\|remove` | Who can see the project — people or whole teams (`--team`) — `members` works with a personal API key; `member add\|remove` **needs a person: `dailybot login` or a personal API key** |
 | `dailybot project views <uuid>` · `project view save` | Your saved views; save replaces the list and requires the ETag — **needs a person: `dailybot login` or a personal API key** |
 | `dailybot project milestone-create\|milestone-update\|milestone-delete` | Dated milestones; delete retires it (tasks keep pointing at it) |
-| `dailybot project milestone-attach\|milestone-attachments <project> <milestone>` · `milestone-attachment get\|rename\|delete` | Files on a milestone (≤5 MiB); reference one in the description with `attachment:<uuid>` |
+| `dailybot project milestone-attach\|milestone-attachments <project> <milestone>` · `milestone-attachment get\|rename\|delete` | Files on a milestone (≤5 MiB); reference one in the description with `attachment:<uuid>`. `project milestone-restore` brings a retired milestone back |
 | `dailybot project archive <uuid>` | Archive a project |
 | `dailybot project attach <uuid> <file>` · `project attachments` · `project attachment get\|delete` | Files on a project (≤5 MiB, one request). Attaching and deleting need a person (`dailybot login` or a personal API key) |
 | `dailybot goal list` | List goals (`--include` is repeatable: `--include progress --include projects`) |

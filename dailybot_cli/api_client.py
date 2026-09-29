@@ -3738,6 +3738,14 @@ class DailyBotClient:
             json={k: v for k, v in fields.items() if v is not None},
         )
 
+    def restore_milestone(self, project_uuid: str, milestone_uuid: str) -> dict[str, Any]:
+        """POST …/milestones/<uuid>/restore/ — bring a retired milestone back (idempotent)."""
+        return self._tasks_write(
+            "POST",
+            f"projects/{_path_segment(project_uuid)}/milestones/{_path_segment(milestone_uuid)}/"
+            "restore/",
+        )
+
     def delete_milestone(self, project_uuid: str, milestone_uuid: str) -> Any:
         """DELETE …/milestones/<uuid>/ — retires (archives); tasks keep pointing at it."""
         return self._tasks_write(

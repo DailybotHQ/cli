@@ -929,6 +929,29 @@ def project_milestone_delete(
     print_success("Milestone retired.")
 
 
+@project.command("milestone-restore")
+@click.argument("project_uuid", metavar="PROJECT")
+@click.argument("milestone_uuid", metavar="MILESTONE")
+@click.option("--json", "json_mode", is_flag=True, help="Emit machine-readable JSON to stdout.")
+def project_milestone_restore(project_uuid: str, milestone_uuid: str, json_mode: bool) -> None:
+    """Bring a retired milestone back. Safe to repeat.
+
+    \b
+    Examples:
+      dailybot project milestone-restore <project-uuid> <milestone-uuid>
+    """
+    client = require_auth()
+    try:
+        with console.status("Restoring the milestone..."):
+            data: dict[str, Any] = client.restore_milestone(project_uuid, milestone_uuid)
+    except APIError as exc:
+        exit_for_tasks_error(exc, json_mode)
+    if json_mode:
+        emit_json(data)
+        return
+    print_success("Milestone restored.")
+
+
 # ---------------------------------------------------------------------------
 # Attachments. Reading needs only visibility; attaching and deleting need a
 # person (a login or a personal API key) who can change the project.
