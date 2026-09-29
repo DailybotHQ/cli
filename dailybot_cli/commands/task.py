@@ -904,7 +904,7 @@ def task_participants() -> None:
 def participants_add(
     task_uuid: str, user: str, role: str | None, idempotency_key: str | None, json_mode: bool
 ) -> None:
-    """Add a participant to a task.
+    """Add a participant to a task. Needs a person: `dailybot login` or a personal API key.
 
     \b
     Examples:
@@ -944,7 +944,7 @@ _RELATION_COLUMNS: list[tuple[str, str, bool]] = [
 @click.argument("task_uuid", metavar="TASK")
 @click.option("--json", "json_mode", is_flag=True, help="Emit machine-readable JSON to stdout.")
 def participants_list(task_uuid: str, json_mode: bool) -> None:
-    """List who is on a task and who watches it.
+    """List who is on a task and who watches it. Needs a person: `dailybot login` or a personal API key.
 
     \b
     The owner and the creator are not repeated as rows unless they muted the card.
@@ -977,7 +977,7 @@ def participants_list(task_uuid: str, json_mode: bool) -> None:
 def participants_remove(
     task_uuid: str, user_uuid: str, dry_run: bool, assume_yes: bool, json_mode: bool
 ) -> None:
-    """Take someone off a task. To stay on it quietly, use `task mute` instead.
+    """Take someone off a task. To stay on it quietly, use `task mute` instead. Needs a person: `dailybot login` or a personal API key.
 
     \b
     Examples:

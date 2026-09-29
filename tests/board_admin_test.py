@@ -403,11 +403,11 @@ class TestStateCommands:
         assert result.exit_code == EXIT_USAGE_ERROR
 
     @pytest.mark.parametrize("sub", ["create", "update", "archive", "restore", "reorder"])
-    def test_state_writes_accept_an_api_key(self, runner: CliRunner, sub: str) -> None:
-        # Columns are tasks:admin, which organization keys may hold for these doors.
+    def test_state_writes_say_they_need_a_person(self, runner: CliRunner, sub: str) -> None:
+        # Columns are tasks:admin: a login or a personal API key, never an agent key.
         result = runner.invoke(cli, ["board", "state", sub, "--help"])
         assert result.exit_code == 0
-        assert "dailybot login" not in result.output
+        assert "personal API key" in " ".join(result.output.split())
 
 
 # ---------------------------------------------------------------------------
