@@ -9,6 +9,15 @@ Do not edit it by hand — your edits will be overwritten on the next release.
 
 <!-- version list -->
 
+## v3.20.0 (2026-09-29)
+
+### Features
+
+- **tasks**: A personal API key can do everything its person can
+  ([#108](https://github.com/DailybotHQ/cli/pull/108),
+  [`4da7a2d`](https://github.com/DailybotHQ/cli/commit/4da7a2dff25b53a6d94020f55d3238f6d148e0aa))
+
+
 ## v3.19.1 (2026-09-29)
 
 ### Bug Fixes
