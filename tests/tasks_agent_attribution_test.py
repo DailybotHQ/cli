@@ -260,3 +260,11 @@ class TestPersonNameShapes:
         with console.capture() as cap:
             print_tasks_table([{"key": "ENG-1", "title": "t", "owner": {"name": "Emma Watson"}}])
         assert "Emma Watson" in cap.get()
+
+
+def test_the_refusal_names_every_cause() -> None:
+    message: str = ERROR_CODE_MESSAGES[INVALID_AGENT_ATTRIBUTION_CODE]
+    assert "128" in message
+    assert "letters, numbers, spaces" in message
+    assert "deactivated" in message
+    assert "agent key" in message
