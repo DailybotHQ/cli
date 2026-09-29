@@ -88,7 +88,6 @@ def test_project_create_as_person_reaches_the_server() -> None:
     }
     with (
         patch("dailybot_cli.commands.project.require_auth", return_value=client),
-        patch("dailybot_cli.commands.project.get_person_token", return_value="tok", create=True),
     ):
         result: Any = CliRunner().invoke(cli, ["project", "create", "--name", "Open Org", "--json"])
     assert result.exit_code == 0, result.output
@@ -103,8 +102,6 @@ def test_goal_create_as_person_reaches_the_server() -> None:
     }
     with (
         patch("dailybot_cli.commands.goal.require_auth", return_value=client),
-        # goal reuses project._require_person_for_admin, which reads project.get_token
-        patch("dailybot_cli.commands.project.get_person_token", return_value="tok", create=True),
     ):
         result: Any = CliRunner().invoke(
             cli,
@@ -133,7 +130,6 @@ def test_board_create_as_person_reaches_the_server() -> None:
     }
     with (
         patch("dailybot_cli.commands.board.require_auth", return_value=client),
-        patch("dailybot_cli.commands.board.get_person_token", return_value="tok", create=True),
     ):
         result: Any = CliRunner().invoke(
             cli,

@@ -268,58 +268,6 @@ class TestIdempotencyPostureIsTableDriven:
         assert IDEMPOTENCY_KEY_HEADER not in post.call_args[1]["headers"], method
 
 
-# (args, module that owns require_auth, module where get_agent_auth is RESOLVED)
-#
-# The third column is not redundant: `goal create` reuses
-# `project._require_person_for_admin`, so the guard looks `get_agent_auth` up in
-# the *project* namespace. Patching `goal.get_agent_auth` silently does nothing —
-# the kind of coupling a table like this makes visible.
-# The fourth column is the exit the SERVER would produce for the same refusal, and
-# the pre-flight must match it or it becomes observable. A person-shaped door
-# answers `actor_required` (a credential problem, 3); a `tasks:admin` door answers
-# `403 insufficient_scope` (a permission verdict, 4).
-# `tasks inbox` / `mine` / `counts` left this table when a personal API key became
-# its person on the API: those requests now go out and the server decides.
-PERSON_ONLY: list[tuple[list[str], str, str, int]] = [
-    (["task", "mute", "ENG-1"], "task", "task", 3),
-    (
-        [
-            "board",
-            "create",
-            "--project",
-            "00000000-0000-0000-0000-000000000002",
-            "--key",
-            "DSN",
-            "--name",
-            "x",
-        ],
-        "board",
-        "board",
-        4,
-    ),
-    (["project", "create", "--name", "x"], "project", "project", 4),
-    (
-        [
-            "goal",
-            "create",
-            "--name",
-            "x",
-            "--period-start",
-            "2026-10-01",
-            "--period-end",
-            "2026-12-31",
-        ],
-        "goal",
-        "project",
-        4,
-    ),
-]
-
-
-class TestRoleMatrixIsTableDriven:
-    """Fixtures come from the plan's observed matrix; mocked as always (rule 7)."""
-
-
 class TestJsonModeShape:
     @pytest.mark.parametrize(
         "args,module,method",

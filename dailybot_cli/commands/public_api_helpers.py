@@ -597,9 +597,11 @@ _PERSON_SHAPED_GUIDANCE: str = (
 # personal API key alike. Only a credential with nobody behind it (an agent or
 # organization key) cannot — so the fix is a person, never an admin grant.
 _ADMIN_SCOPE_GUIDANCE: str = (
-    "This action needs a person: an agent or organization API key can never hold the "
-    "`tasks:admin` scope. Use `dailybot login`, or a personal API key that belongs to you, "
-    "and retry as a non-guest member."
+    "This key cannot change Tasks structure. Either it is an agent or organization key, "
+    "which can never hold `tasks:admin` (use `dailybot login` or a personal API key that "
+    "belongs to you), or it is a personal key whose own scopes are narrower (for example "
+    "read-only); widen or remove that key's Tasks scopes, or use `dailybot login`. Guests are "
+    "refused either way; that is a role limit."
 )
 
 

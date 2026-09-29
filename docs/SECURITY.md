@@ -126,14 +126,108 @@ an agent or organization key is nobody, so the server refuses it.
 to a person acts as that person on every Tasks door, exactly like their login session:
 same role, same visibility, same answers, `tasks:admin` included for a non-guest member (the
 developer reversed ADR-9-4 for personal keys; agent and organization keys still never hold
-`tasks:admin` or act as a person). Guests stay limited on both. The CLI therefore never
-refuses a key before the request: it cannot tell the two kinds apart, so the server decides,
-and `tests/tasks_key_refusal_sweep_test.py` pins that every door sends the request. The
-server's refusals keep their meaning: `actor_required` (exit 3) and `insufficient_scope` /
+`tasks:admin` or act as a person). A key row that carries explicit `tasks:*` scopes is a
+ceiling the person chose; guests stay limited on both. The CLI therefore never refuses a key
+before the request: it cannot tell the kinds apart, so the server decides, and
+`tests/tasks_key_refusal_sweep_test.py` pins that every door sends the request. The server's
+refusals keep their meaning: `actor_required` (exit 3) and `insufficient_scope` /
 `guest_not_allowed` (exit 4); `tests/tasks_server_refusal_rendering_test.py` pins how the CLI
 renders them. Membership remains the privacy control: a `members` project or board is 404
-without a grant. CLI messages blame the *credential kind* and never tell a member they "need
-to be an admin".
+without a grant. CLI messages blame the *credential kind* or the *role*, and never tell a
+member they "need to be an admin".
+
+**A login token never leaves the host that issued it.** `dailybot login` stores the Bearer
+next to the `api_url` that issued it. When `.dailybot/env.json` or `--api-url` points the CLI
+at another host (a local testing profile, staging), the client does not load that token at
+all, so it is neither sent first nor used as the 401/403 fallback. Before this rule, a key
+refused with 403 on a local API was retried with the production session token against that
+local host. `DAILYBOT_CLI_TOKEN` is an explicit caller choice and is exempt.
+
+**A person refused is never replayed as the organization.** The client normally retries a
+401/403 once with the other stored credential. On a Tasks door, a 403 to a signed-in person
+means the *person* lacks the role or the visibility. Replaying it with the organization API
+key would perform, as the organization, exactly what the person was refused. So on Tasks a
+Bearer 403 is final. A key refused on a person-only door still retries as the person, and an
+expired session (401) still falls back.
+
+**Identifiers cannot change which door a path reaches.** A task key or uuid is interpolated
+into the URL path, and an agent may copy an "id" out of untrusted task text. Every path
+segment must match `[A-Za-z0-9_-]+`, both where the value is interpolated and again when the
+URL is built. So `ENG-1/../../boards/<uuid>/archive/?` is refused with `invalid_identifier`
+(exit 2) before any request, instead of being collapsed into a board archive.
+
+**ETags are entity tags or nothing.** `board views --etag` / `project views --etag` print the
+ETag for shell capture, and `view save` sends it back as `If-Match`. A header value that isn't
+a quoted, visible-ASCII entity tag (optionally `W/`-prefixed) is refused (`invalid_etag`)
+before it is printed or sent. So a hostile header can't drive the terminal, break
+`ETAG=$(...)`, or inject a header.
+
+**Default ports are the same origin.** `https://host` and `https://host:443` compare equal
+(and `http://host` with `:80`), so an explicit default port never turns the API into a
+"foreign" host.
+
+**Pagination links stay on the API.** A list's `next` link is server data. Only its path and
+query are followed, on the configured API's own scheme, host and port, so a link naming
+another host never receives the Bearer token or the API key.
+
+**Isolation is 404, never 403.** An object in another organization is *invisible*, not
+forbidden. No Tasks command renders permission language for `not_found`, because doing so
+would both mislead the user and disclose that the object exists.
+
+**The CLI never claims an actor the server did not name.** A bare API key is attributed
+`automation` server-side; where the server names nobody, the CLI says nothing.
+
+## Destructive Operations — Tasks
+
+Where the server offers a preview, no destructive Tasks command acts without the server's
+own statement of what it will do. `commands/_destructive.preview_then_confirm()` fetches
+`?dry_run=true`, renders the consequence, the affected counts and the restore path, and only
+then asks. That covers the archives (task, board, project, goal, column) and milestone
+completion.
+
+Some destructive doors have no server-side preview: removing a board member or a task
+participant, unlinking a relation, deleting a comment or an attachment. Those go through
+`commands/_destructive.confirm_without_preview()`, which states the one thing the CLI knows —
+the exact act — asks, and never pretends to more. Their `--dry-run` sends **nothing** and
+says so (`"previewed_by": "client"` under `--json`).
+
+- `--yes` skips the **prompt**, never the preview. The record of what was about to happen
+  is the point, and the flag is advisory anyway: the server bounds blast radius per call.
+- `--dry-run` shows the preview and performs no mutation.
+- **A preview that fails aborts.** Not knowing the blast radius is not permission to proceed.
+- **A preview must be a preview.** The contract publishes every `?dry_run=true` answer with
+  `dry_run: true`. If the answer lacks it, the CLI reports that the change may already have been applied
+  (`preview_not_honoured`, exit 1), sends nothing more, and never asks for confirmation.
+- An irreversible operation is marked as such and offered no restore path.
+- `task delete` is an alias of archive and says so; it never claims data was destroyed.
+- Bulk previews through the server's own dry run (`task bulk --dry-run`): the batch is run and
+  rolled back, so the changes and refusals shown are real, and nothing is written. The dry run
+  sends no Idempotency-Key — which is also why a server that predates it refuses the call
+  (`idempotency_key_required`) instead of applying it. The 100-item cap is enforced before
+  sending.
+
+## Attachments — Tasks
+
+`task attach` reserves an upload target (`…/attachments/presign/`), sends the bytes there and
+confirms. The target is chosen by the server and may be object storage on another host, so
+the transport draws a hard line (`DailyBotClient.upload_attachment_bytes`):
+
+- **Dailybot credentials never leave the API origin.** The origin is compared as parsed
+  scheme + host + port, so a lookalike such as `api.example.com.evil.example` is foreign.
+  A foreign target gets a bare request carrying only the headers the presign returned — no
+  `Authorization`, no `X-API-KEY`. Only the same-origin `…/content/` fallback is authenticated.
+- **A same-origin target is allowlisted.** When the presign points back at the API, that
+  one request carries the caller's credentials to a URL and method the server chose. So it
+  is refused unless it is `PUT` / `POST` on a task attachment's `…/attachments/<uuid>/content/`
+  door (`attachment_upload_target_refused`). An empty 2xx from that door counts as accepted.
+- **No redirects on upload.** A 3xx from the target is an error; nothing is re-sent anywhere
+  and the attachment is not confirmed.
+- **https only** for a foreign target, unless the configured API URL is itself plain `http`
+  (local development).
+- Size is checked before any request (25 MiB; 5 MiB on the captioned single-request upload),
+  and the file is read at most one byte past the limit, so a file that grows after the check is
+  refused rather than read in full. JSON input files (`-f` batches, views, filters) are capped
+  at 5 MiB.
 
 Comments, projects and goals take attachments too (`task comment-attach`, `project attach`,
 `goal attach`). Those doors are multipart only, so the limit is 5 MiB everywhere, and it is

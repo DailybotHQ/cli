@@ -43,14 +43,35 @@ class TestAnAgentKeyRefusedByTheServer:
         body: dict[str, Any] = json.loads(result.output)
         assert body["code"] == "insufficient_scope"
         flat: str = " ".join(body["message"].lower().split())
+        # A key-only refusal can be an agent/org key OR a personal key with a
+        # narrower scope ceiling; the message must name both fixes, and the role.
         assert "personal api key" in flat
-        assert "grant" not in flat
+        assert "narrower" in flat
+        assert "role limit" in flat
 
     def test_person_door_exits_three(self) -> None:
-        exc = APIError(400, "no", code="actor_required")
-        result = _invoke("project", ["project", "create", "--name", "X", "--json"], exc)
+        client: MagicMock = MagicMock(spec=DailyBotClient)
+        client.list_my_tasks.side_effect = APIError(400, "no", code="actor_required")
+        with (
+            patch("dailybot_cli.commands.tasks.require_auth", return_value=client),
+            patch("dailybot_cli.commands.public_api_helpers.get_person_token", return_value=None),
+        ):
+            result = CliRunner().invoke(cli, ["tasks", "mine", "--json"])
         assert result.exit_code == EXIT_NOT_AUTHENTICATED, result.output
         assert "personal API key" in " ".join(json.loads(result.output)["message"].split())
+
+    def test_agent_key_on_a_notification_door_is_a_credential_problem(self) -> None:
+        client: MagicMock = MagicMock(spec=DailyBotClient)
+        client.add_task_participant.side_effect = APIError(
+            403, "no", code="insufficient_scope", extra={"required_scope": "tasks:write"}
+        )
+        with (
+            patch("dailybot_cli.commands.task.require_auth", return_value=client),
+            patch("dailybot_cli.commands.public_api_helpers.get_person_token", return_value=None),
+        ):
+            result = CliRunner().invoke(cli, ["task", "mute", "ENG-1", "--json"])
+        assert result.exit_code in (EXIT_NOT_AUTHENTICATED, EXIT_PERMISSION_DENIED), result.output
+        assert json.loads(result.output)["status"] == "error"
 
 
 class TestAGuestRefusedByTheServer:

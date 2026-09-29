@@ -26,7 +26,8 @@ V: str = "00000000-0000-0000-0000-000000000013"
 ITEM: str = "00000000-0000-0000-0000-000000000010"
 T: str = "ENG-142"
 
-# The 25 `tasks:admin` doors, by the CLI command that reaches each.
+# The 25 `tasks:admin` doors (structure and membership), by the CLI command that
+# reaches each. A personal API key holds `tasks:admin` like its person's session.
 # (PATCH boards/{b}/members/{u}/ and PATCH projects/{p}/members/{u}/ have no command.)
 ADMIN_COMMANDS: list[list[str]] = [
     ["project", "create", "--name", "X"],
@@ -67,9 +68,8 @@ ADMIN_COMMANDS: list[list[str]] = [
     ["goal", "attachment", "delete", G, S, "--yes"],
 ]
 
-# Person doors a personal API key still cannot use: changing who is notified
-# (participants, including your own mute) needs `tasks:write` a key does not
-# hold, and project saved views are not open to keys.
+# Person doors that change who is notified or read a project's saved views. A
+# personal API key is its person here too; only the server refuses a key.
 PERSON_COMMANDS: list[list[str]] = [
     ["task", "participants", "add", T, "--user", U],
     ["task", "participants", "remove", T, U, "--yes"],
@@ -79,7 +79,7 @@ PERSON_COMMANDS: list[list[str]] = [
     ["project", "view", "save", P, "--file", "-", "--if-match", "etag"],
 ]
 
-# Person doors open to a personal API key: the CLI sends the request.
+# The remaining person-shaped doors ("my X", pins, views, labels, watch).
 OPEN_TO_PERSONAL_KEY_COMMANDS: list[list[str]] = [
     ["board", "views", B],
     ["board", "view", "save", B, "--file", "-", "--if-match", "etag"],
