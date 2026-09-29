@@ -33,14 +33,8 @@ def _page(rows: list[dict[str, Any]] | None = None) -> PaginatedResult:
     return PaginatedResult(results=items, count=len(items), next=None, previous=None)
 
 
-def _invoke(runner: CliRunner, client: MagicMock, args: list[str], *, auth: str = "bearer") -> Any:
-    with (
-        patch("dailybot_cli.commands.tasks.require_auth", return_value=client),
-        patch(
-            "dailybot_cli.commands.tasks.get_token",
-            return_value=(None if auth == "api_key" else "tok"),
-        ),
-    ):
+def _invoke(runner: CliRunner, client: MagicMock, args: list[str]) -> Any:
+    with patch("dailybot_cli.commands.tasks.require_auth", return_value=client):
         return runner.invoke(cli, args)
 
 
@@ -69,29 +63,34 @@ class TestHappyPathUnderAPerson:
         client.get_my_task_counts.assert_called_once()
 
 
-class TestApiKeyIsRefusedBeforeTheRequest:
-    @pytest.mark.parametrize("args", PERSON_COMMANDS)
-    def test_no_http_call_is_made(
-        self, runner: CliRunner, client: MagicMock, args: list[str]
-    ) -> None:
-        result = _invoke(runner, client, args, auth="api_key")
-        assert result.exit_code == EXIT_NOT_AUTHENTICATED
-        client.list_tasks_inbox.assert_not_called()
-        client.list_my_tasks.assert_not_called()
-        client.get_my_task_counts.assert_not_called()
+class TestAPersonalKeyReachesTheServer:
+    """A personal API key is its person on the API, so the CLI no longer refuses it.
+
+    The server alone tells a personal key from an agent key; the CLI sends the
+    request and renders whatever comes back.
+    """
 
     @pytest.mark.parametrize("args", PERSON_COMMANDS)
-    def test_the_message_names_the_fix(
+    def test_the_request_is_sent(
         self, runner: CliRunner, client: MagicMock, args: list[str]
     ) -> None:
-        result = _invoke(runner, client, args, auth="api_key")
-        assert "dailybot login" in result.output
+        client.list_tasks_inbox.return_value = _page()
+        client.list_my_tasks.return_value = _page()
+        client.get_my_task_counts.return_value = {}
+        with patch("dailybot_cli.config.get_token", return_value=None):
+            _invoke(runner, client, args)
+        assert client.mock_calls != []
 
-    def test_it_does_not_blame_the_users_role(self, runner: CliRunner, client: MagicMock) -> None:
+    def test_an_agent_key_refusal_does_not_blame_the_users_role(
+        self, runner: CliRunner, client: MagicMock
+    ) -> None:
         # Task 1 measured an ADMIN_ORG owner refused identically. Blaming the role
         # would send an org admin hunting for a setting that cannot exist.
-        result = _invoke(runner, client, ["tasks", "inbox"], auth="api_key")
+        client.list_tasks_inbox.side_effect = APIError(400, "x", code="actor_required")
+        result = _invoke(runner, client, ["tasks", "inbox"])
+        assert result.exit_code == EXIT_NOT_AUTHENTICATED
         assert "admin" not in result.output.lower()
+        assert "personal api key" in " ".join(result.output.lower().split())
 
 
 class TestBothServerRefusalShapes:
@@ -109,7 +108,7 @@ class TestBothServerRefusalShapes:
         self, runner: CliRunner, client: MagicMock, exc: APIError
     ) -> None:
         client.list_tasks_inbox.side_effect = exc
-        result = _invoke(runner, client, ["tasks", "inbox"], auth="bearer")
+        result = _invoke(runner, client, ["tasks", "inbox"])
         assert result.exit_code != 0
         assert "dailybot login" in result.output
 

@@ -66,7 +66,9 @@ def _invoke(
 ) -> Any:
     with (
         patch("dailybot_cli.commands.task.require_auth", return_value=client),
-        patch("dailybot_cli.commands.task.get_token", return_value="tok" if person else None),
+        patch(
+            "dailybot_cli.commands.task.get_person_token", return_value="tok" if person else None
+        ),
     ):
         return runner.invoke(cli, args, input=stdin)
 
@@ -278,11 +280,19 @@ class TestParticipants:
         assert client.remove_task_participant.call_args.args == (TASK, USER)
 
     @pytest.mark.parametrize(
+        "argv", [["task", "watch", TASK, "--json"], ["task", "unwatch", TASK, "--json"]]
+    )
+    def test_watch_sends_the_request_for_a_key(
+        self, runner: CliRunner, client: MagicMock, argv: list[str]
+    ) -> None:
+        # A personal API key is its person on the API; the server decides.
+        _invoke(runner, client, argv, person=False)
+        assert client.mock_calls != []
+
+    @pytest.mark.parametrize(
         "argv",
         [
             ["task", "participants", "remove", TASK, USER, "--yes", "--json"],
-            ["task", "watch", TASK, "--json"],
-            ["task", "unwatch", TASK, "--json"],
             ["task", "mute", TASK, "--json"],
             ["task", "unmute", TASK, "--json"],
         ],

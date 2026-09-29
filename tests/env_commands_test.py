@@ -140,6 +140,68 @@ class TestEnvAdd:
         combined: str = result.output + (result.stderr or "")
         assert "gitignore" in combined.lower()
 
+    def test_add_local_url_infers_testing_kind(self, runner: CliRunner, chdir_tmp: Path) -> None:
+        from dailybot_cli.main import cli
+
+        result = runner.invoke(
+            cli,
+            [
+                "env",
+                "add",
+                "--name",
+                "local",
+                "--key",
+                "sk_local_xxx",
+                "--api-url",
+                "http://localhost:8000",
+            ],
+        )
+        assert result.exit_code == 0, result.output
+        payload: dict[str, Any] = json.loads((chdir_tmp / ".dailybot" / "env.json").read_text())
+        assert payload["profiles"][0]["kind"] == "testing"
+
+    def test_add_kind_live_overrides_local_url(self, runner: CliRunner, chdir_tmp: Path) -> None:
+        from dailybot_cli.main import cli
+
+        result = runner.invoke(
+            cli,
+            [
+                "env",
+                "add",
+                "--name",
+                "odd",
+                "--key",
+                "k",
+                "--api-url",
+                "http://localhost:8000",
+                "--kind",
+                "live",
+            ],
+        )
+        assert result.exit_code == 0, result.output
+        payload: dict[str, Any] = json.loads((chdir_tmp / ".dailybot" / "env.json").read_text())
+        assert payload["profiles"][0]["kind"] == "live"
+
+    def test_add_without_url_defaults_live(self, runner: CliRunner, chdir_tmp: Path) -> None:
+        from dailybot_cli.main import cli
+
+        result = runner.invoke(cli, ["env", "add", "--name", "prod", "--key", "k"])
+        assert result.exit_code == 0, result.output
+        payload: dict[str, Any] = json.loads((chdir_tmp / ".dailybot" / "env.json").read_text())
+        assert payload["profiles"][0]["kind"] == "live"
+
+    def test_list_shows_kind_column(self, runner: CliRunner, chdir_tmp: Path) -> None:
+        from dailybot_cli.main import cli
+
+        runner.invoke(
+            cli,
+            ["env", "add", "--name", "local", "--key", "k", "--api-url", "http://127.0.0.1:8000"],
+        )
+        result = runner.invoke(cli, ["env", "list"])
+        assert result.exit_code == 0, result.output
+        assert "testing" in result.output.lower()
+        assert "Kind" in result.output or "kind" in result.output.lower()
+
 
 # --- env use ----------------------------------------------------------------
 

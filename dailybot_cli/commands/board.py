@@ -15,7 +15,7 @@ import click
 from dailybot_cli.api_client import APIError, PaginatedResult
 from dailybot_cli.commands._beta import mark_beta
 from dailybot_cli.commands._destructive import confirm_without_preview, preview_then_confirm
-from dailybot_cli.commands._favorites import require_person_for_favorites, star, unstar
+from dailybot_cli.commands._favorites import star, unstar
 from dailybot_cli.commands._writes import named, report_write
 from dailybot_cli.commands.public_api_helpers import (
     emit_json,
@@ -32,7 +32,7 @@ from dailybot_cli.commands.query_options import (
     query_options,
     resolve_fetch_all,
 )
-from dailybot_cli.config import get_token
+from dailybot_cli.config import get_person_token
 from dailybot_cli.display import (
     console,
     print_board_snapshot,
@@ -187,15 +187,6 @@ def board_tasks(board_uuid: str, json_mode: bool, **flags: Any) -> None:
     )
 
 
-def _require_person(action: str, reason: str, *, json_mode: bool) -> None:
-    """Refuse an API key on a person-only board door, before any request is spent."""
-    if get_token() is None:
-        refuse_without_person(
-            f"`{action}` {reason} Run `dailybot login` and retry as a signed-in person.",
-            json_mode=json_mode,
-        )
-
-
 # Column specs for the board sub-collections: (header, field path, trusted).
 _STATE_COLUMNS: list[tuple[str, str, bool]] = [
     ("Pos", "position", True),
@@ -298,22 +289,17 @@ def board_members(board_uuid: str, json_mode: bool) -> None:
 @click.argument("board_uuid", metavar="BOARD")
 @click.option("--json", "json_mode", is_flag=True, help="Emit machine-readable JSON to stdout.")
 def board_labels(board_uuid: str, json_mode: bool) -> None:
-    """List the labels available on a board. Needs `dailybot login`.
+    """List the labels available on a board. Needs a person: `dailybot login` or a personal API key.
 
     \b
-    Label usage counts are computed for the person asking, so an organization API
-    key has no correct answer here and is refused before the request.
+    Label usage counts are computed for the person asking, so an agent or
+    organization key has no correct answer here; the server refuses it.
 
     \b
     Examples:
       dailybot board labels <board-uuid>
       dailybot board labels <board-uuid> --json
     """
-    _require_person(
-        "board labels",
-        "counts label usage for the person asking, which an organization API key is not.",
-        json_mode=json_mode,
-    )
     client = require_auth()
     _read_board_collection(
         board_uuid,
@@ -344,11 +330,6 @@ def board_views(board_uuid: str, etag_only: bool, json_mode: bool) -> None:
       dailybot board views <board-uuid> --json > views.json
       ETAG=$(dailybot board views <board-uuid> --etag)
     """
-    _require_person(
-        "board views",
-        "lists saved views, which belong to a person, and an organization API key is not one.",
-        json_mode=json_mode,
-    )
     client = require_auth()
     try:
         with console.status("Reading the board's views..."):
@@ -385,7 +366,7 @@ _MENTIONABLE_COLUMNS: list[tuple[str, str, bool]] = [
 )
 @click.option("--json", "json_mode", is_flag=True, help="Emit machine-readable JSON to stdout.")
 def board_mentionables(board_uuid: str, query: str | None, json_mode: bool) -> None:
-    """Who you can @mention on this board, with the token to write. Needs `dailybot login`.
+    """Who you can @mention on this board, with the token to write. Needs a person: `dailybot login` or a personal API key.
 
     \b
     Resolve a name to a uuid here, then write `<@DB@{uuid}>` in a comment or a project
@@ -396,11 +377,6 @@ def board_mentionables(board_uuid: str, query: str | None, json_mode: bool) -> N
       dailybot board mentionables <board-uuid> -q jane
       dailybot board mentionables <board-uuid> --json
     """
-    _require_person(
-        "board mentionables",
-        "answers who THIS viewer may address, and an organization API key is nobody.",
-        json_mode=json_mode,
-    )
     client = require_auth()
     try:
         with console.status("Reading who you can mention..."):
@@ -428,13 +404,12 @@ def board_mentionables(board_uuid: str, query: str | None, json_mode: bool) -> N
 @click.argument("board_uuid", metavar="BOARD")
 @click.option("--json", "json_mode", is_flag=True, help="Emit machine-readable JSON to stdout.")
 def board_star(board_uuid: str, json_mode: bool) -> None:
-    """Pin a board to your favorites. Needs `dailybot login`.
+    """Pin a board to your favorites. Needs a person: `dailybot login` or a personal API key.
 
     \b
     Examples:
       dailybot board star <board-uuid>
     """
-    require_person_for_favorites("board star", json_mode=json_mode)
     star(require_auth(), "board", board_uuid, json_mode=json_mode)
 
 
@@ -442,13 +417,12 @@ def board_star(board_uuid: str, json_mode: bool) -> None:
 @click.argument("board_uuid", metavar="BOARD")
 @click.option("--json", "json_mode", is_flag=True, help="Emit machine-readable JSON to stdout.")
 def board_unstar(board_uuid: str, json_mode: bool) -> None:
-    """Unpin a board from your favorites. Needs `dailybot login`.
+    """Unpin a board from your favorites. Needs a person: `dailybot login` or a personal API key.
 
     \b
     Examples:
       dailybot board unstar <board-uuid>
     """
-    require_person_for_favorites("board unstar", json_mode=json_mode)
     unstar(require_auth(), "board", board_uuid, json_mode=json_mode)
 
 
@@ -804,7 +778,7 @@ def board_member_remove(
 
 @board.group("label")
 def board_label() -> None:
-    """Create labels from a board. Needs `dailybot login`.
+    """Create labels from a board. Needs a person: `dailybot login` or a personal API key.
 
     \b
     Labels are the organization's shared taxonomy (the same set forms and check-ins
@@ -832,11 +806,6 @@ def board_label_create(
       dailybot board label create <board-uuid> -n bug --color "#ef4444"
       dailybot board label create <board-uuid> -n "needs design" --json
     """
-    _require_person(
-        "board label create",
-        "creates an organization label, which needs a signed-in person.",
-        json_mode=json_mode,
-    )
     client = require_auth()
     try:
         with console.status("Creating the label..."):
@@ -853,7 +822,7 @@ def board_label_create(
 
 @board.group("view")
 def board_view() -> None:
-    """Save your views of a board. Needs `dailybot login`.
+    """Save your views of a board. Needs a person: `dailybot login` or a personal API key.
 
     \b
     Examples:
@@ -910,11 +879,6 @@ def board_view_save(
         raise click.BadParameter(f"not valid JSON: {exc}", param_hint="--file") from exc
     if not isinstance(views, list):
         raise click.BadParameter("must be a JSON array of views.", param_hint="--file")
-    _require_person(
-        "board view save",
-        "saves views that belong to a person, and an organization API key is not one.",
-        json_mode=json_mode,
-    )
     client = require_auth()
     try:
         etag: str | None = if_match
@@ -974,8 +938,9 @@ def _require_person_for_admin(action: str, *, json_mode: bool) -> None:
     still cannot store that scope (or change membership / participants), so the
     message blames the **credential kind** — run `dailybot login` as a member.
     """
-    # See tasks.py `_require_person`: gate on the absence of a person token.
-    if get_token() is None:
+    # Gate on the absence of a person token, not on the presence of a key: both
+    # can be configured at once, and Bearer is sent first when it exists.
+    if get_person_token() is None:
         refuse_without_person(
             f"`{action}` needs a signed-in person. An organization API key can never hold "
             "the `tasks:admin` scope (it cannot even be stored on one), and keys cannot "

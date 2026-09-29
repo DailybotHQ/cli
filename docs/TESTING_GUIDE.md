@@ -54,7 +54,7 @@ tests/
 │                                  #   idempotency posture, dry-run, timeout tiering
 ├── tasks_commands_test.py         # `tasks` group: status/entitlements/search/activity/timeline
 ├── tasks_delta_test.py            # `tasks changes`: cursor lifecycle, window expiry
-├── tasks_person_shaped_test.py    # inbox / mine / counts: person-only refusals
+├── tasks_person_shaped_test.py    # inbox / mine / counts: person doors (personal keys reach the server)
 ├── tasks_catchup_test.py         # pulse bands, inbox read/unread, activity cursor, mentionables
 ├── task_commands_test.py          # `task` group: reads, writes, collaboration, bulk, archive
 ├── tasks_owner_wire_test.py      # owner vocabulary: exact query/body on the wire (P0 guard)
@@ -66,7 +66,7 @@ tests/
 ├── tasks_bulk_dry_run_test.py     # bulk --dry-run (server preview), create --board, declared operations
 ├── tasks_path_safety_test.py     # path identifiers, no Bearer→key replay on Tasks 403, next links pinned
 ├── tasks_terminal_safety_test.py # control chars neutralized, preview shape, local file limits
-├── tasks_key_refusal_sweep_test.py # every admin / person-only door refuses a key before the request
+├── tasks_key_refusal_sweep_test.py # admin doors refuse every key pre-request; person doors split by what a personal key may do
 ├── tasks_parent_attachments_test.py # attachments on comments, projects and goals (5 MiB, admin doors)
 ├── tasks_ai_review_fixes_test.py # AI review round 1: bulk preview shape, ETag grammar, ports, streamed download
 ├── tasks_inbox_filters_test.py # inbox --mentioned / --type on the list and the unread badge
@@ -120,8 +120,10 @@ New Tasks commands must include:
 3. **JSON mode** — `--json` emits the documented keys; paginated commands emit the
    `{count, next, previous, results}` envelope.
 4. **Untrusted rendering** — any user-authored field is asserted to render as quoted data.
-5. **Credential posture** — a person-only door is asserted to refuse an API key *before*
-   the request, with exit code 3.
+5. **Credential posture** — a structure door is asserted to refuse every API key *before*
+   the request (exit 4); a door a personal API key may use is asserted to *send* the
+   request, because only the server can tell a personal key from an agent key; the few
+   person doors no key may use still refuse before the request (exit 3).
 6. **Idempotency posture** — the header is asserted present on an accepting door and
    **absent** on an ignoring one. `tests/tasks_coverage_test.py` keeps the table-driven
    version, which is the cheapest guard against drift.

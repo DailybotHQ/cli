@@ -25,8 +25,6 @@ from dailybot_cli.api_client import (
 from dailybot_cli.commands._beta import BETA_STATUS_LINE, mark_beta
 from dailybot_cli.commands._destructive import confirm_without_preview
 from dailybot_cli.commands._favorites import (
-    require_person_for_favorites,
-    require_person_for_views,
     star,
     unstar,
 )
@@ -34,7 +32,6 @@ from dailybot_cli.commands.public_api_helpers import (
     emit_json,
     exit_for_tasks_error,
     load_json_input,
-    refuse_without_person,
     require_auth,
     rows_of,
 )
@@ -46,7 +43,6 @@ from dailybot_cli.commands.query_options import (
     paging_options,
     resolve_fetch_all,
 )
-from dailybot_cli.config import get_token
 from dailybot_cli.display import (
     TASKS_TRUSTED_FIELDS,
     console,
@@ -126,31 +122,6 @@ _PULSE_FIELDS: list[tuple[str, str]] = [
     ("Scope", "scope"),
     ("Generated at", "generated_at"),
 ]
-
-
-def _require_person(door: str, *, json_mode: bool) -> None:
-    """Refuse a bare API key on a person-shaped door, before spending a request.
-
-    The pre-flight is an optimisation; the contract is that the message is ours.
-    A key that reaches the server anyway is handled identically by
-    ``resolve_error_message``, which recognises both refusal shapes
-    (``400 actor_required`` and ``403 insufficient_scope`` on these doors).
-
-    The message must never blame the caller's role: the plan's live probe measured
-    an ``ADMIN_ORG`` owner refused exactly like a member, so "you need to be an
-    admin" would send an organization admin hunting for a setting that cannot exist.
-    """
-    # Refuse only when there is genuinely no person behind the session.
-    # `get_agent_auth()` answers "api_key" whenever ANY key is configured, even
-    # with a Bearer token also present — but `_headers()` still sends Bearer
-    # first in that case, so the request WOULD have authenticated as a person.
-    # Gating on the key alone refused a valid login.
-    if get_token() is None:
-        refuse_without_person(
-            f"`{door}` answers for a signed-in person, and an organization API key has "
-            "nobody to be. Run `dailybot login` and retry.",
-            json_mode=json_mode,
-        )
 
 
 def _envelope(result: PaginatedResult) -> dict[str, Any]:
@@ -621,9 +592,9 @@ def tasks_inbox(json_mode: bool, mentioned: bool, event_type: str | None, **flag
     """Show your Tasks notifications.
 
     \b
-    Needs a signed-in person: run `dailybot login`. An organization API key cannot
-    read this door — it has an organization but nobody to be, so "my notifications"
-    has no answer.
+    Needs a person: `dailybot login` or a personal API key. An agent or
+    organization key has nobody behind it, so "my notifications" has no answer
+    and the server refuses it.
 
     \b
     Paging is one page per call: this command has no `--all`, and `--limit` sizes
@@ -636,7 +607,6 @@ def tasks_inbox(json_mode: bool, mentioned: bool, event_type: str | None, **flag
       dailybot tasks inbox --mentioned --json
       dailybot tasks inbox --type task.owner_changed
     """
-    _require_person("tasks inbox", json_mode=json_mode)
     client = require_auth()
     try:
         page: dict[str, Any] = _page_kwargs(**flags)
@@ -681,7 +651,7 @@ def tasks_inbox(json_mode: bool, mentioned: bool, event_type: str | None, **flag
 )
 @click.option("--json", "json_mode", is_flag=True, help="Emit machine-readable JSON to stdout.")
 def tasks_inbox_unread(json_mode: bool, mentioned: bool, event_type: str | None) -> None:
-    """How many Tasks notifications you have not read. Needs `dailybot login`.
+    """How many Tasks notifications you have not read. Needs a person: `dailybot login` or a personal API key.
 
     \b
     The same filters as `tasks inbox`, so a badge counts exactly its tab's rows.
@@ -691,7 +661,6 @@ def tasks_inbox_unread(json_mode: bool, mentioned: bool, event_type: str | None)
       dailybot tasks inbox-unread
       dailybot tasks inbox-unread --mentioned --json
     """
-    _require_person("tasks inbox-unread", json_mode=json_mode)
     client = require_auth()
     try:
         with console.status("Counting unread..."):
@@ -710,7 +679,7 @@ def tasks_inbox_unread(json_mode: bool, mentioned: bool, event_type: str | None)
 @click.argument("item_uuid", metavar="ITEM")
 @click.option("--json", "json_mode", is_flag=True, help="Emit machine-readable JSON to stdout.")
 def tasks_inbox_read(item_uuid: str, json_mode: bool) -> None:
-    """Mark an inbox item — and everything older — as read. Needs `dailybot login`.
+    """Mark an inbox item — and everything older — as read. Needs a person: `dailybot login` or a personal API key.
 
     \b
     The inbox keeps one "read up to here" mark, not a flag per item, so reading an
@@ -720,7 +689,6 @@ def tasks_inbox_read(item_uuid: str, json_mode: bool) -> None:
     Examples:
       dailybot tasks inbox-read <item-uuid>
     """
-    _require_person("tasks inbox-read", json_mode=json_mode)
     client = require_auth()
     try:
         with console.status("Marking read..."):
@@ -736,13 +704,12 @@ def tasks_inbox_read(item_uuid: str, json_mode: bool) -> None:
 @tasks.command("inbox-read-all")
 @click.option("--json", "json_mode", is_flag=True, help="Emit machine-readable JSON to stdout.")
 def tasks_inbox_read_all(json_mode: bool) -> None:
-    """Mark your whole Tasks inbox as read. Needs `dailybot login`.
+    """Mark your whole Tasks inbox as read. Needs a person: `dailybot login` or a personal API key.
 
     \b
     Examples:
       dailybot tasks inbox-read-all
     """
-    _require_person("tasks inbox-read-all", json_mode=json_mode)
     client = require_auth()
     try:
         with console.status("Marking everything read..."):
@@ -770,7 +737,7 @@ def tasks_cursor(set_to: str | None, set_now: bool, json_mode: bool) -> None:
     \b
     Without options, prints where you are. Pair it with the feed:
     `dailybot tasks activity --since <last_seen_at>`, then `dailybot tasks cursor --now`.
-    Needs `dailybot login`.
+    Needs a person: `dailybot login` or a personal API key.
 
     \b
     Examples:
@@ -780,7 +747,6 @@ def tasks_cursor(set_to: str | None, set_now: bool, json_mode: bool) -> None:
     """
     if set_to is not None and set_now:
         raise click.UsageError("Pass --set <time> or --now, not both.")
-    _require_person("tasks cursor", json_mode=json_mode)
     client = require_auth()
     try:
         if set_to is None and not set_now:
@@ -817,7 +783,7 @@ VIEW_VISIBILITIES: tuple[str, ...] = ("personal", "shared", "board_default")
 @tasks.command("favorites")
 @click.option("--json", "json_mode", is_flag=True, help="Emit machine-readable JSON to stdout.")
 def tasks_favorites(json_mode: bool) -> None:
-    """List your pinned boards and saved views. Needs `dailybot login`.
+    """List your pinned boards and saved views. Needs a person: `dailybot login` or a personal API key.
 
     \b
     Pin with `dailybot board star <board>` or `dailybot tasks view star <view>`.
@@ -826,7 +792,6 @@ def tasks_favorites(json_mode: bool) -> None:
     Examples:
       dailybot tasks favorites --json
     """
-    require_person_for_favorites("tasks favorites", json_mode=json_mode)
     client = require_auth()
     try:
         with console.status("Reading your favorites..."):
@@ -841,7 +806,7 @@ def tasks_favorites(json_mode: bool) -> None:
 
 @tasks.group("view")
 def tasks_view() -> None:
-    """Read, edit, delete or pin one saved view by its uuid. Needs `dailybot login`.
+    """Read, edit, delete or pin one saved view by its uuid. Needs a person: `dailybot login` or a personal API key.
 
     \b
     List a board's or project's views with `dailybot board views` / `project views`.
@@ -863,7 +828,6 @@ def tasks_view_get(view_uuid: str, json_mode: bool) -> None:
     Examples:
       dailybot tasks view get <view-uuid> --json
     """
-    require_person_for_views("tasks view get", json_mode=json_mode)
     client = require_auth()
     try:
         with console.status("Reading the view..."):
@@ -945,7 +909,6 @@ def tasks_view_update(
     }
     if not fields:
         raise click.UsageError("Nothing to update. Pass at least one field, e.g. --view-mode.")
-    require_person_for_views("tasks view update", json_mode=json_mode)
     client = require_auth()
     try:
         with console.status("Updating the view..."):
@@ -971,7 +934,6 @@ def tasks_view_delete(view_uuid: str, dry_run: bool, assume_yes: bool, json_mode
       dailybot tasks view delete <view-uuid> --dry-run
       dailybot tasks view delete <view-uuid> --yes
     """
-    require_person_for_views("tasks view delete", json_mode=json_mode)
     if not confirm_without_preview(
         f"delete saved view {view_uuid} permanently.",
         assume_yes=assume_yes,
@@ -1001,7 +963,6 @@ def tasks_view_star(view_uuid: str, json_mode: bool) -> None:
     Examples:
       dailybot tasks view star <view-uuid>
     """
-    require_person_for_favorites("tasks view star", json_mode=json_mode)
     star(require_auth(), "view", view_uuid, json_mode=json_mode)
 
 
@@ -1015,7 +976,6 @@ def tasks_view_unstar(view_uuid: str, json_mode: bool) -> None:
     Examples:
       dailybot tasks view unstar <view-uuid>
     """
-    require_person_for_favorites("tasks view unstar", json_mode=json_mode)
     unstar(require_auth(), "view", view_uuid, json_mode=json_mode)
 
 
@@ -1035,8 +995,8 @@ def tasks_mine(scope: str | None, json_mode: bool, **flags: Any) -> None:
     """List the tasks that are yours.
 
     \b
-    Needs a signed-in person: run `dailybot login`. An organization API key is
-    refused here, because "my tasks" is defined relative to the calling user.
+    Needs a person: `dailybot login` or a personal API key. An agent or
+    organization key is refused by the server: "my tasks" needs a person.
 
     \b
     Paging is one page per call: this command has no `--all`, and `--limit` sizes
@@ -1048,7 +1008,6 @@ def tasks_mine(scope: str | None, json_mode: bool, **flags: Any) -> None:
       dailybot tasks mine
       dailybot tasks mine --scope involved --json
     """
-    _require_person("tasks mine", json_mode=json_mode)
     client = require_auth()
     try:
         page: dict[str, Any] = _page_kwargs(**flags)
@@ -1079,13 +1038,12 @@ def tasks_counts(json_mode: bool) -> None:
     """Show how many tasks are yours, by bucket.
 
     \b
-    Needs a signed-in person: run `dailybot login`.
+    Needs a person: `dailybot login` or a personal API key.
 
     \b
     Examples:
       dailybot tasks counts --json
     """
-    _require_person("tasks counts", json_mode=json_mode)
     client = require_auth()
     try:
         with console.status("Counting your tasks..."):

@@ -85,7 +85,11 @@ class TestPaginationFooterNamesAFlagTheCommandHas:
         module: str = "tasks" if argv[0] == "tasks" else "task"
         with (
             patch(f"dailybot_cli.commands.{module}.require_auth", return_value=client),
-            patch(f"dailybot_cli.commands.{module}.get_token", return_value="bearer"),
+            patch(
+                f"dailybot_cli.commands.{module}.get_person_token",
+                return_value="bearer",
+                create=True,
+            ),
         ):
             result = runner.invoke(cli, argv)
         assert "--all" not in result.stdout
@@ -110,7 +114,11 @@ class TestJsonModeKeepsStdoutParseable:
     def _archive(self, runner: CliRunner, client: MagicMock, argv: list[str], module: str) -> Any:
         with (
             patch(f"dailybot_cli.commands.{module}.require_auth", return_value=client),
-            patch(f"dailybot_cli.commands.{module}.get_token", return_value="bearer"),
+            patch(
+                f"dailybot_cli.commands.{module}.get_person_token",
+                return_value="bearer",
+                create=True,
+            ),
         ):
             return runner.invoke(cli, argv)
 
@@ -255,7 +263,6 @@ class TestDoorsOnlyAdvertiseFiltersTheyCarry:
     ) -> None:
         with (
             patch("dailybot_cli.commands.tasks.require_auth", return_value=client),
-            patch("dailybot_cli.commands.tasks.get_token", return_value="bearer"),
         ):
             result = runner.invoke(cli, [*argv, "--search", "deploy"])
         assert result.exit_code == EXIT_USAGE_ERROR
@@ -274,7 +281,6 @@ class TestDoorsOnlyAdvertiseFiltersTheyCarry:
         client.list_my_tasks.return_value = _page()
         with (
             patch("dailybot_cli.commands.tasks.require_auth", return_value=client),
-            patch("dailybot_cli.commands.tasks.get_token", return_value="bearer"),
         ):
             runner.invoke(cli, ["tasks", "mine", "--scope", "involved"])
         assert client.list_my_tasks.call_args[1]["params"] == {"scope": "involved"}

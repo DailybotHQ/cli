@@ -21,7 +21,7 @@ from dailybot_cli.commands.public_api_helpers import (
     rows_of,
 )
 from dailybot_cli.commands.query_options import build_query_params, query_options, resolve_fetch_all
-from dailybot_cli.config import get_token
+from dailybot_cli.config import get_person_token
 from dailybot_cli.display import (
     console,
     present_untrusted,
@@ -387,8 +387,9 @@ def _require_person_for_admin(action: str, *, json_mode: bool) -> None:
     See board.py: open-org Tasks gives every non-guest member structure access on
     a person session; keys still cannot store `tasks:admin` or change membership.
     """
-    # See tasks.py `_require_person`: gate on the absence of a person token.
-    if get_token() is None:
+    # Gate on the absence of a person token, not on the presence of a key: both
+    # can be configured at once, and Bearer is sent first when it exists.
+    if get_person_token() is None:
         refuse_without_person(
             f"`{action}` needs a signed-in person. An organization API key can never hold "
             "the `tasks:admin` scope (it cannot even be stored on one), and keys cannot "
@@ -628,7 +629,7 @@ _VIEW_COLUMNS: list[tuple[str, str, bool]] = [
 
 def _require_person(action: str, reason: str, *, json_mode: bool) -> None:
     """Refuse an API key on a person-only project door, before any request."""
-    if get_token() is None:
+    if get_person_token() is None:
         refuse_without_person(
             f"`{action}` {reason} Run `dailybot login` and retry as a signed-in person.",
             json_mode=json_mode,
@@ -639,13 +640,12 @@ def _require_person(action: str, reason: str, *, json_mode: bool) -> None:
 @click.argument("project_uuid", metavar="PROJECT")
 @click.option("--json", "json_mode", is_flag=True, help="Emit machine-readable JSON to stdout.")
 def project_members(project_uuid: str, json_mode: bool) -> None:
-    """List who can see a project — people and whole teams. Needs `dailybot login`.
+    """List who can see a project — people and whole teams. Needs a person: `dailybot login` or a personal API key.
 
     \b
     Examples:
       dailybot project members <project-uuid>
     """
-    _require_person("project members", _MEMBER_REASON, json_mode=json_mode)
     client = require_auth()
     try:
         with console.status("Reading the members..."):

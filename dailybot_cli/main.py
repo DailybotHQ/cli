@@ -42,6 +42,7 @@ from dailybot_cli.commands.workflow import workflow
 from dailybot_cli.config import (
     RepoEnvError,
     load_repo_env,
+    set_agent_name_override,
     set_api_url_override,
     set_app_url_override,
 )
@@ -66,8 +67,18 @@ _VERSION_MESSAGE: str = f"dailybot {__version__} (Python {platform.python_versio
     envvar="DAILYBOT_APP_URL",
     help="Override the webapp/dashboard base URL (default: https://app.dailybot.com).",
 )
+@click.option(
+    "--agent-name",
+    default=None,
+    help=(
+        "The agent acting for you. Tasks writes stay yours and show this agent "
+        "as the one who executed them. Also read from DAILYBOT_AGENT_NAME."
+    ),
+)
 @click.pass_context
-def cli(ctx: click.Context, api_url: str | None, app_url: str | None) -> None:
+def cli(
+    ctx: click.Context, api_url: str | None, app_url: str | None, agent_name: str | None
+) -> None:
     """Dailybot CLI - The command-line bridge between humans and agents.
 
     \b
@@ -115,6 +126,8 @@ def cli(ctx: click.Context, api_url: str | None, app_url: str | None) -> None:
         set_api_url_override(api_url)
     if app_url:
         set_app_url_override(app_url)
+    if agent_name is not None:
+        set_agent_name_override(agent_name)
     if ctx.invoked_subcommand is None:
         run_interactive()
 

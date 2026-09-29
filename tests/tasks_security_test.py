@@ -154,9 +154,11 @@ class TestIsolationIsNeverPermission:
         with (
             patch(f"dailybot_cli.commands.{module}.require_auth", return_value=client),
             # Archives are `tasks:admin` doors: only a signed-in person reaches the server.
-            patch(f"dailybot_cli.commands.{module}.get_token", return_value="tok", create=True),
-            patch("dailybot_cli.commands.board.get_token", return_value="tok"),
-            patch("dailybot_cli.commands.project.get_token", return_value="tok"),
+            patch(
+                f"dailybot_cli.commands.{module}.get_person_token", return_value="tok", create=True
+            ),
+            patch("dailybot_cli.commands.board.get_person_token", return_value="tok"),
+            patch("dailybot_cli.commands.project.get_person_token", return_value="tok"),
         ):
             result = runner.invoke(cli, args)
         out: str = " ".join(result.output.lower().split())
@@ -213,9 +215,11 @@ class TestDestructivePathsCannotRunUnpreviewed:
         with (
             patch(f"dailybot_cli.commands.{module}.require_auth", return_value=client),
             # Archives are `tasks:admin` doors: only a signed-in person reaches the server.
-            patch(f"dailybot_cli.commands.{module}.get_token", return_value="tok", create=True),
-            patch("dailybot_cli.commands.board.get_token", return_value="tok"),
-            patch("dailybot_cli.commands.project.get_token", return_value="tok"),
+            patch(
+                f"dailybot_cli.commands.{module}.get_person_token", return_value="tok", create=True
+            ),
+            patch("dailybot_cli.commands.board.get_person_token", return_value="tok"),
+            patch("dailybot_cli.commands.project.get_person_token", return_value="tok"),
         ):
             runner.invoke(cli, args)
         assert getattr(client, method).call_args_list[0][1]["dry_run"] is True
@@ -236,9 +240,11 @@ class TestDestructivePathsCannotRunUnpreviewed:
         with (
             patch(f"dailybot_cli.commands.{module}.require_auth", return_value=client),
             # Archives are `tasks:admin` doors: only a signed-in person reaches the server.
-            patch(f"dailybot_cli.commands.{module}.get_token", return_value="tok", create=True),
-            patch("dailybot_cli.commands.board.get_token", return_value="tok"),
-            patch("dailybot_cli.commands.project.get_token", return_value="tok"),
+            patch(
+                f"dailybot_cli.commands.{module}.get_person_token", return_value="tok", create=True
+            ),
+            patch("dailybot_cli.commands.board.get_person_token", return_value="tok"),
+            patch("dailybot_cli.commands.project.get_person_token", return_value="tok"),
         ):
             result = runner.invoke(cli, args)
         assert result.exit_code != 0
@@ -298,9 +304,11 @@ class TestNoWebUrlIsEverEmitted:
         with (
             patch(f"dailybot_cli.commands.{module}.require_auth", return_value=client),
             # Archives are `tasks:admin` doors: only a signed-in person reaches the server.
-            patch(f"dailybot_cli.commands.{module}.get_token", return_value="tok", create=True),
-            patch("dailybot_cli.commands.board.get_token", return_value="tok"),
-            patch("dailybot_cli.commands.project.get_token", return_value="tok"),
+            patch(
+                f"dailybot_cli.commands.{module}.get_person_token", return_value="tok", create=True
+            ),
+            patch("dailybot_cli.commands.board.get_person_token", return_value="tok"),
+            patch("dailybot_cli.commands.project.get_person_token", return_value="tok"),
         ):
             result = runner.invoke(cli, args)
         assert "evil.example" not in result.output

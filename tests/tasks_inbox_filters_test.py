@@ -58,7 +58,6 @@ class TestWire:
 def _invoke(argv: list[str], client: MagicMock) -> Any:
     with (
         patch("dailybot_cli.commands.tasks.require_auth", return_value=client),
-        patch("dailybot_cli.commands.tasks.get_token", return_value="tok"),
     ):
         return CliRunner().invoke(cli, argv)
 

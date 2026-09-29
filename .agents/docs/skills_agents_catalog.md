@@ -38,7 +38,7 @@ The full pack lives under [`.agents/skills/dailybot/`](../skills/dailybot/) (rou
 | `dailybot-labels` | [`skills/dailybot/labels/SKILL.md`](../skills/dailybot/labels/SKILL.md) | Organization Labels — create/list/update/archive/delete and assign (or batch) to forms, check-ins, and workflows/automations (web chip-picker parity; `dailybot-cli >= 3.9.0`) |
 | `dailybot-featured` | [`skills/dailybot/featured/SKILL.md`](../skills/dailybot/featured/SKILL.md) | Private per-user Featured stars on forms, automations, and check-ins (not org Labels; `dailybot-cli >= 3.9.0`) |
 | `dailybot-tasks` | [`skills/dailybot/tasks/SKILL.md`](../skills/dailybot/tasks/SKILL.md) | Managing Dailybot Tasks — boards, backlog, sprint/kanban columns, projects, goals, milestones and project updates (`dailybot tasks` for the workspace, `dailybot task` for one task, plus `board`/`project`/`goal`); open-org structure for any non-guest member. Needs `dailybot-cli >= 3.14.2` (recommended `>= 3.18.0`) |
-| `dailybot-env` | [`skills/dailybot/env/SKILL.md`](../skills/dailybot/env/SKILL.md) | Managing per-repo API keys in the opt-in, gitignored `.dailybot/env.json` (`env add/use/show/list/remove/off/on`) — be "logged into different orgs in different repos" |
+| `dailybot-env` | [`skills/dailybot/env/SKILL.md`](../skills/dailybot/env/SKILL.md) | Managing per-repo API keys in `.dailybot/env.json` (`env add/use/show/list/remove/off/on`, optional `kind: live\|testing`) — switch orgs per repo; `env off` keeps production login for reports |
 
 ### Deep Work Plan skill pack (vendored from [`DailybotHQ/deepworkplan-skill`](https://github.com/DailybotHQ/deepworkplan-skill))
 

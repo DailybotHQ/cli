@@ -111,10 +111,15 @@ def env() -> None:
       dailybot env add --name staging --key sk_yyy --api-url https://staging-api.example.com
       dailybot env use staging      # switch active
       dailybot env show             # inspect current
-      dailybot env off              # temporarily disable (preserves active)
-      dailybot env on               # re-enable
-      dailybot env list             # all configured profiles
+      dailybot env off              # fall through to login/global (keeps profiles)
+      dailybot env on               # re-enable the last active profile
+      dailybot env list             # all profiles (live + testing)
       dailybot env remove staging   # delete a profile
+
+    Dual session: OTP/`agents.json` stay production; env.json testing
+    profiles (`--kind testing` or a local --api-url) are for local Tasks.
+    Switch with `env use`; `env off` restores production. See
+    docs/CONFIGURATION.md § Dual session.
 
     \b
     Precedence (highest wins):
@@ -147,7 +152,24 @@ def env() -> None:
     default=None,
     help="Optional webapp/dashboard URL for this profile.",
 )
-def env_add(name: str, key: str, api_url: str | None, app_url: str | None) -> None:
+@click.option(
+    "--kind",
+    "kind",
+    type=click.Choice(["live", "testing"], case_sensitive=False),
+    default=None,
+    help=(
+        "live = production/staging org; testing = local/dev API. "
+        "Omitted: inferred from --api-url (localhost / host.docker.internal "
+        "→ testing, otherwise live)."
+    ),
+)
+def env_add(
+    name: str,
+    key: str,
+    api_url: str | None,
+    app_url: str | None,
+    kind: str | None,
+) -> None:
     """Add a profile to ``.dailybot/env.json``, creating the file if needed.
 
     \b
@@ -158,11 +180,15 @@ def env_add(name: str, key: str, api_url: str | None, app_url: str | None) -> No
     Examples:
       dailybot env add --name local --key sk_local_xxx \\
         --api-url http://localhost:8000 --app-url http://localhost:8090
-      dailybot env add --name live --key sk_live_yyy
+      dailybot env add --name live --key sk_live_yyy --kind live
     """
     try:
         path, became_active = add_env_profile(
-            name=name, api_key=key, api_url=api_url, app_url=app_url
+            name=name,
+            api_key=key,
+            api_url=api_url,
+            app_url=app_url,
+            kind=kind.lower() if kind else None,
         )
     except RepoEnvError as exc:
         _handle_env_error(exc)

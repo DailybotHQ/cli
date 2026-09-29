@@ -1049,7 +1049,7 @@ class TestAgentDualAuth:
         assert "X-API-KEY" not in headers
         assert client._agent_auth_mode == "bearer"
 
-    @patch("dailybot_cli.api_client.get_token", return_value=None)
+    @patch("dailybot_cli.api_client.get_login_token_for", return_value=None)
     @patch("dailybot_cli.api_client.get_api_key", return_value=None)
     def test_agent_headers_no_auth(self, _mock_key: MagicMock, _mock_tok: MagicMock) -> None:
         client = DailyBotClient(api_url="http://test.com", token=None, api_key=None)
@@ -1450,7 +1450,7 @@ class TestEnvJsonWirePreference:
 
     @patch("dailybot_cli.api_client.get_api_key_source", return_value="env.json")
     @patch("dailybot_cli.api_client.get_api_key", return_value="env-key")
-    @patch("dailybot_cli.api_client.get_token", return_value="prod-bearer")
+    @patch("dailybot_cli.api_client.get_login_token_for", return_value="prod-bearer")
     def test_auto_detects_env_json_provenance(
         self, _tok: MagicMock, _key: MagicMock, _src: MagicMock
     ) -> None:
@@ -1463,7 +1463,7 @@ class TestEnvJsonWirePreference:
 
     @patch("dailybot_cli.api_client.get_api_key_source", return_value="env")
     @patch("dailybot_cli.api_client.get_api_key", return_value="var-key")
-    @patch("dailybot_cli.api_client.get_token", return_value="prod-bearer")
+    @patch("dailybot_cli.api_client.get_login_token_for", return_value="prod-bearer")
     def test_env_var_key_keeps_bearer_first(
         self, _tok: MagicMock, _key: MagicMock, _src: MagicMock
     ) -> None:

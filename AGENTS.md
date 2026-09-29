@@ -366,7 +366,7 @@ The agent commands resolve credentials in this strict order — changing it is a
 6. `dailybot config key=...` (stored in `~/.config/dailybot/config.json`)
 7. Login session (Bearer token from `~/.config/dailybot/credentials.json`)
 
-This order holds at the HTTP layer too: when the resolved API key comes from `env.json`, the client sends `X-API-KEY` on the **first** attempt even if a Bearer login session exists (`DailyBotClient._prefer_api_key`, auto-detected via `get_api_key_source()`); the transparent 401/403 retry covers the reverse direction. Keys from any other layer keep the long-standing Bearer-first wire order. A keyed `agents.json` profile only beats `env.json` when selected with an explicit `--profile` flag (layer 1); resolved via `profile.json` or as the default profile, it yields to `env.json` — `agent profiles --resolve` and the actual request always agree.
+This order holds at the HTTP layer too: when the resolved API key comes from `env.json`, the client sends `X-API-KEY` on the **first** attempt even if a Bearer login session exists (`DailyBotClient._prefer_api_key`, auto-detected via `get_api_key_source()`); the transparent 401/403 retry covers the reverse direction. A **login token only travels to the API host that issued it** (`credentials.json::api_url`; `config.get_login_token_for`): when `env.json` or `--api-url` points elsewhere, the Bearer is neither the first credential nor the fallback, so a production session never reaches a local or third-party host (`DAILYBOT_CLI_TOKEN` is the caller's explicit choice and is exempt). Keys from any other layer keep the long-standing Bearer-first wire order. A keyed `agents.json` profile only beats `env.json` when selected with an explicit `--profile` flag (layer 1); resolved via `profile.json` or as the default profile, it yields to `env.json` — `agent profiles --resolve` and the actual request always agree.
 
 The `profile.json` file may also pin the agent display name (`name`) and a `default_metadata` object that gets shallow-merged into every report. **Credentials never live in `profile.json`** — a `key` field there is a hard error.
 
@@ -380,6 +380,26 @@ The `profile.json` file may also pin the agent display name (`name`) and a `defa
 See [docs/CONFIGURATION.md § "STOP — Read this before you author `env.json`"](docs/CONFIGURATION.md#stop--read-this-before-you-author-envjson) for the recovery recipe when a leak has already happened (spoiler: rotate first, don't rewrite history).
 
 The implementation lives in `dailybot_cli/config.py` (`get_active_env_profile`, `get_api_key`, `get_api_url`, `get_app_url`, `load_repo_env`), `dailybot_cli/main.py::cli` (root-callback guard), `dailybot_cli/commands/agent.py::_resolve_agent_context`, and `dailybot_cli/api_client.py::_agent_headers`. See [docs/CONFIGURATION.md](docs/CONFIGURATION.md).
+
+#### 14.a Dual session — this repo (production reports + local Tasks tests)
+
+Agents working **in this CLI repository** must keep two concerns separate:
+
+| Intent | How |
+| --- | --- |
+| **Agent reports, releases, `gh`, default `dailybot`** | Production OTP (`credentials.json`). Leave `.dailybot/env.json` **disabled** (`dailybot env off`) so `dailybot agent update` hits `https://api.dailybot.com`. |
+| **Tasks / API probes against the local org** | Testing profiles in the same gitignored `env.json` (`kind: testing`). Switch with `dailybot env use <name>` or one-shot `tmp/bin/dailybot-local [profile] <cmd>` (uses then `env off`). |
+
+Profiles are named keys in `env.json` (inspect with `dailybot env list` — keys are masked). Typical testing names here: `local-8000` (admin), `local-emma`, `local-ginny`, `local-oscar`, `local-hagrid` — all `http://host.docker.internal:8000`. You may also store **live** profiles in the same file (`--kind live`) and switch with `env use` exactly as before.
+
+**Rules for agents:**
+
+1. After any local Tasks work, run `dailybot env off` (or use only `dailybot-local`, which restores prod) **before** `dailybot agent update` or a release.
+2. Never `dailybot login` while a testing profile is active — OTP would be requested against the local API.
+3. Never `cat` `env.json`. Use `dailybot env list` / `env show`.
+4. `kind` is a label (`live` \| `testing`); it does not change resolution. One `active` profile at a time; `env off` falls through to login without deleting profiles.
+
+Full user-facing spec: [docs/CONFIGURATION.md § Dual session](docs/CONFIGURATION.md#dual-session--production-default--testing-profiles). Contributor cheat-sheet: [docs/LOCAL_ENVIRONMENT.md § Dual CLI session](docs/LOCAL_ENVIRONMENT.md#5-dual-cli-session-production--local-testing). Skill: [`.agents/skills/dailybot/env/SKILL.md`](.agents/skills/dailybot/env/SKILL.md) and [`shared/env-json.md`](.agents/skills/dailybot/shared/env-json.md).
 
 ### 15. Packaging & Versioning
 

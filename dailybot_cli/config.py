@@ -4,10 +4,14 @@ import json
 import os
 from pathlib import Path
 from typing import Any
+from urllib.parse import SplitResult, urlsplit
 
 DEFAULT_API_URL: str = "https://api.dailybot.com"
 DEFAULT_APP_URL: str = "https://app.dailybot.com"
 _api_url_override: str | None = None
+# The agent executing this invocation on a person's behalf (root `--agent-name`).
+_agent_name_override: str | None = None
+AGENT_NAME_ENV_VAR: str = "DAILYBOT_AGENT_NAME"
 _app_url_override: str | None = None
 
 
@@ -15,6 +19,22 @@ def set_api_url_override(url: str) -> None:
     """Set a CLI-level API URL override (from --api-url flag)."""
     global _api_url_override
     _api_url_override = url.rstrip("/")
+
+
+def set_agent_name_override(name: str) -> None:
+    """Set the agent name for this invocation (from the root --agent-name flag)."""
+    global _agent_name_override
+    _agent_name_override = name
+
+
+def get_agent_name() -> str | None:
+    """The agent executing this invocation: ``--agent-name``, else ``DAILYBOT_AGENT_NAME``.
+
+    ``None`` means a person is acting directly and no agent is stamped.
+    """
+    if _agent_name_override is not None:
+        return _agent_name_override
+    return os.environ.get(AGENT_NAME_ENV_VAR) or None
 
 
 def set_app_url_override(url: str) -> None:
@@ -159,6 +179,53 @@ def get_token() -> str | None:
     if creds:
         return creds.get("token")
     return None
+
+
+_DEFAULT_PORTS: dict[str, int] = {"https": 443, "http": 80}
+
+
+def _origin(url: str) -> tuple[str, str, int | None]:
+    """Scheme, host and port of a URL — what decides where a credential travels.
+
+    A scheme's default port is filled in, so `https://h` and `https://h:443` agree.
+    """
+    parts: SplitResult = urlsplit(url.strip())
+    scheme: str = parts.scheme.lower()
+    return scheme, (parts.hostname or "").lower(), parts.port or _DEFAULT_PORTS.get(scheme)
+
+
+def get_login_token_for(api_url: str) -> str | None:
+    """The Bearer token to send to ``api_url``, or ``None``.
+
+    A token set in ``DAILYBOT_CLI_TOKEN`` is the caller's explicit choice and
+    goes wherever they point it. A token from ``dailybot login`` belongs to the
+    API that issued it (``credentials.json::api_url``; a legacy file without
+    one belongs to the default API): it is never sent to any other host, so a
+    repo ``env.json`` or ``--api-url`` pointing elsewhere cannot carry the
+    production session there, not even as a fallback credential.
+    """
+    env_token: str | None = os.environ.get("DAILYBOT_CLI_TOKEN")
+    if env_token:
+        return env_token
+    creds: dict[str, Any] | None = load_credentials()
+    if not creds:
+        return None
+    issued_by: str = str(creds.get("api_url") or DEFAULT_API_URL)
+    if _origin(issued_by) != _origin(api_url):
+        return None
+    token: Any = creds.get("token")
+    return str(token) if token else None
+
+
+def get_person_token() -> str | None:
+    """The login token that will actually reach the current API host, or ``None``.
+
+    Local pre-flights that ask "is a signed-in person behind this request?"
+    must use this, not :func:`get_token`: with a production login on disk and a
+    testing profile active, the client never sends that session to the testing
+    host, so a host-blind check would wave through a key-only request.
+    """
+    return get_login_token_for(get_api_url())
 
 
 def load_config() -> dict[str, Any]:
@@ -754,6 +821,7 @@ def write_repo_profile(
 #       {
 #         "name": "local org 1",
 #         "api_key": "xxxxxxx",
+#         "kind": "testing",                    # optional: live | testing
 #         "api_url": "http://localhost:8000",   # optional
 #         "app_url": "http://localhost:8090"    # optional
 #       }
@@ -764,8 +832,17 @@ def write_repo_profile(
 # docs/SECURITY.md for the security posture.
 
 REPO_ENV_FILENAME: str = "env.json"
+ENV_PROFILE_KIND_LIVE: str = "live"
+ENV_PROFILE_KIND_TESTING: str = "testing"
+ENV_PROFILE_KINDS: frozenset[str] = frozenset({ENV_PROFILE_KIND_LIVE, ENV_PROFILE_KIND_TESTING})
+# Hosts treated as local/dev when inferring ``kind`` from ``api_url``.
+_TESTING_API_HOSTS: frozenset[str] = frozenset(
+    {"localhost", "127.0.0.1", "0.0.0.0", "::1", "host.docker.internal"}
+)
 _VALID_REPO_ENV_TOP_KEYS: frozenset[str] = frozenset({"active", "disabled", "profiles"})
-_VALID_REPO_ENV_PROFILE_KEYS: frozenset[str] = frozenset({"name", "api_key", "api_url", "app_url"})
+_VALID_REPO_ENV_PROFILE_KEYS: frozenset[str] = frozenset(
+    {"name", "api_key", "api_url", "app_url", "kind"}
+)
 _REQUIRED_REPO_ENV_PROFILE_KEYS: frozenset[str] = frozenset({"name", "api_key"})
 _GIT_CHECK_TIMEOUT_SECS: float = 5.0
 
@@ -958,6 +1035,17 @@ def load_repo_env(cwd: Path | None = None) -> dict[str, Any] | None:
                 f"{path} profiles[{i}] has unknown key(s) {sorted(unknown_profile)}; ignoring.",
             )
         cleaned: dict[str, Any] = {k: entry[k] for k in _VALID_REPO_ENV_PROFILE_KEYS if k in entry}
+        kind_raw: Any = cleaned.get("kind")
+        if kind_raw is not None and (
+            not isinstance(kind_raw, str) or kind_raw not in ENV_PROFILE_KINDS
+        ):
+            _warn_env_once(
+                f"kind:{path}:{i}",
+                f"{path} profiles[{i}] 'kind' must be "
+                f"{' or '.join(sorted(ENV_PROFILE_KINDS))} "
+                f"(got {kind_raw!r}); treating as live.",
+            )
+            cleaned.pop("kind", None)
         name: str = cleaned["name"]
         if name in seen_names:
             _warn_env_once(
@@ -1048,6 +1136,12 @@ def _validate_env_payload(payload: dict[str, Any]) -> None:
         if name in seen_names:
             raise RepoEnvError(f"Duplicate profile name '{name}'.")
         seen_names.add(name)
+        kind: Any = entry.get("kind")
+        if kind is not None and kind not in ENV_PROFILE_KINDS:
+            raise RepoEnvError(
+                f"profiles[{i}]['kind'] must be "
+                f"{' or '.join(sorted(ENV_PROFILE_KINDS))} (got {kind!r})."
+            )
 
     active: Any = payload.get("active")
     if active is not None and active != "":
@@ -1107,9 +1201,29 @@ def _normalize_env_payload(payload: dict[str, Any]) -> dict[str, Any]:
     return ordered
 
 
+def infer_env_profile_kind(api_url: str | None) -> str:
+    """Guess ``live`` vs ``testing`` from *api_url* (explicit ``kind`` still wins).
+
+    Local/loopback/devcontainer hosts are ``testing``; missing or public URLs
+    are ``live``. Used only as a default when the developer does not pass
+    ``--kind``.
+    """
+    if not api_url:
+        return ENV_PROFILE_KIND_LIVE
+    from urllib.parse import urlsplit
+
+    host: str = (urlsplit(api_url).hostname or "").lower()
+    if host in _TESTING_API_HOSTS:
+        return ENV_PROFILE_KIND_TESTING
+    return ENV_PROFILE_KIND_LIVE
+
+
 def _normalize_env_entry(entry: dict[str, Any]) -> dict[str, Any]:
     """Return a profile entry with a canonical key order."""
     out: dict[str, Any] = {"name": entry["name"], "api_key": entry["api_key"]}
+    kind: Any = entry.get("kind")
+    if isinstance(kind, str) and kind in ENV_PROFILE_KINDS:
+        out["kind"] = kind
     if entry.get("api_url"):
         out["api_url"] = str(entry["api_url"]).rstrip("/")
     if entry.get("app_url"):
@@ -1137,6 +1251,7 @@ def add_env_profile(
     api_key: str,
     api_url: str | None = None,
     app_url: str | None = None,
+    kind: str | None = None,
     *,
     cwd: Path | None = None,
 ) -> tuple[Path, bool]:
@@ -1156,6 +1271,16 @@ def add_env_profile(
         )
 
     entry: dict[str, Any] = {"name": name, "api_key": api_key}
+    resolved_kind: str
+    if kind is None:
+        resolved_kind = infer_env_profile_kind(api_url)
+    elif kind in ENV_PROFILE_KINDS:
+        resolved_kind = kind
+    else:
+        raise RepoEnvError(
+            f"'kind' must be {' or '.join(sorted(ENV_PROFILE_KINDS))} (got {kind!r})."
+        )
+    entry["kind"] = resolved_kind
     if api_url:
         entry["api_url"] = api_url.rstrip("/")
     if app_url:

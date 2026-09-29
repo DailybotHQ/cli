@@ -27,7 +27,14 @@ from dailybot_cli.commands.user_scoped_actions import (
     execute_user_list,
     filter_submittable_forms,
 )
-from dailybot_cli.config import get_api_key, get_api_url, get_token, load_credentials
+from dailybot_cli.config import (
+    API_KEY_SOURCE_ENV_JSON,
+    get_api_key,
+    get_api_key_source,
+    get_api_url,
+    get_token,
+    load_credentials,
+)
 from dailybot_cli.display import (
     console,
     print_chat_message_result,
@@ -109,16 +116,58 @@ def _return_to_menu() -> None:
     print_info("Cancelled.")
 
 
+def _print_session_banner(client: DailyBotClient, *, via: str) -> None:
+    """Print who this session is after auth is resolved (login or API key)."""
+    try:
+        me: dict[str, Any] = client.get_me()
+    except APIError:
+        print_info(f"Authenticated via {via}.")
+        return
+    name: str = str(me.get("full_name") or me.get("user") or "")
+    org_obj: Any = me.get("organization") or {}
+    org_name: str = (
+        str(org_obj.get("name") or "") if isinstance(org_obj, dict) else str(org_obj or "")
+    )
+    label: str = name or "session"
+    if org_name:
+        label = f"{label} ({org_name})"
+    console.print(f"Authenticated as {label}")
+    console.print(f"[dim]via {via}[/dim]")
+    org_uuid: str = str(
+        me.get("organization_uuid")
+        or (org_obj.get("uuid") if isinstance(org_obj, dict) else "")
+        or ""
+    )
+    if org_uuid:
+        console.print(f"[dim]Org UUID: {org_uuid}[/dim]")
+
+
 def run_interactive() -> None:
     """Run the interactive TUI mode."""
     creds: dict[str, Any] | None = load_credentials()
     token: str | None = get_token()
+    api_key: str | None = get_api_key()
+    key_source: str | None = get_api_key_source()
 
     console.print(f"\n[bold]Dailybot CLI[/bold] [dim]v{__version__}[/dim]")
     api_url: str = get_api_url()
     console.print(f"[dim]API: {api_url}[/dim]")
 
-    if not token or not creds:
+    # Dual-auth is normal: a global prod Bearer in credentials.json plus a
+    # repo-local `.dailybot/env.json` key (and api_url) for Tasks against a
+    # local/staging API. Prefer the session API key when the stored login
+    # points at a different host — never force OTP against the wrong server.
+    if api_key and (not token or not creds):
+        via: str = "API key"
+        if key_source == API_KEY_SOURCE_ENV_JSON:
+            via = "API key (.dailybot/env.json)"
+        elif key_source:
+            via = f"API key ({key_source})"
+        console.print()
+        client: DailyBotClient = DailyBotClient()
+        _print_session_banner(client, via=via)
+        console.print()
+    elif not token or not creds:
         console.print()
         print_info("Let's get you logged in.")
         console.print()
@@ -129,9 +178,27 @@ def run_interactive() -> None:
             print_error("Login failed.")
             return
         creds = load_credentials()
+        console.print()
+        client = DailyBotClient()
     else:
         stored_api: str = str(creds.get("api_url") or api_url).rstrip("/")
-        if stored_api != api_url.rstrip("/"):
+        if stored_api != api_url.rstrip("/") and api_key:
+            via = "API key"
+            if key_source == API_KEY_SOURCE_ENV_JSON:
+                via = "API key (.dailybot/env.json)"
+            elif key_source:
+                via = f"API key ({key_source})"
+            console.print()
+            print_info(
+                f"Using {via} → {api_url}. "
+                f"Stored OTP login remains for {stored_api} "
+                f"(reports: dailybot --api-url {stored_api} agent update …)."
+            )
+            console.print()
+            client = DailyBotClient()
+            _print_session_banner(client, via=via)
+            console.print()
+        elif stored_api != api_url.rstrip("/"):
             console.print()
             print_warning(
                 f"Stored login targets {stored_api}, but this session uses {api_url}. "
@@ -145,6 +212,8 @@ def run_interactive() -> None:
                 print_error("Login failed.")
                 return
             creds = load_credentials()
+            console.print()
+            client = DailyBotClient()
         else:
             email = creds.get("email", "") if creds else ""
             org_stored: Any = creds.get("organization", "") if creds else ""
@@ -155,9 +224,8 @@ def run_interactive() -> None:
             console.print(f"Logged in as {email} ({org})")
             if org_uuid:
                 console.print(f"[dim]Org UUID: {org_uuid}[/dim]")
-    console.print()
-
-    client: DailyBotClient = DailyBotClient()
+            console.print()
+            client = DailyBotClient()
 
     while True:
         console.print()

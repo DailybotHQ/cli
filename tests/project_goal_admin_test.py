@@ -68,7 +68,9 @@ def _invoke(
 ) -> Any:
     with (
         patch(f"dailybot_cli.commands.{module}.require_auth", return_value=client),
-        patch("dailybot_cli.commands.project.get_token", return_value="tok" if person else None),
+        patch(
+            "dailybot_cli.commands.project.get_person_token", return_value="tok" if person else None
+        ),
     ):
         return runner.invoke(cli, args, input=stdin)
 
@@ -257,12 +259,17 @@ class TestProjectCommands:
         result = _invoke(runner, client, ["project", "restore", PROJECT, "--json"])
         assert result.exit_code == EXIT_PERMISSION_DENIED
 
+    def test_project_members_sends_the_request_for_a_key(
+        self, runner: CliRunner, client: MagicMock
+    ) -> None:
+        # A personal API key is its person on the API; the server decides.
+        client.list_project_members.return_value = []
+        _invoke(runner, client, ["project", "members", PROJECT, "--json"], person=False)
+        client.list_project_members.assert_called_once()
+
     @pytest.mark.parametrize(
         "argv",
-        [
-            ["project", "members", PROJECT, "--json"],
-            ["project", "view", "save", PROJECT, "-f", "-", "--if-match", '"1"', "--json"],
-        ],
+        [["project", "view", "save", PROJECT, "-f", "-", "--if-match", '"1"', "--json"]],
     )
     def test_person_only_doors_refuse_a_key(
         self, runner: CliRunner, client: MagicMock, argv: list[str]

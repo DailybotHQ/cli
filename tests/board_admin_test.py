@@ -18,7 +18,6 @@ from click.testing import CliRunner
 
 from dailybot_cli.api_client import IDEMPOTENCY_KEY_HEADER, APIError, DailyBotClient
 from dailybot_cli.commands.public_api_helpers import (
-    EXIT_NOT_AUTHENTICATED,
     EXIT_NOT_FOUND,
     EXIT_PERMISSION_DENIED,
     EXIT_USAGE_ERROR,
@@ -73,7 +72,9 @@ def _invoke(
 ) -> Any:
     with (
         patch("dailybot_cli.commands.board.require_auth", return_value=client),
-        patch("dailybot_cli.commands.board.get_token", return_value="tok" if person else None),
+        patch(
+            "dailybot_cli.commands.board.get_person_token", return_value="tok" if person else None
+        ),
     ):
         return runner.invoke(cli, args, input=stdin)
 
@@ -145,13 +146,11 @@ class TestBoardCollectionReads:
         _invoke(runner, client, ["board", "states", BOARD, "--include-archived"])
         assert client.list_board_states.call_args.kwargs == {"include_archived": True}
 
-    def test_labels_refuse_an_api_key_before_the_request(
-        self, runner: CliRunner, client: MagicMock
-    ) -> None:
-        result = _invoke(runner, client, ["board", "labels", BOARD, "--json"], person=False)
-        assert result.exit_code == EXIT_NOT_AUTHENTICATED
-        assert json.loads(result.output)["status"] == "error"
-        client.list_board_labels.assert_not_called()
+    def test_labels_send_the_request_for_a_key(self, runner: CliRunner, client: MagicMock) -> None:
+        # A personal API key is its person on the API; the server decides.
+        client.list_board_labels.return_value = []
+        _invoke(runner, client, ["board", "labels", BOARD, "--json"], person=False)
+        client.list_board_labels.assert_called_once()
 
     @pytest.mark.parametrize("sub", ["states", "members"])
     def test_key_ok_reads_do_not_refuse_a_key(
@@ -502,12 +501,12 @@ class TestBoardLabelCreate:
         assert post.call_args.kwargs["json"] == {"name": "bug", "color": "#ef4444"}
         assert IDEMPOTENCY_KEY_HEADER not in _headers(post.call_args)
 
-    def test_refuses_a_key(self, runner: CliRunner, client: MagicMock) -> None:
-        result = _invoke(
+    def test_sends_the_request_for_a_key(self, runner: CliRunner, client: MagicMock) -> None:
+        client.create_board_label.return_value = {"uuid": "l-1", "name": "bug"}
+        _invoke(
             runner, client, ["board", "label", "create", BOARD, "-n", "bug", "--json"], person=False
         )
-        assert result.exit_code == EXIT_NOT_AUTHENTICATED
-        client.create_board_label.assert_not_called()
+        client.create_board_label.assert_called_once()
 
     def test_maps_flags(self, runner: CliRunner, client: MagicMock) -> None:
         client.create_board_label.return_value = {"uuid": "l-1", "name": "bug"}
@@ -577,16 +576,16 @@ class TestBoardViewSave:
         assert result.exit_code == EXIT_USAGE_ERROR
         client.save_board_views.assert_not_called()
 
-    def test_refuses_a_key(self, runner: CliRunner, client: MagicMock) -> None:
-        result = _invoke(
+    def test_sends_the_request_for_a_key(self, runner: CliRunner, client: MagicMock) -> None:
+        client.save_board_views.return_value = []
+        _invoke(
             runner,
             client,
             ["board", "view", "save", BOARD, "-f", "-", "--if-match", '"1"', "--json"],
             person=False,
             stdin=self.VIEWS,
         )
-        assert result.exit_code == EXIT_NOT_AUTHENTICATED
-        client.save_board_views.assert_not_called()
+        client.save_board_views.assert_called_once()
 
     def test_a_stale_etag_is_reported(self, runner: CliRunner, client: MagicMock) -> None:
         client.save_board_views.side_effect = APIError(412, "Stale.", code="precondition_failed")
@@ -612,7 +611,7 @@ def test_a_client_side_dry_run_never_treats_ids_as_markup() -> None:
     client: MagicMock = MagicMock(spec=DailyBotClient)
     with (
         patch("dailybot_cli.commands.board.require_auth", return_value=client),
-        patch("dailybot_cli.commands.board.get_token", return_value="tok"),
+        patch("dailybot_cli.commands.board.get_person_token", return_value="tok"),
     ):
         result = CliRunner().invoke(
             cli, ["board", "member", "remove", "[bold]b[/bold]", "[red]u", "--dry-run"]

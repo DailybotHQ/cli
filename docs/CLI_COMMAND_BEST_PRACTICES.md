@@ -221,7 +221,7 @@ new command must too:
   `tests/tasks_ergonomics_sweep_test.py` fails the suite otherwise.
 - Send an `Idempotency-Key` only where the contract accepts one (`_tasks_write(idempotent=True)`)
   and add the door to the posture table in `tests/tasks_coverage_test.py`.
-- Pins (favorites) go through `_favorites.star` / `unstar`; they are person-only.
+- Pins (favorites) go through `_favorites.star` / `unstar`; they need a person (a login or a personal API key), and the server refuses an agent key.
 
 ### File-or-flag-or-interactive input
 

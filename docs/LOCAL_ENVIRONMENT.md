@@ -186,4 +186,63 @@ branch). The image clones that repo into `~/.config/nvim` and runs
 
 ---
 
-## 5. Ports
+## 5. Dual CLI session (production + local testing)
+
+The CLI in this container can stay **logged into production** (agent reports,
+releases) while you **switch** into local org API keys for Tasks tests. Nothing
+replaces `dailybot env use` — testing profiles live in the same gitignored
+`.dailybot/env.json` as any live profiles you already had.
+
+Full spec: [`CONFIGURATION.md` § Dual session](CONFIGURATION.md#dual-session--production-default--testing-profiles).
+
+| You want | Command |
+| --- | --- |
+| Production (OTP / `agents.json`) | `dailybot env off` then normal `dailybot …` |
+| Local admin / Emma / … | `dailybot env use local-8000` (or `local-emma`, …) |
+| See all profiles | `dailybot env list` (column **Kind**: `live` or `testing`) |
+| Back to production | `dailybot env off` (profiles stay on disk) |
+| One-shot local, leave prod default | `tmp/bin/dailybot-local [profile] <cmd>` |
+
+Add a testing profile (inferred `kind: testing` from a local `--api-url`):
+
+```bash
+dailybot env add --name local-emma --key sk_xxx \
+  --api-url http://host.docker.internal:8000 --app-url http://host.docker.internal:8090
+```
+
+Add a live profile the same way as before (`--kind live` if you want the label explicit):
+
+```bash
+dailybot env add --name live --key sk_live_yyy --kind live
+dailybot env use live
+```
+
+Do not `dailybot login` while a testing profile is active — OTP would hit the local API.
+
+**Before any agent report or release**, confirm you are on production:
+
+```bash
+dailybot env off
+dailybot env show        # must say "env.json is disabled"
+dailybot agent update --name "Claude Code" "…"
+```
+
+**Testing as several local people** (for example an admin and members on
+different teams, to check that a private project stays not-found for anyone
+not invited): set a trap first so the file ends disabled even if a step fails,
+then switch per person.
+
+```bash
+trap 'dailybot env off >/dev/null' EXIT
+for p in local-admin local-member-a local-member-b; do
+  dailybot env on >/dev/null && dailybot env use "$p" >/dev/null
+  dailybot team list --json      # server-scoped: each person sees only their teams
+done
+```
+
+Visibility is server-scoped by membership. A private project, board, or task
+that the person was not invited to returns not-found (exit 5), never
+"forbidden". Do not add client-side filtering to make a test pass. A
+user-bound key can still be refused on structure and membership writes where
+a signed-in session is accepted; record that as a failing case rather than
+working around it with `dailybot login` against the local API.

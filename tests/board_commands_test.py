@@ -31,7 +31,7 @@ def _invoke(runner: CliRunner, client: MagicMock, args: list[str]) -> Any:
     # refuse an organization API key before any request.
     with (
         patch("dailybot_cli.commands.board.require_auth", return_value=client),
-        patch("dailybot_cli.commands.board.get_token", return_value="tok"),
+        patch("dailybot_cli.commands.board.get_person_token", return_value="tok"),
     ):
         return runner.invoke(cli, args)
 
@@ -144,7 +144,7 @@ def _invoke_auth(runner: CliRunner, client: MagicMock, args: list[str], auth: st
     token: str | None = None if auth == "api_key" else "tok"
     with (
         patch("dailybot_cli.commands.board.require_auth", return_value=client),
-        patch("dailybot_cli.commands.board.get_token", return_value=token),
+        patch("dailybot_cli.commands.board.get_person_token", return_value=token),
     ):
         return runner.invoke(cli, args)
 

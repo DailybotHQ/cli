@@ -30,7 +30,7 @@ def test_signed_in_tasks_admin_refusal_does_not_ask_for_admin_grant() -> None:
         code="insufficient_scope",
         extra={"required_scope": "tasks:admin"},
     )
-    with patch("dailybot_cli.commands.public_api_helpers.get_token", return_value="tok"):
+    with patch("dailybot_cli.commands.public_api_helpers.get_person_token", return_value="tok"):
         message: str = resolve_error_message(exc)
     lower: str = message.lower()
     assert "guest" in lower
@@ -49,7 +49,7 @@ def test_key_tasks_admin_refusal_still_blames_the_key() -> None:
         code="insufficient_scope",
         extra={"required_scope": "tasks:admin"},
     )
-    with patch("dailybot_cli.commands.public_api_helpers.get_token", return_value=None):
+    with patch("dailybot_cli.commands.public_api_helpers.get_person_token", return_value=None):
         message: str = resolve_error_message(exc)
     lower: str = message.lower()
     assert "api key" in lower
@@ -85,7 +85,7 @@ def test_project_create_as_person_reaches_the_server() -> None:
     }
     with (
         patch("dailybot_cli.commands.project.require_auth", return_value=client),
-        patch("dailybot_cli.commands.project.get_token", return_value="tok"),
+        patch("dailybot_cli.commands.project.get_person_token", return_value="tok"),
     ):
         result: Any = CliRunner().invoke(cli, ["project", "create", "--name", "Open Org", "--json"])
     assert result.exit_code == 0, result.output
@@ -101,7 +101,7 @@ def test_goal_create_as_person_reaches_the_server() -> None:
     with (
         patch("dailybot_cli.commands.goal.require_auth", return_value=client),
         # goal reuses project._require_person_for_admin, which reads project.get_token
-        patch("dailybot_cli.commands.project.get_token", return_value="tok"),
+        patch("dailybot_cli.commands.project.get_person_token", return_value="tok"),
     ):
         result: Any = CliRunner().invoke(
             cli,
@@ -130,7 +130,7 @@ def test_board_create_as_person_reaches_the_server() -> None:
     }
     with (
         patch("dailybot_cli.commands.board.require_auth", return_value=client),
-        patch("dailybot_cli.commands.board.get_token", return_value="tok"),
+        patch("dailybot_cli.commands.board.get_person_token", return_value="tok"),
     ):
         result: Any = CliRunner().invoke(
             cli,
@@ -154,7 +154,7 @@ def test_key_still_refused_on_project_create() -> None:
     client: MagicMock = MagicMock(spec=DailyBotClient)
     with (
         patch("dailybot_cli.commands.project.require_auth", return_value=client),
-        patch("dailybot_cli.commands.project.get_token", return_value=None),
+        patch("dailybot_cli.commands.project.get_person_token", return_value=None),
     ):
         result: Any = CliRunner().invoke(cli, ["project", "create", "--name", "X", "--json"])
     assert result.exit_code == EXIT_PERMISSION_DENIED
