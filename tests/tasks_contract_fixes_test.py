@@ -473,3 +473,27 @@ class TestGoalGetSendsNoInclude:
         output: str = runner.invoke(cli, ["goal", "get", "--help"]).output
         options: str = output.split("Options:", 1)[1]
         assert "--include" not in options
+
+
+class TestTaskLabelsBatchWire:
+    """The labels batch door takes `label_uuids`; `labels` was silently ignored (400)."""
+
+    def test_the_body_carries_label_uuids(self) -> None:
+        from unittest.mock import MagicMock, patch
+
+        import httpx
+
+        from dailybot_cli.api_client import DailyBotClient
+
+        response: MagicMock = MagicMock(spec=httpx.Response)
+        response.status_code = 200
+        response.json.return_value = {"labels": []}
+        response.headers = {}
+        with patch("httpx.post", return_value=response) as post:
+            DailyBotClient(api_url="http://test-api.example.com", token="t").batch_task_labels(
+                "ENG-1", mode="add", labels=["l-1", "l-2"]
+            )
+        body = post.call_args.kwargs["json"]
+        assert body["label_uuids"] == ["l-1", "l-2"]
+        assert body["mode"] == "add"
+        assert "labels" not in body
