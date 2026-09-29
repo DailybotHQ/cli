@@ -1107,7 +1107,7 @@ _OUTPUT_OPTION = click.option(
 def project_milestone_attach(
     project_uuid: str, milestone_uuid: str, file_path: Path, caption: str | None, json_mode: bool
 ) -> None:
-    """Attach a file to a milestone. Needs a person: `dailybot login` or a personal API key.
+    """Attach a file to a milestone.
 
     \b
     One request, up to 5 MiB. Reference it in the milestone description with

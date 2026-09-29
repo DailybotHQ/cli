@@ -968,7 +968,7 @@ Every Tasks command in this release (130), generated from the CLI's own command 
 | `dailybot project member add PROJECT` | Invite a person or a whole team into a project. | yes |
 | `dailybot project member remove PROJECT USER` | Remove someone from a project. | yes |
 | `dailybot project members PROJECT` | List who can see a project — people and whole teams. | yes |
-| `dailybot project milestone-attach PROJECT MILESTONE FILE` | Attach a file to a milestone. | yes |
+| `dailybot project milestone-attach PROJECT MILESTONE FILE` | Attach a file to a milestone. |  |
 | `dailybot project milestone-attachment delete PROJECT MILESTONE ATTACHMENT` | Remove an attachment from a milestone. This cannot be undone. |  |
 | `dailybot project milestone-attachment get PROJECT MILESTONE ATTACHMENT` | Download a milestone's attachment to a file. Never overwrites without --force. |  |
 | `dailybot project milestone-attachment rename PROJECT MILESTONE ATTACHMENT FILENAME` | Rename a milestone's attachment (1 to 255 characters). |  |
