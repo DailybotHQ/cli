@@ -226,7 +226,7 @@ def goal_create(
 def goal_archive(
     goal_uuid: str, dry_run: bool, assume_yes: bool, idempotency_key: str | None, json_mode: bool
 ) -> None:
-    """Archive a goal. Its projects are NOT archived with it.
+    """Archive a goal. Its projects are NOT archived with it. Needs a person: `dailybot login` or a personal API key.
 
     \b
     Examples:
@@ -291,7 +291,7 @@ def goal_update(
     status: str | None,
     json_mode: bool,
 ) -> None:
-    """Change a goal, or declare its status.
+    """Change a goal, or declare its status. Needs a person: `dailybot login` or a personal API key.
 
     \b
     A goal's status is a person's judgement, separate from its derived progress:
@@ -335,7 +335,7 @@ def goal_update(
 @click.argument("goal_uuid", metavar="GOAL")
 @click.option("--json", "json_mode", is_flag=True, help="Emit machine-readable JSON to stdout.")
 def goal_restore(goal_uuid: str, json_mode: bool) -> None:
-    """Bring an archived goal back. A live goal is a no-op.
+    """Bring an archived goal back. A live goal is a no-op. Needs a person: `dailybot login` or a personal API key.
 
     \b
     If another live goal took its name meanwhile, the server refuses
@@ -362,7 +362,7 @@ def goal_restore(goal_uuid: str, json_mode: bool) -> None:
 @click.argument("project_uuid", metavar="PROJECT")
 @click.option("--json", "json_mode", is_flag=True, help="Emit machine-readable JSON to stdout.")
 def goal_link(goal_uuid: str, project_uuid: str, json_mode: bool) -> None:
-    """Make a project count toward a goal.
+    """Make a project count toward a goal. Needs a person: `dailybot login` or a personal API key.
 
     \b
     Progress rolls up only along task → board → project → goal, so this link is
@@ -393,7 +393,7 @@ def goal_link(goal_uuid: str, project_uuid: str, json_mode: bool) -> None:
 def goal_unlink(
     goal_uuid: str, project_uuid: str, dry_run: bool, assume_yes: bool, json_mode: bool
 ) -> None:
-    """Stop a project counting toward a goal. The project itself is untouched.
+    """Stop a project counting toward a goal. The project itself is untouched. Needs a person: `dailybot login` or a personal API key.
 
     \b
     Examples:

@@ -320,7 +320,7 @@ def board_labels(board_uuid: str, json_mode: bool) -> None:
 )
 @click.option("--json", "json_mode", is_flag=True, help="Emit machine-readable JSON to stdout.")
 def board_views(board_uuid: str, etag_only: bool, json_mode: bool) -> None:
-    """List your saved views on a board, with the ETag a save needs.
+    """List your saved views on a board, with the ETag a save needs. Needs a person: `dailybot login` or a personal API key.
 
     \b
     Examples:
@@ -470,7 +470,7 @@ def board_state_create(
     idempotency_key: str | None,
     json_mode: bool,
 ) -> None:
-    """Add a column to a board.
+    """Add a column to a board. Needs a person: `dailybot login` or a personal API key.
 
     \b
     Examples:
@@ -518,7 +518,7 @@ def board_state_update(
     position: int | None,
     json_mode: bool,
 ) -> None:
-    """Rename, recolor or move one column. Its category cannot change.
+    """Rename, recolor or move one column. Its category cannot change. Needs a person: `dailybot login` or a personal API key.
 
     \b
     Examples:
@@ -563,7 +563,7 @@ def board_state_archive(
     assume_yes: bool,
     json_mode: bool,
 ) -> None:
-    """Retire a column. Reversible with `board state restore`.
+    """Retire a column. Reversible with `board state restore`. Needs a person: `dailybot login` or a personal API key.
 
     \b
     A column that still holds live tasks is refused (`state_in_use`) unless you
@@ -602,7 +602,7 @@ def board_state_archive(
 @click.argument("state_uuid", metavar="STATE")
 @click.option("--json", "json_mode", is_flag=True, help="Emit machine-readable JSON to stdout.")
 def board_state_restore(board_uuid: str, state_uuid: str, json_mode: bool) -> None:
-    """Bring a retired column back, after the live ones. A live column is a no-op.
+    """Bring a retired column back, after the live ones. A live column is a no-op. Needs a person: `dailybot login` or a personal API key.
 
     \b
     Examples:
@@ -625,7 +625,7 @@ def board_state_restore(board_uuid: str, state_uuid: str, json_mode: bool) -> No
 @click.argument("state_uuids", metavar="STATE...", nargs=-1, required=True)
 @click.option("--json", "json_mode", is_flag=True, help="Emit machine-readable JSON to stdout.")
 def board_state_reorder(board_uuid: str, state_uuids: tuple[str, ...], json_mode: bool) -> None:
-    """Set the left-to-right order of every live column in one call.
+    """Set the left-to-right order of every live column in one call. Needs a person: `dailybot login` or a personal API key.
 
     \b
     List EVERY live column exactly once. A partial list, an unknown uuid or a
@@ -1013,7 +1013,7 @@ def board_update(
     idempotency_key: str | None,
     json_mode: bool,
 ) -> None:
-    """Change a board's name, key, visibility or settings.
+    """Change a board's name, key, visibility or settings. Needs a person: `dailybot login` or a personal API key.
 
     \b
     Only the fields you pass are sent. Renaming the key retires the old one, which
@@ -1064,7 +1064,7 @@ def board_update(
 def board_archive(
     board_uuid: str, dry_run: bool, assume_yes: bool, idempotency_key: str | None, json_mode: bool
 ) -> None:
-    """Archive a board. Every live task on it is cascade-archived.
+    """Archive a board. Every live task on it is cascade-archived. Needs a person: `dailybot login` or a personal API key.
 
     \b
     Restoring the board does NOT restore those tasks — they stay archived and are
@@ -1104,7 +1104,7 @@ def board_archive(
 @click.option("--idempotency-key", default=None, help="Reuse a key to make a retry safe.")
 @click.option("--json", "json_mode", is_flag=True, help="Emit machine-readable JSON to stdout.")
 def board_restore(board_uuid: str, idempotency_key: str | None, json_mode: bool) -> None:
-    """Restore an archived board.
+    """Restore an archived board. Needs a person: `dailybot login` or a personal API key.
 
     \b
     Tasks that cascade-archived with it stay archived. Restore them with

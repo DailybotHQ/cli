@@ -473,7 +473,7 @@ def project_create(
 def project_archive(
     project_uuid: str, dry_run: bool, assume_yes: bool, idempotency_key: str | None, json_mode: bool
 ) -> None:
-    """Archive a project.
+    """Archive a project. Needs a person: `dailybot login` or a personal API key.
 
     \b
     Examples:
@@ -519,7 +519,7 @@ def project_update(
     idempotency_key: str | None,
     json_mode: bool,
 ) -> None:
-    """Change a project's name, lead, health, dates or visibility.
+    """Change a project's name, lead, health, dates or visibility. Needs a person: `dailybot login` or a personal API key.
 
     \b
     Only the fields you pass are sent. Any non-guest member can update, with
@@ -558,7 +558,7 @@ def project_update(
 @click.option("--idempotency-key", default=None, help="Reuse a key to make a retry safe.")
 @click.option("--json", "json_mode", is_flag=True, help="Emit machine-readable JSON to stdout.")
 def project_restore(project_uuid: str, idempotency_key: str | None, json_mode: bool) -> None:
-    """Bring an archived project back. A live project is a no-op.
+    """Bring an archived project back. A live project is a no-op. Needs a person: `dailybot login` or a personal API key.
 
     \b
     Boards and tasks that were archived with it stay archived: restore them with
@@ -722,7 +722,7 @@ def project_member_remove(
 )
 @click.option("--json", "json_mode", is_flag=True, help="Emit machine-readable JSON to stdout.")
 def project_views(project_uuid: str, etag_only: bool, json_mode: bool) -> None:
-    """List your saved views on a project, with the ETag a save needs.
+    """List your saved views on a project, with the ETag a save needs. Needs a person: `dailybot login` or a personal API key.
 
     \b
     Examples:
