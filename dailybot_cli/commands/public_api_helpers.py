@@ -58,10 +58,11 @@ ERROR_CODE_MESSAGES: dict[str, str] = {
     #
     # Agent attribution (--agent-name / DAILYBOT_AGENT_NAME)
     "invalid_agent_attribution": (
-        "The agent name was refused. It must be 128 characters or fewer, and it "
-        "only works with a credential that belongs to a person (a login session "
-        "or a personal API key), not an agent key. Shorten --agent-name, or drop "
-        "it when using an agent key."
+        "The agent name was refused. Use a plain name of 128 characters or fewer: "
+        "letters, numbers, spaces and . - _ ( ) ' # + / & , : only. The name must "
+        "not belong to a deactivated agent, and it only works with a credential that "
+        "belongs to a person (a login session or a personal API key), not an agent "
+        "key. Fix --agent-name / DAILYBOT_AGENT_NAME, or drop it."
     ),
     # Auth taxonomy
     "credential_absent": (
