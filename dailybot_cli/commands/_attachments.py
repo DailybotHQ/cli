@@ -1,9 +1,10 @@
-"""Shared attachment flows for tasks, comments, projects and goals.
+"""Shared attachment flows for tasks, comments, projects, goals, milestones and updates.
 
-Four parents own an `attachments/` collection with the same row shape, so the
+Six parents own an `attachments/` collection with the same row shape, so the
 commands share one implementation of each step: read the local file under a
 hard limit, upload, list, download to a path that is never overwritten by
-surprise, and delete with a stated consequence. Each command supplies only the
+surprise, rename within the server's bounds, and delete with a stated
+consequence. Each command supplies only the
 client call for its parent.
 """
 

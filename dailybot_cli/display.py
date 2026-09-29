@@ -2099,8 +2099,11 @@ def print_project_updates(updates: list[dict[str, Any]]) -> None:
         if update.get("edited_at"):
             meta.append("edited")
         attachments: Any = update.get("attachments")
+        count: Any = update.get("attachment_count")
         if isinstance(attachments, list) and attachments:
             meta.append(f"{len(attachments)} file(s)")
+        elif isinstance(count, int) and count > 0:
+            meta.append(f"{count} file(s)")
         console.print(f"[dim]{' · '.join(m for m in meta if m)}[/dim] {who}")
         console.print(f"  {present_untrusted(update.get('body'), limit=400)}")
         if update.get("uuid"):

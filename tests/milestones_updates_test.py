@@ -113,6 +113,16 @@ class TestCommands:
         assert result.exit_code == 0
         client.delete_project_update.assert_not_called()
 
+    def test_delete_success_says_the_update_was_deleted(self) -> None:
+        client: MagicMock = MagicMock(spec=DailyBotClient)
+        result = _invoke(["project", "update-delete", P, U, "--yes"], client)
+        assert result.exit_code == 0, result.output
+        client.delete_project_update.assert_called_once_with(P, U)
+        assert "Project update deleted." in result.output
+        assert "Attachment" not in result.output
+        result = _invoke(["project", "update-delete", P, U, "--yes", "--json"], client)
+        assert json.loads(result.output) == {"deleted": True, "project": P, "update": U}
+
     def test_milestone_attach_uploads(self, tmp_path: Path) -> None:
         f: Path = tmp_path / "spec.txt"
         f.write_text("x")
@@ -121,6 +131,15 @@ class TestCommands:
         result = _invoke(["project", "milestone-attach", P, M, str(f), "--json"], client)
         assert result.exit_code == 0, result.output
         assert client.upload_milestone_attachment.call_args.args == (P, M)
+
+
+class TestFileCountFallback:
+    def test_feed_rows_with_only_a_count_still_show_files(self) -> None:
+        from dailybot_cli.display import console, print_project_updates
+
+        with console.capture() as cap:
+            print_project_updates([{"uuid": U, "body": "x", "attachment_count": 2}])
+        assert "2 file(s)" in cap.get()
 
 
 class TestRendering:

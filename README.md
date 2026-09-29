@@ -954,7 +954,7 @@ humans who own them.
 | `dailybot project updates [<project>]` | Batched update digest, or one project's feed |
 | `dailybot project update-post <uuid> <body>` | **Post a project update** — how the team sees what was done (`--health`; sends an idempotency key) |
 | `dailybot project update-get\|update-edit\|update-delete <project> <update>` | Read one update (author, `via <agent>`, health, files); edit its text or health (author only); delete it (author or org admin; `--dry-run`) |
-| `dailybot project update-attach\|update-attachments <project> <update>` · `update-attachment get\|rename\|delete` | Files on an update (≤5 MiB, author only). For an inline image, attach it, then `update-edit` the body with `attachment:<uuid>` |
+| `dailybot project update-attach\|update-attachments <project> <update>` · `update-attachment get\|rename\|delete` | Files on an update (≤5 MiB). Attach and rename: author only; delete: author or an organization admin. For an inline image, attach it, then `update-edit` the body with `attachment:<uuid>` |
 | `dailybot project milestones [<uuid>]` | List milestones |
 | `dailybot project milestone-complete <p> <m>` | Complete a milestone. **Its open tasks stay open** |
 | `dailybot project milestone-reopen <p> <m>` | Reopen a milestone |

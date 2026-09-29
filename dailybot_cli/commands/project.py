@@ -1346,15 +1346,23 @@ def project_update_delete(
       dailybot project update-delete <project-uuid> <update-uuid> --dry-run
       dailybot project update-delete <project-uuid> <update-uuid> --yes
     """
-    run_delete(
-        lambda client: client.delete_project_update(project_uuid, update_uuid),
+    if not confirm_without_preview(
         f"delete project update {update_uuid} and its attachments.",
-        receipt={"project": project_uuid, "update": update_uuid},
-        dry_run=dry_run,
         assume_yes=assume_yes,
+        dry_run=dry_run,
         json_mode=json_mode,
-        require_auth=require_auth,
-    )
+    ):
+        return
+    client = require_auth()
+    try:
+        with console.status("Deleting the update..."):
+            client.delete_project_update(project_uuid, update_uuid)
+    except APIError as exc:
+        exit_for_tasks_error(exc, json_mode)
+    if json_mode:
+        emit_json({"deleted": True, "project": project_uuid, "update": update_uuid})
+        return
+    print_success("Project update deleted.")
 
 
 @project.command("update-attach")
@@ -1494,7 +1502,7 @@ def project_update_attachment_delete(
     assume_yes: bool,
     json_mode: bool,
 ) -> None:
-    """Remove an attachment from a project update (author, or an org admin). Cannot be undone.
+    """Remove an attachment from a project update. Its author, or an organization admin. Cannot be undone.
 
     \b
     Examples:
