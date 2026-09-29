@@ -172,6 +172,74 @@ def tasks() -> None:
 mark_beta(tasks)
 
 
+@tasks.command("recents")
+@click.option("--json", "json_mode", is_flag=True, help="Emit machine-readable JSON to stdout.")
+def tasks_recents(json_mode: bool) -> None:
+    """List the boards you opened most recently. Needs a person: `dailybot login` or a personal API key.
+
+    \b
+    Examples:
+      dailybot tasks recents
+      dailybot tasks recents --json
+    """
+    client = require_auth()
+    try:
+        with console.status("Reading your recent boards..."):
+            data: Any = client.list_recent_boards()
+    except APIError as exc:
+        exit_for_tasks_error(exc, json_mode)
+    if json_mode:
+        emit_json(data)
+        return
+    print_tasks_rows(
+        "Recent boards",
+        rows_of(data),
+        [
+            ("Board", "name", False),
+            ("Key", "key", True),
+            ("Visited", "visited_at", True),
+            ("UUID", "board", True),
+        ],
+        empty="No recent boards.",
+    )
+
+
+@tasks.command("attachments-resolve")
+@click.argument("attachment_uuids", metavar="ATTACHMENT...", nargs=-1, required=True)
+@click.option("--json", "json_mode", is_flag=True, help="Emit machine-readable JSON to stdout.")
+def tasks_attachments_resolve(attachment_uuids: tuple[str, ...], json_mode: bool) -> None:
+    """Current download URLs for `attachment:<uuid>` references in descriptions and bodies.
+
+    \b
+    Attachments you cannot see, or that do not exist, are simply absent from the
+    answer. A returned `url` can be short-lived: use it, never store it.
+
+    \b
+    Examples:
+      dailybot tasks attachments-resolve <attachment-uuid> <attachment-uuid> --json
+    """
+    client = require_auth()
+    try:
+        with console.status("Resolving attachments..."):
+            data: dict[str, Any] = client.resolve_attachments(list(attachment_uuids))
+    except APIError as exc:
+        exit_for_tasks_error(exc, json_mode)
+    if json_mode:
+        emit_json(data)
+        return
+    resolved: Any = data.get("resolved") or {}
+    rows: list[dict[str, Any]] = [
+        {"uuid": key, **(value if isinstance(value, dict) else {})}
+        for key, value in resolved.items()
+    ]
+    print_tasks_rows(
+        "Resolved attachments",
+        rows,
+        [("UUID", "uuid", True), ("URL", "url", True), ("Expires", "url_expires_at", True)],
+        empty="None of those attachments are visible to you.",
+    )
+
+
 @tasks.command("status")
 @click.option("--json", "json_mode", is_flag=True, help="Emit machine-readable JSON to stdout.")
 def tasks_status(json_mode: bool) -> None:

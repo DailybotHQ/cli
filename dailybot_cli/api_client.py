@@ -374,6 +374,36 @@ def clean_agent_name(name: str | None) -> str | None:
     return _AGENT_NAME_SPACE_RE.sub(" ", text).strip() or None
 
 
+# Reactions take emoji only: 1-8 code points from the pictographic and symbol
+# blocks, plus the variation selector and zero-width joiner that build sequences.
+REACTION_EMOJI_MAX_CODEPOINTS: int = 8
+_REACTION_RANGES: tuple[tuple[int, int], ...] = ((0x1F300, 0x1FAFF), (0x2600, 0x27BF))
+_REACTION_JOINERS: frozenset[int] = frozenset({0xFE0F, 0x200D})
+REACTION_INVALID_EMOJI_CODE: str = "reaction_invalid_emoji"
+
+
+def is_reaction_emoji(value: str) -> bool:
+    """True when `value` is an emoji the reaction doors accept (checked before sending)."""
+    points: list[int] = [ord(ch) for ch in value]
+    if not points or len(points) > REACTION_EMOJI_MAX_CODEPOINTS:
+        return False
+    if all(p in _REACTION_JOINERS for p in points):
+        return False
+    return all(
+        p in _REACTION_JOINERS or any(lo <= p <= hi for lo, hi in _REACTION_RANGES) for p in points
+    )
+
+
+def _checked_emoji(value: str) -> str:
+    if not is_reaction_emoji(value):
+        raise APIError(
+            400,
+            "A reaction must be one emoji (no text or :shortcodes:).",
+            code=REACTION_INVALID_EMOJI_CODE,
+        )
+    return value
+
+
 def _path_segment(value: Any) -> str:
     """One validated path segment: a key, a uuid or a slug — never `/`, `..`, `?`, `#`."""
     text: str = str(value)
@@ -2676,6 +2706,46 @@ class DailyBotClient:
         }
         return self._tasks_write(
             "POST", f"boards/{_path_segment(board_uuid)}/labels/", json=payload
+        )
+
+    def update_tasks_label(self, label_uuid: str, **fields: Any) -> dict[str, Any]:
+        """PATCH /v1/tasks/labels/<uuid>/ — name, color, description, is_archived."""
+        payload: dict[str, Any] = {k: v for k, v in fields.items() if v is not None}
+        return self._tasks_write("PATCH", f"labels/{_path_segment(label_uuid)}/", json=payload)
+
+    def delete_tasks_label(self, label_uuid: str) -> Any:
+        """DELETE /v1/tasks/labels/<uuid>/ — refused with `label_in_use` while tasks use it."""
+        return self._tasks_write("DELETE", f"labels/{_path_segment(label_uuid)}/")
+
+    def visit_board(self, board_uuid: str) -> dict[str, Any]:
+        """POST /v1/tasks/boards/<uuid>/visit/ — record that you opened it (feeds recents)."""
+        return self._tasks_write("POST", f"boards/{_path_segment(board_uuid)}/visit/")
+
+    def list_recent_boards(self) -> dict[str, Any]:
+        """GET /v1/tasks/me/recents/ — the boards you visited most recently."""
+        return self._tasks_read("me/recents/")
+
+    def resolve_attachments(self, attachment_uuids: list[str]) -> dict[str, Any]:
+        """GET /v1/tasks/attachments/resolve/?ids= — current URLs for `attachment:<uuid>` refs."""
+        ids: str = ",".join(_path_segment(u) for u in attachment_uuids)
+        return self._tasks_read("attachments/resolve/", params={"ids": ids})
+
+    def add_comment_reaction(self, task_uuid: str, comment_uuid: str, emoji: str) -> Any:
+        """POST …/comments/<c>/reactions/ — idempotent; answers with the whole comment."""
+        return self._tasks_write(
+            "POST",
+            f"tasks/{_path_segment(task_uuid)}/comments/{_path_segment(comment_uuid)}/reactions/",
+            json={"emoji": _checked_emoji(emoji)},
+        )
+
+    def remove_comment_reaction(self, task_uuid: str, comment_uuid: str, emoji: str) -> Any:
+        """DELETE …/reactions/<emoji>/ — the emoji travels percent-encoded in the path."""
+        base: str = self._tasks_url(
+            f"tasks/{_path_segment(task_uuid)}/comments/{_path_segment(comment_uuid)}/reactions/"
+        )
+        url: str = f"{base}{quote(_checked_emoji(emoji), safe='')}/"
+        return self._handle_response(
+            self._request("DELETE", url, extra_headers=self._agent_name_header() or None)
         )
 
     def get_board(self, board_uuid: str) -> dict[str, Any]:

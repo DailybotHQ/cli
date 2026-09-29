@@ -25,6 +25,7 @@ from dailybot_cli.api_client import (
     APIError,
     PaginatedResult,
     as_query_datetime,
+    is_reaction_emoji,
 )
 from dailybot_cli.commands._attachments import (
     MIB,
@@ -1191,6 +1192,66 @@ def task_comment_edit(task_uuid: str, comment_uuid: str, body: str, json_mode: b
         emit_json(data)
         return
     report_write(data, "Comment edited")
+
+
+@task.command("comment-react")
+@click.argument("task_uuid", metavar="TASK")
+@click.argument("comment_uuid", metavar="COMMENT")
+@click.argument("emoji")
+@click.option("--json", "json_mode", is_flag=True, help="Emit machine-readable JSON to stdout.")
+def task_comment_react(task_uuid: str, comment_uuid: str, emoji: str, json_mode: bool) -> None:
+    """React to a comment with one emoji. Needs a person: `dailybot login` or a personal API key.
+
+    \b
+    Emoji only (no text or :shortcodes:). Reacting twice with the same emoji is
+    safe: nothing changes.
+
+    \b
+    Examples:
+      dailybot task comment-react ENG-142 <comment-uuid> 👍
+      dailybot task comment-react ENG-142 <comment-uuid> 🚀 --json
+    """
+    if not is_reaction_emoji(emoji):
+        raise click.UsageError("A reaction must be one emoji, e.g. 👍 (no text or :shortcodes:).")
+    client = require_auth()
+    try:
+        with console.status("Reacting..."):
+            data: Any = client.add_comment_reaction(task_uuid, comment_uuid, emoji)
+    except APIError as exc:
+        exit_for_tasks_error(exc, json_mode)
+    if json_mode:
+        emit_json(data)
+        return
+    print_success(f"Reacted {emoji}.")
+
+
+@task.command("comment-unreact")
+@click.argument("task_uuid", metavar="TASK")
+@click.argument("comment_uuid", metavar="COMMENT")
+@click.argument("emoji")
+@click.option("--json", "json_mode", is_flag=True, help="Emit machine-readable JSON to stdout.")
+def task_comment_unreact(task_uuid: str, comment_uuid: str, emoji: str, json_mode: bool) -> None:
+    """Remove your emoji reaction from a comment. Needs a person: `dailybot login` or a personal API key.
+
+    \b
+    Safe to repeat: removing a reaction you did not leave changes nothing.
+
+    \b
+    Examples:
+      dailybot task comment-unreact ENG-142 <comment-uuid> 👍
+    """
+    if not is_reaction_emoji(emoji):
+        raise click.UsageError("A reaction must be one emoji, e.g. 👍 (no text or :shortcodes:).")
+    client = require_auth()
+    try:
+        with console.status("Removing the reaction..."):
+            client.remove_comment_reaction(task_uuid, comment_uuid, emoji)
+    except APIError as exc:
+        exit_for_tasks_error(exc, json_mode)
+    if json_mode:
+        emit_json({"removed": True, "task": task_uuid, "comment": comment_uuid, "emoji": emoji})
+        return
+    print_success(f"Removed {emoji}.")
 
 
 @task.command("comment-delete")

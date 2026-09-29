@@ -811,6 +811,93 @@ def board_label_create(
     report_write(data, f"Created label {named(data, name)}")
 
 
+@board_label.command("update")
+@click.argument("label_uuid", metavar="LABEL")
+@click.option("-n", "--name", default=None, help="New name (max 64).")
+@click.option("--color", default=None, help="New color, a #rrggbb hex (empty clears it).")
+@click.option("-d", "--description", default=None, help="New description (max 255).")
+@click.option("--archive/--unarchive", "archive", default=None, help="Archive or bring back.")
+@click.option("--json", "json_mode", is_flag=True, help="Emit machine-readable JSON to stdout.")
+def board_label_update(
+    label_uuid: str,
+    name: str | None,
+    color: str | None,
+    description: str | None,
+    archive: bool | None,
+    json_mode: bool,
+) -> None:
+    """Edit or archive an organization label. Needs a person: `dailybot login` or a personal API key.
+
+    \b
+    Its creator or an elevated user (org admin or manager, or a team admin) can.
+    Archive a label that tasks still use instead of deleting it.
+
+    \b
+    Examples:
+      dailybot board label update <label-uuid> -n "needs-design" --color "#8b5cf6"
+      dailybot board label update <label-uuid> --archive --json
+    """
+    fields: dict[str, Any] = {
+        k: v
+        for k, v in (
+            ("name", name),
+            ("color", color),
+            ("description", description),
+            ("is_archived", archive),
+        )
+        if v is not None
+    }
+    if not fields:
+        raise click.UsageError("Pass at least one change. Nothing was sent.")
+    client = require_auth()
+    try:
+        with console.status("Updating the label..."):
+            data: dict[str, Any] = client.update_tasks_label(label_uuid, **fields)
+    except APIError as exc:
+        exit_for_tasks_error(exc, json_mode)
+    if json_mode:
+        emit_json(data)
+        return
+    report_write(data, f"Updated label {named(data, label_uuid)}")
+
+
+@board_label.command("delete")
+@click.argument("label_uuid", metavar="LABEL")
+@click.option("--dry-run", is_flag=True, help="Say what would happen and send nothing.")
+@click.option("-y", "--yes", "assume_yes", is_flag=True, help="Skip the confirmation.")
+@click.option("--json", "json_mode", is_flag=True, help="Emit machine-readable JSON to stdout.")
+def board_label_delete(label_uuid: str, dry_run: bool, assume_yes: bool, json_mode: bool) -> None:
+    """Delete an organization label for good. Needs a person: `dailybot login` or a personal API key.
+
+    \b
+    Only an elevated user (org admin or manager, or a team admin) can. A label that
+    tasks still use is refused (`label_in_use`): archive it instead with
+    `board label update <label> --archive`.
+
+    \b
+    Examples:
+      dailybot board label delete <label-uuid> --dry-run
+      dailybot board label delete <label-uuid> --yes
+    """
+    if not confirm_without_preview(
+        f"permanently delete label {label_uuid}.",
+        assume_yes=assume_yes,
+        dry_run=dry_run,
+        json_mode=json_mode,
+    ):
+        return
+    client = require_auth()
+    try:
+        with console.status("Deleting the label..."):
+            client.delete_tasks_label(label_uuid)
+    except APIError as exc:
+        exit_for_tasks_error(exc, json_mode)
+    if json_mode:
+        emit_json({"deleted": True, "label": label_uuid})
+        return
+    print_success("Label deleted.")
+
+
 @board.group("view")
 def board_view() -> None:
     """Save your views of a board. Needs a person: `dailybot login` or a personal API key.
@@ -919,6 +1006,28 @@ def board_snapshot(board_uuid: str, json_mode: bool) -> None:
         emit_json(data)
         return
     print_board_snapshot(data)
+
+
+@board.command("visit")
+@click.argument("board_uuid", metavar="BOARD")
+@click.option("--json", "json_mode", is_flag=True, help="Emit machine-readable JSON to stdout.")
+def board_visit(board_uuid: str, json_mode: bool) -> None:
+    """Record that you opened a board, so it shows in `tasks recents`. Needs a person: `dailybot login` or a personal API key.
+
+    \b
+    Examples:
+      dailybot board visit <board-uuid>
+    """
+    client = require_auth()
+    try:
+        with console.status("Recording the visit..."):
+            data: dict[str, Any] = client.visit_board(board_uuid)
+    except APIError as exc:
+        exit_for_tasks_error(exc, json_mode)
+    if json_mode:
+        emit_json(data)
+        return
+    print_success("Visit recorded.")
 
 
 @board.command("create")
