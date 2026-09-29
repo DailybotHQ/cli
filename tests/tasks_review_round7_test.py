@@ -153,7 +153,7 @@ class TestPreflightExitMatchesTheServer:
         ],
     )
     def test_admin_doors_exit_four(self, runner: CliRunner, argv: list[str], module: str) -> None:
-        with patch(f"dailybot_cli.commands.{module}.get_token", return_value=None):
+        with patch(f"dailybot_cli.commands.{module}.get_token", return_value=None, create=True):
             result = runner.invoke(cli, argv)
         assert result.exit_code == EXIT_PERMISSION_DENIED
 
@@ -171,7 +171,7 @@ class TestPreflightExitMatchesTheServer:
     ) -> None:
         # These answer `actor_required`, which IS a credential problem — `dailybot
         # login` genuinely fixes it, so 3 is the right advice here.
-        with patch(f"dailybot_cli.commands.{module}.get_token", return_value=None):
+        with patch(f"dailybot_cli.commands.{module}.get_token", return_value=None, create=True):
             result = runner.invoke(cli, argv)
         assert result.exit_code == EXIT_NOT_AUTHENTICATED
 

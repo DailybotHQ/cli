@@ -276,10 +276,10 @@ class TestIdempotencyPostureIsTableDriven:
 # the pre-flight must match it or it becomes observable. A person-shaped door
 # answers `actor_required` (a credential problem, 3); a `tasks:admin` door answers
 # `403 insufficient_scope` (a permission verdict, 4).
+# `tasks inbox` / `mine` / `counts` left this table when a personal API key became
+# its person on the API: those requests now go out and the server decides.
 PERSON_ONLY: list[tuple[list[str], str, str, int]] = [
-    (["tasks", "inbox"], "tasks", "tasks", 3),
-    (["tasks", "mine"], "tasks", "tasks", 3),
-    (["tasks", "counts"], "tasks", "tasks", 3),
+    (["task", "mute", "ENG-1"], "task", "task", 3),
     (
         [
             "board",
@@ -333,7 +333,9 @@ class TestRoleMatrixIsTableDriven:
     ) -> None:
         with (
             patch(f"dailybot_cli.commands.{auth_module}.require_auth", return_value=client),
-            patch(f"dailybot_cli.commands.{guard_module}.get_token", return_value=None),
+            patch(
+                f"dailybot_cli.commands.{guard_module}.get_token", return_value=None, create=True
+            ),
         ):
             result = runner.invoke(cli, args)
         assert result.exit_code == expected_exit, f"{args} did not refuse an API key"

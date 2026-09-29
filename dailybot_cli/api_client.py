@@ -7,16 +7,17 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Any
-from urllib.parse import urljoin, urlsplit
+from urllib.parse import quote, urljoin, urlsplit
 
 import httpx
 
 from dailybot_cli.config import (
     API_KEY_SOURCE_ENV_JSON,
+    get_agent_name,
     get_api_key,
     get_api_key_source,
     get_api_url,
-    get_token,
+    get_login_token_for,
 )
 
 _MAX_LIST_PAGES: int = 50  # safety cap for paginated list endpoints
@@ -99,8 +100,33 @@ SAME_ORIGIN_UPLOAD_METHODS: frozenset[str] = frozenset({"PUT", "POST"})
 # BLAST_RADIUS.md records this as THE volume guard for unattended destructive
 # loops — the CLI adds no second ceiling of its own.
 TASKS_BULK_MAX_ITEMS: int = 100
+# Collections the task detail door can embed in one read (first page each).
+TASK_BRIEFING_INCLUDES: tuple[str, ...] = (
+    "relations",
+    "participants",
+    "attachments",
+    "comments",
+    "activity",
+    "children",
+    "comment_count",
+)
 IDEMPOTENCY_KEY_HEADER: str = "Idempotency-Key"
 IDEMPOTENCY_REPLAYED_HEADER: str = "Idempotency-Replayed"
+# The agent that executed a Tasks write on a person's behalf. The person stays
+# the author; the server records the agent as the executor companion. JSON
+# writes carry `agent_name` in the body (canonical); multipart and body-less
+# writes carry the header, percent-encoded UTF-8 (space kept, `%` encoded)
+# because header values reach the server as latin-1. Over the cap is refused,
+# never truncated — the server answers `invalid_agent_attribution` the same way.
+TASKS_AGENT_NAME_HEADER: str = "X-Dailybot-Agent-Name"
+TASKS_AGENT_NAME_BODY_FIELD: str = "agent_name"
+TASKS_AGENT_NAME_MAX_LENGTH: int = 128
+INVALID_AGENT_ATTRIBUTION_CODE: str = "invalid_agent_attribution"
+# Writes whose JSON body carries the name; every other write uses the header.
+_AGENT_NAME_BODY_METHODS: frozenset[str] = frozenset({"POST", "PUT", "PATCH"})
+# C0 controls, DEL and C1 controls: never part of a display name.
+_AGENT_NAME_CONTROL_RE: re.Pattern[str] = re.compile(r"[\x00-\x08\x0b-\x1f\x7f-\x9f]")
+_AGENT_NAME_SPACE_RE: re.Pattern[str] = re.compile(r"\s+")
 # The board delta door keeps a 7-day window; an older cursor is refused forever
 # with `delta_window_expired` + `full_resync_required`. Retrying is an infinite
 # loop — the only correct response is a fresh snapshot.
@@ -329,6 +355,19 @@ def _invalid_identifier() -> APIError:
     )
 
 
+def clean_agent_name(name: str | None) -> str | None:
+    """A display-safe agent name, or ``None`` when there is no agent.
+
+    Control characters go and whitespace collapses. Length is not cut here: an
+    over-long name is refused at write time, like the server does. Blank means
+    "no agent", never an empty stamp.
+    """
+    if name is None:
+        return None
+    text: str = _AGENT_NAME_CONTROL_RE.sub("", name)
+    return _AGENT_NAME_SPACE_RE.sub(" ", text).strip() or None
+
+
 def _path_segment(value: Any) -> str:
     """One validated path segment: a key, a uuid or a slug — never `/`, `..`, `?`, `#`."""
     text: str = str(value)
@@ -347,9 +386,15 @@ class DailyBotClient:
         api_key: str | None = None,
         timeout: float = 30.0,
         prefer_api_key: bool | None = None,
+        agent_name: str | None = None,
     ) -> None:
         self.api_url: str = (api_url or get_api_url()).rstrip("/")
-        self.token: str | None = token or get_token()
+        # Stamped on Tasks writes only; `None` sends no stamp.
+        self.agent_name: str | None = clean_agent_name(
+            agent_name if agent_name is not None else get_agent_name()
+        )
+        # A login token only travels to the API host that issued it.
+        self.token: str | None = token or get_login_token_for(self.api_url)
         self.api_key: str | None = api_key or get_api_key()
         self.timeout: float = timeout
         self._agent_auth_mode: str | None = None
@@ -2247,6 +2292,11 @@ class DailyBotClient:
         sequential default would collide between two agents.
         """
         extra: dict[str, str] | None = dict(headers) if headers else None
+        if self._checked_agent_name():
+            if method in _AGENT_NAME_BODY_METHODS and isinstance(json, dict):
+                json = {**json, TASKS_AGENT_NAME_BODY_FIELD: self.agent_name}
+            else:
+                extra = {**(extra or {}), **self._agent_name_header()}
         sent_key: str | None = None
         # A `dry_run=true` call writes nothing, so it has nothing to make idempotent —
         # and returning a key for it invites the caller to reuse that key for the real
@@ -2283,6 +2333,22 @@ class DailyBotClient:
                 # documented "a retry cannot create a second task" true.
                 result[IDEMPOTENCY_KEY_SENT_KEY] = sent_key
         return result
+
+    def _checked_agent_name(self) -> str | None:
+        """The agent name to stamp, refused locally when the server would refuse it."""
+        if self.agent_name and len(self.agent_name) > TASKS_AGENT_NAME_MAX_LENGTH:
+            raise APIError(
+                400,
+                f"The agent name is longer than {TASKS_AGENT_NAME_MAX_LENGTH} characters.",
+                code=INVALID_AGENT_ATTRIBUTION_CODE,
+            )
+        return self.agent_name
+
+    def _agent_name_header(self) -> dict[str, str]:
+        """The stamp as a header, for writes without a JSON body."""
+        if not self._checked_agent_name():
+            return {}
+        return {TASKS_AGENT_NAME_HEADER: quote(str(self.agent_name), safe=" ")}
 
     def _tasks_read(self, path: str, *, params: dict[str, Any] | None = None) -> dict[str, Any]:
         """Issue a Tasks read (single object or non-paginated document)."""
@@ -2641,6 +2707,17 @@ class DailyBotClient:
     def get_task(self, task_uuid: str) -> dict[str, Any]:
         """GET /v1/tasks/tasks/<uuid>/ — the most frequent call of all."""
         return self._tasks_read(f"tasks/{_path_segment(task_uuid)}/")
+
+    def get_task_briefing(self, task_uuid: str) -> dict[str, Any]:
+        """GET /v1/tasks/tasks/<uuid>/?include=… — the card plus first pages of its collections.
+
+        Each embed arrives as a paginated envelope; a caller pages the dedicated
+        door when its ``next`` is set.
+        """
+        return self._tasks_read(
+            f"tasks/{_path_segment(task_uuid)}/",
+            params={"include": ",".join(TASK_BRIEFING_INCLUDES)},
+        )
 
     def create_task(
         self,
@@ -3028,6 +3105,7 @@ class DailyBotClient:
                 self._tasks_url(f"{parent}/attachments/"),
                 files={"file": (filename, data, content_type)},
                 data={"caption": caption} if caption else None,
+                extra_headers=self._agent_name_header() or None,
                 timeout=ATTACHMENT_TRANSFER_TIMEOUT_SECS,
             )
         )

@@ -56,6 +56,13 @@ ERROR_CODE_MESSAGES: dict[str, str] = {
     # Written against what the server actually returned in the live probe
     # recorded in the plan's PERMISSION_MATRIX_OBSERVED.md, not against prose.
     #
+    # Agent attribution (--agent-name / DAILYBOT_AGENT_NAME)
+    "invalid_agent_attribution": (
+        "The agent name was refused. It must be 128 characters or fewer, and it "
+        "only works with a credential that belongs to a person (a login session "
+        "or a personal API key), not an agent key. Shorten --agent-name, or drop "
+        "it when using an agent key."
+    ),
     # Auth taxonomy
     "credential_absent": (
         "No credential was sent. Run `dailybot login`, or set an API key with "
@@ -72,8 +79,9 @@ ERROR_CODE_MESSAGES: dict[str, str] = {
     ),
     "token_not_valid": "Your session token is no longer valid. Run `dailybot login`.",
     "actor_required": (
-        "This is a person-shaped door and an organization API key has nobody to be. "
-        "Run `dailybot login` and retry as a signed-in person."
+        "This is a person-shaped door and this credential has nobody behind it (an agent "
+        "or organization key). Run `dailybot login`, or use a personal API key that "
+        "belongs to you, and retry."
     ),
     # Entitlement
     "task_boards_limit_reached": (
@@ -579,8 +587,9 @@ TASKS_ERROR_CODES: frozenset[str] = frozenset(
 )
 
 _PERSON_SHAPED_GUIDANCE: str = (
-    "This door answers for a signed-in person, and an organization API key has nobody "
-    "to be. Run `dailybot login` and retry."
+    "This door answers for a person, and this credential has nobody behind it (an "
+    "agent or organization key). Run `dailybot login`, or use a personal API key "
+    "that belongs to you, and retry."
 )
 
 # Keys still cannot store `tasks:admin`. Every non-guest member holds it on a

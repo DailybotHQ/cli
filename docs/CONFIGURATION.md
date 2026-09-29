@@ -172,6 +172,8 @@ Layers that already existed still work:
 
 Do **not** run `dailybot login` while a testing profile is active: OTP would be requested against the local `api_url`. Turn env off first, then login to production.
 
+The production login token stays on production: a testing profile whose `api_url` is another host never receives it, not even as a fallback after its key is refused. A structure write refused for the testing key therefore ends as `insufficient_scope` (exit 4), not as a confusing expired-session error.
+
 ### Security guarantees
 
 Cross-referenced with the top-of-section STOP block. Repeated here so this appears in every table-of-contents jump.
@@ -278,9 +280,11 @@ For a bulletproof "different org per repo" story, prefer profiles with distinct 
 | `DAILYBOT_APP_URL` | `get_app_url()` | Overrides the webapp/dashboard base URL (after `--app-url` flag). Default: `https://app.dailybot.com`. For local development: `http://localhost:8090`. |
 | `DAILYBOT_API_KEY` | `get_api_key()` | Provides an org API key without storing it on disk |
 | `DAILYBOT_CLI_TOKEN` | `get_token()` | Provides a login Bearer token without `dailybot login` |
+| `DAILYBOT_AGENT_NAME` | `get_agent_name()` | Names the agent acting for the person on Tasks writes (after `--agent-name` flag). Unset = the person is acting directly; nothing is stamped. |
 
 `--api-url` (root flag) takes precedence over `DAILYBOT_API_URL`.
 `--app-url` (root flag) takes precedence over `DAILYBOT_APP_URL`.
+`--agent-name` (root flag) takes precedence over `DAILYBOT_AGENT_NAME`. It is an attribution label, not a credential: it never changes which credential is used or what it may do.
 
 ## Auth Resolution Order
 

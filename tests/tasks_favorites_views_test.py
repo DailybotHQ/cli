@@ -14,7 +14,6 @@ from click.testing import CliRunner
 
 from dailybot_cli.api_client import IDEMPOTENCY_KEY_HEADER, APIError, DailyBotClient
 from dailybot_cli.commands.public_api_helpers import (
-    EXIT_NOT_AUTHENTICATED,
     EXIT_PERMISSION_DENIED,
     EXIT_USAGE_ERROR,
 )
@@ -50,13 +49,8 @@ def _response(payload: Any = None, status: int = 200) -> Any:
     return mock
 
 
-def _invoke(
-    runner: CliRunner, client: Any, args: list[str], *, module: str, person: bool = True
-) -> Any:
-    with (
-        patch(f"dailybot_cli.commands.{module}.require_auth", return_value=client),
-        patch("dailybot_cli.commands._favorites.get_token", return_value="tok" if person else None),
-    ):
+def _invoke(runner: CliRunner, client: Any, args: list[str], *, module: str) -> Any:
+    with patch(f"dailybot_cli.commands.{module}.require_auth", return_value=client):
         return runner.invoke(cli, args)
 
 
@@ -208,13 +202,13 @@ class TestViews:
         (["tasks", "view", "star", VIEW, "--json"], "tasks"),
     ],
 )
-def test_person_only_doors_refuse_a_key(
+def test_favorite_and_view_doors_send_the_request(
     runner: CliRunner, client: MagicMock, argv: list[str], module: str
 ) -> None:
-    result = _invoke(runner, client, argv, module=module, person=False)
-    assert result.exit_code == EXIT_NOT_AUTHENTICATED
-    for method in ("add_favorite", "list_favorites", "delete_favorite", "get_view", "update_view"):
-        getattr(client, method).assert_not_called()
+    # A personal API key is its person on the API; the server decides.
+    client.list_favorites.return_value = []
+    _invoke(runner, client, argv, module=module)
+    assert client.mock_calls != []
 
 
 def test_projects_and_goals_cannot_be_starred() -> None:

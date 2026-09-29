@@ -387,7 +387,8 @@ def _require_person_for_admin(action: str, *, json_mode: bool) -> None:
     See board.py: open-org Tasks gives every non-guest member structure access on
     a person session; keys still cannot store `tasks:admin` or change membership.
     """
-    # See tasks.py `_require_person`: gate on the absence of a person token.
+    # Gate on the absence of a person token, not on the presence of a key: both
+    # can be configured at once, and Bearer is sent first when it exists.
     if get_token() is None:
         refuse_without_person(
             f"`{action}` needs a signed-in person. An organization API key can never hold "
@@ -645,7 +646,6 @@ def project_members(project_uuid: str, json_mode: bool) -> None:
     Examples:
       dailybot project members <project-uuid>
     """
-    _require_person("project members", _MEMBER_REASON, json_mode=json_mode)
     client = require_auth()
     try:
         with console.status("Reading the members..."):

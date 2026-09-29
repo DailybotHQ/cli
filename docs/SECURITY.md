@@ -135,6 +135,13 @@ grant; keys still cannot change membership or participants. CLI messages blame t
 *credential kind* for key refusals and never tell a signed-in member they "need to be an
 admin".
 
+**A login token never leaves the host that issued it.** `dailybot login` stores the Bearer
+next to the `api_url` that issued it. When `.dailybot/env.json` or `--api-url` points the CLI
+at another host (a local testing profile, staging), the client does not load that token at
+all, so it is neither sent first nor used as the 401/403 fallback. Before this rule, a key
+refused with 403 on a local API was retried with the production session token against that
+local host. `DAILYBOT_CLI_TOKEN` is an explicit caller choice and is exempt.
+
 **A person refused is never replayed as the organization.** The client normally retries a
 401/403 once with the other stored credential. On a Tasks door, a 403 to a signed-in person
 means the *person* lacks the role or the visibility. Replaying it with the organization API
