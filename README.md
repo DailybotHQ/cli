@@ -952,6 +952,7 @@ humans who own them.
 | `dailybot task comment <uuid> <body>` | Comment (`-` reads the body from stdin) |
 | `dailybot task comments <uuid>` | List a task's comments |
 | `dailybot task comment-react\|comment-unreact <task> <comment> <emoji>` | React to a comment with one emoji (👍, 🚀…), or remove your reaction — **needs a person: `dailybot login` or a personal API key** |
+| `dailybot task comment-reactions <task> <comment> [--emoji 👍]` | Everyone who reacted to a comment, oldest first, with the agent that reacted for them (a comment itself shows the first 10 per emoji and the true count) |
 | `dailybot task link <a> <b> --type <rel>` | Relate two tasks (`blocks`, `relates_to`, `duplicates`) |
 | `dailybot task labels <uuid> --mode add\|remove\|replace` | Change a task's labels |
 | `dailybot task participants add\|list\|remove <task>` | Who is on a task (`--role participant\|watcher`); all need a person: `dailybot login` or a personal API key |
@@ -994,6 +995,7 @@ humans who own them.
 | `dailybot project update-post <uuid> <body>` | **Post a project update** — how the team sees what was done (`--health`; sends an idempotency key) |
 | `dailybot project update-get\|update-edit\|update-delete <project> <update>` | Read one update (author, `via <agent>`, health, files); edit its text or health (author only); delete it (author or org admin; `--dry-run`) |
 | `dailybot project update-attach\|update-attachments <project> <update>` · `update-attachment get\|rename\|delete` | Files on an update (≤5 MiB). Attach and rename: author only; delete: author or an organization admin. For an inline image, attach it, then `update-edit` the body with `attachment:<uuid>` |
+| `dailybot project update-react\|update-unreact <project> <update> <emoji>` · `update-reactions <project> <update> [--emoji 👍]` | React to a project update with one emoji or remove your reaction — **needs a person: `dailybot login` or a personal API key**; list everyone who reacted |
 | `dailybot project milestones [<uuid>]` | List milestones |
 | `dailybot project milestone-complete <p> <m>` | Complete a milestone. **Its open tasks stay open** |
 | `dailybot project milestone-reopen <p> <m>` | Reopen a milestone |

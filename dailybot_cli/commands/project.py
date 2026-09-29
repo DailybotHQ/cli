@@ -6,7 +6,12 @@ from typing import Any
 
 import click
 
-from dailybot_cli.api_client import ATTACHMENT_MULTIPART_MAX_BYTES, APIError, PaginatedResult
+from dailybot_cli.api_client import (
+    ATTACHMENT_MULTIPART_MAX_BYTES,
+    APIError,
+    PaginatedResult,
+    is_reaction_emoji,
+)
 from dailybot_cli.commands._attachments import (
     run_attach,
     run_delete,
@@ -25,7 +30,13 @@ from dailybot_cli.commands.public_api_helpers import (
     require_auth,
     rows_of,
 )
-from dailybot_cli.commands.query_options import build_query_params, query_options, resolve_fetch_all
+from dailybot_cli.commands.query_options import (
+    PAGING_ONLY_MORE_HINT,
+    build_query_params,
+    paging_options,
+    query_options,
+    resolve_fetch_all,
+)
 from dailybot_cli.display import (
     console,
     print_info,
@@ -34,6 +45,7 @@ from dailybot_cli.display import (
     print_project_updates,
     print_projects_table,
     print_raw_value,
+    print_reaction_list,
     print_success,
     print_tasks_detail_panel,
     print_tasks_rows,
@@ -1329,6 +1341,123 @@ def project_update_edit(
         emit_json(data)
         return
     report_write(data, "Project update edited")
+
+
+_NOT_ONE_EMOJI: str = "A reaction must be one emoji, e.g. 👍 (no text or :shortcodes:)."
+
+
+@project.command("update-react")
+@click.argument("project_uuid", metavar="PROJECT")
+@click.argument("update_uuid", metavar="UPDATE")
+@click.argument("emoji")
+@click.option("--json", "json_mode", is_flag=True, help="Emit machine-readable JSON to stdout.")
+def project_update_react(project_uuid: str, update_uuid: str, emoji: str, json_mode: bool) -> None:
+    """React to a project update with one emoji. Needs a person: `dailybot login` or a personal API key.
+
+    \b
+    Emoji only (no text or :shortcodes:). Reacting twice with the same emoji is
+    safe: nothing changes.
+
+    \b
+    Examples:
+      dailybot project update-react <project-uuid> <update-uuid> 👍
+      dailybot project update-react <project-uuid> <update-uuid> 🚀 --json
+    """
+    if not is_reaction_emoji(emoji):
+        raise click.UsageError(_NOT_ONE_EMOJI)
+    client = require_auth()
+    try:
+        with console.status("Reacting..."):
+            data: Any = client.add_update_reaction(project_uuid, update_uuid, emoji)
+    except APIError as exc:
+        exit_for_tasks_error(exc, json_mode)
+    if json_mode:
+        emit_json(data)
+        return
+    print_success(f"Reacted {emoji}.")
+
+
+@project.command("update-unreact")
+@click.argument("project_uuid", metavar="PROJECT")
+@click.argument("update_uuid", metavar="UPDATE")
+@click.argument("emoji")
+@click.option("--json", "json_mode", is_flag=True, help="Emit machine-readable JSON to stdout.")
+def project_update_unreact(
+    project_uuid: str, update_uuid: str, emoji: str, json_mode: bool
+) -> None:
+    """Remove your emoji reaction from a project update. Needs a person: `dailybot login` or a personal API key.
+
+    \b
+    Safe to repeat: removing a reaction you did not leave changes nothing.
+
+    \b
+    Examples:
+      dailybot project update-unreact <project-uuid> <update-uuid> 👍
+    """
+    if not is_reaction_emoji(emoji):
+        raise click.UsageError(_NOT_ONE_EMOJI)
+    client = require_auth()
+    try:
+        with console.status("Removing the reaction..."):
+            client.remove_update_reaction(project_uuid, update_uuid, emoji)
+    except APIError as exc:
+        exit_for_tasks_error(exc, json_mode)
+    if json_mode:
+        emit_json({"removed": True, "project": project_uuid, "update": update_uuid, "emoji": emoji})
+        return
+    print_success(f"Removed {emoji}.")
+
+
+@project.command("update-reactions")
+@click.argument("project_uuid", metavar="PROJECT")
+@click.argument("update_uuid", metavar="UPDATE")
+@click.option("--emoji", default=None, help="Only this emoji (all emojis when omitted).")
+@click.option("--all", "-a", "fetch_all", is_flag=True, help="Fetch every page.")
+@paging_options
+@click.option("--json", "json_mode", is_flag=True, help="Emit machine-readable JSON to stdout.")
+def project_update_reactions(
+    project_uuid: str, update_uuid: str, emoji: str | None, json_mode: bool, **flags: Any
+) -> None:
+    """Everyone who reacted to a project update, oldest first, with the agent that reacted for them.
+
+    \b
+    An update itself carries at most the first few reactors per emoji; this lists
+    them all.
+
+    \b
+    Examples:
+      dailybot project update-reactions <project-uuid> <update-uuid>
+      dailybot project update-reactions <project-uuid> <update-uuid> --emoji 👍 --json
+    """
+    if emoji is not None and not is_reaction_emoji(emoji):
+        raise click.UsageError("--emoji must be one emoji, e.g. 👍 (no text or :shortcodes:).")
+    client = require_auth()
+    try:
+        spec = build_query_params(**flags)
+        with console.status("Reading reactions..."):
+            result: PaginatedResult = client.list_update_reactions(
+                project_uuid,
+                update_uuid,
+                emoji=emoji,
+                page=spec.page,
+                page_size=spec.page_size,
+                fetch_all=spec.fetch_all,
+                limit=spec.limit,
+            )
+    except ValueError as exc:
+        raise click.BadParameter(str(exc)) from exc
+    except APIError as exc:
+        exit_for_tasks_error(exc, json_mode)
+    if json_mode:
+        emit_json(_envelope(result))
+        return
+    print_reaction_list(result.results)
+    print_pagination_footer(
+        len(result.results),
+        result.count,
+        has_more=bool(result.next),
+        more_hint=PAGING_ONLY_MORE_HINT,
+    )
 
 
 @project.command("update-delete")

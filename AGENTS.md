@@ -143,6 +143,7 @@ tests/                       # pytest suite (file naming: *_test.py)
 ├── token_host_binding_test.py # a login token only travels to the host that issued it
 ├── tasks_server_refusal_rendering_test.py # server refusals of agent keys / guests: exit + envelope
 ├── milestones_updates_test.py # milestone attachments/restore; project update get/edit/delete/attachments
+├── tasks_reactions_test.py   # reactions: who reacted, project-update react/unreact, full reactor lists
 ├── transport_errors_test.py # transport failures render as messages, not tracebacks
 └── config_test.py           # Config/credential file management
 
