@@ -2,6 +2,7 @@
 
 import re
 import time
+import unicodedata
 import uuid
 from collections.abc import Callable
 from dataclasses import dataclass, field
@@ -367,13 +368,48 @@ def clean_agent_name(name: str | None) -> str | None:
     if name is None:
         return None
     text: str = _AGENT_NAME_CONTROL_RE.sub("", name)
+    # Invisible format characters (bidi overrides, zero-width) would disguise the
+    # name wherever another client renders it.
+    text = "".join(ch for ch in text if unicodedata.category(ch) != "Cf")
     return _AGENT_NAME_SPACE_RE.sub(" ", text).strip() or None
+
+
+# Reactions take emoji only, exactly as the API's contract defines them: 1-8 code
+# points from U+1F300-1FAFF and U+2600-27BF, plus the variation selector and the
+# zero-width joiner that build sequences. Flags, keycaps and U+2B50-style symbols
+# are outside that set and the server refuses them (`reaction_invalid_emoji`).
+REACTION_EMOJI_MAX_CODEPOINTS: int = 8
+_REACTION_RANGES: tuple[tuple[int, int], ...] = ((0x1F300, 0x1FAFF), (0x2600, 0x27BF))
+_REACTION_JOINERS: frozenset[int] = frozenset({0xFE0F, 0x200D})
+REACTION_INVALID_EMOJI_CODE: str = "reaction_invalid_emoji"
+
+
+def is_reaction_emoji(value: str) -> bool:
+    """True when `value` is an emoji the reaction doors accept (checked before sending)."""
+    points: list[int] = [ord(ch) for ch in value]
+    if not points or len(points) > REACTION_EMOJI_MAX_CODEPOINTS:
+        return False
+    if all(p in _REACTION_JOINERS for p in points):
+        return False
+    return all(
+        p in _REACTION_JOINERS or any(lo <= p <= hi for lo, hi in _REACTION_RANGES) for p in points
+    )
+
+
+def _checked_emoji(value: str) -> str:
+    if not is_reaction_emoji(value):
+        raise APIError(
+            400,
+            "A reaction must be one emoji (no text or :shortcodes:).",
+            code=REACTION_INVALID_EMOJI_CODE,
+        )
+    return value
 
 
 def _path_segment(value: Any) -> str:
     """One validated path segment: a key, a uuid or a slug — never `/`, `..`, `?`, `#`."""
     text: str = str(value)
-    if not TASKS_PATH_SEGMENT_RE.match(text):
+    if not TASKS_PATH_SEGMENT_RE.fullmatch(text):
         raise _invalid_identifier()
     return text
 
@@ -2267,7 +2303,7 @@ class DailyBotClient:
         """
         relative: str = path.lstrip("/")
         for segment in relative.rstrip("/").split("/"):
-            if not TASKS_PATH_SEGMENT_RE.match(segment):
+            if not TASKS_PATH_SEGMENT_RE.fullmatch(segment):
                 raise _invalid_identifier()
         return f"{self.api_url}{TASKS_BASE_PATH}{relative}"
 
@@ -2281,8 +2317,12 @@ class DailyBotClient:
         idempotent: bool = False,
         idempotency_key: str | None = None,
         headers: dict[str, str] | None = None,
+        url: str | None = None,
     ) -> Any:
         """Issue a Tasks write and surface the replay flag.
+
+        ``url`` replaces ``path`` for the rare door whose last segment is not a key or
+        uuid (an emoji); the caller has already validated and encoded it.
 
         ``idempotent`` reflects the door's posture in IDEMPOTENCY.md, not the
         caller's preference: when it is False no key is sent, even if one was
@@ -2312,7 +2352,11 @@ class DailyBotClient:
             extra = {**(extra or {}), IDEMPOTENCY_KEY_HEADER: sent_key}
         try:
             response: httpx.Response = self._request(
-                method, self._tasks_url(path), json=json, params=params, extra_headers=extra
+                method,
+                url or self._tasks_url(path),
+                json=json,
+                params=params,
+                extra_headers=extra,
             )
             result: Any = self._handle_response(response)
         except TransportError as exc:
@@ -2674,6 +2718,44 @@ class DailyBotClient:
             "POST", f"boards/{_path_segment(board_uuid)}/labels/", json=payload
         )
 
+    def update_tasks_label(self, label_uuid: str, **fields: Any) -> dict[str, Any]:
+        """PATCH /v1/tasks/labels/<uuid>/ — name, color, description, is_archived."""
+        payload: dict[str, Any] = {k: v for k, v in fields.items() if v is not None}
+        return self._tasks_write("PATCH", f"labels/{_path_segment(label_uuid)}/", json=payload)
+
+    def delete_tasks_label(self, label_uuid: str) -> Any:
+        """DELETE /v1/tasks/labels/<uuid>/ — refused with `label_in_use` while tasks use it."""
+        return self._tasks_write("DELETE", f"labels/{_path_segment(label_uuid)}/")
+
+    def visit_board(self, board_uuid: str) -> dict[str, Any]:
+        """POST /v1/tasks/boards/<uuid>/visit/ — record that you opened it (feeds recents)."""
+        return self._tasks_write("POST", f"boards/{_path_segment(board_uuid)}/visit/")
+
+    def list_recent_boards(self) -> dict[str, Any]:
+        """GET /v1/tasks/me/recents/ — the boards you visited most recently."""
+        return self._tasks_read("me/recents/")
+
+    def resolve_attachments(self, attachment_uuids: list[str]) -> dict[str, Any]:
+        """GET /v1/tasks/attachments/resolve/?ids= — current URLs for `attachment:<uuid>` refs."""
+        ids: str = ",".join(_path_segment(u) for u in attachment_uuids)
+        return self._tasks_read("attachments/resolve/", params={"ids": ids})
+
+    def add_comment_reaction(self, task_uuid: str, comment_uuid: str, emoji: str) -> Any:
+        """POST …/comments/<c>/reactions/ — idempotent; answers with the whole comment."""
+        return self._tasks_write(
+            "POST",
+            f"tasks/{_path_segment(task_uuid)}/comments/{_path_segment(comment_uuid)}/reactions/",
+            json={"emoji": _checked_emoji(emoji)},
+        )
+
+    def remove_comment_reaction(self, task_uuid: str, comment_uuid: str, emoji: str) -> Any:
+        """DELETE …/reactions/<emoji>/ — the emoji travels percent-encoded in the path."""
+        base: str = self._tasks_url(
+            f"tasks/{_path_segment(task_uuid)}/comments/{_path_segment(comment_uuid)}/reactions/"
+        )
+        target: str = f"{base}{quote(_checked_emoji(emoji), safe='')}/"
+        return self._tasks_write("DELETE", "", url=target)
+
     def get_board(self, board_uuid: str) -> dict[str, Any]:
         """GET /v1/tasks/boards/<uuid>/."""
         return self._tasks_read(f"boards/{_path_segment(board_uuid)}/")
@@ -2849,13 +2931,21 @@ class DailyBotClient:
     # --- Collaboration ---
 
     def comment_on_task(
-        self, task_uuid: str, *, body: str, idempotency_key: str | None = None
+        self,
+        task_uuid: str,
+        *,
+        body: str,
+        idempotency_key: str | None = None,
+        parent_comment: str | None = None,
     ) -> dict[str, Any]:
-        """POST /v1/tasks/tasks/<uuid>/comments/ — accepts a key."""
+        """POST /v1/tasks/tasks/<uuid>/comments/ — accepts a key; `parent_comment` replies."""
+        payload: dict[str, Any] = {"body": body}
+        if parent_comment:
+            payload["parent_comment"] = _path_segment(parent_comment)
         return self._tasks_write(
             "POST",
             f"tasks/{_path_segment(task_uuid)}/comments/",
-            json={"body": body},
+            json=payload,
             idempotent=True,
             idempotency_key=idempotency_key,
         )

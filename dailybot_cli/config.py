@@ -217,6 +217,12 @@ def get_login_token_for(api_url: str) -> str | None:
     return str(token) if token else None
 
 
+def login_token_origin_url() -> str:
+    """The API URL that issued the stored login session (the default for legacy files)."""
+    creds: dict[str, Any] | None = load_credentials()
+    return str((creds or {}).get("api_url") or DEFAULT_API_URL).rstrip("/")
+
+
 def get_person_token() -> str | None:
     """The login token that will actually reach the current API host, or ``None``.
 

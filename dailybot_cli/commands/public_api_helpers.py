@@ -56,6 +56,16 @@ ERROR_CODE_MESSAGES: dict[str, str] = {
     # Written against what the server actually returned in the live probe
     # recorded in the plan's PERMISSION_MATRIX_OBSERVED.md, not against prose.
     #
+    # Reactions and labels
+    "reaction_invalid_emoji": (
+        "A reaction must be one emoji (for example 👍 or 🚀), not text or a :shortcode:."
+    ),
+    "label_in_use": (
+        "This label is still in use, so it cannot be deleted. Archive it instead "
+        "(`dailybot label archive <label>` for organization labels, or "
+        "`dailybot board label update <label> --archive` for Tasks labels), or clear what "
+        "still references it, then delete."
+    ),
     # Project update authorship
     "update_not_author": (
         "Only the person who posted this project update can edit it or change its "
@@ -628,10 +638,11 @@ def is_person_shaped_refusal(exc: APIError, *, door: str | None = None) -> bool:
 # New organization API keys start with no Tasks scopes; they are granted to the key
 # itself. Said once here so every Tasks refusal on a key reads the same.
 _KEY_WITHOUT_TASKS_SCOPES_GUIDANCE: str = (
-    "This API key has no Tasks scopes for this action{scope}. A personal API key acts as "
-    "you and needs no grant; an agent or organization key starts with none, and an "
-    "organization admin grants them to the key (or write to support@dailybot.com). Signing "
-    "in with `dailybot login` also works for your own account."
+    "Refused{scope}. Either your role does not allow this action (some need an organization "
+    "admin or manager, or a team admin, for example deleting a label), or the key is an agent "
+    "or organization key without Tasks scopes (an organization admin grants them to the key, "
+    "or write to support@dailybot.com). A personal API key acts as you and needs no grant; "
+    "`dailybot login` works for your own account too."
 )
 
 
@@ -687,8 +698,8 @@ def resolve_error_message(
                 )
             return _ADMIN_SCOPE_GUIDANCE
         if tasks_surface and get_person_token() is None:
-            # No person is signed in, so the credential is an organization API key —
-            # and a new key holds no Tasks scopes at all until they are granted to it.
+            # No login session: a personal key refused for its person's role, or an
+            # agent/organization key without Tasks scopes. The CLI cannot tell which.
             scope: str = f" (it needs `{required}`)" if required else ""
             return _KEY_WITHOUT_TASKS_SCOPES_GUIDANCE.format(scope=scope)
         if required:

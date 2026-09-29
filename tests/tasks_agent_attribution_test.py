@@ -69,6 +69,10 @@ class TestCleanAgentName:
         assert cleaned is not None
         assert len(cleaned) == TASKS_AGENT_NAME_MAX_LENGTH + 40
 
+    def test_format_characters_go(self) -> None:
+        assert clean_agent_name("Claude\u202eCode") == "ClaudeCode"
+        assert clean_agent_name("\u200b") is None
+
     def test_non_ascii_is_kept(self) -> None:
         assert clean_agent_name("Agente Ñandú") == "Agente Ñandú"
 
@@ -268,3 +272,16 @@ def test_the_refusal_names_every_cause() -> None:
     assert "letters, numbers, spaces" in message
     assert "deactivated" in message
     assert "agent key" in message
+
+
+def test_format_characters_are_stripped_from_agent_names() -> None:
+    assert clean_agent_name("Claude‮ Code​") == "Claude Code"
+
+
+def test_a_path_segment_ending_in_newline_is_refused() -> None:
+    with pytest.raises(APIError):
+        _client().get_task("ENG-1\n")
+
+
+def test_a_name_of_only_invisible_characters_is_no_agent() -> None:
+    assert clean_agent_name("\u202e\u200b\u200d") is None

@@ -118,12 +118,12 @@ class TestTheSnapshotDeltaSeam:
         assert "snapshot" in runner.invoke(cli, ["tasks", "changes", "--help"]).output
 
 
-class TestDeferredDoors:
-    # `visit` is a signed exclusion: a UI ordering signal, not an agent act.
+class TestFormerlyDeferredDoors:
+    # `visit` was once excluded as a UI ordering signal. The CLI now covers every
+    # live Tasks door (full parity with the web), so it exists and feeds recents.
     @pytest.mark.parametrize("sub", ["visit"])
-    def test_deferred_doors_are_not_built(self, runner: CliRunner, sub: str) -> None:
-        # Recorded as deferred in the task log, not silently half-built.
-        assert sub not in runner.invoke(cli, ["board", "--help"]).output
+    def test_now_built(self, runner: CliRunner, sub: str) -> None:
+        assert sub in runner.invoke(cli, ["board", "--help"]).output
 
 
 class TestHelp:

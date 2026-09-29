@@ -228,3 +228,35 @@ class TestHumanBriefingShowsEverySection:
         assert "Recent activity" in flat and "task.updated" in flat
         assert "dailybot task activity ENG-12" in flat
         assert "Sub-tasks (1)" in flat and "ENG-13" in flat
+
+
+class TestSecurityHardening:
+    def test_multibyte_names_stay_under_the_filesystem_limit(self) -> None:
+        name: str = safe_attachment_filename({"uuid": ATT_A, "filename": "文" * 300 + ".txt"})
+        assert len(name.encode("utf-8")) <= 255
+        assert name.startswith("aaaaaaaa-")
+
+    def test_format_characters_and_windows_reserved_are_neutralized(self) -> None:
+        name: str = safe_attachment_filename(
+            {"uuid": ATT_A, "filename": "invoice‮gpj.exe:stream<>|?*"}
+        )
+        assert "‮" not in name
+        assert not any(c in name for c in '<>:"|?*')
+
+    def test_a_hostile_uuid_prefix_is_sanitized(self) -> None:
+        name: str = safe_attachment_filename({"uuid": "aa\u202ebb\x1b[31m", "filename": "x.txt"})
+        assert "\u202e" not in name and "\x1b" not in name and "[" not in name
+
+    def test_skipped_attachments_are_reported(self, tmp_path: Path) -> None:
+        from dailybot_cli.commands._briefing import download_attachments
+
+        client: MagicMock = _client()
+        out: Path = tmp_path / "d"
+        rows: list[dict[str, Any]] = [
+            {"uuid": ATT_A, "filename": "a.txt", "status": "pending"},
+            {"uuid": "../../../../x", "filename": "b.txt"},
+        ]
+        result = download_attachments(client, TASK_UUID, rows, out, force=False, json_mode=True)
+        assert [r["reason"] for r in result] == ["status pending", "invalid id"]
+        assert {r["status"] for r in result} == {"skipped"}
+        client.download_attachment.assert_not_called()

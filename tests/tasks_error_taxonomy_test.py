@@ -231,7 +231,8 @@ class TestKeyWithoutTasksScopes:
             create=True,
         ):
             message: str = resolve_error_message(self._refusal(required), tasks_surface=True)
-        assert "API key has no Tasks scopes" in message
+        assert "without Tasks scopes" in message
+        assert "your role" in message
         assert "support@dailybot.com" in message
 
     def test_a_signed_in_person_is_not_told_about_keys(self) -> None:

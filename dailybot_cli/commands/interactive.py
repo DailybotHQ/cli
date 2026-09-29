@@ -43,6 +43,7 @@ from dailybot_cli.display import (
     print_success,
     print_update_result,
     print_warning,
+    safe_text,
 )
 
 # Stable action IDs — dispatch is keyed on these, never on display strings.
@@ -131,7 +132,7 @@ def _print_session_banner(client: DailyBotClient, *, via: str) -> None:
     label: str = name or "session"
     if org_name:
         label = f"{label} ({org_name})"
-    console.print(f"Authenticated as {label}")
+    console.print(f"Authenticated as {safe_text(label)}")
     console.print(f"[dim]via {via}[/dim]")
     org_uuid: str = str(
         me.get("organization_uuid")
@@ -139,7 +140,7 @@ def _print_session_banner(client: DailyBotClient, *, via: str) -> None:
         or ""
     )
     if org_uuid:
-        console.print(f"[dim]Org UUID: {org_uuid}[/dim]")
+        console.print(f"[dim]Org UUID: {safe_text(org_uuid)}[/dim]")
 
 
 def run_interactive() -> None:
