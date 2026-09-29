@@ -1,7 +1,7 @@
 ---
 name: dailybot
 description: Official Dailybot agent skill pack — report progress, check messages, send emails, announce agent status, complete check-ins, give kudos (to users or teams), resolve teams, run the full forms lifecycle (list, submit, update, transition between workflow states), **author check-ins and forms from scratch** (create/configure questions, workflow states, permissions, reminders, scheduling, AI settings, sharing), send/edit chat messages on the team's Slack/Teams/Discord/Google Chat (including report-style threads, sending as a user's identity, and interactive buttons with approval flows, workflow triggers, modals, and callbacks), open (or reuse) a Slack group DM with the bot and post a report to it, ask the Dailybot AI a question headlessly, **browse/read/trigger the workspace** (`me` / `org` / `user get`, kudos browsing, workflows), **manage organization Labels** (`dailybot label` CRUD + assign/batch on forms, check-ins, workflows) and **private Featured stars**, **manage Tasks** (Beta — boards, backlog, sprint/kanban columns, owners, attachments, bulk with dry run, project updates, milestones, goals, open-org structure for non-guest members, agent-attributed work on a handed task with `task brief` — `dailybot tasks` for the workspace and `dailybot task` for one task), and **manage per-repo API keys** through `.dailybot/env.json` (pack baseline `dailybot-cli >= 3.9.0`; Tasks needs `>= 3.14.2`, recommended `>= 3.20.0`). Routes to the right sub-skill based on intent. Use when the developer mentions Dailybot or wants to interact with their team.
-version: "3.18.0"
+version: "3.18.1"
 documentation_url: https://www.dailybot.com/skill.md
 user-invocable: true
 metadata: {"openclaw":{"emoji":"📡","homepage":"https://dailybot.com","requires":{"anyBins":["dailybot","curl"]},"primaryEnv":"DAILYBOT_API_KEY","install":[{"id":"cli-install-script","kind":"download","url":"https://cli.dailybot.com/install.sh","label":"Install Dailybot CLI (official script — preferred on Linux/macOS)"},{"id":"pip","kind":"pip","package":"dailybot-cli","bins":["dailybot"],"label":"Install Dailybot CLI via pip (fallback if binary fails)"}]}}
@@ -299,6 +299,7 @@ the full step-by-step workflow.
 | "open a group DM with Jane and Bob", "start a Slack group with the release team and the bot", "open a group with `<user>` and send them this report", "get me a channel with these people" | **Conversations** → read [`conversation/SKILL.md`](conversation/SKILL.md) |
 | "list my forms", "which forms does the org have?", "only my own forms" (`--mine`) | **Forms** → read [`forms/SKILL.md`](forms/SKILL.md) |
 | "what's on my plate", "what's open / overdue / blocked", "catch me up on the board", "create a task", "move ENG-142", "make Jane the owner", "plan the sprint", "post a project update", "complete the milestone", "create a project / board / goal", "invite someone to the board", "take ENG-142", a pasted task link | **Tasks** → read [`tasks/SKILL.md`](tasks/SKILL.md) |
+| "local API key for this repo", "switch env profile", "test against localhost without losing prod login", "env.json" | **Env** → read [`env/SKILL.md`](env/SKILL.md) |
 
 ### Auto-activation (no explicit request)
 
