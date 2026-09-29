@@ -9,6 +9,24 @@ Do not edit it by hand — your edits will be overwritten on the next release.
 
 <!-- version list -->
 
+## v3.23.1 (2026-09-29)
+
+### Bug Fixes
+
+- **tasks**: Explain the reaction limit ([#119](https://github.com/DailybotHQ/cli/pull/119),
+  [`a7dab71`](https://github.com/DailybotHQ/cli/commit/a7dab71bddf11a275f5dfcd9e6245fc03b3184d4))
+
+- **tasks**: Name the full unreact commands and the reaction limit
+  ([#119](https://github.com/DailybotHQ/cli/pull/119),
+  [`a7dab71`](https://github.com/DailybotHQ/cli/commit/a7dab71bddf11a275f5dfcd9e6245fc03b3184d4))
+
+### Chores
+
+- **skills**: Sync vendored dailybot skill pack to v3.21.0
+  ([#118](https://github.com/DailybotHQ/cli/pull/118),
+  [`813c0f5`](https://github.com/DailybotHQ/cli/commit/813c0f5f80b5330ce9196ef1103be2422c15f4dc))
+
+
 ## v3.23.0 (2026-09-29)
 
 ### Bug Fixes
