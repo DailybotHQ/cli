@@ -196,6 +196,19 @@ class TestCommands:
         client.list_comment_reactions.assert_not_called()
 
 
+class TestLimit:
+    def test_limit_reached_is_explained(self) -> None:
+        client: MagicMock = MagicMock(spec=DailyBotClient)
+        client.add_update_reaction.side_effect = APIError(
+            400, "limit", code="reaction_limit_reached", extra={"limit": 20}
+        )
+        result = _invoke("project", ["project", "update-react", P, U, "🎉", "--json"], client)
+        assert result.exit_code == 2
+        body: dict[str, Any] = json.loads(result.output)
+        assert body["code"] == "reaction_limit_reached"
+        assert "unreact" in body["message"]
+
+
 class TestListFlags:
     @pytest.mark.parametrize(
         ("module", "argv"),

@@ -60,6 +60,11 @@ ERROR_CODE_MESSAGES: dict[str, str] = {
     "reaction_invalid_emoji": (
         "A reaction must be one emoji (for example 👍 or 🚀), not text or a :shortcode:."
     ),
+    "reaction_limit_reached": (
+        "You already hold the most different emojis allowed on this comment or update. "
+        "Remove one of yours (`comment-unreact` / `update-unreact`) before adding another; "
+        "re-adding an emoji you already hold changes nothing."
+    ),
     "label_in_use": (
         "This label is still in use, so it cannot be deleted. Archive it instead "
         "(`dailybot label archive <label>` for organization labels, or "
