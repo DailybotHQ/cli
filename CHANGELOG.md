@@ -9,6 +9,15 @@ Do not edit it by hand — your edits will be overwritten on the next release.
 
 <!-- version list -->
 
+## v3.19.0 (2026-09-29)
+
+### Features
+
+- **tasks**: Agents work Tasks cards as their person — attribution, task brief, personal keys, dual
+  session ([#105](https://github.com/DailybotHQ/cli/pull/105),
+  [`5ad7fbc`](https://github.com/DailybotHQ/cli/commit/5ad7fbc6d248757fd7f938ad3b9ff614ad45de4c))
+
+
 ## v3.18.1 (2026-09-29)
 
 ### Chores
