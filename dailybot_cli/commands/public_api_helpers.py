@@ -60,6 +60,12 @@ ERROR_CODE_MESSAGES: dict[str, str] = {
     "reaction_invalid_emoji": (
         "A reaction must be one emoji (for example 👍 or 🚀), not text or a :shortcode:."
     ),
+    "reaction_limit_reached": (
+        "You already hold the most different emojis allowed on this comment or update. "
+        "Remove one of yours (`dailybot task comment-unreact` or "
+        "`dailybot project update-unreact`) before adding another; "
+        "re-adding an emoji you already hold changes nothing."
+    ),
     "label_in_use": (
         "This label is still in use, so it cannot be deleted. Archive it instead "
         "(`dailybot label archive <label>` for organization labels, or "
@@ -541,6 +547,10 @@ def _augment_code_message(base: str, code: str, extra: dict[str, Any]) -> str:
             if current:
                 detail_bits += f" Your role: {current}."
             return f"{base}{detail_bits}"
+    elif code == "reaction_limit_reached":
+        limit: Any = extra.get("limit")
+        if isinstance(limit, int):
+            return f"{base} The limit is {limit} different emojis per person."
     return base
 
 
