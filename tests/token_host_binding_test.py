@@ -135,3 +135,22 @@ class TestLogoutRevokesOnTheIssuingHost:
     def test_http_and_https_are_different_hosts(self) -> None:
         _login()
         assert get_login_token_for("http://api.dailybot.com") is None
+
+
+class TestLogoutWithAnEnvToken:
+    def test_env_token_is_revoked_on_the_current_api(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        from click.testing import CliRunner
+
+        from dailybot_cli.main import cli
+
+        _login()
+        monkeypatch.setenv("DAILYBOT_CLI_TOKEN", "ci-token")
+        response: MagicMock = MagicMock(spec=httpx.Response)
+        response.status_code = 200
+        response.json.return_value = {}
+        response.headers = {}
+        with patch("httpx.post", return_value=response) as post:
+            result = CliRunner().invoke(cli, ["--api-url", LOCAL, "logout"])
+        assert result.exit_code == 0, result.output
+        assert post.call_args.args[0] == f"{LOCAL}/v1/cli/auth/logout/"
+        assert post.call_args.kwargs["headers"]["Authorization"] == "Bearer ci-token"

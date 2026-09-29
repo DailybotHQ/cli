@@ -277,3 +277,7 @@ def test_format_characters_are_stripped_from_agent_names() -> None:
 def test_a_path_segment_ending_in_newline_is_refused() -> None:
     with pytest.raises(APIError):
         _client().get_task("ENG-1\n")
+
+
+def test_a_name_of_only_invisible_characters_is_no_agent() -> None:
+    assert clean_agent_name("\u202e\u200b\u200d") is None

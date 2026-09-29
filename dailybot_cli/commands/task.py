@@ -460,7 +460,7 @@ def task_brief(task_uuid: str, download_dir: Path | None, force: bool, json_mode
         return
     print_task_briefing(brief)
     if downloads:
-        saved: int = sum(1 for d in downloads if "path" in d)
+        saved: int = sum(1 for d in downloads if d.get("status") == "saved")
         skipped: int = len(downloads) - saved
         note: str = f" Skipped {skipped} not ready or unsafe." if skipped else ""
         print_success(f"Saved {saved} attachment(s) to {download_dir}.{note}")

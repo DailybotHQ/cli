@@ -1,5 +1,6 @@
 """Authentication commands for Dailybot CLI."""
 
+import os
 from typing import Any
 
 import click
@@ -337,7 +338,11 @@ def logout() -> None:
 
     # Revoke on the host that issued the session, not on whatever `env.json`
     # or `--api-url` points at: the token is only valid (and only sent) there.
-    client: DailyBotClient = DailyBotClient(api_url=login_token_origin_url(), token=token)
+    # A DAILYBOT_CLI_TOKEN is the caller's explicit session for the current API.
+    target: str = (
+        get_api_url() if os.environ.get("DAILYBOT_CLI_TOKEN") else login_token_origin_url()
+    )
+    client: DailyBotClient = DailyBotClient(api_url=target, token=token)
     client.api_key = None
     try:
         with console.status("Logging out..."):

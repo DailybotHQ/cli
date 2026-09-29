@@ -243,6 +243,10 @@ class TestSecurityHardening:
         assert "‮" not in name
         assert not any(c in name for c in '<>:"|?*')
 
+    def test_a_hostile_uuid_prefix_is_sanitized(self) -> None:
+        name: str = safe_attachment_filename({"uuid": "aa\u202ebb\x1b[31m", "filename": "x.txt"})
+        assert "\u202e" not in name and "\x1b" not in name and "[" not in name
+
     def test_skipped_attachments_are_reported(self, tmp_path: Path) -> None:
         from dailybot_cli.commands._briefing import download_attachments
 
@@ -253,5 +257,7 @@ class TestSecurityHardening:
             {"uuid": "../../../../x", "filename": "b.txt"},
         ]
         result = download_attachments(client, TASK_UUID, rows, out, force=False, json_mode=True)
-        assert {r.get("skipped") for r in result} == {"status pending", "unsafe name"}
-        client.download_attachment.assert_not_called()
+        by_status: dict[str, dict[str, Any]] = {r["status"]: r for r in result}
+        assert by_status["skipped"]["reason"] == "status pending"
+        # A hostile uuid is sanitized to a safe prefix, so the file lands inside `out`.
+        assert Path(by_status["saved"]["path"]).parent == out.resolve()

@@ -105,7 +105,8 @@ def safe_attachment_filename(attachment: dict[str, Any]) -> str:
     base = "".join(ch for ch in base if unicodedata.category(ch) != "Cf")
     base = _WINDOWS_RESERVED_RE.sub("_", base).strip().lstrip(".").strip().rstrip(".")
     base = _truncate_utf8(base, MAX_SAVED_NAME_BYTES) or FALLBACK_ATTACHMENT_NAME
-    prefix: str = str(attachment.get("uuid") or "")[:8]
+    # The uuid is server data too: keep only its safe characters.
+    prefix: str = re.sub(r"[^0-9A-Za-z-]", "", str(attachment.get("uuid") or ""))[:8]
     return f"{prefix}-{base}" if prefix else base
 
 
@@ -132,13 +133,24 @@ def download_attachments(
             continue
         status: str = str(attachment.get("status") or "").lower()
         if status in UNFETCHABLE_ATTACHMENT_STATUSES:
-            saved.append({"attachment": attachment_uuid, "skipped": f"status {status}"})
+            saved.append(
+                {"attachment": attachment_uuid, "status": "skipped", "reason": f"status {status}"}
+            )
             continue
         output: Path = root / safe_attachment_filename(attachment)
         if output.parent != root:
-            saved.append({"attachment": attachment_uuid, "skipped": "unsafe name"})
+            saved.append(
+                {"attachment": attachment_uuid, "status": "skipped", "reason": "unsafe name"}
+            )
             continue
         content: bytes = client.download_attachment(task_uuid, attachment_uuid)
         write_download(output, content, force=force, json_mode=json_mode)
-        saved.append({"attachment": attachment_uuid, "path": str(output), "bytes": len(content)})
+        saved.append(
+            {
+                "attachment": attachment_uuid,
+                "status": "saved",
+                "path": str(output),
+                "bytes": len(content),
+            }
+        )
     return saved
