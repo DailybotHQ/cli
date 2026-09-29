@@ -374,8 +374,10 @@ def clean_agent_name(name: str | None) -> str | None:
     return _AGENT_NAME_SPACE_RE.sub(" ", text).strip() or None
 
 
-# Reactions take emoji only: 1-8 code points from the pictographic and symbol
-# blocks, plus the variation selector and zero-width joiner that build sequences.
+# Reactions take emoji only, exactly as the API's contract defines them: 1-8 code
+# points from U+1F300-1FAFF and U+2600-27BF, plus the variation selector and the
+# zero-width joiner that build sequences. Flags, keycaps and U+2B50-style symbols
+# are outside that set and the server refuses them (`reaction_invalid_emoji`).
 REACTION_EMOJI_MAX_CODEPOINTS: int = 8
 _REACTION_RANGES: tuple[tuple[int, int], ...] = ((0x1F300, 0x1FAFF), (0x2600, 0x27BF))
 _REACTION_JOINERS: frozenset[int] = frozenset({0xFE0F, 0x200D})
@@ -2315,8 +2317,12 @@ class DailyBotClient:
         idempotent: bool = False,
         idempotency_key: str | None = None,
         headers: dict[str, str] | None = None,
+        url: str | None = None,
     ) -> Any:
         """Issue a Tasks write and surface the replay flag.
+
+        ``url`` replaces ``path`` for the rare door whose last segment is not a key or
+        uuid (an emoji); the caller has already validated and encoded it.
 
         ``idempotent`` reflects the door's posture in IDEMPOTENCY.md, not the
         caller's preference: when it is False no key is sent, even if one was
@@ -2346,7 +2352,11 @@ class DailyBotClient:
             extra = {**(extra or {}), IDEMPOTENCY_KEY_HEADER: sent_key}
         try:
             response: httpx.Response = self._request(
-                method, self._tasks_url(path), json=json, params=params, extra_headers=extra
+                method,
+                url or self._tasks_url(path),
+                json=json,
+                params=params,
+                extra_headers=extra,
             )
             result: Any = self._handle_response(response)
         except TransportError as exc:
@@ -2743,10 +2753,8 @@ class DailyBotClient:
         base: str = self._tasks_url(
             f"tasks/{_path_segment(task_uuid)}/comments/{_path_segment(comment_uuid)}/reactions/"
         )
-        url: str = f"{base}{quote(_checked_emoji(emoji), safe='')}/"
-        return self._handle_response(
-            self._request("DELETE", url, extra_headers=self._agent_name_header() or None)
-        )
+        target: str = f"{base}{quote(_checked_emoji(emoji), safe='')}/"
+        return self._tasks_write("DELETE", "", url=target)
 
     def get_board(self, board_uuid: str) -> dict[str, Any]:
         """GET /v1/tasks/boards/<uuid>/."""

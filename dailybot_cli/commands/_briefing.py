@@ -143,8 +143,9 @@ def download_attachments(
                 {"attachment": attachment_uuid, "status": "skipped", "reason": f"status {status}"}
             )
             continue
-        output: Path = root / safe_attachment_filename(attachment)
-        if output.parent != root:
+        name: str = safe_attachment_filename(attachment)
+        output: Path = root / name
+        if Path(name).parts != (name,) or name in (".", "..") or output.parent != root:
             saved.append(
                 {"attachment": attachment_uuid, "status": "skipped", "reason": "unsafe name"}
             )

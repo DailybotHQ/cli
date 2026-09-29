@@ -40,7 +40,8 @@ class TestEmojiRule:
     def test_accepted(self, emoji: str) -> None:
         assert is_reaction_emoji(emoji)
 
-    @pytest.mark.parametrize("emoji", ["", ":+1:", "ok", "👍x", "👍" * 9, "<b>"])
+    # Outside the API contract's ranges: the server refuses these, so the CLI does too.
+    @pytest.mark.parametrize("emoji", ["", ":+1:", "ok", "👍x", "👍" * 9, "<b>", "🇺🇸", "⭐", "1️⃣"])
     def test_refused(self, emoji: str) -> None:
         assert not is_reaction_emoji(emoji)
 

@@ -61,8 +61,10 @@ ERROR_CODE_MESSAGES: dict[str, str] = {
         "A reaction must be one emoji (for example 👍 or 🚀), not text or a :shortcode:."
     ),
     "label_in_use": (
-        "Tasks still use this label, so it cannot be deleted. Archive it instead: "
-        "`dailybot board label update <label> --archive`."
+        "This label is still in use, so it cannot be deleted. Archive it instead "
+        "(`dailybot label archive <label>` for organization labels, or "
+        "`dailybot board label update <label> --archive` for Tasks labels), or clear what "
+        "still references it, then delete."
     ),
     # Project update authorship
     "update_not_author": (

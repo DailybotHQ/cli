@@ -69,6 +69,10 @@ class TestCleanAgentName:
         assert cleaned is not None
         assert len(cleaned) == TASKS_AGENT_NAME_MAX_LENGTH + 40
 
+    def test_format_characters_go(self) -> None:
+        assert clean_agent_name("Claude\u202eCode") == "ClaudeCode"
+        assert clean_agent_name("\u200b") is None
+
     def test_non_ascii_is_kept(self) -> None:
         assert clean_agent_name("Agente Ñandú") == "Agente Ñandú"
 
