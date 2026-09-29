@@ -94,6 +94,7 @@ Both simultaneously, from any shell, with zero env-var management. `env.json` gi
     {
       "name": "local org 1",
       "api_key": "sk_local_xxxxxxxxxxxx",
+      "kind": "testing",
       "api_url": "http://localhost:8000",
       "app_url": "http://localhost:8090"
     },
@@ -116,6 +117,7 @@ Both simultaneously, from any shell, with zero env-var management. `env.json` gi
 | `profiles[].api_key` | string | **required** | The API key for this environment. Stored in plain text — gitignore is mandatory. |
 | `profiles[].api_url` | string | optional | Overrides `DAILYBOT_API_URL` / `credentials.json` when this profile is active. Trailing slashes normalized. Falls through to `DEFAULT_API_URL` when absent. |
 | `profiles[].app_url` | string | optional | Overrides `DAILYBOT_APP_URL` when this profile is active. Falls through to `DEFAULT_APP_URL` when absent. |
+| `profiles[].kind` | `"live"` \| `"testing"` | optional (default `live`) | Label only — does not change resolution. `testing` = local/dev API; `live` = production/staging. Inferred from `--api-url` on `env add` when omitted (localhost / `127.0.0.1` / `host.docker.internal` → `testing`). |
 
 ### CLI commands
 
@@ -125,7 +127,8 @@ dailybot env add \
   --key sk_xxx \
   --api-url http://localhost:8000 \
   --app-url http://localhost:8090       # Creates env.json + auto-active if first
-dailybot env add --name live --key sk_live_yyy   # Appends without changing active
+dailybot env add --name live --key sk_live_yyy --kind live   # Appends without changing active
+dailybot env add --name local-emma --key sk_xxx --api-url http://localhost:8000 --kind testing
 dailybot env use "local org 1"          # Switch active
 dailybot env use ""                     # Clear active (fall through to global)
 dailybot env show                       # Show resolved profile (key masked)
@@ -134,6 +137,40 @@ dailybot env remove "local org 1"       # Remove a profile (confirms first, --ye
 dailybot env off                        # Disable the file (preserves active)
 dailybot env on                         # Re-enable
 ```
+
+### Dual session — production default + testing profiles
+
+You can keep **production as the main session** (OTP login and/or `agents.json` profiles) **and** keep as many **testing** env profiles as you want for local APIs, switching exactly as before.
+
+Layers that already existed still work:
+
+| Layer | What it is | Typical use |
+| --- | --- | --- |
+| OTP login (`credentials.json`) | Global Bearer | Production reports, releases, `dailybot` with no env override |
+| `agents.json` + `--profile` | Named agent keys | Production agent identity; `--profile` still beats env.json |
+| `env.json` `kind: live` | Per-repo prod/staging key + optional URLs | Same as before: `env use live` |
+| `env.json` `kind: testing` | Per-repo **local** key + `api_url` | Local Tasks orgs (`local-8000`, `local-emma`, …) |
+| `env off` / `env use ""` | Inert env.json | Fall through to login / agents.json — production again |
+| `env on` / `env use <name>` | Activate one env profile | Switch testing or live without deleting anything |
+
+**Recommended contributor rhythm**
+
+1. `dailybot login` once against production. Leave `env.json` **disabled** (`dailybot env off`) so plain `dailybot agent update`, `dailybot`, and releases stay on production.
+2. Put **every** local org key in the same `env.json` as `kind: testing` (names like `local-8000`, `local-emma`). Put production/staging org keys in the same file as `kind: live` if you want them — they are optional; OTP already covers production.
+3. Switch whenever you want:
+   ```bash
+   dailybot env list                  # see live + testing, active marked
+   dailybot env use local-emma        # this repo now talks to local as Emma
+   dailybot env use local-8000        # same file, admin user on local
+   dailybot env use live              # env.json production/staging key, if you added one
+   dailybot env off                   # back to OTP production (profiles stay on disk)
+   dailybot env on                    # last active env profile again
+   ```
+4. One-shot local command **without** leaving env on (optional helper in this repo): `tmp/bin/dailybot-local [profile] <cmd…>` — runs `env use`, executes, then `env off`.
+
+`kind` is a **label** for `env list` / `env show`. Resolution is still “whatever profile is `active` and not `disabled`”. You can mix live and testing in one file; only one is active at a time — same as before.
+
+Do **not** run `dailybot login` while a testing profile is active: OTP would be requested against the local `api_url`. Turn env off first, then login to production.
 
 ### Security guarantees
 

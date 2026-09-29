@@ -707,6 +707,8 @@ def print_env_profile(
     table.add_column("Field", style="bold")
     table.add_column("Value")
     table.add_row("Profile", str(profile.get("name", "")))
+    kind: str = str(profile.get("kind") or "live")
+    table.add_row("Kind", kind)
     api_key: Any = profile.get("api_key", "")
     table.add_row("API key", mask(str(api_key)) if api_key else "[dim]—[/dim]")
     table.add_row(
@@ -744,6 +746,7 @@ def print_env_profiles_table(
     table: Table = Table(title=f"Profiles in {path}", border_style="cyan")
     table.add_column("Active", justify="center")
     table.add_column("Name", style="bold")
+    table.add_column("Kind")
     table.add_column("API key")
     table.add_column("API URL")
     table.add_column("Webapp URL")
@@ -751,9 +754,11 @@ def print_env_profiles_table(
         name: str = str(profile.get("name", ""))
         is_active: str = "[green]•[/green]" if name == (active or "") else ""
         api_key: Any = profile.get("api_key", "")
+        kind: str = str(profile.get("kind") or "live")
         table.add_row(
             is_active,
             name,
+            kind,
             mask(str(api_key)) if api_key else "[dim]—[/dim]",
             str(profile.get("api_url", "")) or "[dim](default)[/dim]",
             str(profile.get("app_url", "")) or "[dim](default)[/dim]",

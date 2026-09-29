@@ -754,6 +754,7 @@ def write_repo_profile(
 #       {
 #         "name": "local org 1",
 #         "api_key": "xxxxxxx",
+#         "kind": "testing",                    # optional: live | testing
 #         "api_url": "http://localhost:8000",   # optional
 #         "app_url": "http://localhost:8090"    # optional
 #       }
@@ -764,8 +765,19 @@ def write_repo_profile(
 # docs/SECURITY.md for the security posture.
 
 REPO_ENV_FILENAME: str = "env.json"
+ENV_PROFILE_KIND_LIVE: str = "live"
+ENV_PROFILE_KIND_TESTING: str = "testing"
+ENV_PROFILE_KINDS: frozenset[str] = frozenset(
+    {ENV_PROFILE_KIND_LIVE, ENV_PROFILE_KIND_TESTING}
+)
+# Hosts treated as local/dev when inferring ``kind`` from ``api_url``.
+_TESTING_API_HOSTS: frozenset[str] = frozenset(
+    {"localhost", "127.0.0.1", "0.0.0.0", "::1", "host.docker.internal"}
+)
 _VALID_REPO_ENV_TOP_KEYS: frozenset[str] = frozenset({"active", "disabled", "profiles"})
-_VALID_REPO_ENV_PROFILE_KEYS: frozenset[str] = frozenset({"name", "api_key", "api_url", "app_url"})
+_VALID_REPO_ENV_PROFILE_KEYS: frozenset[str] = frozenset(
+    {"name", "api_key", "api_url", "app_url", "kind"}
+)
 _REQUIRED_REPO_ENV_PROFILE_KEYS: frozenset[str] = frozenset({"name", "api_key"})
 _GIT_CHECK_TIMEOUT_SECS: float = 5.0
 
@@ -958,6 +970,17 @@ def load_repo_env(cwd: Path | None = None) -> dict[str, Any] | None:
                 f"{path} profiles[{i}] has unknown key(s) {sorted(unknown_profile)}; ignoring.",
             )
         cleaned: dict[str, Any] = {k: entry[k] for k in _VALID_REPO_ENV_PROFILE_KEYS if k in entry}
+        kind_raw: Any = cleaned.get("kind")
+        if kind_raw is not None and (
+            not isinstance(kind_raw, str) or kind_raw not in ENV_PROFILE_KINDS
+        ):
+            _warn_env_once(
+                f"kind:{path}:{i}",
+                f"{path} profiles[{i}] 'kind' must be "
+                f"{' or '.join(sorted(ENV_PROFILE_KINDS))} "
+                f"(got {kind_raw!r}); treating as live.",
+            )
+            cleaned.pop("kind", None)
         name: str = cleaned["name"]
         if name in seen_names:
             _warn_env_once(
@@ -1048,6 +1071,12 @@ def _validate_env_payload(payload: dict[str, Any]) -> None:
         if name in seen_names:
             raise RepoEnvError(f"Duplicate profile name '{name}'.")
         seen_names.add(name)
+        kind: Any = entry.get("kind")
+        if kind is not None and kind not in ENV_PROFILE_KINDS:
+            raise RepoEnvError(
+                f"profiles[{i}]['kind'] must be "
+                f"{' or '.join(sorted(ENV_PROFILE_KINDS))} (got {kind!r})."
+            )
 
     active: Any = payload.get("active")
     if active is not None and active != "":
@@ -1107,9 +1136,29 @@ def _normalize_env_payload(payload: dict[str, Any]) -> dict[str, Any]:
     return ordered
 
 
+def infer_env_profile_kind(api_url: str | None) -> str:
+    """Guess ``live`` vs ``testing`` from *api_url* (explicit ``kind`` still wins).
+
+    Local/loopback/devcontainer hosts are ``testing``; missing or public URLs
+    are ``live``. Used only as a default when the developer does not pass
+    ``--kind``.
+    """
+    if not api_url:
+        return ENV_PROFILE_KIND_LIVE
+    from urllib.parse import urlsplit
+
+    host: str = (urlsplit(api_url).hostname or "").lower()
+    if host in _TESTING_API_HOSTS:
+        return ENV_PROFILE_KIND_TESTING
+    return ENV_PROFILE_KIND_LIVE
+
+
 def _normalize_env_entry(entry: dict[str, Any]) -> dict[str, Any]:
     """Return a profile entry with a canonical key order."""
     out: dict[str, Any] = {"name": entry["name"], "api_key": entry["api_key"]}
+    kind: Any = entry.get("kind")
+    if isinstance(kind, str) and kind in ENV_PROFILE_KINDS:
+        out["kind"] = kind
     if entry.get("api_url"):
         out["api_url"] = str(entry["api_url"]).rstrip("/")
     if entry.get("app_url"):
@@ -1137,6 +1186,7 @@ def add_env_profile(
     api_key: str,
     api_url: str | None = None,
     app_url: str | None = None,
+    kind: str | None = None,
     *,
     cwd: Path | None = None,
 ) -> tuple[Path, bool]:
@@ -1156,6 +1206,16 @@ def add_env_profile(
         )
 
     entry: dict[str, Any] = {"name": name, "api_key": api_key}
+    resolved_kind: str
+    if kind is None:
+        resolved_kind = infer_env_profile_kind(api_url)
+    elif kind in ENV_PROFILE_KINDS:
+        resolved_kind = kind
+    else:
+        raise RepoEnvError(
+            f"'kind' must be {' or '.join(sorted(ENV_PROFILE_KINDS))} (got {kind!r})."
+        )
+    entry["kind"] = resolved_kind
     if api_url:
         entry["api_url"] = api_url.rstrip("/")
     if app_url:

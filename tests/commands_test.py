@@ -1208,6 +1208,76 @@ class TestStatusCommand:
         assert "Not authenticated" in result.output
 
 
+
+class TestInteractiveUrlMismatchWithApiKey:
+    """Dual-auth: prod Bearer on disk + local env.json key must not force OTP."""
+
+    @patch("dailybot_cli.commands.interactive.questionary")
+    @patch("dailybot_cli.commands.interactive._do_login")
+    @patch("dailybot_cli.commands.interactive.get_api_key", return_value="local-key")
+    @patch("dailybot_cli.commands.interactive.get_api_url", return_value="http://host.docker.internal:8000")
+    @patch("dailybot_cli.commands.interactive.load_credentials")
+    @patch("dailybot_cli.commands.interactive.get_token", return_value="prod-token")
+    @patch("dailybot_cli.commands.interactive.DailyBotClient")
+    def test_url_mismatch_with_api_key_skips_forced_login(
+        self,
+        mock_client_cls: MagicMock,
+        mock_get_token: MagicMock,
+        mock_load_creds: MagicMock,
+        mock_get_api_url: MagicMock,
+        mock_get_api_key: MagicMock,
+        mock_do_login: MagicMock,
+        mock_questionary: MagicMock,
+        runner: CliRunner,
+    ) -> None:
+        mock_load_creds.return_value = {
+            "token": "prod-token",
+            "email": "u@t.com",
+            "organization": "Prod Org",
+            "api_url": "https://api.dailybot.com",
+        }
+        mock_client_cls.return_value.get_me.return_value = {
+            "full_name": "Local User",
+            "organization": {"name": "Local Org"},
+        }
+        mock_questionary.select.return_value.ask.return_value = "exit"
+        result = runner.invoke(cli, [])
+        assert result.exit_code == 0
+        mock_do_login.assert_not_called()
+        assert "API key" in result.output
+        assert "Email:" not in result.output
+        assert "Let's get you logged in" not in result.output
+
+
+    @patch("dailybot_cli.commands.interactive.questionary")
+    @patch("dailybot_cli.commands.interactive._do_login")
+    @patch("dailybot_cli.commands.interactive.get_api_key", return_value="local-key")
+    @patch("dailybot_cli.commands.interactive.get_api_url", return_value="http://localhost:8000")
+    @patch("dailybot_cli.commands.interactive.load_credentials", return_value=None)
+    @patch("dailybot_cli.commands.interactive.get_token", return_value=None)
+    @patch("dailybot_cli.commands.interactive.DailyBotClient")
+    def test_api_key_only_skips_login_prompt(
+        self,
+        mock_client_cls: MagicMock,
+        mock_get_token: MagicMock,
+        mock_load_creds: MagicMock,
+        mock_get_api_url: MagicMock,
+        mock_get_api_key: MagicMock,
+        mock_do_login: MagicMock,
+        mock_questionary: MagicMock,
+        runner: CliRunner,
+    ) -> None:
+        mock_client_cls.return_value.get_me.return_value = {
+            "full_name": "Key User",
+            "organization": {"name": "Key Org"},
+        }
+        mock_questionary.select.return_value.ask.return_value = "exit"
+        result = runner.invoke(cli, [])
+        assert result.exit_code == 0
+        mock_do_login.assert_not_called()
+        assert "Email:" not in result.output
+
+
 class TestInteractiveLogin:
     @patch("dailybot_cli.commands.interactive.questionary")
     @patch("dailybot_cli.commands.interactive._do_login")
