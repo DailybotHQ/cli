@@ -406,6 +406,11 @@ def _checked_emoji(value: str) -> str:
     return value
 
 
+def _reaction_filter(emoji: str | None) -> dict[str, Any] | None:
+    """The `?emoji=` filter of a reactions list, or no filter (every emoji)."""
+    return {"emoji": _checked_emoji(emoji)} if emoji else None
+
+
 def _path_segment(value: Any) -> str:
     """One validated path segment: a key, a uuid or a slug — never `/`, `..`, `?`, `#`."""
     text: str = str(value)
@@ -2755,6 +2760,45 @@ class DailyBotClient:
         )
         target: str = f"{base}{quote(_checked_emoji(emoji), safe='')}/"
         return self._tasks_write("DELETE", "", url=target)
+
+    def list_comment_reactions(
+        self, task_uuid: str, comment_uuid: str, *, emoji: str | None = None, **page: Any
+    ) -> PaginatedResult:
+        """GET …/comments/<c>/reactions/ — everyone who reacted, oldest first."""
+        return self._tasks_list(
+            f"tasks/{_path_segment(task_uuid)}/comments/{_path_segment(comment_uuid)}/reactions/",
+            params=_reaction_filter(emoji),
+            **page,
+        )
+
+    def add_update_reaction(self, project_uuid: str, update_uuid: str, emoji: str) -> Any:
+        """POST …/updates/<u>/reactions/ — idempotent; answers with the whole update."""
+        return self._tasks_write(
+            "POST",
+            f"projects/{_path_segment(project_uuid)}/updates/{_path_segment(update_uuid)}"
+            "/reactions/",
+            json={"emoji": _checked_emoji(emoji)},
+        )
+
+    def remove_update_reaction(self, project_uuid: str, update_uuid: str, emoji: str) -> Any:
+        """DELETE …/updates/<u>/reactions/<emoji>/ — the emoji travels percent-encoded."""
+        base: str = self._tasks_url(
+            f"projects/{_path_segment(project_uuid)}/updates/{_path_segment(update_uuid)}"
+            "/reactions/"
+        )
+        target: str = f"{base}{quote(_checked_emoji(emoji), safe='')}/"
+        return self._tasks_write("DELETE", "", url=target)
+
+    def list_update_reactions(
+        self, project_uuid: str, update_uuid: str, *, emoji: str | None = None, **page: Any
+    ) -> PaginatedResult:
+        """GET …/updates/<u>/reactions/ — everyone who reacted, oldest first."""
+        return self._tasks_list(
+            f"projects/{_path_segment(project_uuid)}/updates/{_path_segment(update_uuid)}"
+            "/reactions/",
+            params=_reaction_filter(emoji),
+            **page,
+        )
 
     def get_board(self, board_uuid: str) -> dict[str, Any]:
         """GET /v1/tasks/boards/<uuid>/."""

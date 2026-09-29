@@ -1623,6 +1623,62 @@ def _person_name(person: dict[str, Any]) -> Any:
     return person.get("full_name") or person.get("name")
 
 
+def _reactor(user: Any, agent: Any = None) -> str:
+    """One person who reacted, with the agent that reacted for them when stamped."""
+    name: Any = _person_name(user) if isinstance(user, dict) else user
+    who: str = present_untrusted(name, limit=24)
+    stamp: Any = (
+        agent
+        if agent is not None
+        else (user.get("executed_by_agent") if isinstance(user, dict) else None)
+    )
+    if isinstance(stamp, dict) and stamp.get("name"):
+        who += f" via {present_untrusted(stamp.get('name'), limit=24)}"
+    return who
+
+
+def format_reactions(reactions: Any) -> str:
+    """One line for a comment's or update's reactions: emoji, true count, who reacted.
+
+    `users` holds at most the first few reactors; `count` is always the true total,
+    so the list was cut exactly when `count > len(users)`. Names are user-authored
+    and quoted as data. An older server sends no `users`: the count alone is shown.
+    """
+    if not isinstance(reactions, list):
+        return ""
+    parts: list[str] = []
+    for entry in reactions:
+        if not isinstance(entry, dict) or not entry.get("emoji"):
+            continue
+        count: Any = entry.get("count")
+        users: Any = entry.get("users")
+        part: str = (
+            f"{safe_text(entry.get('emoji'))} {safe_text(count if count is not None else '')}"
+        )
+        if isinstance(users, list) and users:
+            names: list[str] = [_reactor(u) for u in users]
+            if isinstance(count, int) and count > len(users):
+                names.append(f"+{count - len(users)} more")
+            part += f" ({', '.join(names)})"
+        if entry.get("reacted"):
+            part += " [dim]you reacted[/dim]"
+        parts.append(part.strip())
+    return " · ".join(parts)
+
+
+def print_reaction_list(entries: list[dict[str, Any]]) -> None:
+    """Render a full reactor list: emoji, the person (and agent), and when."""
+    if not entries:
+        print_info("No reactions.")
+        return
+    for entry in entries:
+        who: str = _reactor(entry.get("user") or {}, entry.get("executed_by_agent"))
+        console.print(
+            f"{safe_text(entry.get('emoji') or '')} {who} "
+            f"[dim]{safe_text(entry.get('created_at') or '')}[/dim]"
+        )
+
+
 def _state_name(task: dict[str, Any]) -> str:
     state: Any = task.get("state")
     if isinstance(state, dict):
@@ -2106,6 +2162,9 @@ def print_project_updates(updates: list[dict[str, Any]]) -> None:
             meta.append(f"{count} file(s)")
         console.print(f"[dim]{' · '.join(m for m in meta if m)}[/dim] {who}")
         console.print(f"  {present_untrusted(update.get('body'), limit=400)}")
+        reacted: str = format_reactions(update.get("reactions"))
+        if reacted:
+            console.print(f"  {reacted}")
         if update.get("uuid"):
             console.print(f"  [dim]{safe_text(update.get('uuid'))}[/dim]")
 
@@ -2160,3 +2219,6 @@ def print_task_comments(comments: list[dict[str, Any]]) -> None:
         # A reply names its thread's root in `parent_comment`; `_threaded` put it there.
         thread: str = "  ↳ " if comment.get("parent_comment") else ""
         console.print(f"{thread}{attribution}: {present_untrusted(comment.get('body'), limit=400)}")
+        reacted: str = format_reactions(comment.get("reactions"))
+        if reacted:
+            console.print(f"{'    ' if thread else '  '}{reacted}")

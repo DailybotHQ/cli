@@ -67,6 +67,7 @@ from dailybot_cli.display import (
     print_deprecation,
     print_error,
     print_pagination_footer,
+    print_reaction_list,
     print_success,
     print_task_briefing,
     print_task_comments,
@@ -1265,6 +1266,52 @@ def task_comment_unreact(task_uuid: str, comment_uuid: str, emoji: str, json_mod
         emit_json({"removed": True, "task": task_uuid, "comment": comment_uuid, "emoji": emoji})
         return
     print_success(f"Removed {emoji}.")
+
+
+@task.command("comment-reactions")
+@click.argument("task_uuid", metavar="TASK")
+@click.argument("comment_uuid", metavar="COMMENT")
+@click.option("--emoji", default=None, help="Only this emoji (all emojis when omitted).")
+@query_options
+@click.option("--json", "json_mode", is_flag=True, help="Emit machine-readable JSON to stdout.")
+def task_comment_reactions(
+    task_uuid: str, comment_uuid: str, emoji: str | None, json_mode: bool, **flags: Any
+) -> None:
+    """Everyone who reacted to a comment, oldest first, with the agent that reacted for them.
+
+    \b
+    A comment itself carries at most the first few reactors per emoji; this lists
+    them all.
+
+    \b
+    Examples:
+      dailybot task comment-reactions ENG-142 <comment-uuid>
+      dailybot task comment-reactions ENG-142 <comment-uuid> --emoji 👍 --json
+    """
+    if emoji is not None and not is_reaction_emoji(emoji):
+        raise click.UsageError("--emoji must be one emoji, e.g. 👍 (no text or :shortcodes:).")
+    client = require_auth()
+    try:
+        spec = build_query_params(**flags)
+        with console.status("Reading reactions..."):
+            result: PaginatedResult = client.list_comment_reactions(
+                task_uuid,
+                comment_uuid,
+                emoji=emoji,
+                page=spec.page,
+                page_size=spec.page_size,
+                fetch_all=resolve_fetch_all(spec),
+                limit=spec.limit,
+            )
+    except ValueError as exc:
+        raise click.BadParameter(str(exc)) from exc
+    except APIError as exc:
+        exit_for_tasks_error(exc, json_mode)
+    if json_mode:
+        emit_json(_envelope(result))
+        return
+    print_reaction_list(result.results)
+    print_pagination_footer(len(result.results), result.count, has_more=bool(result.next))
 
 
 @task.command("comment-delete")
