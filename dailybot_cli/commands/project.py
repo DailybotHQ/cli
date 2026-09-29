@@ -30,7 +30,13 @@ from dailybot_cli.commands.public_api_helpers import (
     require_auth,
     rows_of,
 )
-from dailybot_cli.commands.query_options import build_query_params, query_options, resolve_fetch_all
+from dailybot_cli.commands.query_options import (
+    PAGING_ONLY_MORE_HINT,
+    build_query_params,
+    paging_options,
+    query_options,
+    resolve_fetch_all,
+)
 from dailybot_cli.display import (
     console,
     print_info,
@@ -1406,7 +1412,8 @@ def project_update_unreact(
 @click.argument("project_uuid", metavar="PROJECT")
 @click.argument("update_uuid", metavar="UPDATE")
 @click.option("--emoji", default=None, help="Only this emoji (all emojis when omitted).")
-@query_options
+@click.option("--all", "-a", "fetch_all", is_flag=True, help="Fetch every page.")
+@paging_options
 @click.option("--json", "json_mode", is_flag=True, help="Emit machine-readable JSON to stdout.")
 def project_update_reactions(
     project_uuid: str, update_uuid: str, emoji: str | None, json_mode: bool, **flags: Any
@@ -1434,7 +1441,7 @@ def project_update_reactions(
                 emoji=emoji,
                 page=spec.page,
                 page_size=spec.page_size,
-                fetch_all=resolve_fetch_all(spec),
+                fetch_all=spec.fetch_all,
                 limit=spec.limit,
             )
     except ValueError as exc:
@@ -1445,7 +1452,12 @@ def project_update_reactions(
         emit_json(_envelope(result))
         return
     print_reaction_list(result.results)
-    print_pagination_footer(len(result.results), result.count, has_more=bool(result.next))
+    print_pagination_footer(
+        len(result.results),
+        result.count,
+        has_more=bool(result.next),
+        more_hint=PAGING_ONLY_MORE_HINT,
+    )
 
 
 @project.command("update-delete")

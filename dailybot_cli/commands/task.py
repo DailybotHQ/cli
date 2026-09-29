@@ -1272,7 +1272,8 @@ def task_comment_unreact(task_uuid: str, comment_uuid: str, emoji: str, json_mod
 @click.argument("task_uuid", metavar="TASK")
 @click.argument("comment_uuid", metavar="COMMENT")
 @click.option("--emoji", default=None, help="Only this emoji (all emojis when omitted).")
-@query_options
+@click.option("--all", "-a", "fetch_all", is_flag=True, help="Fetch every page.")
+@paging_options
 @click.option("--json", "json_mode", is_flag=True, help="Emit machine-readable JSON to stdout.")
 def task_comment_reactions(
     task_uuid: str, comment_uuid: str, emoji: str | None, json_mode: bool, **flags: Any
@@ -1300,7 +1301,7 @@ def task_comment_reactions(
                 emoji=emoji,
                 page=spec.page,
                 page_size=spec.page_size,
-                fetch_all=resolve_fetch_all(spec),
+                fetch_all=spec.fetch_all,
                 limit=spec.limit,
             )
     except ValueError as exc:
@@ -1311,7 +1312,12 @@ def task_comment_reactions(
         emit_json(_envelope(result))
         return
     print_reaction_list(result.results)
-    print_pagination_footer(len(result.results), result.count, has_more=bool(result.next))
+    print_pagination_footer(
+        len(result.results),
+        result.count,
+        has_more=bool(result.next),
+        more_hint=PAGING_ONLY_MORE_HINT,
+    )
 
 
 @task.command("comment-delete")

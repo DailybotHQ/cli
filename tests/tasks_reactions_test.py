@@ -66,7 +66,7 @@ class TestFormatReactions:
         )
         assert "👍 2" in text
         assert '"Jane Doe"' in text
-        assert '"John Roe" via "Claude Code"' in text
+        assert '"John Roe" [dim]via "Claude Code"[/dim]' in text
         assert "you reacted" in text
 
     def test_truncation_is_count_over_users(self) -> None:
@@ -76,6 +76,10 @@ class TestFormatReactions:
         )
         assert "🚀 12" in text
         assert "+2 more" in text
+
+    def test_empty_users_still_counts_the_rest(self) -> None:
+        text: str = format_reactions([{"emoji": "👍", "count": 12, "reacted": False, "users": []}])
+        assert "+12 more" in text
 
     def test_legacy_entry_without_users(self) -> None:
         # Older servers send only {emoji, count, reacted}.
@@ -157,7 +161,7 @@ class TestCommands:
         client: MagicMock = MagicMock(spec=DailyBotClient)
         client.add_update_reaction.side_effect = APIError(400, "no", code="actor_required")
         result = _invoke("project", ["project", "update-react", P, U, "👍", "--json"], client)
-        assert result.exit_code != 0
+        assert result.exit_code == 3
         assert json.loads(result.output)["code"] == "actor_required"
 
     def test_comment_reactions_list(self) -> None:
@@ -190,6 +194,27 @@ class TestCommands:
         result = _invoke("task", ["task", "comment-reactions", T, C, "--emoji", "ok"], client)
         assert result.exit_code == 2
         client.list_comment_reactions.assert_not_called()
+
+
+class TestListFlags:
+    @pytest.mark.parametrize(
+        ("module", "argv"),
+        [
+            ("task", ["task", "comment-reactions", T, C, "--search", "Jane"]),
+            ("project", ["project", "update-reactions", P, U, "--today"]),
+        ],
+    )
+    def test_no_filters_the_door_does_not_honour(self, module: str, argv: list[str]) -> None:
+        # Only --emoji filters a reactor list; search and date flags would be silent no-ops.
+        result = _invoke(module, argv, MagicMock(spec=DailyBotClient))
+        assert result.exit_code == 2
+
+    def test_all_fetches_every_page(self) -> None:
+        client: MagicMock = MagicMock(spec=DailyBotClient)
+        client.list_update_reactions.return_value = _page([])
+        result = _invoke("project", ["project", "update-reactions", P, U, "--all"], client)
+        assert result.exit_code == 0, result.output
+        assert client.list_update_reactions.call_args.kwargs["fetch_all"] is True
 
 
 class TestRendering:

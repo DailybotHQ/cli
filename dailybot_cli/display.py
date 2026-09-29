@@ -1633,7 +1633,7 @@ def _reactor(user: Any, agent: Any = None) -> str:
         else (user.get("executed_by_agent") if isinstance(user, dict) else None)
     )
     if isinstance(stamp, dict) and stamp.get("name"):
-        who += f" via {present_untrusted(stamp.get('name'), limit=24)}"
+        who += f" [dim]via {present_untrusted(stamp.get('name'), limit=24)}[/dim]"
     return who
 
 
@@ -1642,7 +1642,7 @@ def format_reactions(reactions: Any) -> str:
 
     `users` holds at most the first few reactors; `count` is always the true total,
     so the list was cut exactly when `count > len(users)`. Names are user-authored
-    and quoted as data. An older server sends no `users`: the count alone is shown.
+    and quoted as data. An older server sends no `users` at all: the count alone is shown.
     """
     if not isinstance(reactions, list):
         return ""
@@ -1655,11 +1655,12 @@ def format_reactions(reactions: Any) -> str:
         part: str = (
             f"{safe_text(entry.get('emoji'))} {safe_text(count if count is not None else '')}"
         )
-        if isinstance(users, list) and users:
+        if isinstance(users, list):
             names: list[str] = [_reactor(u) for u in users]
             if isinstance(count, int) and count > len(users):
                 names.append(f"+{count - len(users)} more")
-            part += f" ({', '.join(names)})"
+            if names:
+                part += f" ({', '.join(names)})"
         if entry.get("reacted"):
             part += " [dim]you reacted[/dim]"
         parts.append(part.strip())
