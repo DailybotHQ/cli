@@ -2,6 +2,7 @@
 
 import re
 import time
+import unicodedata
 import uuid
 from collections.abc import Callable
 from dataclasses import dataclass, field
@@ -367,13 +368,16 @@ def clean_agent_name(name: str | None) -> str | None:
     if name is None:
         return None
     text: str = _AGENT_NAME_CONTROL_RE.sub("", name)
+    # Invisible format characters (bidi overrides, zero-width) would disguise the
+    # name wherever another client renders it.
+    text = "".join(ch for ch in text if unicodedata.category(ch) != "Cf")
     return _AGENT_NAME_SPACE_RE.sub(" ", text).strip() or None
 
 
 def _path_segment(value: Any) -> str:
     """One validated path segment: a key, a uuid or a slug — never `/`, `..`, `?`, `#`."""
     text: str = str(value)
-    if not TASKS_PATH_SEGMENT_RE.match(text):
+    if not TASKS_PATH_SEGMENT_RE.fullmatch(text):
         raise _invalid_identifier()
     return text
 
@@ -2267,7 +2271,7 @@ class DailyBotClient:
         """
         relative: str = path.lstrip("/")
         for segment in relative.rstrip("/").split("/"):
-            if not TASKS_PATH_SEGMENT_RE.match(segment):
+            if not TASKS_PATH_SEGMENT_RE.fullmatch(segment):
                 raise _invalid_identifier()
         return f"{self.api_url}{TASKS_BASE_PATH}{relative}"
 

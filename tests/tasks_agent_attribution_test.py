@@ -268,3 +268,12 @@ def test_the_refusal_names_every_cause() -> None:
     assert "letters, numbers, spaces" in message
     assert "deactivated" in message
     assert "agent key" in message
+
+
+def test_format_characters_are_stripped_from_agent_names() -> None:
+    assert clean_agent_name("Claude‮ Code​") == "Claude Code"
+
+
+def test_a_path_segment_ending_in_newline_is_refused() -> None:
+    with pytest.raises(APIError):
+        _client().get_task("ENG-1\n")

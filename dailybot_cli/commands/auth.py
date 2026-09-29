@@ -15,6 +15,7 @@ from dailybot_cli.config import (
     get_api_url,
     get_token,
     load_org_cache,
+    login_token_origin_url,
     save_credentials,
     save_org_cache,
     save_org_plan,
@@ -334,7 +335,10 @@ def logout() -> None:
             print_info("Not logged in.")
         return
 
-    client: DailyBotClient = DailyBotClient()
+    # Revoke on the host that issued the session, not on whatever `env.json`
+    # or `--api-url` points at: the token is only valid (and only sent) there.
+    client: DailyBotClient = DailyBotClient(api_url=login_token_origin_url(), token=token)
+    client.api_key = None
     try:
         with console.status("Logging out..."):
             client.logout()

@@ -9,6 +9,7 @@ and attachment names never choose where a file lands.
 """
 
 import re
+import unicodedata
 from pathlib import Path
 from typing import Any
 
@@ -19,9 +20,11 @@ from dailybot_cli.commands.public_api_helpers import rows_of
 # Comments read into one briefing. A card with more is summarized by its
 # newest-first page and the total, which the briefing reports.
 BRIEF_COMMENT_LIMIT: int = 200
-# Longest saved file name, before the uuid prefix. Keeps well under common
-# filesystem limits (255 bytes) even for multi-byte names.
-MAX_SAVED_NAME_CHARS: int = 120
+# Longest saved file name in UTF-8 bytes, before the uuid prefix: the prefix
+# plus this stays under the common 255-byte filesystem limit for any script.
+MAX_SAVED_NAME_BYTES: int = 200
+# Characters Windows refuses in a file name (and `:` would open an NTFS stream).
+_WINDOWS_RESERVED_RE: re.Pattern[str] = re.compile(r'[<>:"|?*]')
 FALLBACK_ATTACHMENT_NAME: str = "attachment"
 # Attachments still uploading, or failed, have no bytes to fetch.
 UNFETCHABLE_ATTACHMENT_STATUSES: frozenset[str] = frozenset({"pending", "failed"})
@@ -83,6 +86,11 @@ def build_briefing(client: Any, task_ref: str) -> dict[str, Any]:
     return brief
 
 
+def _truncate_utf8(text: str, limit: int) -> str:
+    """Cut `text` to at most `limit` UTF-8 bytes without splitting a character."""
+    return text.encode("utf-8")[:limit].decode("utf-8", "ignore")
+
+
 def safe_attachment_filename(attachment: dict[str, Any]) -> str:
     """A local file name for an attachment that cannot escape its directory.
 
@@ -92,8 +100,11 @@ def safe_attachment_filename(attachment: dict[str, Any]) -> str:
     """
     raw: str = str(attachment.get("filename") or "")
     base: str = re.split(r"[\\/]", raw)[-1]
-    base = _UNSAFE_NAME_CHARS_RE.sub("", base).strip().lstrip(".").strip()
-    base = base[:MAX_SAVED_NAME_CHARS] or FALLBACK_ATTACHMENT_NAME
+    base = _UNSAFE_NAME_CHARS_RE.sub("", base)
+    # Format characters (a right-to-left override can fake the extension).
+    base = "".join(ch for ch in base if unicodedata.category(ch) != "Cf")
+    base = _WINDOWS_RESERVED_RE.sub("_", base).strip().lstrip(".").strip().rstrip(".")
+    base = _truncate_utf8(base, MAX_SAVED_NAME_BYTES) or FALLBACK_ATTACHMENT_NAME
     prefix: str = str(attachment.get("uuid") or "")[:8]
     return f"{prefix}-{base}" if prefix else base
 
@@ -107,7 +118,11 @@ def download_attachments(
     force: bool,
     json_mode: bool,
 ) -> list[dict[str, Any]]:
-    """Save every fetchable attachment into `directory`; never overwrite without `force`."""
+    """Save every fetchable attachment into `directory`; never overwrite without `force`.
+
+    Attachments that are not fetchable, or whose name would not land inside
+    `directory`, are reported with a `skipped` reason instead of dropped.
+    """
     directory.mkdir(parents=True, exist_ok=True)
     root: Path = directory.resolve()
     saved: list[dict[str, Any]] = []
@@ -115,10 +130,13 @@ def download_attachments(
         attachment_uuid: str = str(attachment.get("uuid") or "")
         if not attachment_uuid:
             continue
-        if str(attachment.get("status") or "").lower() in UNFETCHABLE_ATTACHMENT_STATUSES:
+        status: str = str(attachment.get("status") or "").lower()
+        if status in UNFETCHABLE_ATTACHMENT_STATUSES:
+            saved.append({"attachment": attachment_uuid, "skipped": f"status {status}"})
             continue
         output: Path = root / safe_attachment_filename(attachment)
         if output.parent != root:
+            saved.append({"attachment": attachment_uuid, "skipped": "unsafe name"})
             continue
         content: bytes = client.download_attachment(task_uuid, attachment_uuid)
         write_download(output, content, force=force, json_mode=json_mode)

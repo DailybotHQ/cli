@@ -460,7 +460,10 @@ def task_brief(task_uuid: str, download_dir: Path | None, force: bool, json_mode
         return
     print_task_briefing(brief)
     if downloads:
-        print_success(f"Saved {len(downloads)} attachment(s) to {download_dir}.")
+        saved: int = sum(1 for d in downloads if "path" in d)
+        skipped: int = len(downloads) - saved
+        note: str = f" Skipped {skipped} not ready or unsafe." if skipped else ""
+        print_success(f"Saved {saved} attachment(s) to {download_dir}.{note}")
 
 
 def _write_error(exc: APIError, json_mode: bool = False) -> NoReturn:

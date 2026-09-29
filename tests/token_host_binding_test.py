@@ -111,3 +111,27 @@ class TestPreflightsAskTheCurrentHost:
         assert config.get_person_token() is None
         config.set_api_url_override(PROD)
         assert config.get_person_token() == "prod-session-token"
+
+
+class TestLogoutRevokesOnTheIssuingHost:
+    def test_logout_posts_to_the_login_host_even_when_env_points_elsewhere(self) -> None:
+        from click.testing import CliRunner
+
+        from dailybot_cli.main import cli
+
+        _login()
+        response: MagicMock = MagicMock(spec=httpx.Response)
+        response.status_code = 200
+        response.json.return_value = {}
+        response.headers = {}
+        with patch("httpx.post", return_value=response) as post:
+            result = CliRunner().invoke(cli, ["--api-url", LOCAL, "logout"])
+        assert result.exit_code == 0, result.output
+        assert post.call_args.args[0] == f"{PROD}/v1/cli/auth/logout/"
+        headers: dict[str, str] = post.call_args.kwargs["headers"]
+        assert headers.get("Authorization") == "Bearer prod-session-token"
+        assert "X-API-KEY" not in headers
+
+    def test_http_and_https_are_different_hosts(self) -> None:
+        _login()
+        assert get_login_token_for("http://api.dailybot.com") is None
