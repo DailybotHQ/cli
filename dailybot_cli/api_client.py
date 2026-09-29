@@ -100,6 +100,16 @@ SAME_ORIGIN_UPLOAD_METHODS: frozenset[str] = frozenset({"PUT", "POST"})
 # BLAST_RADIUS.md records this as THE volume guard for unattended destructive
 # loops — the CLI adds no second ceiling of its own.
 TASKS_BULK_MAX_ITEMS: int = 100
+# Collections the task detail door can embed in one read (first page each).
+TASK_BRIEFING_INCLUDES: tuple[str, ...] = (
+    "relations",
+    "participants",
+    "attachments",
+    "comments",
+    "activity",
+    "children",
+    "comment_count",
+)
 IDEMPOTENCY_KEY_HEADER: str = "Idempotency-Key"
 IDEMPOTENCY_REPLAYED_HEADER: str = "Idempotency-Replayed"
 # The agent that executed a Tasks write on a person's behalf. The person stays
@@ -2696,6 +2706,17 @@ class DailyBotClient:
     def get_task(self, task_uuid: str) -> dict[str, Any]:
         """GET /v1/tasks/tasks/<uuid>/ — the most frequent call of all."""
         return self._tasks_read(f"tasks/{_path_segment(task_uuid)}/")
+
+    def get_task_briefing(self, task_uuid: str) -> dict[str, Any]:
+        """GET /v1/tasks/tasks/<uuid>/?include=… — the card plus first pages of its collections.
+
+        Each embed arrives as a paginated envelope; a caller pages the dedicated
+        door when its ``next`` is set.
+        """
+        return self._tasks_read(
+            f"tasks/{_path_segment(task_uuid)}/",
+            params={"include": ",".join(TASK_BRIEFING_INCLUDES)},
+        )
 
     def create_task(
         self,

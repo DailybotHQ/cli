@@ -22,6 +22,8 @@ dailybot [--api-url URL] [--agent-name NAME] [--version] [<command> …]
 | `--agent-name` | `DAILYBOT_AGENT_NAME` | none | The agent acting for the person. Every Tasks write stays authored by the credential's person and is stamped as executed by this agent (body `agent_name` on JSON writes; `X-Dailybot-Agent-Name`, percent-encoded UTF-8, on multipart and body-less writes). Reads are never stamped. Max 128 characters, refused rather than truncated (`invalid_agent_attribution`). An agent key (not bound to a person) is refused with the stamp. Unset means a person is acting directly. |
 | `--version` | — | — | Reads `importlib.metadata.version("dailybot-cli")` |
 
+Task briefing: `dailybot task brief <task> [--download DIR] [--force] [--json]` reads `GET /v1/tasks/tasks/<task>/?include=relations,participants,attachments,comments,activity,children,comment_count` once, completes any embed whose envelope has `next` from its own door (comments up to 200, attachments, relations), and falls back to those doors when the server returns no embeds. `--json` adds `"untrusted_content": true`; with `--download`, files are saved as `<uuid8>-<last path component>` inside DIR (control characters and leading dots removed), pending or failed attachments are skipped, and `--force` is required to overwrite.
+
 Agent attribution in output: `task comments` shows `<person> via "<agent>"` when `executed_by_agent` is present, and `task get` lists every agent that executed a write on the card on an **Agents** line (`executors`, most recent first). That list is separate from the singular executor (who holds the ball now).
 
 Run with no subcommand → drops into the menu-driven interactive TUI (`commands/interactive.py`).
