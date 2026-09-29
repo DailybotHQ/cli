@@ -13,7 +13,7 @@ import unicodedata
 from pathlib import Path
 from typing import Any
 
-from dailybot_cli.api_client import PaginatedResult
+from dailybot_cli.api_client import TASKS_PATH_SEGMENT_RE, PaginatedResult
 from dailybot_cli.commands._attachments import write_download
 from dailybot_cli.commands.public_api_helpers import rows_of
 
@@ -130,6 +130,12 @@ def download_attachments(
     for attachment in attachments:
         attachment_uuid: str = str(attachment.get("uuid") or "")
         if not attachment_uuid:
+            continue
+        if not TASKS_PATH_SEGMENT_RE.fullmatch(attachment_uuid):
+            # Not a key or uuid the API could serve: never saved under a guessed name.
+            saved.append(
+                {"attachment": attachment_uuid, "status": "skipped", "reason": "invalid id"}
+            )
             continue
         status: str = str(attachment.get("status") or "").lower()
         if status in UNFETCHABLE_ATTACHMENT_STATUSES:

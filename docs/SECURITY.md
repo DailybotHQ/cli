@@ -146,7 +146,8 @@ local host. `DAILYBOT_CLI_TOKEN` is an explicit caller choice and is exempt.
 **`DAILYBOT_CLI_TOKEN` is the caller's explicit choice.** A token set in that variable is not
 bound to a host: it goes to whatever API the invocation targets (`--api-url`, `env.json`) and
 is used on the 401/403 retry. CI jobs that set it should also pin the API URL. `dailybot
-logout` always revokes a stored login on the host that issued it.
+logout` revokes every session it knows: a `DAILYBOT_CLI_TOKEN` on the current API, and a stored
+login on the host that issued it; local credentials are cleared afterwards.
 
 **A person refused is never replayed as the organization.** The client normally retries a
 401/403 once with the other stored credential. On a Tasks door, a 403 to a signed-in person

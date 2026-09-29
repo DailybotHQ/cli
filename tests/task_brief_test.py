@@ -257,7 +257,6 @@ class TestSecurityHardening:
             {"uuid": "../../../../x", "filename": "b.txt"},
         ]
         result = download_attachments(client, TASK_UUID, rows, out, force=False, json_mode=True)
-        by_status: dict[str, dict[str, Any]] = {r["status"]: r for r in result}
-        assert by_status["skipped"]["reason"] == "status pending"
-        # A hostile uuid is sanitized to a safe prefix, so the file lands inside `out`.
-        assert Path(by_status["saved"]["path"]).parent == out.resolve()
+        assert [r["reason"] for r in result] == ["status pending", "invalid id"]
+        assert {r["status"] for r in result} == {"skipped"}
+        client.download_attachment.assert_not_called()

@@ -15,6 +15,7 @@ from dailybot_cli.config import (
     get_api_key,
     get_api_url,
     get_token,
+    load_credentials,
     load_org_cache,
     login_token_origin_url,
     save_credentials,
@@ -338,17 +339,26 @@ def logout() -> None:
 
     # Revoke on the host that issued the session, not on whatever `env.json`
     # or `--api-url` points at: the token is only valid (and only sent) there.
-    # A DAILYBOT_CLI_TOKEN is the caller's explicit session for the current API.
-    target: str = (
-        get_api_url() if os.environ.get("DAILYBOT_CLI_TOKEN") else login_token_origin_url()
-    )
-    client: DailyBotClient = DailyBotClient(api_url=target, token=token)
-    client.api_key = None
-    try:
-        with console.status("Logging out..."):
-            client.logout()
-    except APIError:
-        pass  # Revoke best-effort; clear local credentials regardless
+    # Revoke every session this invocation knows: a DAILYBOT_CLI_TOKEN on the
+    # current API (the caller's explicit session), and a stored login on the
+    # host that issued it. Best-effort each; local credentials are cleared after.
+    targets: list[tuple[str, str]] = []
+    env_token: str | None = os.environ.get("DAILYBOT_CLI_TOKEN")
+    if env_token:
+        targets.append((get_api_url(), env_token))
+    stored: dict[str, Any] | None = load_credentials()
+    if stored and stored.get("token"):
+        targets.append((login_token_origin_url(), str(stored["token"])))
+    if not targets:
+        targets.append((login_token_origin_url(), token))
+    for api_url, session_token in targets:
+        client: DailyBotClient = DailyBotClient(api_url=api_url, token=session_token)
+        client.api_key = None
+        try:
+            with console.status("Logging out..."):
+                client.logout()
+        except APIError:
+            pass  # Revoke best-effort; clear local credentials regardless
 
     clear_credentials()
     print_success("Logged out.")

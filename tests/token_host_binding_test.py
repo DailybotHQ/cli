@@ -152,5 +152,9 @@ class TestLogoutWithAnEnvToken:
         with patch("httpx.post", return_value=response) as post:
             result = CliRunner().invoke(cli, ["--api-url", LOCAL, "logout"])
         assert result.exit_code == 0, result.output
-        assert post.call_args.args[0] == f"{LOCAL}/v1/cli/auth/logout/"
-        assert post.call_args.kwargs["headers"]["Authorization"] == "Bearer ci-token"
+        calls = [(c.args[0], c.kwargs["headers"]["Authorization"]) for c in post.call_args_list]
+        assert calls == [
+            (f"{LOCAL}/v1/cli/auth/logout/", "Bearer ci-token"),
+            (f"{PROD}/v1/cli/auth/logout/", "Bearer prod-session-token"),
+        ]
+        assert config.load_credentials() is None
