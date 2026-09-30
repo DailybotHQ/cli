@@ -2599,8 +2599,12 @@ class DailyBotClient:
         date_from: str | None = None,
         date_to: str | None = None,
         include_unscheduled: bool = False,
+        projects: list[str] | None = None,
+        milestones: list[str] | None = None,
     ) -> dict[str, Any]:
         """GET /v1/tasks/timeline/ — ONE document, not a paginated list.
+
+        ``projects`` and ``milestones`` are repeatable uuid filters, sent as repeated query keys.
 
         `{window, bands, rows, dependencies, unscheduled, truncated}`: `bands` are the goals
         overlapping the window, `rows` the dated tasks, and `unscheduled` a count (or
@@ -2614,6 +2618,10 @@ class DailyBotClient:
             params["to"] = date_to
         if include_unscheduled:
             params["include_unscheduled"] = 1
+        if projects:
+            params["project"] = list(projects)
+        if milestones:
+            params["milestone"] = list(milestones)
         return self._tasks_read("timeline/", params=params or None)
 
     # --- Notifications, channels (PLAN_004) ---
@@ -2665,6 +2673,40 @@ class DailyBotClient:
         if channel_type:
             params["type"] = channel_type
         return self._tasks_list("channels/", params=params or None, **page)
+
+    # --- Personal daily briefing (person doors) ---
+
+    def get_my_briefing(self) -> dict[str, Any]:
+        """GET /v1/tasks/me/briefing/ — the stored row, or defaults with ``effective`` flags."""
+        return self._tasks_read("me/briefing/")
+
+    def put_my_briefing(self, **fields: Any) -> dict[str, Any]:
+        """PUT /v1/tasks/me/briefing/ — partial: only the fields passed (even ``False``) are sent.
+
+        ``timezone`` is sent only when passed: on the first save without it the server stores the
+        user's own. No agent stamp (the settings doors reject ``agent_name``).
+        """
+        payload: dict[str, Any] = {k: v for k, v in fields.items() if v is not None}
+        if not payload:
+            raise ValueError("Nothing to update: pass at least one field.")
+        result: dict[str, Any] = self._tasks_write(
+            "PUT", "me/briefing/", json=payload, stamp_agent=False
+        )
+        return result
+
+    def get_my_briefing_preview(self) -> dict[str, Any]:
+        """GET /v1/tasks/me/briefing/preview/ — the ReportDocument for now."""
+        return self._tasks_read("me/briefing/preview/")
+
+    def send_my_briefing_test(self, *, dry_run: bool) -> dict[str, Any]:
+        """POST /v1/tasks/me/briefing/send-test/ — ``dry_run=True`` renders and sends nothing."""
+        result: dict[str, Any] = self._tasks_write(
+            "POST",
+            "me/briefing/send-test/",
+            params={"dry_run": "true"} if dry_run else None,
+            stamp_agent=False,
+        )
+        return result
 
     # --- Organization notification routes (admin writes) ---
 
