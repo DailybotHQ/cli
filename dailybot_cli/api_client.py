@@ -3102,14 +3102,16 @@ class DailyBotClient:
         """GET /v1/plan/boards/<uuid>/."""
         return self._tasks_read(f"boards/{_path_segment(board_uuid)}/")
 
-    def get_board_snapshot(self, board_uuid: str) -> dict[str, Any]:
+    def get_board_snapshot(self, board_uuid: str, *, sort: str | None = None) -> dict[str, Any]:
         """GET /v1/plan/boards/<uuid>/board/ — the dense cold-context door.
 
         Carries ``delta_cursor``, which is the only place a caller can obtain a
         cursor for :meth:`get_board_delta`; the delta door's own 400 does not
-        say where to get one.
+        say where to get one. ``sort`` orders each column's window (the ETag varies with it).
         """
-        return self._tasks_read(f"boards/{_path_segment(board_uuid)}/board/")
+        return self._tasks_read(
+            f"boards/{_path_segment(board_uuid)}/board/", params={"sort": sort} if sort else None
+        )
 
     def get_board_delta(self, board_uuid: str, *, updated_since: datetime | str) -> dict[str, Any]:
         """GET /v1/plan/boards/<uuid>/delta/ — the poll-loop door.
@@ -4058,9 +4060,11 @@ class DailyBotClient:
             raise TransportError(f"Could not download the file from storage: {exc}") from exc
         return b"".join(received)
 
-    def list_task_children(self, task_uuid: str) -> Any:
-        """GET /v1/plan/tasks/<uuid>/children/ — the task's direct sub-tasks."""
-        return self._tasks_read(f"tasks/{_path_segment(task_uuid)}/children/")
+    def list_task_children(self, task_uuid: str, *, sort: str | None = None) -> Any:
+        """GET /v1/plan/tasks/<uuid>/children/ — the task's direct sub-tasks (optionally sorted)."""
+        return self._tasks_read(
+            f"tasks/{_path_segment(task_uuid)}/children/", params={"sort": sort} if sort else None
+        )
 
     def list_task_events(self, task_uuid: str) -> Any:
         """GET /v1/plan/tasks/<uuid>/events/ — the task's raw event history."""

@@ -24,6 +24,7 @@ from dailybot_cli.commands._attachments import (
 from dailybot_cli.commands._beta import mark_beta
 from dailybot_cli.commands._destructive import confirm_without_preview, preview_then_confirm
 from dailybot_cli.commands._favorites import star, unstar
+from dailybot_cli.commands._sorting import SORT_HELP, describe_sort, parse_sort
 from dailybot_cli.commands._writes import named, report_write
 from dailybot_cli.commands.public_api_helpers import (
     emit_json,
@@ -152,9 +153,10 @@ def board_get(board_uuid: str, json_mode: bool) -> None:
 
 @board.command("tasks")
 @click.argument("board_uuid", metavar="BOARD")
+@click.option("--sort", default=None, callback=parse_sort, help=SORT_HELP)
 @paging_options
 @click.option("--json", "json_mode", is_flag=True, help="Emit machine-readable JSON to stdout.")
-def board_tasks(board_uuid: str, json_mode: bool, **flags: Any) -> None:
+def board_tasks(board_uuid: str, sort: str | None, json_mode: bool, **flags: Any) -> None:
     """List the tasks on one board.
 
     \b
@@ -165,6 +167,7 @@ def board_tasks(board_uuid: str, json_mode: bool, **flags: Any) -> None:
     Examples:
       dailybot plan board tasks <board-uuid>
       dailybot plan board tasks <board-uuid> --page 2 --json
+      dailybot plan board tasks <board-uuid> --sort priority
     """
     client = require_auth()
     try:
@@ -172,6 +175,7 @@ def board_tasks(board_uuid: str, json_mode: bool, **flags: Any) -> None:
         with console.status("Reading the board's tasks..."):
             result: PaginatedResult = client.list_board_tasks(
                 board_uuid,
+                filters={"sort": sort} if sort else None,
                 page=spec.page,
                 page_size=spec.page_size,
                 fetch_all=spec.fetch_all,
@@ -185,6 +189,8 @@ def board_tasks(board_uuid: str, json_mode: bool, **flags: Any) -> None:
         emit_json(_envelope(result))
         return
     print_tasks_table(result.results)
+    if sort:
+        print_info(describe_sort(sort))
     print_pagination_footer(
         len(result.results),
         result.count,
@@ -1016,8 +1022,9 @@ def board_view_save(
 
 @board.command("snapshot")
 @click.argument("board_uuid", metavar="BOARD")
+@click.option("--sort", default=None, callback=parse_sort, help=SORT_HELP)
 @click.option("--json", "json_mode", is_flag=True, help="Emit machine-readable JSON to stdout.")
-def board_snapshot(board_uuid: str, json_mode: bool) -> None:
+def board_snapshot(board_uuid: str, sort: str | None, json_mode: bool) -> None:
     """Show the whole board in one request — the cold-context read.
 
     \b
@@ -1029,11 +1036,16 @@ def board_snapshot(board_uuid: str, json_mode: bool) -> None:
     Examples:
       dailybot plan board snapshot <board-uuid>
       dailybot plan board snapshot <board-uuid> --json
+      dailybot plan board snapshot <board-uuid> --sort priority
     """
     client = require_auth()
     try:
         with console.status("Reading the board snapshot..."):
-            data: dict[str, Any] = client.get_board_snapshot(board_uuid)
+            data: dict[str, Any] = (
+                client.get_board_snapshot(board_uuid, sort=sort)
+                if sort
+                else client.get_board_snapshot(board_uuid)
+            )
     except APIError as exc:
         # Isolation is 404-not-403: routed through the shared mapper so the exit
         # code and the --json payload match the documented table.
@@ -1042,6 +1054,8 @@ def board_snapshot(board_uuid: str, json_mode: bool) -> None:
         emit_json(data)
         return
     print_board_snapshot(data)
+    if sort:
+        print_info(describe_sort(sort))
 
 
 @board.command("visit")

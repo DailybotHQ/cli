@@ -1504,25 +1504,33 @@ _EVENT_COLUMNS: list[tuple[str, str, bool]] = [
 
 @task.command("children")
 @click.argument("task_uuid", metavar="TASK")
+@click.option("--sort", default=None, callback=parse_sort, help=SORT_HELP)
 @click.option("--json", "json_mode", is_flag=True, help="Emit machine-readable JSON to stdout.")
-def task_children(task_uuid: str, json_mode: bool) -> None:
+def task_children(task_uuid: str, sort: str | None, json_mode: bool) -> None:
     """List a task's direct sub-tasks.
 
     \b
     Examples:
       dailybot plan task children ENG-142
       dailybot plan task children ENG-142 --json
+      dailybot plan task children ENG-142 --sort due
     """
     client = require_auth()
     try:
         with console.status("Reading the sub-tasks..."):
-            data: Any = client.list_task_children(task_uuid)
+            data: Any = (
+                client.list_task_children(task_uuid, sort=sort)
+                if sort
+                else client.list_task_children(task_uuid)
+            )
     except APIError as exc:
         _write_error(exc, json_mode)
     if json_mode:
         emit_json(data)
         return
     print_tasks_table(rows_of(data))
+    if sort:
+        print_info(describe_sort(sort))
 
 
 @task.command("duplicate")

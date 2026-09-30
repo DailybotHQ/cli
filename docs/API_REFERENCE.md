@@ -1053,7 +1053,7 @@ Every Tasks command in this release (141), generated from the CLI's own command 
 
 ### Sorting
 
-`--sort` takes `priority` (urgent first), `due`, `start`, `created`, `updated`, `completed` or `rank`, also as the API names (`due_date`, `updated_at`, ...); prefix `-` for the reverse. Dates sort null-last both ways. Anything else is passed through and the API answers `invalid_sort` with `extra.allowed`, which the CLI prints. The same flag works on `plan tasks mine`.
+`--sort` takes `priority` (urgent first), `due`, `start`, `created`, `updated`, `completed` or `rank`, also as the API names (`due_date`, `updated_at`, ...); prefix `-` for the reverse. Dates sort null-last both ways. Anything else is passed through and the API answers `invalid_sort` with `extra.allowed`, which the CLI prints. The same flag works on `plan tasks mine`, `plan board tasks`, `plan board snapshot` (each column window) and `plan task children`.
 
 ### Inactive people
 

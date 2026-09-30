@@ -977,7 +977,7 @@ humans who own them.
 | `dailybot plan task bulk --operation <op> -f <file>` | One operation over up to **100** tasks (`create` needs `--board`). `--dry-run` runs it on the server and rolls it back: real changes and refusals, nothing written |
 | `dailybot plan board list` | List boards |
 | `dailybot plan board get <uuid>` | Board metadata |
-| `dailybot plan board tasks <uuid>` | The tasks on one board, one page per call |
+| `dailybot plan board tasks <uuid>` | The tasks on one board, one page per call (`--sort priority\|due\|…`) |
 | `dailybot plan board star\|unstar <uuid>` | Pin a board to your favorites (projects and goals cannot be pinned) — **needs a person: `dailybot login` or a personal API key** |
 | `dailybot plan board visit <uuid>` · `dailybot plan tasks recents` | Record that you opened a board; list the boards you opened most recently — **needs a person: `dailybot login` or a personal API key** |
 | `dailybot plan board mentionables <uuid> [-q name]` | Who you can @mention, with the `<@DB@{uuid}>` token to write — **needs a person: `dailybot login` or a personal API key** |
@@ -990,7 +990,7 @@ humans who own them.
 | `dailybot plan board member add <board> <user>` (or `--team <team>`) · `board member remove <board> <user>` | Who can see the board — **needs a person: `dailybot login` or a personal API key**. Membership is the privacy control (not org role). A team grant follows the team live. Last grant on a private board stays (`last_grant_cannot_be_removed`) |
 | `dailybot plan board label create <board> -n <name>` | Create an organization label from the board — **needs a person: `dailybot login` or a personal API key** |
 | `dailybot plan board view save <board> -f views.json --if-match <etag>` | Replace your saved views (the whole list) — **needs a person: `dailybot login` or a personal API key** |
-| `dailybot plan board snapshot <uuid>` | The whole board in one request; carries the `delta_cursor` that `tasks changes` consumes |
+| `dailybot plan board snapshot <uuid>` | The whole board in one request (`--sort` orders each column); carries the `delta_cursor` that `tasks changes` consumes |
 | `dailybot plan board update <uuid>` | Name, key (the old key stays reserved), visibility, estimate scale, auto-archive, project |
 | `dailybot plan board create --name <n> --project <uuid> --key <KEY>` | Create a board in a project; the key prefixes its tasks (`DSN-1`) — **needs a person: `dailybot login` or a personal API key** (any non-guest member) |
 | `dailybot plan board archive <uuid>` | Archive a board. **Cascade-archives its live tasks**, and restoring does not bring them back |

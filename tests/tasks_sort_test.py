@@ -98,3 +98,51 @@ class TestMine:
         result = _run("tasks", ["tasks", "mine"], client)
         assert "sort" not in (client.list_my_tasks.call_args.kwargs.get("params") or {})
         assert "Sorted by" not in result.output
+
+
+class TestBoardAndChildren:
+    def test_board_tasks_sends_the_sort_as_a_filter(self) -> None:
+        client: MagicMock = _client()
+        client.list_board_tasks.return_value = PaginatedResult(
+            results=[], count=0, next=None, previous=None
+        )
+        result = _run("board", ["board", "tasks", "b-1", "--sort", "due"], client)
+        assert result.exit_code == 0, result.output
+        assert client.list_board_tasks.call_args.kwargs["filters"] == {"sort": "due_date"}
+        assert "Sorted by due_date" in " ".join(result.output.split())
+
+    def test_board_tasks_without_a_sort_sends_no_filters(self) -> None:
+        client: MagicMock = _client()
+        client.list_board_tasks.return_value = PaginatedResult(
+            results=[], count=0, next=None, previous=None
+        )
+        _run("board", ["board", "tasks", "b-1"], client)
+        assert not client.list_board_tasks.call_args.kwargs.get("filters")
+
+    def test_the_snapshot_takes_a_sort(self) -> None:
+        client: MagicMock = _client()
+        client.get_board_snapshot.return_value = {"delta_cursor": "c", "groups": []}
+        result = _run(
+            "board", ["board", "snapshot", "b-1", "--sort", "-priority", "--json"], client
+        )
+        assert result.exit_code == 0, result.output
+        client.get_board_snapshot.assert_called_once_with("b-1", sort="-priority")
+
+    def test_children_take_a_sort(self) -> None:
+        client: MagicMock = _client()
+        client.list_task_children.return_value = {"results": []}
+        result = _run("task", ["task", "children", "ENG-1", "--sort", "start"], client)
+        assert result.exit_code == 0, result.output
+        client.list_task_children.assert_called_once_with("ENG-1", sort="start_date")
+
+
+class TestWire:
+    def test_snapshot_and_children_put_sort_in_the_query(self) -> None:
+        real: DailyBotClient = DailyBotClient(api_url="http://t.example.com", token="tok")
+        with patch.object(DailyBotClient, "_tasks_read", return_value={}) as read:
+            real.get_board_snapshot("b-1", sort="priority")
+            assert read.call_args.kwargs["params"] == {"sort": "priority"}
+            real.get_board_snapshot("b-1")
+            assert not read.call_args.kwargs.get("params")
+            real.list_task_children("ENG-1", sort="-due_date")
+            assert read.call_args.kwargs["params"] == {"sort": "-due_date"}
