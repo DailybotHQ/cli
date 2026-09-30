@@ -180,6 +180,13 @@ class PaginatedResult:
     count: int | None = None
     next: str | None = None
     previous: str | None = None
+    # Top-level keys of the envelope beyond the four above (`viewer.can_manage` on the route and
+    # report lists, `platform` on the channel list); empty for a plain list.
+    extra: dict[str, Any] = field(default_factory=dict)
+
+
+# The keys every list envelope carries; anything else on it is kept in `PaginatedResult.extra`.
+_ENVELOPE_KEYS: frozenset[str] = frozenset({"count", "next", "previous", "results"})
 
 
 def _merge_list_query(
@@ -882,6 +889,7 @@ class DailyBotClient:
         count: int | None = None
         next_url: str | None = None
         previous: str | None = None
+        envelope_extra: dict[str, Any] = {}
         current_url: str | None = url
         first: bool = True
         pages_fetched: int = 0
@@ -913,6 +921,7 @@ class DailyBotClient:
                 count = body.get("count", count)
                 next_url = body.get("next")
                 previous = body.get("previous", previous)
+                envelope_extra.update({k: v for k, v in body.items() if k not in _ENVELOPE_KEYS})
             elif isinstance(body, list):
                 collected.extend(body)
                 if count is None:
@@ -931,7 +940,9 @@ class DailyBotClient:
                 break
             current_url = self._same_api_origin(next_url) if next_url else None
 
-        return PaginatedResult(results=collected, count=count, next=next_url, previous=previous)
+        return PaginatedResult(
+            results=collected, count=count, next=next_url, previous=previous, extra=envelope_extra
+        )
 
     # --- Auth endpoints ---
 
@@ -2654,6 +2665,177 @@ class DailyBotClient:
         if channel_type:
             params["type"] = channel_type
         return self._tasks_list("channels/", params=params or None, **page)
+
+    # --- Organization notification routes (admin writes) ---
+
+    def list_notification_routes(self, **page: Any) -> PaginatedResult:
+        """GET /v1/tasks/notification-routes/ — members read; ``extra['viewer']['can_manage']``."""
+        return self._tasks_list("notification-routes/", **page)
+
+    def get_notification_route(self, route_uuid: str) -> dict[str, Any]:
+        """GET /v1/tasks/notification-routes/<uuid>/"""
+        return self._tasks_read(f"notification-routes/{_path_segment(route_uuid)}/")
+
+    def create_notification_route(
+        self,
+        *,
+        name: str,
+        channel: dict[str, Any],
+        kinds: list[str],
+        scope: dict[str, Any] | None = None,
+        enabled: bool | None = None,
+        idempotency_key: str | None = None,
+    ) -> dict[str, Any]:
+        """POST /v1/tasks/notification-routes/ +Idempotency-Key — admin only.
+
+        The agent name is not stamped: the settings doors reject ``agent_name`` as unknown.
+        """
+        payload: dict[str, Any] = {"name": name, "channel": channel, "kinds": kinds}
+        if scope is not None:
+            payload["scope"] = scope
+        if enabled is not None:
+            payload["enabled"] = enabled
+        result: dict[str, Any] = self._tasks_write(
+            "POST",
+            "notification-routes/",
+            json=payload,
+            idempotent=True,
+            idempotency_key=idempotency_key,
+            stamp_agent=False,
+        )
+        return result
+
+    def update_notification_route(self, route_uuid: str, **fields: Any) -> dict[str, Any]:
+        """PATCH /v1/tasks/notification-routes/<uuid>/ — partial; nothing to send is refused."""
+        payload: dict[str, Any] = {k: v for k, v in fields.items() if v is not None}
+        if not payload:
+            raise ValueError("Nothing to update: pass at least one field.")
+        result: dict[str, Any] = self._tasks_write(
+            "PATCH",
+            f"notification-routes/{_path_segment(route_uuid)}/",
+            json=payload,
+            stamp_agent=False,
+        )
+        return result
+
+    def delete_notification_route(self, route_uuid: str) -> Any:
+        """DELETE /v1/tasks/notification-routes/<uuid>/"""
+        return self._tasks_write(
+            "DELETE", f"notification-routes/{_path_segment(route_uuid)}/", stamp_agent=False
+        )
+
+    def send_route_test(self, route_uuid: str, *, dry_run: bool) -> dict[str, Any]:
+        """POST …/send-test/ — ``dry_run=True`` renders and sends nothing; False posts for real."""
+        result: dict[str, Any] = self._tasks_write(
+            "POST",
+            f"notification-routes/{_path_segment(route_uuid)}/send-test/",
+            params={"dry_run": "true"} if dry_run else None,
+            stamp_agent=False,
+        )
+        return result
+
+    def list_route_deliveries(self, route_uuid: str, **page: Any) -> PaginatedResult:
+        """GET …/notification-routes/<uuid>/deliveries/ — recent delivery log rows."""
+        return self._tasks_list(
+            f"notification-routes/{_path_segment(route_uuid)}/deliveries/", **page
+        )
+
+    # --- Scheduled reports (admin writes) ---
+
+    def list_reports(self, **page: Any) -> PaginatedResult:
+        """GET /v1/tasks/reports/ — members read; ``extra['viewer']['can_manage']``."""
+        return self._tasks_list("reports/", **page)
+
+    def get_report(self, report_uuid: str) -> dict[str, Any]:
+        """GET /v1/tasks/reports/<uuid>/"""
+        return self._tasks_read(f"reports/{_path_segment(report_uuid)}/")
+
+    def create_report(
+        self,
+        *,
+        name: str,
+        kind: str,
+        weekdays: list[int],
+        time: str,
+        timezone: str | None = None,
+        channel: dict[str, Any] | None = None,
+        email_recipients: list[str] | None = None,
+        scope: dict[str, Any] | None = None,
+        enabled: bool | None = None,
+        idempotency_key: str | None = None,
+    ) -> dict[str, Any]:
+        """POST /v1/tasks/reports/ +Idempotency-Key — admin only.
+
+        ``timezone`` is sent only when given, so the server keeps its default (the org's).
+        """
+        payload: dict[str, Any] = {"name": name, "kind": kind, "weekdays": weekdays, "time": time}
+        for key, value in (
+            ("timezone", timezone),
+            ("channel", channel),
+            ("email_recipients", email_recipients),
+            ("scope", scope),
+            ("enabled", enabled),
+        ):
+            if value is not None:
+                payload[key] = value
+        result: dict[str, Any] = self._tasks_write(
+            "POST",
+            "reports/",
+            json=payload,
+            idempotent=True,
+            idempotency_key=idempotency_key,
+            stamp_agent=False,
+        )
+        return result
+
+    def update_report(
+        self,
+        report_uuid: str,
+        *,
+        clear_channel: bool = False,
+        clear_email_recipients: bool = False,
+        **fields: Any,
+    ) -> dict[str, Any]:
+        """PATCH /v1/tasks/reports/<uuid>/ — partial.
+
+        A field left as None is not sent; ``clear_channel`` sends an explicit ``channel: null`` and
+        ``clear_email_recipients`` an explicit ``email_recipients: []``.
+        """
+        payload: dict[str, Any] = {k: v for k, v in fields.items() if v is not None}
+        if clear_channel:
+            payload["channel"] = None
+        if clear_email_recipients:
+            payload["email_recipients"] = []
+        if not payload:
+            raise ValueError("Nothing to update: pass at least one field.")
+        result: dict[str, Any] = self._tasks_write(
+            "PATCH", f"reports/{_path_segment(report_uuid)}/", json=payload, stamp_agent=False
+        )
+        return result
+
+    def delete_report(self, report_uuid: str) -> Any:
+        """DELETE /v1/tasks/reports/<uuid>/"""
+        return self._tasks_write(
+            "DELETE", f"reports/{_path_segment(report_uuid)}/", stamp_agent=False
+        )
+
+    def get_report_preview(self, report_uuid: str) -> dict[str, Any]:
+        """GET /v1/tasks/reports/<uuid>/preview/ — the exact document the channel/email receives."""
+        return self._tasks_read(f"reports/{_path_segment(report_uuid)}/preview/")
+
+    def send_report_test(self, report_uuid: str, *, dry_run: bool) -> dict[str, Any]:
+        """POST …/send-test/ — ``dry_run=True`` renders and sends nothing; False posts for real."""
+        result: dict[str, Any] = self._tasks_write(
+            "POST",
+            f"reports/{_path_segment(report_uuid)}/send-test/",
+            params={"dry_run": "true"} if dry_run else None,
+            stamp_agent=False,
+        )
+        return result
+
+    def list_report_runs(self, report_uuid: str, **page: Any) -> PaginatedResult:
+        """GET /v1/tasks/reports/<uuid>/runs/ — recent runs with status and message id."""
+        return self._tasks_list(f"reports/{_path_segment(report_uuid)}/runs/", **page)
 
     # --- Boards ---
 
