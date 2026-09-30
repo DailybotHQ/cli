@@ -38,6 +38,7 @@ from dailybot_cli.commands.public_api_helpers import (
 from dailybot_cli.commands.query_options import PAGING_ONLY_MORE_HINT, paging_options
 from dailybot_cli.display import (
     console,
+    plain_text,
     print_briefing,
     print_channels_table,
     print_my_notifications,
@@ -352,6 +353,8 @@ def _scope_from(
 def _org_kinds(client: Any, kinds: tuple[str, ...]) -> list[str]:
     """Split, de-duplicate and validate ``--kind`` values against the catalog's organization kinds."""
     kind_list: list[str] = _split_kinds(kinds)
+    if not kind_list:
+        raise click.UsageError("No notification kind given (the --kind value is empty).")
     with console.status("Checking the notification kinds..."):
         validate_kinds(client.get_notifications_catalog(), kind_list, scope=ORG_SCOPE)
     return kind_list
@@ -686,7 +689,7 @@ def _recipients(client: Any, refs: tuple[str, ...]) -> list[str]:
         try:
             resolved.append(resolve_user_by_name_or_uuid(directory, ref)[0])
         except ValueError as exc:
-            raise click.UsageError(str(exc)) from exc
+            raise click.UsageError(plain_text(str(exc))) from exc
     return list(dict.fromkeys(resolved))
 
 
@@ -937,6 +940,11 @@ def reports_update(
         raise click.UsageError("Pass --channel or --no-channel, not both.")
     if email_refs and no_email_to:
         raise click.UsageError("Pass --email-to or --no-email-to, not both.")
+    if no_channel and no_email_to:
+        raise click.UsageError(
+            "--no-channel with --no-email-to would leave the report with no destination: "
+            "delete it with `tasks reports delete`, or keep one of them."
+        )
     scope: dict[str, Any] | None = _scope_from(boards, projects, clear=clear_scope)
     nothing: bool = (
         name is None
@@ -1287,4 +1295,5 @@ def briefing_send_test(dry_run: bool, assume_yes: bool, json_mode: bool) -> None
         assume_yes=assume_yes,
         json_mode=json_mode,
         door=MY_BRIEFING_DOOR,
+        default_target="you",
     )

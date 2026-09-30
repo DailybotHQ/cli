@@ -12,20 +12,46 @@ from typing import Any
 from dailybot_cli.api_client import APIError
 from dailybot_cli.commands._destructive import confirm_without_preview, report_preview_not_honoured
 from dailybot_cli.commands.public_api_helpers import emit_json, exit_for_tasks_error
-from dailybot_cli.display import console, print_send_test_preview
+from dailybot_cli.display import (
+    console,
+    error_console,
+    present_untrusted,
+    print_error,
+    print_send_test_preview,
+)
+
+EXIT_PARTIAL: int = 1  # the documented partial-failure exit
+NOT_CONFIRMED_MESSAGE: str = (
+    "The API did not confirm the send (no `sent: true` in its answer), so it may not have gone out. "
+    "Check the delivery history before trying again."
+)
 
 
-def _destination_sentence(what: str, preview: dict[str, Any]) -> str:
+def _destination_sentence(what: str, preview: dict[str, Any], default_target: str) -> str:
+    """The consent sentence: the destination comes from the preview, names quoted as data."""
     channel: Any = preview.get("channel")
     people: list[Any] = preview.get("email_recipients") or []
     parts: list[str] = []
     if isinstance(channel, dict):
-        parts.append(f"the channel {channel.get('name')} ({channel.get('external_id')})")
+        parts.append(
+            f"the channel {present_untrusted(channel.get('name'), limit=60)} "
+            f"({channel.get('external_id')})"
+        )
     if people:
         parts.append(f"{len(people)} email recipient(s)")
     if not parts:
-        parts.append("you")
+        parts.append(default_target)
     return f"This sends a real {what} to {' and '.join(parts)}."
+
+
+def _show_preview(preview: dict[str, Any], *, json_mode: bool) -> None:
+    """Show what would be sent: on stdout, or on stderr under --json (stdout stays one document)."""
+    if not json_mode:
+        print_send_test_preview(preview)
+        return
+    with console.capture() as captured:
+        print_send_test_preview(preview)
+    error_console.print(captured.get(), markup=False, highlight=False, end="")
 
 
 def send_test_flow(
@@ -36,6 +62,7 @@ def send_test_flow(
     assume_yes: bool,
     json_mode: bool,
     door: str | None = None,
+    default_target: str = "its configured destination",
 ) -> None:
     """Preview (``dry_run=True``), confirm, then send (``dry_run=False``); ``--dry-run`` stops after the preview."""
     try:
@@ -51,10 +78,9 @@ def send_test_flow(
         else:
             print_send_test_preview(preview)
         return
-    if not json_mode:
-        print_send_test_preview(preview)
+    _show_preview(preview, json_mode=json_mode)
     confirm_without_preview(
-        _destination_sentence(what, preview),
+        _destination_sentence(what, preview, default_target),
         assume_yes=assume_yes,
         dry_run=False,
         json_mode=json_mode,
@@ -68,3 +94,7 @@ def send_test_flow(
         emit_json(result)
     else:
         print_send_test_preview(result)
+    if not (isinstance(result, dict) and result.get("sent") is True):
+        if not json_mode:
+            print_error(NOT_CONFIRMED_MESSAGE)
+        raise SystemExit(EXIT_PARTIAL)

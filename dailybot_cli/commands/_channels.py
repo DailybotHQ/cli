@@ -6,6 +6,7 @@ channel's name, so the commands resolve the typed reference through ``tasks chan
 names are user-authored text: they are quoted as data wherever they appear in a message.
 """
 
+import re
 from typing import Any
 
 import click
@@ -14,6 +15,7 @@ from dailybot_cli.display import present_untrusted
 
 PUBLIC_CHANNEL_TYPE: str = "channel"
 MAX_CHANNELS_TO_SCAN: int = 500
+EXTERNAL_ID_PATTERN: re.Pattern[str] = re.compile(r"^[A-Z][A-Z0-9]{6,}$")
 MAX_CANDIDATES_SHOWN: int = 8
 
 
@@ -27,13 +29,20 @@ def resolve_channel(client: Any, reference: str, *, public_only: bool = False) -
     Order: exact ``external_id``, exact name (case-insensitive), then a unique substring of the name.
     A channel the caller cannot see is simply absent from the list, so it reads as "not found".
     """
-    result: Any = client.search_channels(
-        channel_type=PUBLIC_CHANNEL_TYPE if public_only else None,
-        fetch_all=True,
-        limit=MAX_CHANNELS_TO_SCAN,
-    )
-    channels: list[dict[str, Any]] = [row for row in result.results if isinstance(row, dict)]
     wanted: str = reference.strip()
+    channel_type: str | None = PUBLIC_CHANNEL_TYPE if public_only else None
+
+    def fetch(search: str | None) -> list[dict[str, Any]]:
+        result: Any = client.search_channels(
+            search=search, channel_type=channel_type, fetch_all=True, limit=MAX_CHANNELS_TO_SCAN
+        )
+        return [row for row in result.results if isinstance(row, dict)]
+
+    # The server matches names, so a name is searched there (no scan of the whole workspace). A
+    # platform id is not a name: only when the reference looks like one is the list scanned for it.
+    channels: list[dict[str, Any]] = fetch(wanted)
+    if not channels and EXTERNAL_ID_PATTERN.match(wanted):
+        channels = fetch(None)
     folded: str = wanted.casefold()
 
     for channel in channels:

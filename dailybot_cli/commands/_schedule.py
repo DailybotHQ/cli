@@ -8,6 +8,7 @@ ambiguous with "the first of the list").
 
 import re
 from collections.abc import Iterable, Sequence
+from functools import cache
 from typing import Any
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError, available_timezones
 
@@ -20,7 +21,7 @@ WEEKDAY_NUMBERS: dict[str, int] = {
 WEEKLY_KINDS: tuple[str, ...] = ("week_start", "week_end")
 DAILY_KIND: str = "daily"
 REPORT_KINDS: tuple[str, ...] = (DAILY_KIND, *WEEKLY_KINDS)
-TIME_PATTERN: re.Pattern[str] = re.compile(r"^(\d{1,2}):(\d{2})$")
+TIME_PATTERN: re.Pattern[str] = re.compile(r"^(\d{1,2}):(\d{2})$", re.ASCII)
 MAX_HOUR: int = 23
 MAX_MINUTE: int = 59
 WEEKDAYS_HELP: str = (
@@ -88,6 +89,7 @@ class TimeOfDay(click.ParamType):
         return f"{int(match.group(1)):02d}:{match.group(2)}"
 
 
+@cache
 def _zone_database_present() -> bool:
     """False on a system with no IANA database: then only the server can judge a zone name."""
     return bool(available_timezones())

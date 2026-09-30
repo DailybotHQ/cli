@@ -2160,6 +2160,9 @@ def print_timeline(document: dict[str, Any], *, include_unscheduled: bool = Fals
 
 # --- Tasks notifications, routes, reports, briefing (PLAN_004) ---------------
 
+MESSAGE_PREVIEW_LIMIT: int = (
+    4000  # a message a person confirms is shown whole, not cut like a table cell
+)
 REPORT_COUNT_SATURATION: int = 200  # the API stops counting here: show "200+", never a false total
 WEEKDAY_SHORT: tuple[str, ...] = ("mon", "tue", "wed", "thu", "fri", "sat", "sun")
 _CATALOG_COLUMNS: list[tuple[str, str, bool]] = [
@@ -2402,7 +2405,11 @@ def print_report_document(document: dict[str, Any]) -> None:
     )
     if document.get("narrative"):
         console.print(
-            Panel(present_untrusted(document["narrative"]), title="Narrative", border_style="cyan")
+            Panel(
+                present_untrusted(document["narrative"], limit=MESSAGE_PREVIEW_LIMIT),
+                title="Narrative",
+                border_style="cyan",
+            )
         )
     sections: list[dict[str, Any]] = [
         s for s in document.get("sections") or [] if isinstance(s, dict)
@@ -2435,7 +2442,13 @@ def print_send_test_preview(data: dict[str, Any]) -> None:
     if "email_recipients" in data:
         console.print(f"Email to: {_people_text(data.get('email_recipients'))}")
     if isinstance(data.get("text"), str):
-        console.print(Panel(present_untrusted(data["text"]), title="Message", border_style="cyan"))
+        console.print(
+            Panel(
+                present_untrusted(data["text"], limit=MESSAGE_PREVIEW_LIMIT),
+                title="Message",
+                border_style="cyan",
+            )
+        )
     if isinstance(data.get("document"), dict):
         print_report_document(data["document"])
     if data.get("sent"):
