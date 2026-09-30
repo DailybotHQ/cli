@@ -2274,7 +2274,7 @@ def print_notification_catalog(catalog: dict[str, Any]) -> None:
                 f"{group.get('title', group.get('key'))}", rows, _CATALOG_COLUMNS, empty=""
             )
     console.print(
-        "[dim]personal kinds: `tasks notifications set`; org kinds: `tasks routes`.[/dim]"
+        "[dim]personal kinds: `dailybot plan tasks notifications set`; org kinds: `dailybot plan tasks routes`.[/dim]"
     )
 
 
@@ -2489,7 +2489,7 @@ def print_send_test_preview(data: dict[str, Any]) -> None:
         print_report_document(data["document"])
     if data.get("sent"):
         print_success("Sent.")
-    else:
+    elif data.get("dry_run") is True:
         print_info("Dry run: nothing was sent.")
 
 

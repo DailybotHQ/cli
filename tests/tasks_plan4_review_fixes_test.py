@@ -11,7 +11,7 @@ from click.testing import CliRunner
 from dailybot_cli.api_client import DailyBotClient, PaginatedResult
 from dailybot_cli.commands._channels import resolve_channel
 from dailybot_cli.commands._schedule import IANA_TZ, TIME_OF_DAY
-from dailybot_cli.display import console
+from dailybot_cli.display import console, print_send_test_preview
 from dailybot_cli.main import cli
 
 ROUTE_ID: str = "00000000-0000-0000-0000-0000000000a1"
@@ -208,3 +208,46 @@ class TestSmallerFindings:
             IANA_TZ.convert("UTC", None, None)
             IANA_TZ.convert("UTC", None, None)
         assert listing.call_count == 1
+
+
+class TestPullRequestReviewRound1:
+    """The AI review of PR 122: dead command paths, dry-run copy, recipient lookups, channel scan."""
+
+    def test_a_live_send_that_was_not_confirmed_is_not_called_a_dry_run(
+        self, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        print_send_test_preview({"sent": False})
+        assert "Dry run" not in capsys.readouterr().out
+
+    def test_a_dry_run_still_says_nothing_was_sent(
+        self, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        print_send_test_preview({"dry_run": True, "sent": False})
+        assert "Dry run: nothing was sent." in capsys.readouterr().out
+
+    def test_remediation_paths_name_commands_that_exist(self) -> None:
+        from dailybot_cli.commands.tasks_settings import validate_kinds
+
+        catalog: dict[str, Any] = {"kinds": [{"key": "task.completed", "scope": "org"}]}
+        with pytest.raises(click.UsageError) as raised:
+            validate_kinds(catalog, ["task.completed"], scope="personal")
+        assert "`dailybot plan tasks routes`" in raised.value.message
+
+    def test_recipients_are_looked_up_with_email_and_inactive_people(self) -> None:
+        from dailybot_cli.commands.tasks_settings import _recipients
+
+        client: MagicMock = MagicMock(spec=DailyBotClient)
+        client.list_users.return_value = [
+            {"uuid": "00000000-0000-0000-0000-0000000000a1", "full_name": "Ana", "is_active": False}
+        ]
+        with pytest.raises(click.UsageError, match="inactive"):
+            _recipients(client, ("Ana",))
+        client.list_users.assert_called_once_with(include_email=True, include_inactive=True)
+
+    def test_the_channel_id_scan_has_no_client_side_ceiling(self) -> None:
+        client: MagicMock = MagicMock(spec=DailyBotClient)
+        client.search_channels.return_value = PaginatedResult(results=[], count=0)
+        with pytest.raises(click.UsageError):
+            resolve_channel(client, "C0123456789")
+        for call in client.search_channels.call_args_list:
+            assert "limit" not in call.kwargs

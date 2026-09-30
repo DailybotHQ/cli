@@ -14,7 +14,6 @@ import click
 from dailybot_cli.display import present_untrusted
 
 PUBLIC_CHANNEL_TYPE: str = "channel"
-MAX_CHANNELS_TO_SCAN: int = 500
 EXTERNAL_ID_PATTERN: re.Pattern[str] = re.compile(r"^[A-Z][A-Z0-9]{6,}$")
 MAX_CANDIDATES_SHOWN: int = 8
 
@@ -34,7 +33,7 @@ def resolve_channel(client: Any, reference: str, *, public_only: bool = False) -
 
     def fetch(search: str | None) -> list[dict[str, Any]]:
         result: Any = client.search_channels(
-            search=search, channel_type=channel_type, fetch_all=True, limit=MAX_CHANNELS_TO_SCAN
+            search=search, channel_type=channel_type, fetch_all=True
         )
         return [row for row in result.results if isinstance(row, dict)]
 

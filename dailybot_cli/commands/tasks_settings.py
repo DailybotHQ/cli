@@ -89,7 +89,9 @@ def validate_kinds(catalog: dict[str, Any], kinds: list[str], *, scope: str) -> 
         if isinstance(k, dict) and "key" in k
     }
     valid: list[str] = sorted(key for key, kind_scope in known.items() if kind_scope == scope)
-    other_command: str = "tasks routes" if scope == PERSONAL_SCOPE else "tasks notifications set"
+    other_command: str = (
+        "plan tasks routes" if scope == PERSONAL_SCOPE else "plan tasks notifications set"
+    )
     for kind in kinds:
         if kind not in known:
             raise click.UsageError(
@@ -173,7 +175,7 @@ def notifications_get(me: bool, json_mode: bool) -> None:
     "--kind",
     "kinds",
     multiple=True,
-    help="Personal kind to change (repeatable, or comma-separated). See `tasks notifications catalog`.",
+    help="Personal kind to change (repeatable, or comma-separated). See `dailybot plan tasks notifications catalog`.",
 )
 @click.option(
     "--chat/--no-chat", default=None, help="Turn chat delivery on or off for the named kinds."
@@ -267,7 +269,7 @@ def channels() -> None:
 
     \b
     Not the same as `dailybot channels list` (report channels for forms and check-ins): these are
-    the chat platform's own channels, and the external id is what `tasks routes`, `tasks reports`
+    the chat platform's own channels, and the external id is what `dailybot plan tasks routes`, `dailybot plan tasks reports`
     and `chat send --channel` take.
     """
 
@@ -293,7 +295,7 @@ def channels_search(
 
     \b
     These are the chat platform's channels, not the report channels of `dailybot channels list`:
-    the external id shown here is what `tasks routes`, `tasks reports` and `chat send --channel`
+    the external id shown here is what `dailybot plan tasks routes`, `dailybot plan tasks reports` and `chat send --channel`
     take. Organization admins also see the private channels the bot is in; everyone else sees
     public channels only (a private channel is absent, not an error). Paging is one page per
     call: follow `next` with --page.
@@ -683,7 +685,9 @@ def _recipients(client: Any, refs: tuple[str, ...]) -> list[str]:
     if not refs:
         return []
     with console.status("Finding the recipients..."):
-        directory: list[dict[str, Any]] = client.list_users()
+        directory: list[dict[str, Any]] = client.list_users(
+            include_email=True, include_inactive=True
+        )
     resolved: list[str] = []
     for ref in refs:
         try:
@@ -943,7 +947,7 @@ def reports_update(
     if no_channel and no_email_to:
         raise click.UsageError(
             "--no-channel with --no-email-to would leave the report with no destination: "
-            "delete it with `tasks reports delete`, or keep one of them."
+            "delete it with `dailybot plan tasks reports delete`, or keep one of them."
         )
     scope: dict[str, Any] | None = _scope_from(boards, projects, clear=clear_scope)
     nothing: bool = (
