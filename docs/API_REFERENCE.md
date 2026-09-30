@@ -1051,6 +1051,17 @@ Every Tasks command in this release (141), generated from the CLI's own command 
 | `dailybot plan goal unlink GOAL PROJECT` | Stop a project counting toward a goal. The project itself is untouched. | yes |
 | `dailybot plan goal update GOAL` | Change a goal, or declare its status. | yes |
 
+### Inactive people
+
+An *inactive* person (deactivated, pending approval or billing-only) cannot be given new work and
+receives nothing; history stays true and nothing is auto-unassigned. Every embedded person carries
+`is_active` (kept in `--json`); the CLI prints `(inactive)` next to an inactive owner, lead,
+participant or member. Naming a new inactive person is refused with `user_inactive`, which the CLI
+shows with the flag to check and the uuids. Name and email lookups (`--email-to`, `kudos give`, form
+and check-in authoring) never pick an inactive person and say so; a bare uuid is left to the server.
+Report and briefing items carry `owner_inactive` / `lead_inactive` badges; a report run or delivery with
+no active recipient is `skipped` with error `recipient_inactive`.
+
 ### Notifications, routes, reports and briefing (PLAN_004)
 
 | Door | Command | Who |
@@ -1115,6 +1126,7 @@ Dispatch on `code`, never on the English `detail`.
 | `unknown_notification_kind` | a kind that does not exist or is of the other scope (`extra.parameter: kind`) | 2 |
 | `channel_not_found` / `platform_not_connected` | the channel is unknown or private to you / no chat platform is connected | 2 |
 | `route_scope_not_org_visible` | a route or report scope names a private board or project (`extra.uuids`) | 2 |
+| `user_inactive` | a write names a NEW inactive person as owner, lead, participant, member or report recipient (`extra.parameter`, `extra.uuids`) | 2 |
 | `notification_routes_limit_reached` / `report_schedules_limit_reached` | 10 per organization (`extra.limit`) | 2 |
 | `not_implemented` | the API does not support it yet (for example `paused_until` with a datetime) | 1 |
 | `throttled` | too many requests from one actor (writes 60, bulk 30, reads 120, delta reads 240 per minute); the body's `extra.retry_after` (or the `Retry-After` header) is whole seconds, printed by the CLI and put in the `--json` envelope as `retry_after` | **6** |

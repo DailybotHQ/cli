@@ -425,6 +425,10 @@ ERROR_CODE_MESSAGES: dict[str, str] = {
     ),
     # Validation (400)
     "target_user_inactive": "That user is inactive. Choose an active user.",
+    "user_inactive": (
+        "That person is inactive in this organization and cannot be given new work. "
+        "Choose an active person (history and existing assignments are kept)."
+    ),
     "search_query_too_long": (
         "Search term is too long (maximum 256 characters). Shorten it and try again."
     ),
@@ -577,11 +581,23 @@ _PARAMETER_FLAGS: dict[str, str] = {
     "scope": "--scope",
     "name": "--name",
     "email_recipients": "--email-to",
+    "owner": "--owner",
+    "lead": "--lead",
+    "user": "--user",
+    "collaborators": "--user",
+    "participants": "--user",
 }
 _LIMIT_CODES: frozenset[str] = frozenset(
     {"notification_routes_limit_reached", "report_schedules_limit_reached"}
 )
 _MAX_UUIDS_SHOWN: int = 3
+
+
+def _uuid_list(uuids: list[Any]) -> str:
+    """The first few uuids, then how many more."""
+    shown: str = ", ".join(str(u) for u in uuids[:_MAX_UUIDS_SHOWN])
+    more: str = f" (+{len(uuids) - _MAX_UUIDS_SHOWN} more)" if len(uuids) > _MAX_UUIDS_SHOWN else ""
+    return f"{shown}{more}"
 
 
 def _augment_code_message(base: str, code: str, extra: dict[str, Any]) -> str:
@@ -616,13 +632,17 @@ def _augment_code_message(base: str, code: str, extra: dict[str, Any]) -> str:
     elif code == "route_scope_not_org_visible":
         offenders: Any = extra.get("uuids")
         if isinstance(offenders, list) and offenders:
-            shown: str = ", ".join(str(u) for u in offenders[:_MAX_UUIDS_SHOWN])
-            more: str = (
-                f" (+{len(offenders) - _MAX_UUIDS_SHOWN} more)"
-                if len(offenders) > _MAX_UUIDS_SHOWN
-                else ""
-            )
-            return f"{base} Not visible to everyone ({len(offenders)}): {shown}{more}."
+            return f"{base} Not visible to everyone ({len(offenders)}): {_uuid_list(offenders)}."
+    elif code == "user_inactive":
+        bits: list[str] = []
+        named: Any = extra.get("parameter")
+        if isinstance(named, str) and named:
+            flag_used: str | None = _PARAMETER_FLAGS.get(named)
+            bits.append(f"Check {flag_used}." if flag_used else f"Field: {named!r}.")
+        inactive: Any = extra.get("uuids")
+        if isinstance(inactive, list) and inactive:
+            bits.append(f"Inactive ({len(inactive)}): {_uuid_list(inactive)}.")
+        return " ".join([base, *bits])
     return base
 
 
@@ -661,6 +681,7 @@ TASKS_ERROR_CODES: frozenset[str] = frozenset(
         "channel_not_found",
         "platform_not_connected",
         "route_scope_not_org_visible",
+        "user_inactive",
         "notification_routes_limit_reached",
         "report_schedules_limit_reached",
         "not_implemented",
@@ -1101,11 +1122,28 @@ def parse_answer_flags(answers: tuple[str, ...]) -> dict[int, str]:
     return parsed
 
 
+def _is_active(user: dict[str, Any]) -> bool:
+    """A directory row is active unless it says `is_active: false` (older rows carry no flag)."""
+    return user.get("is_active") is not False
+
+
+def _refuse_when_only_inactive(matches: list[dict[str, Any]]) -> None:
+    """Say a person is inactive when that is the only thing the lookup found."""
+    if matches and not any(_is_active(user) for user in matches):
+        who: str = str(matches[0].get("full_name") or matches[0].get("email") or matches[0]["uuid"])
+        raise ValueError(f"{who} is inactive in this organization and cannot be given new work.")
+
+
 def resolve_user_by_name_or_uuid(
     users: list[dict[str, Any]],
     identifier: str,
 ) -> tuple[str, str]:
-    """Resolve a user UUID and display name from a UUID, email, or name fragment."""
+    """Resolve a user UUID and display name from a UUID, email, or name fragment.
+
+    Inactive people (``is_active`` false) are never picked by name or email: when the only match is
+    inactive, the error says so instead of treating it as "not found". An explicit UUID is left to
+    the server, which refuses a new inactive target with ``user_inactive``.
+    """
     if UUID_PATTERN.match(identifier):
         for user in users:
             if user.get("uuid") == identifier:
@@ -1117,6 +1155,8 @@ def resolve_user_by_name_or_uuid(
         email_matches: list[dict[str, Any]] = [
             user for user in users if str(user.get("email", "")).lower() == identifier.lower()
         ]
+        _refuse_when_only_inactive(email_matches)
+        email_matches = [user for user in email_matches if _is_active(user)]
         if len(email_matches) == 1:
             hit: dict[str, Any] = email_matches[0]
             return str(hit["uuid"]), str(hit.get("full_name") or hit.get("email") or hit["uuid"])
@@ -1130,16 +1170,18 @@ def resolve_user_by_name_or_uuid(
                 )
             raise ValueError(f'No user found with email "{identifier}".')
 
-    exact_matches: list[dict[str, Any]] = [
+    exact_all: list[dict[str, Any]] = [
         user for user in users if str(user.get("full_name", "")).lower() == identifier.lower()
     ]
+    exact_matches: list[dict[str, Any]] = [user for user in exact_all if _is_active(user)]
     if len(exact_matches) == 1:
         match: dict[str, Any] = exact_matches[0]
         return str(match["uuid"]), str(match.get("full_name") or match["uuid"])
 
-    partial_matches: list[dict[str, Any]] = [
+    partial_all: list[dict[str, Any]] = [
         user for user in users if identifier.lower() in str(user.get("full_name", "")).lower()
     ]
+    partial_matches: list[dict[str, Any]] = [user for user in partial_all if _is_active(user)]
     if len(partial_matches) == 1:
         match = partial_matches[0]
         return str(match["uuid"]), str(match.get("full_name") or match["uuid"])
@@ -1147,6 +1189,7 @@ def resolve_user_by_name_or_uuid(
         names: str = ", ".join(str(user.get("full_name", "")) for user in partial_matches)
         raise ValueError(f'Ambiguous receiver "{identifier}". Matches: {names}')
 
+    _refuse_when_only_inactive(exact_all or partial_all)
     raise ValueError(f'No user found matching "{identifier}".')
 
 

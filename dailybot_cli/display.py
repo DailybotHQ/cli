@@ -1358,7 +1358,8 @@ def print_team_detail(team: dict[str, Any], members: list[dict[str, Any]] | None
         m_table.add_column("Email", style="dim")
         for member in members:
             m_table.add_row(
-                str(member.get("full_name") or member.get("name") or member.get("uuid") or ""),
+                f"{member.get('full_name') or member.get('name') or member.get('uuid') or ''}"
+                f"{_inactive_mark(member)}",
                 str(member.get("uuid") or ""),
                 str(member.get("email") or ""),
             )
@@ -1376,7 +1377,7 @@ def print_users_table(users: list[dict[str, Any]]) -> None:
     table.add_column("User UUID", style="dim")
     for user in users:
         table.add_row(
-            str(user.get("full_name") or user.get("uuid") or ""),
+            f"{user.get('full_name') or user.get('uuid') or ''}{_inactive_mark(user)}",
             str(user.get("uuid") or ""),
         )
     console.print(table)
@@ -1625,6 +1626,20 @@ def _person_name(person: dict[str, Any]) -> Any:
     return person.get("full_name") or person.get("name")
 
 
+INACTIVE_MARK: str = " (inactive)"
+
+
+def _inactive_mark(person: Any) -> str:
+    """` (inactive)` for a person ref that says `is_active: false`; nothing otherwise."""
+    return INACTIVE_MARK if isinstance(person, dict) and person.get("is_active") is False else ""
+
+
+def _person_cell(person: Any, *, limit: int) -> str:
+    """A person as data, with the inactive marker appended outside the untrusted text."""
+    name: Any = _person_name(person) if isinstance(person, dict) else person
+    return f"{present_untrusted(name, limit=limit)}{_inactive_mark(person)}"
+
+
 def _reactor(user: Any, agent: Any = None) -> str:
     """One person who reacted, with the agent that reacted for them when stamped."""
     name: Any = _person_name(user) if isinstance(user, dict) else user
@@ -1701,12 +1716,11 @@ def print_tasks_table(tasks: list[dict[str, Any]]) -> None:
     table.add_column("Assignee", no_wrap=True)
     for task in tasks:
         owner: Any = task.get("executor") or task.get("owner") or {}
-        owner_name: Any = _person_name(owner) if isinstance(owner, dict) else owner
         table.add_row(
             safe_text(task.get("key") or task.get("uuid") or ""),
             present_untrusted(task.get("title")),
             _state_name(task),
-            present_untrusted(owner_name, limit=20),
+            _person_cell(owner, limit=20),
         )
     console.print(table)
 
@@ -1726,6 +1740,9 @@ def print_task_detail(task: dict[str, Any]) -> None:
         f"[bold]UUID[/bold]       {safe_text(uuid_value)}",
         f"[bold]API link[/bold]   /v1/plan/tasks/{safe_text(uuid_value)}/",
     ]
+    owner: Any = task.get("owner")
+    if isinstance(owner, dict) and _person_name(owner):
+        lines.insert(3, f"[bold]Owner[/bold]      {_person_cell(owner, limit=40)}")
     agents: str = _agent_names(task.get("executors"))
     if agents:
         # Every agent that executed a write here — not the singular executor.
@@ -1759,8 +1776,7 @@ def print_task_briefing(brief: dict[str, Any]) -> None:
             facts.append(f"[bold]{label}[/bold] {present_untrusted(value, limit=40)}")
     owner: Any = task.get("owner")
     if isinstance(owner, dict) and (owner.get("full_name") or owner.get("name")):
-        name: Any = owner.get("full_name") or owner.get("name")
-        facts.append(f"[bold]Owner[/bold] {present_untrusted(name, limit=40)}")
+        facts.append(f"[bold]Owner[/bold] {_person_cell(owner, limit=40)}")
     labels: Any = task.get("labels")
     if isinstance(labels, list) and labels:
         names: list[str] = [
@@ -1807,7 +1823,7 @@ def print_task_briefing(brief: dict[str, Any]) -> None:
                     else participant
                 )
                 console.print(
-                    f"  {present_untrusted(_person_name(person), limit=40)} "
+                    f"  {_person_cell(person, limit=40)} "
                     f"[dim]{safe_text(participant.get('role') or '')}[/dim]"
                 )
         _more_hint(brief, "participants", f"dailybot plan task participants list {ref}")
@@ -1990,6 +2006,12 @@ def _dig(row: dict[str, Any], path: str) -> Any:
     return value
 
 
+def _dig_parent(row: dict[str, Any], path: str) -> Any:
+    """The object a dotted path reads from (`user` for `user.name`); None for a top-level field."""
+    head, _, _leaf = path.rpartition(".")
+    return _dig(row, head) if head else None
+
+
 def print_tasks_rows(
     title: str,
     rows: list[dict[str, Any]],
@@ -2032,7 +2054,7 @@ def print_tasks_rows(
             if trusted:
                 cells.append("" if value is None else safe_text(value))
             else:
-                cells.append(present_untrusted(value))
+                cells.append(f"{present_untrusted(value)}{_inactive_mark(_dig_parent(row, path))}")
         table.add_row(*cells)
     console.print(table)
 
@@ -2345,9 +2367,22 @@ def print_channels_table(rows: list[dict[str, Any]]) -> None:
     )
 
 
+SKIPPED_INACTIVE_NOTE: str = (
+    "Skipped rows had no active recipient (`recipient_inactive`): everyone it was meant for is "
+    "inactive in this organization, so nothing was sent."
+)
+
+
+def _note_skipped_inactive(rows: list[dict[str, Any]]) -> None:
+    """Explain `skipped` / `recipient_inactive` once, under the table that shows it."""
+    if any(row.get("error") == "recipient_inactive" for row in rows):
+        print_info(SKIPPED_INACTIVE_NOTE)
+
+
 def print_route_deliveries(result: PaginatedResult) -> None:
     rows: list[dict[str, Any]] = list(result.results)
     print_tasks_rows("Deliveries", rows, _DELIVERY_COLUMNS, empty="There are no deliveries yet.")
+    _note_skipped_inactive(rows)
 
 
 def print_report_runs(result: PaginatedResult) -> None:
@@ -2355,6 +2390,7 @@ def print_report_runs(result: PaginatedResult) -> None:
         {**r, "test_text": "test" if r.get("is_test") else ""} for r in result.results
     ]
     print_tasks_rows("Runs", rows, _RUN_COLUMNS, empty="There are no runs yet.")
+    _note_skipped_inactive(rows)
 
 
 def print_briefing(data: dict[str, Any]) -> None:
@@ -2385,7 +2421,7 @@ def _item_line(item: dict[str, Any]) -> str:
     bits: list[str] = []
     owner: Any = item.get("owner")
     if isinstance(owner, dict) and owner.get("name"):
-        bits.append(present_untrusted(owner.get("name"), limit=30))
+        bits.append(_person_cell(owner, limit=30))
     if item.get("due_date"):
         bits.append(f"due {safe_text(item['due_date'])}")
     if kind == "task" and item.get("state"):
