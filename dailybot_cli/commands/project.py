@@ -1,4 +1,4 @@
-"""Project commands (``/v1/tasks/projects/*``)."""
+"""Project commands (``/v1/plan/projects/*``)."""
 
 from datetime import datetime
 from pathlib import Path
@@ -88,7 +88,7 @@ def _include_list(include: tuple[str, ...]) -> list[str] | None:
 
 @click.group()
 def project() -> None:
-    """Read and manage Dailybot Tasks projects.
+    """Read and manage Dailybot Plan projects.
 
     \b
     Roll-ups are opt-in: a field you did not ask for is absent, which is a
@@ -96,8 +96,8 @@ def project() -> None:
 
     \b
     Examples:
-      dailybot project list --include progress
-      dailybot project updates
+      dailybot plan project list --include progress
+      dailybot plan project updates
     """
 
 
@@ -118,8 +118,8 @@ def project_list(include: tuple[str, ...], json_mode: bool, **flags: Any) -> Non
 
     \b
     Examples:
-      dailybot project list
-      dailybot project list --include progress --json
+      dailybot plan project list
+      dailybot plan project list --include progress --json
     """
     client = require_auth()
     try:
@@ -158,7 +158,7 @@ def project_get(project_uuid: str, include: tuple[str, ...], json_mode: bool) ->
 
     \b
     Examples:
-      dailybot project get <project-uuid> --include progress
+      dailybot plan project get <project-uuid> --include progress
     """
     client = require_auth()
     try:
@@ -188,8 +188,8 @@ def project_updates(project_uuid: str | None, json_mode: bool, **flags: Any) -> 
 
     \b
     Examples:
-      dailybot project updates --last-week
-      dailybot project updates <project-uuid> --json
+      dailybot plan project updates --last-week
+      dailybot plan project updates <project-uuid> --json
     """
     client = require_auth()
     try:
@@ -254,8 +254,8 @@ def project_update_post(
 
     \b
     Examples:
-      dailybot project update-post <project-uuid> "Shipped the retry fix"
-      echo "long update" | dailybot project update-post <project-uuid> - --health on_track
+      dailybot plan project update-post <project-uuid> "Shipped the retry fix"
+      echo "long update" | dailybot plan project update-post <project-uuid> - --health on_track
     """
     client = require_auth()
     try:
@@ -287,8 +287,8 @@ def project_milestones(project_uuid: str | None, json_mode: bool, **flags: Any) 
 
     \b
     Examples:
-      dailybot project milestones <project-uuid>
-      dailybot project milestones --json
+      dailybot plan project milestones <project-uuid>
+      dailybot plan project milestones --json
     """
     client = require_auth()
     try:
@@ -336,8 +336,8 @@ def project_milestone_complete(
 
     \b
     Examples:
-      dailybot project milestone-complete <project-uuid> <milestone-uuid> --dry-run
-      dailybot project milestone-complete <project-uuid> <milestone-uuid> --yes
+      dailybot plan project milestone-complete <project-uuid> <milestone-uuid> --dry-run
+      dailybot plan project milestone-complete <project-uuid> <milestone-uuid> --yes
     """
     client = require_auth()
     # The shared helper, not a private copy: this flow drifted from `task archive`
@@ -376,7 +376,7 @@ def project_milestone_reopen(
 
     \b
     Examples:
-      dailybot project milestone-reopen <project-uuid> <milestone-uuid>
+      dailybot plan project milestone-reopen <project-uuid> <milestone-uuid>
     """
     client = require_auth()
     try:
@@ -458,8 +458,8 @@ def project_create(
 
     \b
     Examples:
-      dailybot project create --name "Apollo"
-      dailybot project create -n "Apollo" --lead <user-uuid> --target-date 2026-12-15 --json
+      dailybot plan project create --name "Apollo"
+      dailybot plan project create -n "Apollo" --lead <user-uuid> --target-date 2026-12-15 --json
     """
     extra: dict[str, Any] = _project_fields(visibility, lead, health, start_date, target_date)
     client = require_auth()
@@ -489,7 +489,7 @@ def project_archive(
 
     \b
     Examples:
-      dailybot project archive <project-uuid> --dry-run
+      dailybot plan project archive <project-uuid> --dry-run
     """
     client = require_auth()
     if not preview_then_confirm(
@@ -537,12 +537,12 @@ def project_update(
     Only the fields you pass are sent. Any non-guest member can update, with
     `dailybot login` or a personal API key; an agent or organization key cannot. Setting `--visibility members` privatizes the
     project and auto-grants you; invite others with `project member add`. To post
-    a status note for the team, use `dailybot project update-post` instead.
+    a status note for the team, use `dailybot plan project update-post` instead.
 
     \b
     Examples:
-      dailybot project update <project-uuid> --health at_risk
-      dailybot project update <project-uuid> --target-date 2027-01-15 --lead <user-uuid> --json
+      dailybot plan project update <project-uuid> --health at_risk
+      dailybot plan project update <project-uuid> --target-date 2027-01-15 --lead <user-uuid> --json
     """
     fields: dict[str, Any] = _project_fields(visibility, lead, health, start_date, target_date)
     if name is not None:
@@ -574,11 +574,11 @@ def project_restore(project_uuid: str, idempotency_key: str | None, json_mode: b
 
     \b
     Boards and tasks that were archived with it stay archived: restore them with
-    `dailybot board restore`. Restoring uses one project slot on your plan.
+    `dailybot plan board restore`. Restoring uses one project slot on your plan.
 
     \b
     Examples:
-      dailybot project restore <project-uuid>
+      dailybot plan project restore <project-uuid>
     """
     client = require_auth()
     try:
@@ -620,7 +620,7 @@ def project_members(project_uuid: str, json_mode: bool) -> None:
 
     \b
     Examples:
-      dailybot project members <project-uuid>
+      dailybot plan project members <project-uuid>
     """
     client = require_auth()
     try:
@@ -647,8 +647,8 @@ def project_member() -> None:
 
     \b
     Examples:
-      dailybot project member add <project-uuid> --user <user-uuid>
-      dailybot project member add <project-uuid> --team <team-uuid>
+      dailybot plan project member add <project-uuid> --user <user-uuid>
+      dailybot plan project member add <project-uuid> --team <team-uuid>
     """
 
 
@@ -669,8 +669,8 @@ def project_member_add(
 
     \b
     Examples:
-      dailybot project member add <project-uuid> --user <user-uuid>
-      dailybot project member add <project-uuid> --team <team-uuid> --json
+      dailybot plan project member add <project-uuid> --user <user-uuid>
+      dailybot plan project member add <project-uuid> --team <team-uuid> --json
     """
     if (user_uuid is None) == (team_uuid is None):
         raise click.UsageError("Pass exactly one of --user or --team.")
@@ -701,8 +701,8 @@ def project_member_remove(
 
     \b
     Examples:
-      dailybot project member remove <project-uuid> <user-uuid> --dry-run
-      dailybot project member remove <project-uuid> <user-uuid> --yes
+      dailybot plan project member remove <project-uuid> <user-uuid> --dry-run
+      dailybot plan project member remove <project-uuid> <user-uuid> --yes
     """
     if not confirm_without_preview(
         f"remove user {user_uuid} from project {project_uuid}; they lose sight of it if it "
@@ -738,8 +738,8 @@ def project_views(project_uuid: str, etag_only: bool, json_mode: bool) -> None:
 
     \b
     Examples:
-      dailybot project views <project-uuid>
-      ETAG=$(dailybot project views <project-uuid> --etag)
+      dailybot plan project views <project-uuid>
+      ETAG=$(dailybot plan project views <project-uuid> --etag)
     """
     client = require_auth()
     try:
@@ -764,7 +764,7 @@ def project_view() -> None:
 
     \b
     Examples:
-      dailybot project view save <project-uuid> -f views.json --if-match '"3"'
+      dailybot plan project view save <project-uuid> -f views.json --if-match '"3"'
     """
 
 
@@ -802,7 +802,7 @@ def project_view_save(
       sort         a sort expression, as the web app saves it
       visibility   personal | shared | board_default (the last two need a board manager)
       filters      an object of filters (may be {})
-    `dailybot project views <project-uuid> --json` lists your current views under `results`; the
+    `dailybot plan project views <project-uuid> --json` lists your current views under `results`; the
     file takes just that array, so copy the objects out of `results`.
 
     \b
@@ -811,8 +811,8 @@ def project_view_save(
 
     \b
     Examples:
-      dailybot project view save <project-uuid> -f views.json --if-match '"3"'
-      dailybot project view save <project-uuid> -f views.json --fetch-etag --json
+      dailybot plan project view save <project-uuid> -f views.json --if-match '"3"'
+      dailybot plan project view save <project-uuid> -f views.json --fetch-etag --json
     """
     if (if_match is None) == (not fetch_etag):
         raise click.UsageError("Pass exactly one of --if-match <etag> or --fetch-etag.")
@@ -861,11 +861,11 @@ def project_milestone_create(
 
     \b
     This door takes no idempotency key: a retry after a timeout can create a second
-    milestone. Check `dailybot project milestones <project>` before retrying.
+    milestone. Check `dailybot plan project milestones <project>` before retrying.
 
     \b
     Examples:
-      dailybot project milestone-create <project-uuid> -n "Beta" --date 2026-11-01
+      dailybot plan project milestone-create <project-uuid> -n "Beta" --date 2026-11-01
     """
     client = require_auth()
     try:
@@ -903,7 +903,7 @@ def project_milestone_update(
 
     \b
     Examples:
-      dailybot project milestone-update <project-uuid> <milestone-uuid> --date 2026-11-15
+      dailybot plan project milestone-update <project-uuid> <milestone-uuid> --date 2026-11-15
     """
     fields: dict[str, Any] = {
         "name": name,
@@ -937,8 +937,8 @@ def project_milestone_delete(
 
     \b
     Examples:
-      dailybot project milestone-delete <project-uuid> <milestone-uuid> --dry-run
-      dailybot project milestone-delete <project-uuid> <milestone-uuid> --yes
+      dailybot plan project milestone-delete <project-uuid> <milestone-uuid> --dry-run
+      dailybot plan project milestone-delete <project-uuid> <milestone-uuid> --yes
     """
     if not confirm_without_preview(
         f"retire milestone {milestone_uuid} on project {project_uuid}; its tasks keep pointing "
@@ -969,7 +969,7 @@ def project_milestone_restore(project_uuid: str, milestone_uuid: str, json_mode:
 
     \b
     Examples:
-      dailybot project milestone-restore <project-uuid> <milestone-uuid>
+      dailybot plan project milestone-restore <project-uuid> <milestone-uuid>
     """
     client = require_auth()
     try:
@@ -1008,8 +1008,8 @@ def project_attach(
 
     \b
     Examples:
-      dailybot project attach <project-uuid> ./plan.pdf
-      dailybot project attach <project-uuid> ./roadmap.png --caption "Q4 roadmap" --json
+      dailybot plan project attach <project-uuid> ./plan.pdf
+      dailybot plan project attach <project-uuid> ./roadmap.png --caption "Q4 roadmap" --json
     """
     run_attach(
         lambda client, **file: client.upload_project_attachment(project_uuid, **file),
@@ -1030,8 +1030,8 @@ def project_attachments(project_uuid: str, json_mode: bool) -> None:
 
     \b
     Examples:
-      dailybot project attachments <project-uuid>
-      dailybot project attachments <project-uuid> --json
+      dailybot plan project attachments <project-uuid>
+      dailybot plan project attachments <project-uuid> --json
     """
     run_list(
         lambda client: client.list_project_attachments(project_uuid),
@@ -1042,12 +1042,13 @@ def project_attachments(project_uuid: str, json_mode: bool) -> None:
 
 @project.group("attachment")
 def project_attachment() -> None:
-    """Download or delete one attachment on a project.
+    """Download, rename or delete one attachment on a project.
 
     \b
     Examples:
-      dailybot project attachment get <project-uuid> <attachment-uuid> -o ./plan.pdf
-      dailybot project attachment delete <project-uuid> <attachment-uuid> --dry-run
+      dailybot plan project attachment rename <project-uuid> <attachment-uuid> plan-v2.pdf
+      dailybot plan project attachment get <project-uuid> <attachment-uuid> -o ./plan.pdf
+      dailybot plan project attachment delete <project-uuid> <attachment-uuid> --dry-run
     """
 
 
@@ -1071,13 +1072,37 @@ def project_attachment_get(
 
     \b
     Examples:
-      dailybot project attachment get <project-uuid> <attachment-uuid> -o ./plan.pdf
+      dailybot plan project attachment get <project-uuid> <attachment-uuid> -o ./plan.pdf
     """
     run_get(
         lambda client: client.download_project_attachment(project_uuid, attachment_uuid),
         output,
         attachment_uuid=attachment_uuid,
         force=force,
+        json_mode=json_mode,
+        require_auth=require_auth,
+    )
+
+
+@project_attachment.command("rename")
+@click.argument("project_uuid", metavar="PROJECT")
+@click.argument("attachment_uuid", metavar="ATTACHMENT")
+@click.argument("filename")
+@click.option("--json", "json_mode", is_flag=True, help="Emit machine-readable JSON to stdout.")
+def project_attachment_rename(
+    project_uuid: str, attachment_uuid: str, filename: str, json_mode: bool
+) -> None:
+    """Rename a project's attachment (1 to 255 characters).
+
+    \b
+    Examples:
+      dailybot plan project attachment rename <project-uuid> <attachment-uuid> plan-v2.pdf
+    """
+    run_rename(
+        lambda client, name: client.rename_project_attachment(
+            project_uuid, attachment_uuid, filename=name
+        ),
+        filename,
         json_mode=json_mode,
         require_auth=require_auth,
     )
@@ -1096,8 +1121,8 @@ def project_attachment_delete(
 
     \b
     Examples:
-      dailybot project attachment delete <project-uuid> <attachment-uuid> --dry-run
-      dailybot project attachment delete <project-uuid> <attachment-uuid> --yes
+      dailybot plan project attachment delete <project-uuid> <attachment-uuid> --dry-run
+      dailybot plan project attachment delete <project-uuid> <attachment-uuid> --yes
     """
     run_delete(
         lambda client: client.delete_project_attachment(project_uuid, attachment_uuid),
@@ -1146,7 +1171,7 @@ def project_milestone_attach(
 
     \b
     Examples:
-      dailybot project milestone-attach <project-uuid> <milestone-uuid> ./spec.pdf
+      dailybot plan project milestone-attach <project-uuid> <milestone-uuid> ./spec.pdf
     """
     run_attach(
         lambda client, **file: client.upload_milestone_attachment(
@@ -1170,7 +1195,7 @@ def project_milestone_attachments(project_uuid: str, milestone_uuid: str, json_m
 
     \b
     Examples:
-      dailybot project milestone-attachments <project-uuid> <milestone-uuid> --json
+      dailybot plan project milestone-attachments <project-uuid> <milestone-uuid> --json
     """
     run_list(
         lambda client: client.list_milestone_attachments(project_uuid, milestone_uuid),
@@ -1185,9 +1210,9 @@ def project_milestone_attachment() -> None:
 
     \b
     Examples:
-      dailybot project milestone-attachment get <project> <milestone> <attachment> -o ./spec.pdf
-      dailybot project milestone-attachment rename <project> <milestone> <attachment> spec-v2.pdf
-      dailybot project milestone-attachment delete <project> <milestone> <attachment> --dry-run
+      dailybot plan project milestone-attachment get <project> <milestone> <attachment> -o ./spec.pdf
+      dailybot plan project milestone-attachment rename <project> <milestone> <attachment> spec-v2.pdf
+      dailybot plan project milestone-attachment delete <project> <milestone> <attachment> --dry-run
     """
 
 
@@ -1210,7 +1235,7 @@ def project_milestone_attachment_get(
 
     \b
     Examples:
-      dailybot project milestone-attachment get <project> <milestone> <attachment> -o ./spec.pdf
+      dailybot plan project milestone-attachment get <project> <milestone> <attachment> -o ./spec.pdf
     """
     run_get(
         lambda client: client.download_milestone_attachment(
@@ -1237,7 +1262,7 @@ def project_milestone_attachment_rename(
 
     \b
     Examples:
-      dailybot project milestone-attachment rename <project> <milestone> <attachment> spec-v2.pdf
+      dailybot plan project milestone-attachment rename <project> <milestone> <attachment> spec-v2.pdf
     """
     run_rename(
         lambda client, name: client.rename_milestone_attachment(
@@ -1268,8 +1293,8 @@ def project_milestone_attachment_delete(
 
     \b
     Examples:
-      dailybot project milestone-attachment delete <project> <milestone> <attachment> --dry-run
-      dailybot project milestone-attachment delete <project> <milestone> <attachment> --yes
+      dailybot plan project milestone-attachment delete <project> <milestone> <attachment> --dry-run
+      dailybot plan project milestone-attachment delete <project> <milestone> <attachment> --yes
     """
     run_delete(
         lambda client: client.delete_milestone_attachment(
@@ -1304,7 +1329,7 @@ def project_update_get(project_uuid: str, update_uuid: str, json_mode: bool) -> 
 
     \b
     Examples:
-      dailybot project update-get <project-uuid> <update-uuid> --json
+      dailybot plan project update-get <project-uuid> <update-uuid> --json
     """
     client = require_auth()
     try:
@@ -1340,8 +1365,8 @@ def project_update_edit(
 
     \b
     Examples:
-      dailybot project update-edit <project-uuid> <update-uuid> "Shipped, with the fix"
-      dailybot project update-edit <project-uuid> <update-uuid> --health at_risk
+      dailybot plan project update-edit <project-uuid> <update-uuid> "Shipped, with the fix"
+      dailybot plan project update-edit <project-uuid> <update-uuid> --health at_risk
     """
     if body is None and health is None:
         raise click.UsageError("Pass a new BODY, --health, or both. Nothing was sent.")
@@ -1377,12 +1402,12 @@ def project_update_react(project_uuid: str, update_uuid: str, emoji: str, json_m
     Emoji only (no text or :shortcodes:). Reacting twice with the same emoji is
     safe: nothing changes. One person may hold only a limited number of different
     emojis on one project update; if the server refuses with `reaction_limit_reached`,
-    remove one of yours first (`dailybot project update-unreact`).
+    remove one of yours first (`dailybot plan project update-unreact`).
 
     \b
     Examples:
-      dailybot project update-react <project-uuid> <update-uuid> 👍
-      dailybot project update-react <project-uuid> <update-uuid> 🚀 --json
+      dailybot plan project update-react <project-uuid> <update-uuid> 👍
+      dailybot plan project update-react <project-uuid> <update-uuid> 🚀 --json
     """
     if not is_reaction_emoji(emoji):
         raise click.UsageError(_NOT_ONE_EMOJI)
@@ -1413,7 +1438,7 @@ def project_update_unreact(
 
     \b
     Examples:
-      dailybot project update-unreact <project-uuid> <update-uuid> 👍
+      dailybot plan project update-unreact <project-uuid> <update-uuid> 👍
     """
     if not is_reaction_emoji(emoji):
         raise click.UsageError(_NOT_ONE_EMOJI)
@@ -1447,8 +1472,8 @@ def project_update_reactions(
 
     \b
     Examples:
-      dailybot project update-reactions <project-uuid> <update-uuid>
-      dailybot project update-reactions <project-uuid> <update-uuid> --emoji 👍 --json
+      dailybot plan project update-reactions <project-uuid> <update-uuid>
+      dailybot plan project update-reactions <project-uuid> <update-uuid> --emoji 👍 --json
     """
     if emoji is not None and not is_reaction_emoji(emoji):
         raise click.UsageError("--emoji must be one emoji, e.g. 👍 (no text or :shortcodes:).")
@@ -1494,8 +1519,8 @@ def project_update_delete(
 
     \b
     Examples:
-      dailybot project update-delete <project-uuid> <update-uuid> --dry-run
-      dailybot project update-delete <project-uuid> <update-uuid> --yes
+      dailybot plan project update-delete <project-uuid> <update-uuid> --dry-run
+      dailybot plan project update-delete <project-uuid> <update-uuid> --yes
     """
     if not confirm_without_preview(
         f"delete project update {update_uuid} and its attachments.",
@@ -1537,7 +1562,7 @@ def project_update_attach(
 
     \b
     Examples:
-      dailybot project update-attach <project-uuid> <update-uuid> ./chart.png
+      dailybot plan project update-attach <project-uuid> <update-uuid> ./chart.png
     """
     run_attach(
         lambda client, **file: client.upload_update_attachment(project_uuid, update_uuid, **file),
@@ -1559,7 +1584,7 @@ def project_update_attachments(project_uuid: str, update_uuid: str, json_mode: b
 
     \b
     Examples:
-      dailybot project update-attachments <project-uuid> <update-uuid> --json
+      dailybot plan project update-attachments <project-uuid> <update-uuid> --json
     """
     run_list(
         lambda client: client.list_update_attachments(project_uuid, update_uuid),
@@ -1574,9 +1599,9 @@ def project_update_attachment() -> None:
 
     \b
     Examples:
-      dailybot project update-attachment get <project> <update> <attachment> -o ./chart.png
-      dailybot project update-attachment rename <project> <update> <attachment> chart-q4.png
-      dailybot project update-attachment delete <project> <update> <attachment> --yes
+      dailybot plan project update-attachment get <project> <update> <attachment> -o ./chart.png
+      dailybot plan project update-attachment rename <project> <update> <attachment> chart-q4.png
+      dailybot plan project update-attachment delete <project> <update> <attachment> --yes
     """
 
 
@@ -1599,7 +1624,7 @@ def project_update_attachment_get(
 
     \b
     Examples:
-      dailybot project update-attachment get <project> <update> <attachment> -o ./chart.png
+      dailybot plan project update-attachment get <project> <update> <attachment> -o ./chart.png
     """
     run_get(
         lambda client: client.download_update_attachment(
@@ -1626,7 +1651,7 @@ def project_update_attachment_rename(
 
     \b
     Examples:
-      dailybot project update-attachment rename <project> <update> <attachment> chart-q4.png
+      dailybot plan project update-attachment rename <project> <update> <attachment> chart-q4.png
     """
     run_rename(
         lambda client, name: client.rename_update_attachment(
@@ -1657,8 +1682,8 @@ def project_update_attachment_delete(
 
     \b
     Examples:
-      dailybot project update-attachment delete <project> <update> <attachment> --dry-run
-      dailybot project update-attachment delete <project> <update> <attachment> --yes
+      dailybot plan project update-attachment delete <project> <update> <attachment> --dry-run
+      dailybot plan project update-attachment delete <project> <update> <attachment> --yes
     """
     run_delete(
         lambda client: client.delete_update_attachment(project_uuid, update_uuid, attachment_uuid),

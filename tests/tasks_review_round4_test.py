@@ -55,7 +55,7 @@ _PREVIEW: dict[str, Any] = {
     "operation": "archive",
     "dry_run": True,
     "reversible": True,
-    "restore_path": "dailybot task restore <uuid>",
+    "restore_path": "dailybot plan task restore <uuid>",
     "consequence": "Archives the task and its 3 subtasks.",
     "affects": {"tasks": 4},
 }
@@ -72,17 +72,17 @@ class TestPaginationFooterNamesAFlagTheCommandHas:
     @pytest.mark.parametrize(
         ("argv", "door"),
         [
-            (["task", "list"], "list_tasks"),
-            (["tasks", "search", "-q", "deploy"], "search_tasks"),
-            (["tasks", "inbox"], "list_tasks_inbox"),
-            (["tasks", "mine"], "list_my_tasks"),
+            (["plan", "task", "list"], "list_tasks"),
+            (["plan", "tasks", "search", "-q", "deploy"], "search_tasks"),
+            (["plan", "tasks", "inbox"], "list_tasks_inbox"),
+            (["plan", "tasks", "mine"], "list_my_tasks"),
         ],
     )
     def test_footer_does_not_advertise_all(
         self, runner: CliRunner, client: MagicMock, argv: list[str], door: str
     ) -> None:
         getattr(client, door).return_value = _page([{"uuid": "t-1"}], next_url="http://n/2")
-        module: str = "tasks" if argv[0] == "tasks" else "task"
+        module: str = "tasks" if argv[1] == "tasks" else "task"
         with (
             patch(f"dailybot_cli.commands.{module}.require_auth", return_value=client),
             patch(
@@ -97,7 +97,7 @@ class TestPaginationFooterNamesAFlagTheCommandHas:
 
     def test_the_suggested_flag_actually_exists(self, runner: CliRunner) -> None:
         # The hint is only worth anything if following it works.
-        out: str = runner.invoke(cli, ["task", "list", "--help"]).stdout
+        out: str = runner.invoke(cli, ["plan", "task", "list", "--help"]).stdout
         assert "--page" in out and "--page-size" in out
 
 
@@ -127,7 +127,7 @@ class TestJsonModeKeepsStdoutParseable:
     ) -> None:
         client.archive_task.side_effect = [_PREVIEW, {"uuid": "t-1", "is_archived": True}]
         result = self._archive(
-            runner, client, ["task", "archive", "t-1", "--yes", "--json"], "task"
+            runner, client, ["plan", "task", "archive", "t-1", "--yes", "--json"], "task"
         )
         assert result.exit_code == 0
         assert json.loads(result.stdout) == {"uuid": "t-1", "is_archived": True}
@@ -137,7 +137,7 @@ class TestJsonModeKeepsStdoutParseable:
     ) -> None:
         client.archive_task.side_effect = [_PREVIEW, {"uuid": "t-1"}]
         result = self._archive(
-            runner, client, ["task", "archive", "t-1", "--yes", "--json"], "task"
+            runner, client, ["plan", "task", "archive", "t-1", "--yes", "--json"], "task"
         )
         assert "Dry run" in result.stderr
 
@@ -149,7 +149,7 @@ class TestJsonModeKeepsStdoutParseable:
         result = self._archive(
             runner,
             client,
-            ["project", "milestone-complete", "p-1", "m-1", "--yes", "--json"],
+            ["plan", "project", "milestone-complete", "p-1", "m-1", "--yes", "--json"],
             "project",
         )
         assert json.loads(result.stdout) == {"uuid": "m-1", "completed": True}
@@ -159,7 +159,7 @@ class TestJsonModeKeepsStdoutParseable:
         # non-zero exit must not get an empty stream.
         client.archive_task.side_effect = APIError(status_code=404, detail="gone", code="not_found")
         result = self._archive(
-            runner, client, ["task", "archive", "t-1", "--yes", "--json"], "task"
+            runner, client, ["plan", "task", "archive", "t-1", "--yes", "--json"], "task"
         )
         # Exit 5, not 1: the fifth review round showed a flat 1 here made an agent
         # branching "5 → skip, 1 → alert" page on every already-archived object.
@@ -169,7 +169,7 @@ class TestJsonModeKeepsStdoutParseable:
     def test_dry_run_json_is_unchanged(self, runner: CliRunner, client: MagicMock) -> None:
         client.archive_task.return_value = _PREVIEW
         result = self._archive(
-            runner, client, ["task", "archive", "t-1", "--dry-run", "--json"], "task"
+            runner, client, ["plan", "task", "archive", "t-1", "--dry-run", "--json"], "task"
         )
         assert json.loads(result.stdout)["affects"] == {"tasks": 4}
 
@@ -178,7 +178,7 @@ class TestJsonModeKeepsStdoutParseable:
     ) -> None:
         # The human path must not regress into stderr-only output.
         client.archive_task.side_effect = [_PREVIEW, {"uuid": "t-1"}]
-        result = self._archive(runner, client, ["task", "archive", "t-1", "--yes"], "task")
+        result = self._archive(runner, client, ["plan", "task", "archive", "t-1", "--yes"], "task")
         assert "Dry run" in result.stdout
 
 
@@ -199,7 +199,7 @@ class TestBulkOperationIsNotMarkup:
         with patch("dailybot_cli.commands.task.require_auth", return_value=client):
             result = runner.invoke(
                 cli,
-                ["task", "bulk", "--operation", "[/bold][red]x", "-f", str(batch), "--yes"],
+                ["plan", "task", "bulk", "--operation", "[/bold][red]x", "-f", str(batch), "--yes"],
             )
         assert "Unexpected error" not in result.stderr
         assert result.exit_code == 2
@@ -212,7 +212,9 @@ class TestBulkOperationIsNotMarkup:
         batch.write_text('[{"uuid": "t-1"}]')
         with patch("dailybot_cli.commands.task.require_auth", return_value=client):
             result = runner.invoke(
-                cli, ["task", "bulk", "--operation", "[bold]x", "-f", str(batch)], input="n\n"
+                cli,
+                ["plan", "task", "bulk", "--operation", "[bold]x", "-f", str(batch)],
+                input="n\n",
             )
         assert "MarkupError" not in (result.stderr + result.stdout)
 
@@ -237,7 +239,7 @@ class TestTasksWriteExitCodesCoverBadInput:
         )
         with patch("dailybot_cli.commands.task.require_auth", return_value=client):
             result = runner.invoke(
-                cli, ["task", "bulk", "--operation", "archive", "-f", str(batch), "--yes"]
+                cli, ["plan", "task", "bulk", "--operation", "archive", "-f", str(batch), "--yes"]
             )
         assert result.exit_code == EXIT_USAGE_ERROR
 
@@ -251,13 +253,19 @@ class TestDoorsOnlyAdvertiseFiltersTheyCarry:
     than a refusal because nothing signals that the filter did not apply.
     """
 
-    @pytest.mark.parametrize("argv", [["tasks", "timeline"], ["tasks", "mine"], ["tasks", "inbox"]])
+    @pytest.mark.parametrize(
+        "argv",
+        [["plan", "tasks", "timeline"], ["plan", "tasks", "mine"], ["plan", "tasks", "inbox"]],
+    )
     def test_search_is_not_offered(self, runner: CliRunner, argv: list[str]) -> None:
         out: str = runner.invoke(cli, [*argv, "--help"]).stdout
         assert "--search" not in out
         assert "--grep" not in out
 
-    @pytest.mark.parametrize("argv", [["tasks", "timeline"], ["tasks", "mine"], ["tasks", "inbox"]])
+    @pytest.mark.parametrize(
+        "argv",
+        [["plan", "tasks", "timeline"], ["plan", "tasks", "mine"], ["plan", "tasks", "inbox"]],
+    )
     def test_search_is_now_a_usage_error(
         self, runner: CliRunner, client: MagicMock, argv: list[str]
     ) -> None:
@@ -274,7 +282,7 @@ class TestDoorsOnlyAdvertiseFiltersTheyCarry:
         with (
             patch("dailybot_cli.commands.tasks.require_auth", return_value=client),
         ):
-            runner.invoke(cli, ["tasks", "mine", "--scope", "involved"])
+            runner.invoke(cli, ["plan", "tasks", "mine", "--scope", "involved"])
         assert client.list_my_tasks.call_args[1]["params"] == {"scope": "involved"}
 
 

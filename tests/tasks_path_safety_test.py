@@ -68,7 +68,7 @@ class TestClientBoundary:
     def test_keys_and_uuids_pass(self, real: DailyBotClient, value: str) -> None:
         with patch("dailybot_cli.api_client.httpx.get", return_value=_response({})) as get:
             real.get_task(value)
-        assert get.call_args.args[0] == f"{API_URL}/v1/tasks/tasks/{value}/"
+        assert get.call_args.args[0] == f"{API_URL}/v1/plan/tasks/{value}/"
 
     def test_the_url_builder_refuses_traversal_on_its_own(self, real: DailyBotClient) -> None:
         with pytest.raises(APIError):
@@ -88,7 +88,7 @@ class TestCommandExit:
             patch("dailybot_cli.api_client.httpx.post") as post,
             patch("dailybot_cli.api_client.httpx.request") as request,
         ):
-            result = CliRunner().invoke(cli, ["task", "restore", HOSTILE[0]])
+            result = CliRunner().invoke(cli, ["plan", "task", "restore", HOSTILE[0]])
         assert result.exit_code == EXIT_USAGE_ERROR, result.output
         post.assert_not_called()
         request.assert_not_called()
@@ -100,7 +100,7 @@ class TestCommandExit:
             patch("dailybot_cli.api_client.httpx.post") as post,
             patch("dailybot_cli.api_client.httpx.request") as request,
         ):
-            result = CliRunner().invoke(cli, ["task", "comment", "ENG-1/archive", "hi"])
+            result = CliRunner().invoke(cli, ["plan", "task", "comment", "ENG-1/archive", "hi"])
         assert result.exit_code == EXIT_USAGE_ERROR, result.output
         post.assert_not_called()
         request.assert_not_called()
@@ -168,13 +168,13 @@ class TestPaginationStaysOnTheApi:
     def test_a_next_link_to_another_host_is_followed_on_the_api_only(self) -> None:
         client: DailyBotClient = DailyBotClient(api_url=API_URL, token="test-token")
         first: Any = _page_response(
-            [{"uuid": "b-1"}], "https://evil.example/v1/tasks/boards/?page=2"
+            [{"uuid": "b-1"}], "https://evil.example/v1/plan/boards/?page=2"
         )
         second: Any = _page_response([{"uuid": "b-2"}], None)
         with patch("dailybot_cli.api_client.httpx.get", side_effect=[first, second]) as get:
             client.list_boards(fetch_all=True)
         followed: str = get.call_args_list[1].args[0]
-        assert followed == f"{API_URL}/v1/tasks/boards/?page=2"
+        assert followed == f"{API_URL}/v1/plan/boards/?page=2"
         assert "evil.example" not in followed
 
     def test_a_same_host_link_is_followed_on_the_api_scheme(self) -> None:
@@ -182,10 +182,10 @@ class TestPaginationStaysOnTheApi:
             api_url="https://api.example.com", token="test-token"
         )
         first: Any = _page_response(
-            [{"uuid": "b-1"}], "http://api.example.com/v1/tasks/boards/?page=2"
+            [{"uuid": "b-1"}], "http://api.example.com/v1/plan/boards/?page=2"
         )
         second: Any = _page_response([{"uuid": "b-2"}], None)
         with patch("dailybot_cli.api_client.httpx.get", side_effect=[first, second]) as get:
             result = client.list_boards(fetch_all=True)
         assert len(result.results) == 2
-        assert get.call_args_list[1].args[0] == "https://api.example.com/v1/tasks/boards/?page=2"
+        assert get.call_args_list[1].args[0] == "https://api.example.com/v1/plan/boards/?page=2"

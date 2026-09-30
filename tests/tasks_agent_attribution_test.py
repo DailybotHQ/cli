@@ -152,7 +152,7 @@ class TestAgentNameSource:
             patch.object(DailyBotClient, "get_task", fake_get_task),
         ):
             CliRunner().invoke(
-                cli, ["--agent-name", "Claude Code", "task", "get", "ENG-1", "--json"]
+                cli, ["--agent-name", "Claude Code", "plan", "task", "get", "ENG-1", "--json"]
             )
         assert seen["agent"] == "Claude Code"
 

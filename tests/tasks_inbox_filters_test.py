@@ -68,7 +68,7 @@ class TestCommands:
         client.list_tasks_inbox.return_value = PaginatedResult(
             results=[], count=0, next=None, previous=None
         )
-        result = _invoke(["tasks", "inbox", "--mentioned", "--json"], client)
+        result = _invoke(["plan", "tasks", "inbox", "--mentioned", "--json"], client)
         assert result.exit_code == 0, result.output
         assert client.list_tasks_inbox.call_args.kwargs["mentioned"] is True
 
@@ -76,7 +76,7 @@ class TestCommands:
         client: MagicMock = MagicMock(spec=DailyBotClient)
         client.get_tasks_inbox_unread_count.return_value = {"unread_count": 1}
         result = _invoke(
-            ["tasks", "inbox-unread", "--type", "task.owner_changed", "--json"], client
+            ["plan", "tasks", "inbox-unread", "--type", "task.owner_changed", "--json"], client
         )
         assert result.exit_code == 0, result.output
         kwargs: dict[str, Any] = client.get_tasks_inbox_unread_count.call_args.kwargs

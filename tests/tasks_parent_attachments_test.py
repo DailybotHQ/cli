@@ -23,7 +23,7 @@ from dailybot_cli.commands.public_api_helpers import (
 from dailybot_cli.main import cli
 
 API_URL: str = "http://test-api.example.com"
-BASE: str = f"{API_URL}/v1/tasks/"
+BASE: str = f"{API_URL}/v1/plan/"
 TASK: str = "ENG-142"
 COMMENT: str = "00000000-0000-0000-0000-000000000007"
 PROJECT: str = "00000000-0000-0000-0000-000000000002"
@@ -113,6 +113,7 @@ class TestCommands:
         client: MagicMock = MagicMock(spec=DailyBotClient)
         client.upload_comment_attachment.return_value = {"uuid": ATT}
         argv: list[str] = [
+            "plan",
             "task",
             "comment-attach",
             TASK,
@@ -131,9 +132,9 @@ class TestCommands:
     @pytest.mark.parametrize(
         "argv",
         [
-            ["task", "comment-attach", TASK, COMMENT],
-            ["project", "attach", PROJECT],
-            ["goal", "attach", GOAL],
+            ["plan", "task", "comment-attach", TASK, COMMENT],
+            ["plan", "project", "attach", PROJECT],
+            ["plan", "goal", "attach", GOAL],
         ],
     )
     def test_over_5_mib_is_refused_before_any_request(
@@ -142,7 +143,7 @@ class TestCommands:
         big: Path = tmp_path / "big.bin"
         big.write_bytes(b"x" * (ATTACHMENT_MULTIPART_MAX_BYTES + 1))
         client: MagicMock = MagicMock(spec=DailyBotClient)
-        result = _invoke(argv[0], [*argv, str(big)], client)
+        result = _invoke(argv[1], [*argv, str(big)], client)
         assert result.exit_code == EXIT_USAGE_ERROR
         assert "5 MiB" in result.output
         assert client.mock_calls == []
@@ -150,21 +151,22 @@ class TestCommands:
     @pytest.mark.parametrize(
         ("argv", "method"),
         [
-            (["project", "attachments", PROJECT], "list_project_attachments"),
-            (["goal", "attachments", GOAL], "list_goal_attachments"),
-            (["task", "comment-attachments", TASK, COMMENT], "list_comment_attachments"),
+            (["plan", "project", "attachments", PROJECT], "list_project_attachments"),
+            (["plan", "goal", "attachments", GOAL], "list_goal_attachments"),
+            (["plan", "task", "comment-attachments", TASK, COMMENT], "list_comment_attachments"),
         ],
     )
     def test_reads_work_with_a_key(self, argv: list[str], method: str) -> None:
         client: MagicMock = MagicMock(spec=DailyBotClient)
         getattr(client, method).return_value = [{"uuid": ATT, "filename": "a.txt"}]
-        result = _invoke(argv[0], [*argv, "--json"], client, person=False)
+        result = _invoke(argv[1], [*argv, "--json"], client, person=False)
         assert result.exit_code == 0, result.output
         assert json.loads(result.output)[0]["uuid"] == ATT
 
     def test_a_delete_dry_run_sends_nothing(self) -> None:
         client: MagicMock = MagicMock(spec=DailyBotClient)
         argv: list[str] = [
+            "plan",
             "task",
             "comment-attachment",
             "delete",
@@ -189,7 +191,7 @@ class TestCommands:
             code="attachment_too_large",
             extra={"max_size_bytes": ATTACHMENT_MULTIPART_MAX_BYTES},
         )
-        result = _invoke("goal", ["goal", "attach", GOAL, str(source), "--json"], client)
+        result = _invoke("goal", ["plan", "goal", "attach", GOAL, str(source), "--json"], client)
         assert result.exit_code == EXIT_USAGE_ERROR
         assert json.loads(result.output)["code"] == "attachment_too_large"
 
@@ -197,7 +199,16 @@ class TestCommands:
         existing: Path = tmp_path / "plan.pdf"
         existing.write_bytes(b"mine")
         client: MagicMock = MagicMock(spec=DailyBotClient)
-        argv: list[str] = ["project", "attachment", "get", PROJECT, ATT, "-o", str(existing)]
+        argv: list[str] = [
+            "plan",
+            "project",
+            "attachment",
+            "get",
+            PROJECT,
+            ATT,
+            "-o",
+            str(existing),
+        ]
         result = _invoke("project", argv, client)
         assert result.exit_code == EXIT_USAGE_ERROR
         assert existing.read_bytes() == b"mine"

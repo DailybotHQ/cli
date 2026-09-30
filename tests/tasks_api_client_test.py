@@ -49,7 +49,7 @@ def _envelope(results: list[dict[str, Any]] | None = None) -> dict[str, Any]:
 
 class TestTasksConstants:
     def test_constants_are_named_not_inline(self) -> None:
-        assert TASKS_BASE_PATH == "/v1/tasks/"
+        assert TASKS_BASE_PATH == "/v1/plan/"
         assert TASKS_BULK_MAX_ITEMS == 100
         assert TASKS_DELTA_MAX_WINDOW_DAYS == 7
         assert IDEMPOTENCY_KEY_HEADER == "Idempotency-Key"
@@ -103,13 +103,13 @@ class TestTasksReadDoors:
     def test_pulse_targets_the_tasks_base_path(self, client: DailyBotClient) -> None:
         with patch("httpx.get", return_value=_response(payload={"open": 96})) as mock_get:
             result: dict[str, Any] = client.get_tasks_pulse()
-        assert mock_get.call_args[0][0] == "http://test-api.example.com/v1/tasks/pulse/"
+        assert mock_get.call_args[0][0] == "http://test-api.example.com/v1/plan/pulse/"
         assert result["open"] == 96
 
     def test_entitlements_is_a_plain_read(self, client: DailyBotClient) -> None:
         with patch("httpx.get", return_value=_response(payload={"enabled": True})) as mock_get:
             result: dict[str, Any] = client.get_tasks_entitlements()
-        assert mock_get.call_args[0][0].endswith("/v1/tasks/entitlements/")
+        assert mock_get.call_args[0][0].endswith("/v1/plan/entitlements/")
         assert result["enabled"] is True
 
     def test_task_list_returns_the_pagination_envelope(self, client: DailyBotClient) -> None:
@@ -123,7 +123,7 @@ class TestTasksReadDoors:
     def test_task_get_uses_the_single_object_path(self, client: DailyBotClient) -> None:
         with patch("httpx.get", return_value=_response(payload={"uuid": "t-1"})) as mock_get:
             client.get_task("t-1")
-        assert mock_get.call_args[0][0].endswith("/v1/tasks/tasks/t-1/")
+        assert mock_get.call_args[0][0].endswith("/v1/plan/tasks/t-1/")
 
     def test_board_delta_sends_a_z_form_cursor(self, client: DailyBotClient) -> None:
         cursor: datetime = datetime(2026, 9, 19, 13, 13, 37, tzinfo=timezone.utc)
@@ -197,7 +197,7 @@ class TestTasksDryRun:
             "operation": "task.archive",
             "dry_run": True,
             "reversible": True,
-            "restore_path": "/v1/tasks/tasks/t-1/restore/",
+            "restore_path": "/v1/plan/tasks/t-1/restore/",
             "consequence": "Soft-archives this task.",
             "affects": {"tasks": 1},
         }
@@ -226,9 +226,9 @@ class TestTasksPersonShapedDoors:
     def test_me_tasks_targets_the_person_shaped_path(self, client: DailyBotClient) -> None:
         with patch("httpx.get", return_value=_response(payload=_envelope())) as mock_get:
             client.list_my_tasks()
-        assert mock_get.call_args[0][0].endswith("/v1/tasks/me/tasks/")
+        assert mock_get.call_args[0][0].endswith("/v1/plan/me/tasks/")
 
     def test_inbox_targets_the_person_shaped_path(self, client: DailyBotClient) -> None:
         with patch("httpx.get", return_value=_response(payload=_envelope())) as mock_get:
             client.list_tasks_inbox()
-        assert mock_get.call_args[0][0].endswith("/v1/tasks/inbox/")
+        assert mock_get.call_args[0][0].endswith("/v1/plan/inbox/")

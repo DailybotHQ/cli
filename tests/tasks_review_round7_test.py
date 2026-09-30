@@ -66,7 +66,8 @@ class TestBulkAgreesWithItself:
         client.bulk_tasks.return_value = _rows("ok", "error")
         with patch("dailybot_cli.commands.task.require_auth", return_value=client):
             result = runner.invoke(
-                cli, ["task", "bulk", "--operation", "archive", "-f", batch, "--yes", "--json"]
+                cli,
+                ["plan", "task", "bulk", "--operation", "archive", "-f", batch, "--yes", "--json"],
             )
         assert result.exit_code == 1
 
@@ -78,7 +79,8 @@ class TestBulkAgreesWithItself:
         client.bulk_tasks.return_value = _rows("ok", "error")
         with patch("dailybot_cli.commands.task.require_auth", return_value=client):
             result = runner.invoke(
-                cli, ["task", "bulk", "--operation", "archive", "-f", batch, "--yes", "--json"]
+                cli,
+                ["plan", "task", "bulk", "--operation", "archive", "-f", batch, "--yes", "--json"],
             )
         body: Any = json.loads(result.stdout)
         assert [row["status"] for row in body["results"]] == ["ok", "error"]
@@ -89,7 +91,8 @@ class TestBulkAgreesWithItself:
         client.bulk_tasks.return_value = _rows("ok", "ok")
         with patch("dailybot_cli.commands.task.require_auth", return_value=client):
             result = runner.invoke(
-                cli, ["task", "bulk", "--operation", "archive", "-f", batch, "--yes", "--json"]
+                cli,
+                ["plan", "task", "bulk", "--operation", "archive", "-f", batch, "--yes", "--json"],
             )
         assert result.exit_code == 0
 
@@ -100,7 +103,7 @@ class TestBulkAgreesWithItself:
             with patch("dailybot_cli.commands.task.require_auth", return_value=client):
                 codes.append(
                     runner.invoke(
-                        cli, ["task", "bulk", "--operation", "archive", "-f", batch, *argv]
+                        cli, ["plan", "task", "bulk", "--operation", "archive", "-f", batch, *argv]
                     ).exit_code
                 )
         assert codes[0] == codes[1]
@@ -118,13 +121,13 @@ class TestServerTimestampsAreEscaped:
         ("argv", "module", "door", "row"),
         [
             (
-                ["tasks", "activity"],
+                ["plan", "tasks", "activity"],
                 "tasks",
                 "list_tasks_activity",
                 {"created_at": "[/dim][bold red]x", "summary": "did a thing"},
             ),
             (
-                ["project", "updates"],
+                ["plan", "project", "updates"],
                 "project",
                 "list_project_updates",
                 {"created_at": "[/dim][red]x", "body": "shipped"},
@@ -159,7 +162,7 @@ class TestServerTimestampsAreEscaped:
             previous=None,
         )
         with patch("dailybot_cli.commands.tasks.require_auth", return_value=client):
-            result = runner.invoke(cli, ["tasks", "activity"])
+            result = runner.invoke(cli, ["plan", "tasks", "activity"])
         assert "2026-09-21" in result.stdout
 
 
@@ -180,7 +183,7 @@ class TestTransportFailureHonoursJson:
             patch("dailybot_cli.commands.tasks.require_auth", return_value=client),
             patch("sys.argv", ["dailybot", "tasks", "status", "--json"]),
         ):
-            result = runner.invoke(cli, ["tasks", "status", "--json"])
+            result = runner.invoke(cli, ["plan", "tasks", "status", "--json"])
         assert result.exit_code == 1  # a raw httpx error is not a TransportError
         assert json.loads(result.stdout)["status"] == "error"
 
@@ -194,7 +197,7 @@ class TestTransportFailureHonoursJson:
             patch("dailybot_cli.commands.tasks.require_auth", return_value=client),
             patch("sys.argv", ["dailybot", "tasks", "status", "--json"]),
         ):
-            result = runner.invoke(cli, ["tasks", "status", "--json"])
+            result = runner.invoke(cli, ["plan", "tasks", "status", "--json"])
         assert result.exit_code == EXIT_TRANSPORT
         body: Any = json.loads(result.stdout)
         assert body["code"] == "transport_error"
@@ -209,7 +212,7 @@ class TestTransportFailureHonoursJson:
             patch("dailybot_cli.commands.tasks.require_auth", return_value=client),
             patch("sys.argv", ["dailybot", "tasks", "status"]),
         ):
-            result = runner.invoke(cli, ["tasks", "status"])
+            result = runner.invoke(cli, ["plan", "tasks", "status"])
         assert result.exit_code == EXIT_TRANSPORT
         assert result.stdout == ""
         assert "Could not reach" in result.stderr

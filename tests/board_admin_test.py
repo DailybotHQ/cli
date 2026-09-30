@@ -26,7 +26,7 @@ from dailybot_cli.commands.public_api_helpers import (
 from dailybot_cli.main import cli
 
 API_URL: str = "http://test-api.example.com"
-BASE: str = f"{API_URL}/v1/tasks/"
+BASE: str = f"{API_URL}/v1/plan/"
 BOARD: str = "b-1"
 STATE: str = "s-1"
 USER: str = "u-1"
@@ -105,7 +105,7 @@ class TestBoardCollectionReads:
     ) -> None:
         payload: dict[str, Any] = {"count": 1, "next": None, "previous": None, "results": [row]}
         getattr(client, method).return_value = payload
-        result = _invoke(runner, client, ["board", sub, BOARD, "--json"])
+        result = _invoke(runner, client, ["plan", "board", sub, BOARD, "--json"])
         assert result.exit_code == 0, result.output
         assert json.loads(result.output) == payload
 
@@ -114,7 +114,7 @@ class TestBoardCollectionReads:
         self, runner: CliRunner, client: MagicMock, sub: str, method: str, path: str, row: Any
     ) -> None:
         getattr(client, method).return_value = [row]
-        result = _invoke(runner, client, ["board", sub, BOARD])
+        result = _invoke(runner, client, ["plan", "board", sub, BOARD])
         assert result.exit_code == 0, result.output
         name: str = row.get("name") or row["user"]["name"]
         assert name in result.output
@@ -124,13 +124,13 @@ class TestBoardCollectionReads:
         self, runner: CliRunner, client: MagicMock, sub: str, method: str, path: str, row: Any
     ) -> None:
         getattr(client, method).side_effect = APIError(404, "Not found.", code="not_found")
-        result = _invoke(runner, client, ["board", sub, BOARD, "--json"])
+        result = _invoke(runner, client, ["plan", "board", sub, BOARD, "--json"])
         assert result.exit_code == EXIT_NOT_FOUND
         assert json.loads(result.output)["code"] == "not_found"
 
     def test_names_render_as_data_not_markup(self, runner: CliRunner, client: MagicMock) -> None:
         client.list_board_states.return_value = [{"uuid": "s-1", "name": "[bold]x[/bold]"}]
-        result = _invoke(runner, client, ["board", "states", BOARD])
+        result = _invoke(runner, client, ["plan", "board", "states", BOARD])
         # Escaped and quoted: the brackets survive literally, so no style was applied.
         assert '"[bold]x[/bold]"' in result.output
 
@@ -145,13 +145,13 @@ class TestBoardCollectionReads:
         self, runner: CliRunner, client: MagicMock
     ) -> None:
         client.list_board_states.return_value = []
-        _invoke(runner, client, ["board", "states", BOARD, "--include-archived"])
+        _invoke(runner, client, ["plan", "board", "states", BOARD, "--include-archived"])
         assert client.list_board_states.call_args.kwargs == {"include_archived": True}
 
     def test_labels_send_the_request_for_a_key(self, runner: CliRunner, client: MagicMock) -> None:
         # A personal API key is its person on the API; the server decides.
         client.list_board_labels.return_value = []
-        _invoke(runner, client, ["board", "labels", BOARD, "--json"], person=False)
+        _invoke(runner, client, ["plan", "board", "labels", BOARD, "--json"], person=False)
         client.list_board_labels.assert_called_once()
 
     @pytest.mark.parametrize("sub", ["states", "members"])
@@ -159,7 +159,7 @@ class TestBoardCollectionReads:
         self, runner: CliRunner, client: MagicMock, sub: str
     ) -> None:
         getattr(client, f"list_board_{sub}").return_value = []
-        result = _invoke(runner, client, ["board", sub, BOARD], person=False)
+        result = _invoke(runner, client, ["plan", "board", sub, BOARD], person=False)
         assert result.exit_code == 0, result.output
 
 
@@ -176,18 +176,18 @@ class TestBoardViewsRead:
         self, runner: CliRunner, client: MagicMock
     ) -> None:
         client.list_board_views_with_etag.return_value = ([{"uuid": "v-1"}], '"7"')
-        result = _invoke(runner, client, ["board", "views", BOARD, "--etag"])
+        result = _invoke(runner, client, ["plan", "board", "views", BOARD, "--etag"])
         assert result.exit_code == 0, result.output
         assert result.stdout == '"7"\n'
 
     def test_json_is_the_view_array_unchanged(self, runner: CliRunner, client: MagicMock) -> None:
         client.list_board_views_with_etag.return_value = ([{"uuid": "v-1"}], '"7"')
-        result = _invoke(runner, client, ["board", "views", BOARD, "--json"])
+        result = _invoke(runner, client, ["plan", "board", "views", BOARD, "--json"])
         assert json.loads(result.output) == [{"uuid": "v-1"}]
 
     def test_human_output_names_the_etag(self, runner: CliRunner, client: MagicMock) -> None:
         client.list_board_views_with_etag.return_value = ([{"uuid": "v-1", "name": "Mine"}], '"7"')
-        result = _invoke(runner, client, ["board", "views", BOARD])
+        result = _invoke(runner, client, ["plan", "board", "views", BOARD])
         assert '"7"' in result.output
 
 
@@ -214,7 +214,7 @@ class TestBoardUpdate:
             runner,
             client,
             [
-                "board", "update", BOARD, "-n", "New", "--key", "DSN",
+                "plan", "board", "update", BOARD, "-n", "New", "--key", "DSN",
                 "--visibility", "members", "--estimate-scale", "fibonacci",
                 "--archive-after-days", "30", "--project", "p-1", "--json",
             ],
@@ -232,18 +232,20 @@ class TestBoardUpdate:
 
     def test_description_is_not_a_board_field(self, runner: CliRunner) -> None:
         # BoardWrite has no `description`; offering it would earn a 400.
-        result = runner.invoke(cli, ["board", "update", "--help"])
+        result = runner.invoke(cli, ["plan", "board", "update", "--help"])
         assert "--description" not in result.output
 
     def test_an_empty_update_is_a_usage_error(self, runner: CliRunner, client: MagicMock) -> None:
-        result = _invoke(runner, client, ["board", "update", BOARD])
+        result = _invoke(runner, client, ["plan", "board", "update", BOARD])
         assert result.exit_code == EXIT_USAGE_ERROR
         client.update_board.assert_not_called()
 
     def test_an_unknown_visibility_never_reaches_the_server(
         self, runner: CliRunner, client: MagicMock
     ) -> None:
-        result = _invoke(runner, client, ["board", "update", BOARD, "--visibility", "secret"])
+        result = _invoke(
+            runner, client, ["plan", "board", "update", BOARD, "--visibility", "secret"]
+        )
         assert result.exit_code == EXIT_USAGE_ERROR
         client.update_board.assert_not_called()
 
@@ -253,7 +255,7 @@ class TestBoardUpdate:
         client.update_board.side_effect = APIError(
             403, "No.", code="insufficient_scope", extra={"required_scope": "tasks:admin"}
         )
-        result = _invoke(runner, client, ["board", "update", BOARD, "-n", "x", "--json"])
+        result = _invoke(runner, client, ["plan", "board", "update", BOARD, "-n", "x", "--json"])
         assert result.exit_code == EXIT_PERMISSION_DENIED
         assert json.loads(result.output)["code"] == "insufficient_scope"
 
@@ -318,7 +320,7 @@ class TestStateCommands:
             runner,
             client,
             [
-                "board", "state", "create", BOARD, "-n", "Review", "--category", "in_progress",
+                "plan", "board", "state", "create", BOARD, "-n", "Review", "--category", "in_progress",
                 "--position", "2", "--default", "--json",
             ],
         )  # fmt: skip
@@ -331,13 +333,15 @@ class TestStateCommands:
 
     def test_create_refuses_an_unknown_category(self, runner: CliRunner, client: MagicMock) -> None:
         result = _invoke(
-            runner, client, ["board", "state", "create", BOARD, "-n", "x", "--category", "blocked"]
+            runner,
+            client,
+            ["plan", "board", "state", "create", BOARD, "-n", "x", "--category", "blocked"],
         )
         assert result.exit_code == EXIT_USAGE_ERROR
         client.create_board_state.assert_not_called()
 
     def test_update_needs_a_field(self, runner: CliRunner, client: MagicMock) -> None:
-        result = _invoke(runner, client, ["board", "state", "update", BOARD, STATE])
+        result = _invoke(runner, client, ["plan", "board", "state", "update", BOARD, STATE])
         assert result.exit_code == EXIT_USAGE_ERROR
 
     def test_archive_previews_first_and_dry_run_writes_nothing(
@@ -346,7 +350,9 @@ class TestStateCommands:
         preview: dict[str, Any] = {"dry_run": True, "consequence": "Retire column Doing."}
         client.archive_board_state.return_value = preview
         result = _invoke(
-            runner, client, ["board", "state", "archive", BOARD, STATE, "--dry-run", "--json"]
+            runner,
+            client,
+            ["plan", "board", "state", "archive", BOARD, STATE, "--dry-run", "--json"],
         )
         assert result.exit_code == 0, result.output
         assert json.loads(result.output) == preview
@@ -363,7 +369,18 @@ class TestStateCommands:
         result = _invoke(
             runner,
             client,
-            ["board", "state", "archive", BOARD, STATE, "--migrate-to", "s-2", "--yes", "--json"],
+            [
+                "plan",
+                "board",
+                "state",
+                "archive",
+                BOARD,
+                STATE,
+                "--migrate-to",
+                "s-2",
+                "--yes",
+                "--json",
+            ],
         )
         assert result.exit_code == 0, result.output
         final: Any = client.archive_board_state.call_args_list[-1]
@@ -377,7 +394,7 @@ class TestStateCommands:
             APIError(409, "In use.", code="state_in_use"),
         ]
         result = _invoke(
-            runner, client, ["board", "state", "archive", BOARD, STATE, "--yes", "--json"]
+            runner, client, ["plan", "board", "state", "archive", BOARD, STATE, "--yes", "--json"]
         )
         assert result.exit_code == EXIT_PERMISSION_DENIED
         assert json.loads(result.stdout.splitlines()[-1])["code"] == "state_in_use"
@@ -385,13 +402,17 @@ class TestStateCommands:
     def test_reorder_refuses_a_duplicate_before_the_request(
         self, runner: CliRunner, client: MagicMock
     ) -> None:
-        result = _invoke(runner, client, ["board", "state", "reorder", BOARD, "a", "b", "a"])
+        result = _invoke(
+            runner, client, ["plan", "board", "state", "reorder", BOARD, "a", "b", "a"]
+        )
         assert result.exit_code == EXIT_USAGE_ERROR
         client.reorder_board_states.assert_not_called()
 
     def test_reorder_sends_the_order_given(self, runner: CliRunner, client: MagicMock) -> None:
         client.reorder_board_states.return_value = [{"uuid": "a"}, {"uuid": "b"}]
-        result = _invoke(runner, client, ["board", "state", "reorder", BOARD, "b", "a", "--json"])
+        result = _invoke(
+            runner, client, ["plan", "board", "state", "reorder", BOARD, "b", "a", "--json"]
+        )
         assert result.exit_code == 0, result.output
         assert client.reorder_board_states.call_args.args == (BOARD, ["b", "a"])
 
@@ -399,13 +420,15 @@ class TestStateCommands:
         client.reorder_board_states.side_effect = APIError(
             400, "Bad order.", code="states_reorder_invalid"
         )
-        result = _invoke(runner, client, ["board", "state", "reorder", BOARD, "a", "--json"])
+        result = _invoke(
+            runner, client, ["plan", "board", "state", "reorder", BOARD, "a", "--json"]
+        )
         assert result.exit_code == EXIT_USAGE_ERROR
 
     @pytest.mark.parametrize("sub", ["create", "update", "archive", "restore", "reorder"])
     def test_state_writes_say_they_need_a_person(self, runner: CliRunner, sub: str) -> None:
         # Columns are tasks:admin: a login or a personal API key, never an agent key.
-        result = runner.invoke(cli, ["board", "state", sub, "--help"])
+        result = runner.invoke(cli, ["plan", "board", "state", sub, "--help"])
         assert result.exit_code == 0
         assert "personal API key" in " ".join(result.output.split())
 
@@ -434,13 +457,15 @@ class TestMembers:
 
     def test_add_sends_the_user(self, runner: CliRunner, client: MagicMock) -> None:
         client.add_board_member.return_value = {"user_uuid": USER}
-        result = _invoke(runner, client, ["board", "member", "add", BOARD, USER, "--json"])
+        result = _invoke(runner, client, ["plan", "board", "member", "add", BOARD, USER, "--json"])
         assert result.exit_code == 0, result.output
         assert client.add_board_member.call_args.args == (BOARD, USER)
 
     def test_remove_dry_run_sends_nothing(self, runner: CliRunner, client: MagicMock) -> None:
         result = _invoke(
-            runner, client, ["board", "member", "remove", BOARD, USER, "--dry-run", "--json"]
+            runner,
+            client,
+            ["plan", "board", "member", "remove", BOARD, USER, "--dry-run", "--json"],
         )
         assert result.exit_code == 0, result.output
         body: dict[str, Any] = json.loads(result.output)
@@ -451,7 +476,9 @@ class TestMembers:
     def test_remove_declined_aborts_with_exit_seven(
         self, runner: CliRunner, client: MagicMock
     ) -> None:
-        result = _invoke(runner, client, ["board", "member", "remove", BOARD, USER], stdin="n\n")
+        result = _invoke(
+            runner, client, ["plan", "board", "member", "remove", BOARD, USER], stdin="n\n"
+        )
         assert result.exit_code == EXIT_USER_ABORTED
         client.remove_board_member.assert_not_called()
 
@@ -460,14 +487,14 @@ class TestMembers:
             409, "Last member.", code="last_grant_cannot_be_removed"
         )
         result = _invoke(
-            runner, client, ["board", "member", "remove", BOARD, USER, "--yes", "--json"]
+            runner, client, ["plan", "board", "member", "remove", BOARD, USER, "--yes", "--json"]
         )
         assert result.exit_code == EXIT_PERMISSION_DENIED
         assert json.loads(result.output)["code"] == "last_grant_cannot_be_removed"
 
     def test_there_is_no_member_set_command(self, runner: CliRunner) -> None:
         # Membership has no role column; PATCH only inspects the grant.
-        result = runner.invoke(cli, ["board", "member", "--help"])
+        result = runner.invoke(cli, ["plan", "board", "member", "--help"])
         assert " set " not in result.output
 
 
@@ -489,14 +516,19 @@ class TestBoardLabelCreate:
     def test_sends_the_request_for_a_key(self, runner: CliRunner, client: MagicMock) -> None:
         client.create_board_label.return_value = {"uuid": "l-1", "name": "bug"}
         _invoke(
-            runner, client, ["board", "label", "create", BOARD, "-n", "bug", "--json"], person=False
+            runner,
+            client,
+            ["plan", "board", "label", "create", BOARD, "-n", "bug", "--json"],
+            person=False,
         )
         client.create_board_label.assert_called_once()
 
     def test_maps_flags(self, runner: CliRunner, client: MagicMock) -> None:
         client.create_board_label.return_value = {"uuid": "l-1", "name": "bug"}
         result = _invoke(
-            runner, client, ["board", "label", "create", BOARD, "-n", "bug", "-d", "Defects"]
+            runner,
+            client,
+            ["plan", "board", "label", "create", BOARD, "-n", "bug", "-d", "Defects"],
         )
         assert result.exit_code == 0, result.output
         assert client.create_board_label.call_args.kwargs == {
@@ -522,7 +554,7 @@ class TestBoardViewSave:
         result = _invoke(
             runner,
             client,
-            ["board", "view", "save", BOARD, "-f", "-", "--if-match", '"7"', "--json"],
+            ["plan", "board", "view", "save", BOARD, "-f", "-", "--if-match", '"7"', "--json"],
             stdin=self.VIEWS,
         )
         assert result.exit_code == 0, result.output
@@ -535,7 +567,7 @@ class TestBoardViewSave:
         result = _invoke(
             runner,
             client,
-            ["board", "view", "save", BOARD, "-f", "-", "--fetch-etag", "--json"],
+            ["plan", "board", "view", "save", BOARD, "-f", "-", "--fetch-etag", "--json"],
             stdin=self.VIEWS,
         )
         assert result.exit_code == 0, result.output
@@ -546,7 +578,10 @@ class TestBoardViewSave:
         self, runner: CliRunner, client: MagicMock, extra: list[str]
     ) -> None:
         result = _invoke(
-            runner, client, ["board", "view", "save", BOARD, "-f", "-", *extra], stdin=self.VIEWS
+            runner,
+            client,
+            ["plan", "board", "view", "save", BOARD, "-f", "-", *extra],
+            stdin=self.VIEWS,
         )
         assert result.exit_code == EXIT_USAGE_ERROR
         client.save_board_views.assert_not_called()
@@ -555,7 +590,7 @@ class TestBoardViewSave:
         result = _invoke(
             runner,
             client,
-            ["board", "view", "save", BOARD, "-f", "-", "--if-match", '"1"'],
+            ["plan", "board", "view", "save", BOARD, "-f", "-", "--if-match", '"1"'],
             stdin='{"name": "x"}',
         )
         assert result.exit_code == EXIT_USAGE_ERROR
@@ -566,7 +601,7 @@ class TestBoardViewSave:
         _invoke(
             runner,
             client,
-            ["board", "view", "save", BOARD, "-f", "-", "--if-match", '"1"', "--json"],
+            ["plan", "board", "view", "save", BOARD, "-f", "-", "--if-match", '"1"', "--json"],
             person=False,
             stdin=self.VIEWS,
         )
@@ -577,7 +612,7 @@ class TestBoardViewSave:
         result = _invoke(
             runner,
             client,
-            ["board", "view", "save", BOARD, "-f", "-", "--if-match", '"1"', "--json"],
+            ["plan", "board", "view", "save", BOARD, "-f", "-", "--if-match", '"1"', "--json"],
             stdin=self.VIEWS,
         )
         assert result.exit_code != 0
@@ -599,7 +634,7 @@ def test_a_client_side_dry_run_never_treats_ids_as_markup() -> None:
         patch("dailybot_cli.commands.board.get_person_token", return_value="tok", create=True),
     ):
         result = CliRunner().invoke(
-            cli, ["board", "member", "remove", "[bold]b[/bold]", "[red]u", "--dry-run"]
+            cli, ["plan", "board", "member", "remove", "[bold]b[/bold]", "[red]u", "--dry-run"]
         )
     assert result.exit_code == 0, result.output
     assert "[bold]b[/bold]" in result.output
@@ -624,7 +659,7 @@ class TestSnapshotRendering:
 
     def test_true_totals_and_more(self, runner: CliRunner, client: MagicMock) -> None:
         client.get_board_snapshot.return_value = self.SNAPSHOT
-        result = _invoke(runner, client, ["board", "snapshot", BOARD])
+        result = _invoke(runner, client, ["plan", "board", "snapshot", BOARD])
         assert result.exit_code == 0, result.output
         assert "ENG" in result.output
         assert "73 (+23 more)" in result.output

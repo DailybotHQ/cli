@@ -20,7 +20,7 @@ from dailybot_cli.commands.public_api_helpers import (
 from dailybot_cli.main import cli
 
 API_URL: str = "http://test-api.example.com"
-BASE: str = f"{API_URL}/v1/tasks/"
+BASE: str = f"{API_URL}/v1/plan/"
 BOARD: str = "00000000-0000-0000-0000-000000000001"
 VIEW: str = "00000000-0000-0000-0000-000000000002"
 PIN: str = "00000000-0000-0000-0000-000000000003"
@@ -90,8 +90,8 @@ class TestStar:
     @pytest.mark.parametrize(
         ("argv", "module", "target"),
         [
-            (["board", "star", BOARD, "--json"], "board", ("board", BOARD)),
-            (["tasks", "view", "star", VIEW, "--json"], "tasks", ("view", VIEW)),
+            (["plan", "board", "star", BOARD, "--json"], "board", ("board", BOARD)),
+            (["plan", "tasks", "view", "star", VIEW, "--json"], "tasks", ("view", VIEW)),
         ],
     )
     def test_star_pins_the_target(
@@ -112,7 +112,9 @@ class TestStar:
             {"uuid": "other", "target_type": "view", "target_uuid": BOARD},
             {"uuid": PIN, "target_type": "board", "target_uuid": BOARD},
         ]
-        result = _invoke(runner, client, ["board", "unstar", BOARD, "--json"], module="board")
+        result = _invoke(
+            runner, client, ["plan", "board", "unstar", BOARD, "--json"], module="board"
+        )
         assert result.exit_code == 0, result.output
         client.delete_favorite.assert_called_once_with(PIN)
         assert json.loads(result.output)["unpinned"] is True
@@ -122,7 +124,7 @@ class TestStar:
     ) -> None:
         client.list_favorites.return_value = {"results": []}
         result = _invoke(
-            runner, client, ["tasks", "view", "unstar", VIEW, "--json"], module="tasks"
+            runner, client, ["plan", "tasks", "view", "unstar", VIEW, "--json"], module="tasks"
         )
         assert result.exit_code == 0, result.output
         assert json.loads(result.output) == {
@@ -134,7 +136,7 @@ class TestStar:
 
     def test_the_pin_limit_is_reported(self, runner: CliRunner, client: MagicMock) -> None:
         client.add_favorite.side_effect = APIError(400, "Full.", code="favorite_limit_reached")
-        result = _invoke(runner, client, ["board", "star", BOARD, "--json"], module="board")
+        result = _invoke(runner, client, ["plan", "board", "star", BOARD, "--json"], module="board")
         assert result.exit_code == EXIT_USAGE_ERROR
         assert json.loads(result.output)["code"] == "favorite_limit_reached"
 
@@ -142,7 +144,7 @@ class TestStar:
 class TestViews:
     def test_get(self, runner: CliRunner, client: MagicMock) -> None:
         client.get_view.return_value = {"uuid": VIEW, "name": "Mine", "view_mode": "board"}
-        result = _invoke(runner, client, ["tasks", "view", "get", VIEW], module="tasks")
+        result = _invoke(runner, client, ["plan", "tasks", "view", "get", VIEW], module="tasks")
         assert result.exit_code == 0, result.output
         assert "Mine" in result.output
 
@@ -156,7 +158,7 @@ class TestViews:
             runner,
             client,
             [
-                "tasks", "view", "update", VIEW, "--view-mode", "kanban", "--group-by", "owner",
+                "plan", "tasks", "view", "update", VIEW, "--view-mode", "kanban", "--group-by", "owner",
                 "--filters-file", str(filters), "--json",
             ],
             module="tasks",
@@ -169,7 +171,7 @@ class TestViews:
         }
 
     def test_update_needs_a_field(self, runner: CliRunner, client: MagicMock) -> None:
-        result = _invoke(runner, client, ["tasks", "view", "update", VIEW], module="tasks")
+        result = _invoke(runner, client, ["plan", "tasks", "view", "update", VIEW], module="tasks")
         assert result.exit_code == EXIT_USAGE_ERROR
 
     def test_shared_view_edits_need_a_manager(self, runner: CliRunner, client: MagicMock) -> None:
@@ -177,14 +179,14 @@ class TestViews:
         result = _invoke(
             runner,
             client,
-            ["tasks", "view", "update", VIEW, "--visibility", "shared", "--json"],
+            ["plan", "tasks", "view", "update", VIEW, "--visibility", "shared", "--json"],
             module="tasks",
         )
         assert result.exit_code == EXIT_PERMISSION_DENIED
 
     def test_delete_confirms(self, runner: CliRunner, client: MagicMock) -> None:
         result = _invoke(
-            runner, client, ["tasks", "view", "delete", VIEW, "--dry-run"], module="tasks"
+            runner, client, ["plan", "tasks", "view", "delete", VIEW, "--dry-run"], module="tasks"
         )
         assert result.exit_code == 0, result.output
         client.delete_view.assert_not_called()
@@ -193,13 +195,13 @@ class TestViews:
 @pytest.mark.parametrize(
     ("argv", "module"),
     [
-        (["board", "star", BOARD, "--json"], "board"),
-        (["board", "unstar", BOARD, "--json"], "board"),
-        (["tasks", "favorites", "--json"], "tasks"),
-        (["tasks", "view", "get", VIEW, "--json"], "tasks"),
-        (["tasks", "view", "update", VIEW, "--name", "x", "--json"], "tasks"),
-        (["tasks", "view", "delete", VIEW, "--yes", "--json"], "tasks"),
-        (["tasks", "view", "star", VIEW, "--json"], "tasks"),
+        (["plan", "board", "star", BOARD, "--json"], "board"),
+        (["plan", "board", "unstar", BOARD, "--json"], "board"),
+        (["plan", "tasks", "favorites", "--json"], "tasks"),
+        (["plan", "tasks", "view", "get", VIEW, "--json"], "tasks"),
+        (["plan", "tasks", "view", "update", VIEW, "--name", "x", "--json"], "tasks"),
+        (["plan", "tasks", "view", "delete", VIEW, "--yes", "--json"], "tasks"),
+        (["plan", "tasks", "view", "star", VIEW, "--json"], "tasks"),
     ],
 )
 def test_favorite_and_view_doors_send_the_request(
@@ -272,7 +274,7 @@ class TestViewUpdateHasNoAgentStamp:
 @pytest.mark.parametrize("group", ["board", "project"])
 def test_view_save_help_states_the_shape_of_a_view(runner: CliRunner, group: str) -> None:
     """The file `view save -f` takes is an array of view objects; the help names their fields."""
-    output: str = runner.invoke(cli, [group, "view", "save", "--help"]).output
+    output: str = runner.invoke(cli, ["plan", group, "view", "save", "--help"]).output
     for field in ("name", "view_mode", "group_by", "visibility", "filters"):
         assert field in output
     for mode in ("list", "board", "kanban", "timeline", "calendar"):

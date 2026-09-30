@@ -52,7 +52,17 @@ class TestBulkDryRunMustBeAPreview:
         with patch("dailybot_cli.commands.task.require_auth", return_value=client):
             result = CliRunner().invoke(
                 cli,
-                ["task", "bulk", "--operation", "archive", "-f", "-", "--dry-run", "--json"],
+                [
+                    "plan",
+                    "task",
+                    "bulk",
+                    "--operation",
+                    "archive",
+                    "-f",
+                    "-",
+                    "--dry-run",
+                    "--json",
+                ],
                 input='[{"task": "ENG-1"}]',
             )
         assert result.exit_code == 1, result.output
@@ -163,7 +173,7 @@ class TestServerTextInActivityFeeds:
             previous=None,
         )
         with patch("dailybot_cli.commands.tasks.require_auth", return_value=client):
-            result = CliRunner().invoke(cli, ["tasks", "activity"])
+            result = CliRunner().invoke(cli, ["plan", "tasks", "activity"])
         assert result.exit_code == 0, result.output
         assert "\x1b" not in result.output
 
@@ -181,7 +191,9 @@ class TestBoardMemberAddTakesATeam:
             patch("dailybot_cli.commands.board.require_auth", return_value=client),
             patch("dailybot_cli.commands.board.get_person_token", return_value="tok", create=True),
         ):
-            result = CliRunner().invoke(cli, ["board", "member", "add", BOARD, *argv, "--json"])
+            result = CliRunner().invoke(
+                cli, ["plan", "board", "member", "add", BOARD, *argv, "--json"]
+            )
         return result, client
 
     def test_a_team_is_sent_as_team_uuid(self) -> None:
@@ -234,7 +246,7 @@ class TestRawUploadContentType:
     def test_a_raw_body_never_keeps_the_json_content_type(self) -> None:
         client: DailyBotClient = DailyBotClient(api_url=API_URL, token="test-token")
         with patch("dailybot_cli.api_client.httpx.put", return_value=_response()) as put:
-            client._request("PUT", f"{API_URL}/v1/tasks/x/", content=b"\x00\x01")
+            client._request("PUT", f"{API_URL}/v1/plan/x/", content=b"\x00\x01")
         headers: dict[str, str] = dict(put.call_args.kwargs["headers"])
         assert headers.get("Content-Type") != "application/json"
 
@@ -259,7 +271,7 @@ class TestBoardPinsResolveKeys:
         with (
             patch("dailybot_cli.commands.board.require_auth", return_value=client),
         ):
-            result = CliRunner().invoke(cli, ["board", "unstar", "ENG", "--json"])
+            result = CliRunner().invoke(cli, ["plan", "board", "unstar", "ENG", "--json"])
         assert result.exit_code == 0, result.output
         client.delete_favorite.assert_called_once_with("f-1")
 
@@ -270,7 +282,7 @@ class TestBoardPinsResolveKeys:
         with (
             patch("dailybot_cli.commands.board.require_auth", return_value=client),
         ):
-            result = CliRunner().invoke(cli, ["board", "star", "ENG", "--json"])
+            result = CliRunner().invoke(cli, ["plan", "board", "star", "ENG", "--json"])
         assert result.exit_code == 0, result.output
         assert client.add_favorite.call_args.kwargs["target_uuid"] == BOARD
 
@@ -280,7 +292,7 @@ class TestBoardPinsResolveKeys:
         with (
             patch("dailybot_cli.commands.board.require_auth", return_value=client),
         ):
-            CliRunner().invoke(cli, ["board", "star", BOARD, "--json"])
+            CliRunner().invoke(cli, ["plan", "board", "star", BOARD, "--json"])
         client.get_board.assert_not_called()
 
 
@@ -293,7 +305,7 @@ class TestRetryKeepsTheRawContentType:
             "dailybot_cli.api_client.httpx.put",
             side_effect=[_response(status=401), _response()],
         ) as put:
-            client._request("PUT", f"{API_URL}/v1/tasks/x/", content=b"\x00\x01")
+            client._request("PUT", f"{API_URL}/v1/plan/x/", content=b"\x00\x01")
         assert put.call_count == 2
         for call in put.call_args_list:
             assert dict(call.kwargs["headers"]).get("Content-Type") != "application/json"
@@ -322,7 +334,7 @@ class TestRound3:
         empty.json.side_effect = ValueError("no body")
         empty.text = ""
         presign: dict[str, Any] = {
-            "upload_url": f"{API_URL}/v1/tasks/tasks/ENG-1/attachments/{ATT}/content/",
+            "upload_url": f"{API_URL}/v1/plan/tasks/ENG-1/attachments/{ATT}/content/",
             "method": "PUT",
         }
         with patch("dailybot_cli.api_client.httpx.put", return_value=empty):
@@ -331,8 +343,8 @@ class TestRound3:
     @pytest.mark.parametrize(
         ("method", "path"),
         [
-            ("DELETE", f"/v1/tasks/tasks/ENG-1/attachments/{ATT}/content/"),
-            ("PUT", "/v1/tasks/boards/b-1/archive/"),
+            ("DELETE", f"/v1/plan/tasks/ENG-1/attachments/{ATT}/content/"),
+            ("PUT", "/v1/plan/boards/b-1/archive/"),
             ("POST", "/v1/cli/logout/"),
         ],
     )
@@ -410,7 +422,7 @@ class TestRound4:
     def test_a_same_origin_upload_redirect_is_refused(self) -> None:
         client: DailyBotClient = DailyBotClient(api_url=API_URL, token="test-token")
         presign: dict[str, Any] = {
-            "upload_url": f"{API_URL}/v1/tasks/tasks/ENG-1/attachments/{ATT}/content/",
+            "upload_url": f"{API_URL}/v1/plan/tasks/ENG-1/attachments/{ATT}/content/",
             "method": "PUT",
         }
         moved: Any = _response({}, status=302, headers={"Location": "https://elsewhere.example/"})
@@ -436,7 +448,7 @@ class TestBoardCreateRequirements:
             patch("dailybot_cli.commands.board.require_auth", return_value=client),
             patch("dailybot_cli.commands.board.get_person_token", return_value="tok", create=True),
         ):
-            result = CliRunner().invoke(cli, ["board", "create", *argv, "--json"])
+            result = CliRunner().invoke(cli, ["plan", "board", "create", *argv, "--json"])
         return result, client
 
     def test_name_project_and_key_are_sent(self) -> None:

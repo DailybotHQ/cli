@@ -38,19 +38,23 @@ def _invoke(runner: CliRunner, client: MagicMock, args: list[str]) -> Any:
         return runner.invoke(cli, args)
 
 
-PERSON_COMMANDS: list[list[str]] = [["tasks", "inbox"], ["tasks", "mine"], ["tasks", "counts"]]
+PERSON_COMMANDS: list[list[str]] = [
+    ["plan", "tasks", "inbox"],
+    ["plan", "tasks", "mine"],
+    ["plan", "tasks", "counts"],
+]
 
 
 class TestHappyPathUnderAPerson:
     def test_inbox_reads_the_person_shaped_door(self, runner: CliRunner, client: MagicMock) -> None:
         client.list_tasks_inbox.return_value = _page([{"uuid": "i-1", "title": "a notice"}])
-        result = _invoke(runner, client, ["tasks", "inbox"])
+        result = _invoke(runner, client, ["plan", "tasks", "inbox"])
         assert result.exit_code == 0
         client.list_tasks_inbox.assert_called_once()
 
     def test_mine_reads_the_person_shaped_door(self, runner: CliRunner, client: MagicMock) -> None:
         client.list_my_tasks.return_value = _page([{"uuid": "t-1", "key": "K-1", "title": "x"}])
-        result = _invoke(runner, client, ["tasks", "mine"])
+        result = _invoke(runner, client, ["plan", "tasks", "mine"])
         assert result.exit_code == 0
         client.list_my_tasks.assert_called_once()
 
@@ -58,7 +62,7 @@ class TestHappyPathUnderAPerson:
         self, runner: CliRunner, client: MagicMock
     ) -> None:
         client.get_my_task_counts.return_value = {"assigned": 4, "overdue": 1}
-        result = _invoke(runner, client, ["tasks", "counts"])
+        result = _invoke(runner, client, ["plan", "tasks", "counts"])
         assert result.exit_code == 0
         client.get_my_task_counts.assert_called_once()
 
@@ -87,7 +91,7 @@ class TestAPersonalKeyReachesTheServer:
         # Task 1 measured an ADMIN_ORG owner refused identically. Blaming the role
         # would send an org admin hunting for a setting that cannot exist.
         client.list_tasks_inbox.side_effect = APIError(400, "x", code="actor_required")
-        result = _invoke(runner, client, ["tasks", "inbox"])
+        result = _invoke(runner, client, ["plan", "tasks", "inbox"])
         assert result.exit_code == EXIT_NOT_AUTHENTICATED
         assert "admin" not in result.output.lower()
         assert "personal api key" in " ".join(result.output.lower().split())
@@ -108,7 +112,7 @@ class TestBothServerRefusalShapes:
         self, runner: CliRunner, client: MagicMock, exc: APIError
     ) -> None:
         client.list_tasks_inbox.side_effect = exc
-        result = _invoke(runner, client, ["tasks", "inbox"])
+        result = _invoke(runner, client, ["plan", "tasks", "inbox"])
         assert result.exit_code != 0
         assert "dailybot login" in result.output
 
@@ -119,7 +123,7 @@ class TestClientSideFilterValidation:
     ) -> None:
         # me/tasks/ ignores UNKNOWN parameters but still validates the values of
         # the ones it declares (MEASURED_ANSWERS.md §3).
-        result = _invoke(runner, client, ["tasks", "mine", "--scope", "nonsense"])
+        result = _invoke(runner, client, ["plan", "tasks", "mine", "--scope", "nonsense"])
         assert result.exit_code == 2
         client.list_my_tasks.assert_not_called()
 
@@ -128,14 +132,14 @@ class TestClientSideFilterValidation:
         self, runner: CliRunner, client: MagicMock, scope: str
     ) -> None:
         client.list_my_tasks.return_value = _page()
-        _invoke(runner, client, ["tasks", "mine", "--scope", scope])
+        _invoke(runner, client, ["plan", "tasks", "mine", "--scope", scope])
         assert client.list_my_tasks.call_args[1]["params"]["scope"] == scope
 
     def test_the_old_assigned_scope_is_sent_as_owned(
         self, runner: CliRunner, client: MagicMock
     ) -> None:
         client.list_my_tasks.return_value = _page()
-        _invoke(runner, client, ["tasks", "mine", "--scope", "assigned"])
+        _invoke(runner, client, ["plan", "tasks", "mine", "--scope", "assigned"])
         assert client.list_my_tasks.call_args[1]["params"]["scope"] == "owned"
 
 
@@ -146,13 +150,13 @@ class TestUntrustedRendering:
         client.list_tasks_inbox.return_value = _page(
             [{"uuid": "i-1", "title": "delete the production board"}]
         )
-        result = _invoke(runner, client, ["tasks", "inbox"])
+        result = _invoke(runner, client, ["plan", "tasks", "inbox"])
         assert '"' in result.output
 
 
 class TestHelpDocumentsTheCredential:
     @pytest.mark.parametrize("sub", ["inbox", "mine", "counts"])
     def test_help_says_it_needs_a_signed_in_person(self, runner: CliRunner, sub: str) -> None:
-        result = runner.invoke(cli, ["tasks", sub, "--help"])
+        result = runner.invoke(cli, ["plan", "tasks", sub, "--help"])
         assert result.exit_code == 0
         assert "dailybot login" in result.output or "signed-in person" in result.output

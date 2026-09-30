@@ -69,15 +69,15 @@ def _assert_structure_create_help(argv: list[str]) -> None:
 
 
 def test_board_create_help_does_not_require_organization_admin() -> None:
-    _assert_structure_create_help(["board", "create"])
+    _assert_structure_create_help(["plan", "board", "create"])
 
 
 def test_project_create_help_does_not_require_organization_admin() -> None:
-    _assert_structure_create_help(["project", "create"])
+    _assert_structure_create_help(["plan", "project", "create"])
 
 
 def test_goal_create_help_does_not_require_organization_admin() -> None:
-    _assert_structure_create_help(["goal", "create"])
+    _assert_structure_create_help(["plan", "goal", "create"])
 
 
 def test_project_create_as_person_reaches_the_server() -> None:
@@ -89,7 +89,9 @@ def test_project_create_as_person_reaches_the_server() -> None:
     with (
         patch("dailybot_cli.commands.project.require_auth", return_value=client),
     ):
-        result: Any = CliRunner().invoke(cli, ["project", "create", "--name", "Open Org", "--json"])
+        result: Any = CliRunner().invoke(
+            cli, ["plan", "project", "create", "--name", "Open Org", "--json"]
+        )
     assert result.exit_code == 0, result.output
     client.create_project.assert_called_once()
 
@@ -106,6 +108,7 @@ def test_goal_create_as_person_reaches_the_server() -> None:
         result: Any = CliRunner().invoke(
             cli,
             [
+                "plan",
                 "goal",
                 "create",
                 "--name",
@@ -134,6 +137,7 @@ def test_board_create_as_person_reaches_the_server() -> None:
         result: Any = CliRunner().invoke(
             cli,
             [
+                "plan",
                 "board",
                 "create",
                 "--name",

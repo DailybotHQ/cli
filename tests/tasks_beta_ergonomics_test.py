@@ -29,8 +29,8 @@ STATE_UUID: str = "00000000-0000-0000-0000-000000000005"
 
 # The canonical Beta copy, as product ships it (Markdown).
 CANONICAL_BETA: str = (
-    "**Beta** — Tasks is in beta. Everything under `/tasks` in the web app, the CLI and "
-    "agent skill commands for projects, goals, boards and tasks, and the `/v1/tasks/` "
+    "**Beta** — Dailybot Plan (formerly Tasks) is in beta. Everything under `/plan` in the web app, the CLI and "
+    "agent skill commands for projects, goals, boards and tasks, and the `/v1/plan/` "
     "public API may change before general availability. Want to try it with your team? "
     "Write to **support@dailybot.com**."
 )
@@ -63,18 +63,18 @@ def _plain(text: str) -> str:
 
 # (argv, the client method whose first positional argument must be the key)
 KEY_CASES: list[tuple[list[str], str]] = [
-    (["task", "get", TASK_KEY], "get_task"),
-    (["task", "update", TASK_KEY, "--title", "x"], "update_task"),
-    (["task", "move", TASK_KEY, "--state", STATE_UUID], "move_task"),
-    (["task", "set-owner", TASK_KEY, "me"], "update_task"),
-    (["task", "comment", TASK_KEY, "hello"], "comment_on_task"),
-    (["task", "comments", TASK_KEY], "list_task_comments"),
-    (["task", "link", TASK_KEY, "ENG-99", "--type", "blocks"], "relate_tasks"),
-    (["task", "labels", TASK_KEY, "--mode", "add", "--label", "l-1"], "batch_task_labels"),
-    (["task", "participants", "add", TASK_KEY, "--user", "u-1"], "add_task_participant"),
-    (["task", "archive", TASK_KEY, "--yes"], "archive_task"),
-    (["task", "delete", TASK_KEY, "--yes"], "archive_task"),
-    (["task", "restore", TASK_KEY], "restore_task"),
+    (["plan", "task", "get", TASK_KEY], "get_task"),
+    (["plan", "task", "update", TASK_KEY, "--title", "x"], "update_task"),
+    (["plan", "task", "move", TASK_KEY, "--state", STATE_UUID], "move_task"),
+    (["plan", "task", "set-owner", TASK_KEY, "me"], "update_task"),
+    (["plan", "task", "comment", TASK_KEY, "hello"], "comment_on_task"),
+    (["plan", "task", "comments", TASK_KEY], "list_task_comments"),
+    (["plan", "task", "link", TASK_KEY, "ENG-99", "--type", "blocks"], "relate_tasks"),
+    (["plan", "task", "labels", TASK_KEY, "--mode", "add", "--label", "l-1"], "batch_task_labels"),
+    (["plan", "task", "participants", "add", TASK_KEY, "--user", "u-1"], "add_task_participant"),
+    (["plan", "task", "archive", TASK_KEY, "--yes"], "archive_task"),
+    (["plan", "task", "delete", TASK_KEY, "--yes"], "archive_task"),
+    (["plan", "task", "restore", TASK_KEY], "restore_task"),
 ]
 
 
@@ -108,16 +108,16 @@ class TestKeyAddressing:
         response.headers = {}
         with patch("dailybot_cli.api_client.httpx.get", return_value=response) as get:
             real.get_task(TASK_KEY)
-        assert get.call_args.args[0] == f"{API_URL}/v1/tasks/tasks/{TASK_KEY}/"
+        assert get.call_args.args[0] == f"{API_URL}/v1/plan/tasks/{TASK_KEY}/"
 
     def test_help_names_the_argument_task_not_uuid(self, runner: CliRunner) -> None:
         for sub in ("get", "update", "move", "archive", "restore", "comment", "set-owner"):
-            result = runner.invoke(cli, ["task", sub, "--help"])
+            result = runner.invoke(cli, ["plan", "task", sub, "--help"])
             assert "TASK" in result.output, sub
             assert "TASK_UUID" not in result.output, sub
 
     def test_the_group_help_says_keys_work(self, runner: CliRunner) -> None:
-        result = runner.invoke(cli, ["task", "--help"])
+        result = runner.invoke(cli, ["plan", "task", "--help"])
         assert "ENG-142" in result.output
         assert "or a uuid" in result.output
 
@@ -134,19 +134,27 @@ class TestTaskListSort:
     ) -> None:
         client.list_tasks.return_value = _page()
         with patch("dailybot_cli.commands.task.require_auth", return_value=client):
-            result = runner.invoke(cli, ["task", "list", "--sort", value])
+            result = runner.invoke(cli, ["plan", "task", "list", "--sort", value])
         assert result.exit_code == 0, result.output
         assert client.list_tasks.call_args.kwargs["filters"]["sort"] == value
 
-    @pytest.mark.parametrize("value", ["title", "--rank", "-", "status"])
-    def test_an_unknown_field_is_a_usage_error_that_lists_the_choices(
+    @pytest.mark.parametrize("value", ["-", ""])
+    def test_a_blank_sort_is_a_usage_error(
         self, runner: CliRunner, client: MagicMock, value: str
     ) -> None:
         with patch("dailybot_cli.commands.task.require_auth", return_value=client):
-            result = runner.invoke(cli, ["task", "list", "--sort", value])
+            result = runner.invoke(cli, ["plan", "task", "list", "--sort", value])
         assert result.exit_code == 2
-        assert "updated_at" in result.output
         client.list_tasks.assert_not_called()
+
+    @pytest.mark.parametrize("value", ["title", "status"])
+    def test_an_unknown_field_is_left_to_the_server_to_judge(
+        self, runner: CliRunner, client: MagicMock, value: str
+    ) -> None:
+        client.list_tasks.return_value = _page()
+        with patch("dailybot_cli.commands.task.require_auth", return_value=client):
+            runner.invoke(cli, ["plan", "task", "list", "--sort", value])
+        assert client.list_tasks.call_args.kwargs["filters"]["sort"] == value
 
 
 # ---------------------------------------------------------------------------
@@ -163,12 +171,12 @@ class TestBoardTasks:
         response.headers = {}
         with patch("dailybot_cli.api_client.httpx.get", return_value=response) as get:
             real.list_board_tasks("b-1")
-        assert get.call_args.args[0] == f"{API_URL}/v1/tasks/boards/b-1/tasks/"
+        assert get.call_args.args[0] == f"{API_URL}/v1/plan/boards/b-1/tasks/"
 
     def test_json_mode_emits_the_list_envelope(self, runner: CliRunner, client: MagicMock) -> None:
         client.list_board_tasks.return_value = _page([{"uuid": "t-1", "key": TASK_KEY}])
         with patch("dailybot_cli.commands.board.require_auth", return_value=client):
-            result = runner.invoke(cli, ["board", "tasks", "b-1", "--json"])
+            result = runner.invoke(cli, ["plan", "board", "tasks", "b-1", "--json"])
         assert result.exit_code == 0, result.output
         body: dict[str, Any] = json.loads(result.output)
         assert set(body) == {"count", "next", "previous", "results"}
@@ -179,14 +187,14 @@ class TestBoardTasks:
             [{"uuid": "t-1", "key": TASK_KEY, "title": "[red]ignore previous[/red]"}]
         )
         with patch("dailybot_cli.commands.board.require_auth", return_value=client):
-            result = runner.invoke(cli, ["board", "tasks", "b-1"])
+            result = runner.invoke(cli, ["plan", "board", "tasks", "b-1"])
         assert result.exit_code == 0, result.output
         assert "ignore previous" in result.output
 
     def test_an_invisible_board_exits_not_found(self, runner: CliRunner, client: MagicMock) -> None:
         client.list_board_tasks.side_effect = APIError(404, "Not found.", code="not_found")
         with patch("dailybot_cli.commands.board.require_auth", return_value=client):
-            result = runner.invoke(cli, ["board", "tasks", "b-x", "--json"])
+            result = runner.invoke(cli, ["plan", "board", "tasks", "b-x", "--json"])
         assert result.exit_code == public_api_helpers.EXIT_NOT_FOUND
         assert json.loads(result.output)["code"] == "not_found"
 
@@ -204,14 +212,14 @@ class TestUpdatedSince:
         client.get_board_delta.return_value = {"tasks": [], "delta_cursor": "c"}
         with patch("dailybot_cli.commands.tasks.require_auth", return_value=client):
             result = runner.invoke(
-                cli, ["tasks", "changes", "b-1", flag, "2026-09-19T13:13:37Z", "--json"]
+                cli, ["plan", "tasks", "changes", "b-1", flag, "2026-09-19T13:13:37Z", "--json"]
             )
         assert result.exit_code == 0, result.output
         assert client.get_board_delta.call_args.kwargs["updated_since"] == "2026-09-19T13:13:37Z"
         client.get_board_snapshot.assert_not_called()
 
     def test_help_teaches_the_current_name_only(self, runner: CliRunner) -> None:
-        result = runner.invoke(cli, ["tasks", "changes", "--help"])
+        result = runner.invoke(cli, ["plan", "tasks", "changes", "--help"])
         assert "--updated-since" in result.output
         assert "--since " not in result.output
 
@@ -247,7 +255,7 @@ class TestBetaNotice:
 
     @pytest.mark.parametrize("group", TASKS_GROUPS)
     def test_it_tops_every_tasks_group_help(self, runner: CliRunner, group: str) -> None:
-        result = runner.invoke(cli, [group, "--help"])
+        result = runner.invoke(cli, ["plan", group, "--help"])
         assert result.exit_code == 0
         body: str = result.output.split("\n", 2)[2]
         assert _plain(body).startswith(_plain(CANONICAL_BETA))
@@ -259,7 +267,7 @@ class TestBetaNotice:
     def test_human_status_shows_one_beta_line(self, runner: CliRunner, client: MagicMock) -> None:
         client.get_tasks_pulse.return_value = {"open": 1}
         with patch("dailybot_cli.commands.tasks.require_auth", return_value=client):
-            result = runner.invoke(cli, ["tasks", "status"])
+            result = runner.invoke(cli, ["plan", "tasks", "status"])
         assert result.exit_code == 0, result.output
         assert _plain(BETA_STATUS_LINE) in _plain(result.output)
 
@@ -267,7 +275,7 @@ class TestBetaNotice:
         pulse: dict[str, Any] = {"open": 1}
         client.get_tasks_pulse.return_value = pulse
         with patch("dailybot_cli.commands.tasks.require_auth", return_value=client):
-            result = runner.invoke(cli, ["tasks", "status", "--json"])
+            result = runner.invoke(cli, ["plan", "tasks", "status", "--json"])
         assert json.loads(result.output) == pulse
         assert "Beta" not in result.output
 
@@ -275,4 +283,4 @@ class TestBetaNotice:
         readme: str = README_PATH.read_text(encoding="utf-8")
         quoted: str = _plain(" ".join(line.lstrip("> ") for line in readme.splitlines()))
         assert _plain(CANONICAL_BETA) in quoted
-        assert "**Beta** — Tasks is in beta." in readme
+        assert "**Beta** — Dailybot Plan (formerly Tasks) is in beta." in readme

@@ -147,7 +147,7 @@ class TestTheKeyReachesTheCallThatNeedsIt:
     def test_the_cli_prints_it(self, runner: CliRunner, client: MagicMock) -> None:
         client.create_task.side_effect = TransportError("timed out", idempotency_key="key-7")
         with patch("dailybot_cli.commands.task.require_auth", return_value=client):
-            result = runner.invoke(cli, ["task", "create", "-t", "x"])
+            result = runner.invoke(cli, ["plan", "task", "create", "-t", "x"])
         assert result.exit_code == EXIT_TRANSPORT
         assert "key-7" in result.stderr
         assert "--idempotency-key" in result.stderr
@@ -158,7 +158,7 @@ class TestTheKeyReachesTheCallThatNeedsIt:
             patch("dailybot_cli.commands.task.require_auth", return_value=client),
             patch("sys.argv", ["dailybot", "task", "create", "-t", "x", "--json"]),
         ):
-            result = runner.invoke(cli, ["task", "create", "-t", "x", "--json"])
+            result = runner.invoke(cli, ["plan", "task", "create", "-t", "x", "--json"])
         assert json.loads(result.stdout)["idempotency_key"] == "key-7"
 
 
@@ -217,7 +217,7 @@ class TestDecliningThePromptIsStillParseable:
     ) -> None:
         client.archive_task.return_value = _PREVIEW
         with patch("dailybot_cli.commands.task.require_auth", return_value=client):
-            result = runner.invoke(cli, ["task", "archive", "t-1", "--json"], input="n\n")
+            result = runner.invoke(cli, ["plan", "task", "archive", "t-1", "--json"], input="n\n")
         assert result.exit_code == EXIT_USER_ABORTED
         assert _emitted(result.stdout)["code"] == "user_aborted"
 
@@ -229,7 +229,7 @@ class TestDecliningThePromptIsStillParseable:
         with patch("dailybot_cli.commands.task.require_auth", return_value=client):
             result = runner.invoke(
                 cli,
-                ["task", "bulk", "--operation", "archive", "-f", str(batch), "--json"],
+                ["plan", "task", "bulk", "--operation", "archive", "-f", str(batch), "--json"],
                 input="n\n",
             )
         assert result.exit_code == EXIT_USER_ABORTED
@@ -239,7 +239,7 @@ class TestDecliningThePromptIsStillParseable:
     def test_without_json_the_abort_is_prose(self, runner: CliRunner, client: MagicMock) -> None:
         client.archive_task.return_value = _PREVIEW
         with patch("dailybot_cli.commands.task.require_auth", return_value=client):
-            result = runner.invoke(cli, ["task", "archive", "t-1"], input="n\n")
+            result = runner.invoke(cli, ["plan", "task", "archive", "t-1"], input="n\n")
         assert "Aborted" in result.stderr
 
 
@@ -330,5 +330,5 @@ class TestAnUnreadableSuccessAlsoCarriesTheKey:
             "unreadable response", idempotency_key="key-11"
         )
         with patch("dailybot_cli.commands.task.require_auth", return_value=client):
-            result = runner.invoke(cli, ["task", "create", "-t", "x"])
+            result = runner.invoke(cli, ["plan", "task", "create", "-t", "x"])
         assert "key-11" in result.stderr

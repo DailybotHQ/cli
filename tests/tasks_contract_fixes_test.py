@@ -24,7 +24,7 @@ from dailybot_cli.commands.public_api_helpers import EXIT_USAGE_ERROR
 from dailybot_cli.main import cli
 
 API_URL: str = "http://test-api.example.com"
-BASE: str = f"{API_URL}/v1/tasks/"
+BASE: str = f"{API_URL}/v1/plan/"
 TASK: str = "ENG-142"
 BOARD: str = "b-1"
 STATE_UUID: str = "00000000-0000-0000-0000-000000000005"
@@ -97,7 +97,7 @@ class TestGoalCreatePeriod:
                 runner,
                 real,
                 [
-                    "goal", "create", "-n", "Q4 reliability", "--period-start", "2026-10-01",
+                    "plan", "goal", "create", "-n", "Q4 reliability", "--period-start", "2026-10-01",
                     "--period-end", "2026-12-31", "--json",
                 ],
                 "goal",
@@ -127,7 +127,7 @@ class TestGoalCreatePeriod:
             ),
             patch("dailybot_cli.api_client.httpx.post") as post,
         ):
-            result = _invoke(runner, real, ["goal", "create", "-n", "x", *extra], "goal")
+            result = _invoke(runner, real, ["plan", "goal", "create", "-n", "x", *extra], "goal")
         assert result.exit_code == EXIT_USAGE_ERROR
         post.assert_not_called()
 
@@ -144,7 +144,7 @@ class TestGoalCreatePeriod:
                 runner,
                 real,
                 [
-                    "goal", "create", "-n", "x", "--period-start", "2026-12-31",
+                    "plan", "goal", "create", "-n", "x", "--period-start", "2026-12-31",
                     "--period-end", "2026-10-01",
                 ],
                 "goal",
@@ -171,7 +171,7 @@ class TestMoveResolvesTheState:
                 "dailybot_cli.api_client.httpx.post", return_value=_response({"uuid": "t-1"})
             ) as post,
         ):
-            result = _invoke(runner, real, ["task", "move", TASK, *args], "task")
+            result = _invoke(runner, real, ["plan", "task", "move", TASK, *args], "task")
         return result, get, post
 
     def test_a_uuid_is_sent_as_is_without_extra_reads(
@@ -239,7 +239,7 @@ class TestMoveToAnotherBoard:
                 "dailybot_cli.api_client.httpx.post", return_value=_response({"uuid": "t-1"})
             ) as post,
         ):
-            result = _invoke(runner, real, ["task", "move", TASK, "--board", "b-2"], "task")
+            result = _invoke(runner, real, ["plan", "task", "move", TASK, "--board", "b-2"], "task")
         assert result.exit_code == 0, result.output
         get.assert_not_called()
         assert post.call_args.args[0] == f"{BASE}tasks/{TASK}/move-board/"
@@ -257,7 +257,10 @@ class TestMoveToAnotherBoard:
             ) as post,
         ):
             result = _invoke(
-                runner, real, ["task", "move", TASK, "--board", "b-2", "--state", "Doing"], "task"
+                runner,
+                real,
+                ["plan", "task", "move", TASK, "--board", "b-2", "--state", "Doing"],
+                "task",
             )
         assert result.exit_code == 0, result.output
         assert get.call_args.args[0] == f"{BASE}boards/b-2/states/"
@@ -274,7 +277,9 @@ class TestPriorityIsAnInteger:
         with patch(
             "dailybot_cli.api_client.httpx.patch", return_value=_response({"uuid": "t-1"})
         ) as patch_:
-            result = _invoke(runner, real, ["task", "update", TASK, "--priority", "2"], "task")
+            result = _invoke(
+                runner, real, ["plan", "task", "update", TASK, "--priority", "2"], "task"
+            )
         assert result.exit_code == 0, result.output
         assert patch_.call_args.kwargs["json"] == {"priority": 2}
 
@@ -283,7 +288,10 @@ class TestPriorityIsAnInteger:
             "dailybot_cli.api_client.httpx.post", return_value=_response({"uuid": "t-1"}, 201)
         ) as post:
             result = _invoke(
-                runner, real, ["task", "create", "-t", "x", "-b", BOARD, "--priority", "1"], "task"
+                runner,
+                real,
+                ["plan", "task", "create", "-t", "x", "-b", BOARD, "--priority", "1"],
+                "task",
             )
         assert result.exit_code == 0, result.output
         assert post.call_args.kwargs["json"]["priority"] == 1
@@ -293,7 +301,9 @@ class TestPriorityIsAnInteger:
         self, runner: CliRunner, real: DailyBotClient, value: str
     ) -> None:
         with patch("dailybot_cli.api_client.httpx.patch") as patch_:
-            result = _invoke(runner, real, ["task", "update", TASK, "--priority", value], "task")
+            result = _invoke(
+                runner, real, ["plan", "task", "update", TASK, "--priority", value], "task"
+            )
         assert result.exit_code == EXIT_USAGE_ERROR
         patch_.assert_not_called()
 
@@ -320,7 +330,7 @@ class TestLinkWire:
             "dailybot_cli.api_client.httpx.post", return_value=_response({"uuid": "r-1"}, 201)
         ) as post:
             result = _invoke(
-                runner, real, ["task", "link", TASK, "ENG-99", "--type", given], "task"
+                runner, real, ["plan", "task", "link", TASK, "ENG-99", "--type", given], "task"
             )
         assert result.exit_code == 0, result.output
         assert post.call_args.args[0] == f"{BASE}tasks/{TASK}/relations/"
@@ -331,7 +341,7 @@ class TestLinkWire:
     ) -> None:
         with patch("dailybot_cli.api_client.httpx.post") as post:
             result = _invoke(
-                runner, real, ["task", "link", TASK, "ENG-99", "--type", "parent"], "task"
+                runner, real, ["plan", "task", "link", TASK, "ENG-99", "--type", "parent"], "task"
             )
         assert result.exit_code == EXIT_USAGE_ERROR
         assert "relates_to" in result.output
@@ -352,6 +362,7 @@ class TestBoardCreateHasNoDescription:
                 runner,
                 real,
                 [
+                    "plan",
                     "board",
                     "create",
                     "--project",
@@ -379,6 +390,7 @@ class TestBoardCreateHasNoDescription:
                 runner,
                 real,
                 [
+                    "plan",
                     "board",
                     "create",
                     "--project",
@@ -406,6 +418,7 @@ class TestBoardCreateHasNoDescription:
             not in runner.invoke(
                 cli,
                 [
+                    "plan",
                     "board",
                     "create",
                     "--project",
@@ -434,7 +447,9 @@ class TestMyTasksScope:
     ) -> None:
         envelope: dict[str, Any] = {"count": 0, "next": None, "previous": None, "results": []}
         with patch("dailybot_cli.api_client.httpx.get", return_value=_response(envelope)) as get:
-            result = _invoke(runner, real, ["tasks", "mine", "--scope", given, "--json"], "tasks")
+            result = _invoke(
+                runner, real, ["plan", "tasks", "mine", "--scope", given, "--json"], "tasks"
+            )
         assert result.exit_code == 0, result.output
         assert get.call_args.args[0] == f"{BASE}me/tasks/"
         assert get.call_args.kwargs["params"]["scope"] == sent
@@ -444,12 +459,12 @@ class TestMyTasksScope:
         self, runner: CliRunner, real: DailyBotClient, scope: str
     ) -> None:
         with patch("dailybot_cli.api_client.httpx.get") as get:
-            result = _invoke(runner, real, ["tasks", "mine", "--scope", scope], "tasks")
+            result = _invoke(runner, real, ["plan", "tasks", "mine", "--scope", scope], "tasks")
         assert result.exit_code == EXIT_USAGE_ERROR
         get.assert_not_called()
 
     def test_help_lists_the_declared_scopes_only(self, runner: CliRunner) -> None:
-        output: str = runner.invoke(cli, ["tasks", "mine", "--help"]).output
+        output: str = runner.invoke(cli, ["plan", "tasks", "mine", "--help"]).output
         assert "owned|participating|involved" in output
         assert "assigned" not in output
 
@@ -461,7 +476,10 @@ class TestGoalGetSendsNoInclude:
         goal: dict[str, Any] = {"uuid": "g-1", "name": "Q4", "progress": None, "projects": []}
         with patch("dailybot_cli.api_client.httpx.get", return_value=_response(goal)) as get:
             result = _invoke(
-                runner, real, ["goal", "get", "g-1", "--include", "progress", "--json"], "goal"
+                runner,
+                real,
+                ["plan", "goal", "get", "g-1", "--include", "progress", "--json"],
+                "goal",
             )
         assert result.exit_code == 0, result.output
         assert get.call_args.args[0] == f"{BASE}goals/g-1/"
@@ -470,7 +488,7 @@ class TestGoalGetSendsNoInclude:
 
     def test_help_does_not_offer_include(self, runner: CliRunner) -> None:
         # The prose may point at `goal list --include`; no option line may offer it.
-        output: str = runner.invoke(cli, ["goal", "get", "--help"]).output
+        output: str = runner.invoke(cli, ["plan", "goal", "get", "--help"]).output
         options: str = output.split("Options:", 1)[1]
         assert "--include" not in options
 

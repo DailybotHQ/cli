@@ -1,4 +1,4 @@
-"""Goal commands (``/v1/tasks/goals/*``)."""
+"""Goal commands (``/v1/plan/goals/*``)."""
 
 from datetime import datetime
 from pathlib import Path
@@ -7,7 +7,13 @@ from typing import Any
 import click
 
 from dailybot_cli.api_client import ATTACHMENT_MULTIPART_MAX_BYTES, APIError, PaginatedResult
-from dailybot_cli.commands._attachments import run_attach, run_delete, run_get, run_list
+from dailybot_cli.commands._attachments import (
+    run_attach,
+    run_delete,
+    run_get,
+    run_list,
+    run_rename,
+)
 from dailybot_cli.commands._beta import mark_beta
 from dailybot_cli.commands._destructive import confirm_without_preview, preview_then_confirm
 from dailybot_cli.commands._rollups import render_rollup
@@ -52,7 +58,7 @@ _GOAL_PROJECT_COLUMNS: list[tuple[str, str, bool]] = [
 
 @click.group()
 def goal() -> None:
-    """Read and manage Dailybot Tasks goals.
+    """Read and manage Dailybot Plan goals.
 
     \b
     Roll-ups are opt-in. An absent field, a null field and a zero are three
@@ -60,7 +66,7 @@ def goal() -> None:
 
     \b
     Examples:
-      dailybot goal list --include progress --include projects
+      dailybot plan goal list --include progress --include projects
     """
 
 
@@ -81,8 +87,8 @@ def goal_list(include: tuple[str, ...], json_mode: bool, **flags: Any) -> None:
 
     \b
     Examples:
-      dailybot goal list
-      dailybot goal list --include progress --json
+      dailybot plan goal list
+      dailybot plan goal list --include progress --json
     """
     client = require_auth()
     try:
@@ -122,8 +128,8 @@ def goal_get(goal_uuid: str, include: tuple[str, ...], json_mode: bool) -> None:
 
     \b
     Examples:
-      dailybot goal get <goal-uuid>
-      dailybot goal get <goal-uuid> --json
+      dailybot plan goal get <goal-uuid>
+      dailybot plan goal get <goal-uuid> --json
     """
     if include:
         print_deprecation("`goal get --include` has no effect: the detail always includes them.")
@@ -189,11 +195,11 @@ def goal_create(
 
     \b
     A goal is a dated commitment, so both ends of its period are required. It starts
-    as `not_started`; declare its status later with `dailybot goal update --status`.
+    as `not_started`; declare its status later with `dailybot plan goal update --status`.
 
     \b
     Examples:
-      dailybot goal create -n "Q4 reliability" --period-start 2026-10-01 --period-end 2026-12-31
+      dailybot plan goal create -n "Q4 reliability" --period-start 2026-10-01 --period-end 2026-12-31
     """
     if period_end < period_start:
         raise click.UsageError("--period-end is before --period-start.")
@@ -230,7 +236,7 @@ def goal_archive(
 
     \b
     Examples:
-      dailybot goal archive <goal-uuid> --dry-run
+      dailybot plan goal archive <goal-uuid> --dry-run
     """
     client = require_auth()
     if not preview_then_confirm(
@@ -299,8 +305,8 @@ def goal_update(
 
     \b
     Examples:
-      dailybot goal update <goal-uuid> --status at_risk
-      dailybot goal update <goal-uuid> --period-end 2027-01-31 --owner <user-uuid> --json
+      dailybot plan goal update <goal-uuid> --status at_risk
+      dailybot plan goal update <goal-uuid> --period-end 2027-01-31 --owner <user-uuid> --json
     """
     if period_start and period_end and period_end < period_start:
         raise click.UsageError("--period-end is before --period-start.")
@@ -343,7 +349,7 @@ def goal_restore(goal_uuid: str, json_mode: bool) -> None:
 
     \b
     Examples:
-      dailybot goal restore <goal-uuid>
+      dailybot plan goal restore <goal-uuid>
     """
     client = require_auth()
     try:
@@ -370,7 +376,7 @@ def goal_link(goal_uuid: str, project_uuid: str, json_mode: bool) -> None:
 
     \b
     Examples:
-      dailybot goal link <goal-uuid> <project-uuid>
+      dailybot plan goal link <goal-uuid> <project-uuid>
     """
     client = require_auth()
     try:
@@ -397,8 +403,8 @@ def goal_unlink(
 
     \b
     Examples:
-      dailybot goal unlink <goal-uuid> <project-uuid> --dry-run
-      dailybot goal unlink <goal-uuid> <project-uuid> --yes
+      dailybot plan goal unlink <goal-uuid> <project-uuid> --dry-run
+      dailybot plan goal unlink <goal-uuid> <project-uuid> --yes
     """
     if not confirm_without_preview(
         f"unlink project {project_uuid} from goal {goal_uuid}; its work stops counting toward "
@@ -443,8 +449,8 @@ def goal_attach(goal_uuid: str, file_path: Path, caption: str | None, json_mode:
 
     \b
     Examples:
-      dailybot goal attach <goal-uuid> ./plan.pdf
-      dailybot goal attach <goal-uuid> ./roadmap.png --caption "Q4 roadmap" --json
+      dailybot plan goal attach <goal-uuid> ./plan.pdf
+      dailybot plan goal attach <goal-uuid> ./roadmap.png --caption "Q4 roadmap" --json
     """
     run_attach(
         lambda client, **file: client.upload_goal_attachment(goal_uuid, **file),
@@ -465,8 +471,8 @@ def goal_attachments(goal_uuid: str, json_mode: bool) -> None:
 
     \b
     Examples:
-      dailybot goal attachments <goal-uuid>
-      dailybot goal attachments <goal-uuid> --json
+      dailybot plan goal attachments <goal-uuid>
+      dailybot plan goal attachments <goal-uuid> --json
     """
     run_list(
         lambda client: client.list_goal_attachments(goal_uuid),
@@ -477,12 +483,13 @@ def goal_attachments(goal_uuid: str, json_mode: bool) -> None:
 
 @goal.group("attachment")
 def goal_attachment() -> None:
-    """Download or delete one attachment on a goal.
+    """Download, rename or delete one attachment on a goal.
 
     \b
     Examples:
-      dailybot goal attachment get <goal-uuid> <attachment-uuid> -o ./plan.pdf
-      dailybot goal attachment delete <goal-uuid> <attachment-uuid> --dry-run
+      dailybot plan goal attachment rename <goal-uuid> <attachment-uuid> plan-v2.pdf
+      dailybot plan goal attachment get <goal-uuid> <attachment-uuid> -o ./plan.pdf
+      dailybot plan goal attachment delete <goal-uuid> <attachment-uuid> --dry-run
     """
 
 
@@ -506,13 +513,37 @@ def goal_attachment_get(
 
     \b
     Examples:
-      dailybot goal attachment get <goal-uuid> <attachment-uuid> -o ./plan.pdf
+      dailybot plan goal attachment get <goal-uuid> <attachment-uuid> -o ./plan.pdf
     """
     run_get(
         lambda client: client.download_goal_attachment(goal_uuid, attachment_uuid),
         output,
         attachment_uuid=attachment_uuid,
         force=force,
+        json_mode=json_mode,
+        require_auth=require_auth,
+    )
+
+
+@goal_attachment.command("rename")
+@click.argument("goal_uuid", metavar="GOAL")
+@click.argument("attachment_uuid", metavar="ATTACHMENT")
+@click.argument("filename")
+@click.option("--json", "json_mode", is_flag=True, help="Emit machine-readable JSON to stdout.")
+def goal_attachment_rename(
+    goal_uuid: str, attachment_uuid: str, filename: str, json_mode: bool
+) -> None:
+    """Rename a goal's attachment (1 to 255 characters).
+
+    \b
+    Examples:
+      dailybot plan goal attachment rename <goal-uuid> <attachment-uuid> plan-v2.pdf
+    """
+    run_rename(
+        lambda client, name: client.rename_goal_attachment(
+            goal_uuid, attachment_uuid, filename=name
+        ),
+        filename,
         json_mode=json_mode,
         require_auth=require_auth,
     )
@@ -531,8 +562,8 @@ def goal_attachment_delete(
 
     \b
     Examples:
-      dailybot goal attachment delete <goal-uuid> <attachment-uuid> --dry-run
-      dailybot goal attachment delete <goal-uuid> <attachment-uuid> --yes
+      dailybot plan goal attachment delete <goal-uuid> <attachment-uuid> --dry-run
+      dailybot plan goal attachment delete <goal-uuid> <attachment-uuid> --yes
     """
     run_delete(
         lambda client: client.delete_goal_attachment(goal_uuid, attachment_uuid),

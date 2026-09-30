@@ -1,4 +1,4 @@
-"""Pinning boards and saved views (`/v1/tasks/me/favorites/`), shared by `board` and `tasks view`.
+"""Pinning boards and saved views (`/v1/plan/me/favorites/`), shared by `board` and `tasks view`.
 
 Favorites belong to a person: a login session or a personal API key. An agent
 key has nobody to pin for, and the server refuses it. Only boards and saved

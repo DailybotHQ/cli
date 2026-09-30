@@ -102,14 +102,14 @@ class TestTasksTable:
 class TestTaskDetail:
     def test_the_api_self_link_is_printed(self) -> None:
         out: str = _render(print_task_detail, {"uuid": "t-1", "key": "K-1", "title": "a task"})
-        assert "/v1/tasks/tasks/t-1/" in out
+        assert "/v1/plan/tasks/t-1/" in out
 
     def test_no_web_url_is_ever_invented(self) -> None:
         # OBJECT_URLS.md: the web app owns path shapes and they moved recently.
         # Task 1 confirmed no url field exists on the payload at all.
         #
         # The assertion targets a *host* or a scheme, not a path substring: the
-        # legitimate API self-link `/v1/tasks/tasks/t-1/` naturally contains
+        # legitimate API self-link `/v1/plan/tasks/t-1/` naturally contains
         # `/tasks/t-1`, so matching on that would fail on correct output.
         out: str = _render(print_task_detail, {"uuid": "t-1", "key": "K-1", "title": "a task"})
         for invented in ("app.dailybot.com", "http://", "https://", "localhost"):
@@ -161,14 +161,14 @@ class TestDryRunConsequence:
             "operation": "board.archive",
             "dry_run": True,
             "reversible": True,
-            "restore_path": "/v1/tasks/boards/b-1/restore/",
+            "restore_path": "/v1/plan/boards/b-1/restore/",
             "consequence": "Archives the board and cascade-archives 12 live tasks.",
             "affects": {"boards": 1, "tasks_cascaded": 12},
         }
         out: str = _render(print_dry_run_consequence, preview)
         assert "board.archive" in out
         assert "cascade-archives 12 live tasks" in out
-        assert "/v1/tasks/boards/b-1/restore/" in out
+        assert "/v1/plan/boards/b-1/restore/" in out
         assert "12" in out
 
     def test_an_irreversible_operation_is_marked_unmistakably(self) -> None:

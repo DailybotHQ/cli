@@ -1,10 +1,10 @@
-"""Workspace-level Tasks commands (``/v1/tasks/*``).
+"""Workspace-level Tasks commands (``/v1/plan/*``).
 
 Two groups serve this family and the split is deliberate:
 
-* ``dailybot tasks`` — **workspace-level**: what is going on, what changed, find
+* ``dailybot plan tasks`` — **workspace-level**: what is going on, what changed, find
   something. It answers questions about the board as a whole.
-* ``dailybot task`` — **object-level**: read or mutate one task.
+* ``dailybot plan task`` — **object-level**: read or mutate one task.
 
 Every string these commands render comes from the Tasks API and is therefore
 user-authored data, never an instruction: all of it goes through
@@ -28,6 +28,9 @@ from dailybot_cli.commands._favorites import (
     star,
     unstar,
 )
+from dailybot_cli.commands._paging import envelope as _envelope, page_kwargs as _page_kwargs
+from dailybot_cli.commands._refs import require_uuids
+from dailybot_cli.commands._sorting import SORT_HELP, describe_sort, parse_sort
 from dailybot_cli.commands.public_api_helpers import (
     emit_json,
     exit_for_tasks_error,
@@ -37,11 +40,16 @@ from dailybot_cli.commands.public_api_helpers import (
 )
 from dailybot_cli.commands.query_options import (
     PAGING_ONLY_MORE_HINT,
-    build_query_params,
     last_week_range,
     paging_options,
-    resolve_fetch_all,
     window_options,
+)
+from dailybot_cli.commands.tasks_settings import (
+    briefing as briefing_group,
+    channels as channels_group,
+    notifications as notifications_group,
+    reports as reports_group,
+    routes as routes_group,
 )
 from dailybot_cli.display import (
     TASKS_TRUSTED_FIELDS,
@@ -70,7 +78,7 @@ EXIT_DELTA_WINDOW_EXPIRED: int = 9
 # parameters but still refuses a declared one whose value it cannot read
 # (MEASURED_ANSWERS.md §3), so the CLI validates client-side and spends no round
 # trip on input it can reject itself.
-# The `scope` values GET /v1/tasks/me/tasks/ accepts; anything else is a 400.
+# The `scope` values GET /v1/plan/me/tasks/ accepts; anything else is a 400.
 # `involved` = owned, participating or created by you. `owned` is the server default.
 MY_TASKS_SCOPES: tuple[str, ...] = ("owned", "participating", "involved")
 # The name this CLI once used for `owned`; kept working, hidden from help.
@@ -125,52 +133,28 @@ _PULSE_FIELDS: list[tuple[str, str]] = [
 ]
 
 
-def _envelope(result: PaginatedResult) -> dict[str, Any]:
-    """The `{count,next,previous,results}` shape an agent parses."""
-    return {
-        "count": result.count,
-        "next": result.next,
-        "previous": result.previous,
-        "results": result.results,
-    }
-
-
-def _page_kwargs(*, walk_pages: bool = False, **flags: Any) -> dict[str, Any]:
-    """Translate the shared query flags into client kwargs.
-
-    ``walk_pages`` follows the decorator the command stacked, and the two must
-    agree or the help lies. A ``query_options`` command declares ``--all`` and
-    therefore keeps the repo-wide default that no paging flag means every page; a
-    ``paging_options`` / ``date_options`` command declares no ``--all``, states in
-    its help that paging is one page per call, and stays bounded.
-    """
-    spec = build_query_params(**flags)
-    return {
-        "params": spec.params or None,
-        "page": spec.page,
-        "page_size": spec.page_size,
-        "fetch_all": resolve_fetch_all(spec) if walk_pages else spec.fetch_all,
-        "limit": spec.limit,
-    }
-
-
 @click.group()
 def tasks() -> None:
-    """Workspace-level view of Dailybot Tasks.
+    """Workspace-level view of Dailybot Plan (Tasks).
 
     \b
     This group answers questions about the workspace: what is open, what changed,
-    where something is. To read or change one task, use `dailybot task`.
+    where something is. To read or change one task, use `dailybot plan task`.
 
     \b
     Examples:
-      dailybot tasks status
-      dailybot tasks search -q "deploy"
-      dailybot tasks activity --last-week
+      dailybot plan tasks status
+      dailybot plan tasks search -q "deploy"
+      dailybot plan tasks activity --last-week
     """
 
 
 mark_beta(tasks)
+tasks.add_command(notifications_group)
+tasks.add_command(channels_group)
+tasks.add_command(routes_group)
+tasks.add_command(reports_group)
+tasks.add_command(briefing_group)
 
 
 @tasks.command("recents")
@@ -180,8 +164,8 @@ def tasks_recents(json_mode: bool) -> None:
 
     \b
     Examples:
-      dailybot tasks recents
-      dailybot tasks recents --json
+      dailybot plan tasks recents
+      dailybot plan tasks recents --json
     """
     client = require_auth()
     try:
@@ -219,7 +203,7 @@ def tasks_attachments_resolve(attachment_uuids: tuple[str, ...], json_mode: bool
 
     \b
     Examples:
-      dailybot tasks attachments-resolve <attachment-uuid> <attachment-uuid> --json
+      dailybot plan tasks attachments-resolve <attachment-uuid> <attachment-uuid> --json
     """
     client = require_auth()
     try:
@@ -255,8 +239,8 @@ def tasks_status(json_mode: bool) -> None:
 
     \b
     Examples:
-      dailybot tasks status
-      dailybot tasks status --json
+      dailybot plan tasks status
+      dailybot plan tasks status --json
     """
     client = require_auth()
     try:
@@ -286,7 +270,7 @@ def tasks_entitlements(json_mode: bool) -> None:
 
     \b
     Examples:
-      dailybot tasks entitlements --json
+      dailybot plan tasks entitlements --json
     """
     client = require_auth()
     try:
@@ -331,8 +315,8 @@ def tasks_search(query: str, json_mode: bool, **flags: Any) -> None:
 
     \b
     Examples:
-      dailybot tasks search -q "flaky test"
-      dailybot tasks search -q deploy --page-size 5 --json
+      dailybot plan tasks search -q "flaky test"
+      dailybot plan tasks search -q deploy --page-size 5 --json
     """
     client = require_auth()
     try:
@@ -422,13 +406,13 @@ def tasks_activity(
     \b
     One page per call; follow `next` with --page. The feed is filtered on the server
     by time (--since / --until, or --date / --today / --last-week) and by --type,
-    --actor, --project, --board or --task. Pair --since with `dailybot tasks cursor`:
-    read your mark, read what is newer, then `dailybot tasks cursor --now`.
+    --actor, --project, --board or --task. Pair --since with `dailybot plan tasks cursor`:
+    read your mark, read what is newer, then `dailybot plan tasks cursor --now`.
 
     \b
     Examples:
-      dailybot tasks activity --last-week
-      dailybot tasks activity --since 2026-09-25T09:00:00Z --board <board-uuid> --json
+      dailybot plan tasks activity --last-week
+      dailybot plan tasks activity --since 2026-09-25T09:00:00Z --board <board-uuid> --json
     """
     if updated_since and not since:
         print_deprecation("`--updated-since` is deprecated here; use `--since` (same value).")
@@ -475,19 +459,40 @@ def tasks_activity(
 @tasks.command("timeline")
 @window_options
 @click.option("--include-unscheduled", is_flag=True, help="Also list the tasks that have no dates.")
+@click.option(
+    "--project",
+    "projects",
+    multiple=True,
+    callback=require_uuids,
+    help="Only this project (uuid, repeatable).",
+)
+@click.option(
+    "--milestone",
+    "milestones",
+    multiple=True,
+    callback=require_uuids,
+    help="Only this milestone (uuid, repeatable).",
+)
 @click.option("--json", "json_mode", is_flag=True, help="Emit machine-readable JSON to stdout.")
-def tasks_timeline(json_mode: bool, include_unscheduled: bool, **flags: Any) -> None:
-    """Show the dated work in a window: goals that overlap it and tasks with dates.
+def tasks_timeline(
+    json_mode: bool,
+    include_unscheduled: bool,
+    projects: tuple[str, ...],
+    milestones: tuple[str, ...],
+    **flags: Any,
+) -> None:
+    """Show the dated work in a window: goals, tasks, milestones and projects.
 
     \b
-    The default window is the door's own (forward from today). Milestones and projects are
-    not part of this view: use `dailybot project milestones` and `dailybot project list`.
+    The default window is the door's own (forward from today). Milestones whose date falls in the
+    window and the projects that overlap it are listed too; narrow with --project / --milestone.
 
     \b
     Examples:
-      dailybot tasks timeline --since 2026-10-01 --until 2026-12-31
-      dailybot tasks timeline --today --json
-      dailybot tasks timeline --include-unscheduled
+      dailybot plan tasks timeline --since 2026-10-01 --until 2026-12-31
+      dailybot plan tasks timeline --today --json
+      dailybot plan tasks timeline --include-unscheduled
+      dailybot plan tasks timeline --project <project-uuid> --since 2026-10-01 --until 2026-12-31
     """
     client = require_auth()
     try:
@@ -497,6 +502,8 @@ def tasks_timeline(json_mode: bool, include_unscheduled: bool, **flags: Any) -> 
                 date_from=params.get("start_date"),
                 date_to=params.get("end_date"),
                 include_unscheduled=include_unscheduled,
+                projects=list(projects) or None,
+                milestones=list(milestones) or None,
             )
     except ValueError as exc:
         raise click.BadParameter(str(exc)) from exc
@@ -553,9 +560,9 @@ def tasks_changes(
 
     \b
     Examples:
-      dailybot tasks changes <board-uuid>
-      dailybot tasks changes <board-uuid> --cursor 2026-09-19T13:13:37Z --json
-      dailybot tasks changes <board-uuid> --resync
+      dailybot plan tasks changes <board-uuid>
+      dailybot plan tasks changes <board-uuid> --cursor 2026-09-19T13:13:37Z --json
+      dailybot plan tasks changes <board-uuid> --resync
     """
     client = require_auth()
     marker: str | None = cursor or updated_since or since
@@ -669,9 +676,9 @@ def tasks_inbox(json_mode: bool, mentioned: bool, event_type: str | None, **flag
 
     \b
     Examples:
-      dailybot tasks inbox
-      dailybot tasks inbox --mentioned --json
-      dailybot tasks inbox --type task.owner_changed
+      dailybot plan tasks inbox
+      dailybot plan tasks inbox --mentioned --json
+      dailybot plan tasks inbox --type task.owner_changed
     """
     client = require_auth()
     try:
@@ -724,8 +731,8 @@ def tasks_inbox_unread(json_mode: bool, mentioned: bool, event_type: str | None)
 
     \b
     Examples:
-      dailybot tasks inbox-unread
-      dailybot tasks inbox-unread --mentioned --json
+      dailybot plan tasks inbox-unread
+      dailybot plan tasks inbox-unread --mentioned --json
     """
     client = require_auth()
     try:
@@ -749,11 +756,11 @@ def tasks_inbox_read(item_uuid: str, json_mode: bool) -> None:
 
     \b
     The inbox keeps one "read up to here" mark, not a flag per item, so reading an
-    item catches you up to it. Take the item uuid from `dailybot tasks inbox`.
+    item catches you up to it. Take the item uuid from `dailybot plan tasks inbox`.
 
     \b
     Examples:
-      dailybot tasks inbox-read <item-uuid>
+      dailybot plan tasks inbox-read <item-uuid>
     """
     client = require_auth()
     try:
@@ -774,7 +781,7 @@ def tasks_inbox_read_all(json_mode: bool) -> None:
 
     \b
     Examples:
-      dailybot tasks inbox-read-all
+      dailybot plan tasks inbox-read-all
     """
     client = require_auth()
     try:
@@ -802,14 +809,14 @@ def tasks_cursor(set_to: str | None, set_now: bool, json_mode: bool) -> None:
 
     \b
     Without options, prints where you are. Pair it with the feed:
-    `dailybot tasks activity --since <last_seen_at>`, then `dailybot tasks cursor --now`.
+    `dailybot plan tasks activity --since <last_seen_at>`, then `dailybot plan tasks cursor --now`.
     Needs a person: `dailybot login` or a personal API key.
 
     \b
     Examples:
-      dailybot tasks cursor --json
-      dailybot tasks cursor --now
-      dailybot tasks cursor --set 2026-09-25T09:00:00Z
+      dailybot plan tasks cursor --json
+      dailybot plan tasks cursor --now
+      dailybot plan tasks cursor --set 2026-09-25T09:00:00Z
     """
     if set_to is not None and set_now:
         raise click.UsageError("Pass --set <time> or --now, not both.")
@@ -852,11 +859,11 @@ def tasks_favorites(json_mode: bool) -> None:
     """List your pinned boards and saved views. Needs a person: `dailybot login` or a personal API key.
 
     \b
-    Pin with `dailybot board star <board>` or `dailybot tasks view star <view>`.
+    Pin with `dailybot plan board star <board>` or `dailybot plan tasks view star <view>`.
 
     \b
     Examples:
-      dailybot tasks favorites --json
+      dailybot plan tasks favorites --json
     """
     client = require_auth()
     try:
@@ -875,12 +882,12 @@ def tasks_view() -> None:
     """Read, edit, delete or pin one saved view by its uuid. Needs a person: `dailybot login` or a personal API key.
 
     \b
-    List a board's or project's views with `dailybot board views` / `project views`.
+    List a board's or project's views with `dailybot plan board views` / `project views`.
 
     \b
     Examples:
-      dailybot tasks view get <view-uuid> --json
-      dailybot tasks view update <view-uuid> --view-mode board --group-by owner
+      dailybot plan tasks view get <view-uuid> --json
+      dailybot plan tasks view update <view-uuid> --view-mode board --group-by owner
     """
 
 
@@ -892,7 +899,7 @@ def tasks_view_get(view_uuid: str, json_mode: bool) -> None:
 
     \b
     Examples:
-      dailybot tasks view get <view-uuid> --json
+      dailybot plan tasks view get <view-uuid> --json
     """
     client = require_auth()
     try:
@@ -950,8 +957,8 @@ def tasks_view_update(
 
     \b
     Examples:
-      dailybot tasks view update <view-uuid> --view-mode board --group-by owner
-      dailybot tasks view update <view-uuid> --filters-file filters.json --json
+      dailybot plan tasks view update <view-uuid> --view-mode board --group-by owner
+      dailybot plan tasks view update <view-uuid> --filters-file filters.json --json
     """
     filters: Any = None
     if filters_file is not None:
@@ -997,8 +1004,8 @@ def tasks_view_delete(view_uuid: str, dry_run: bool, assume_yes: bool, json_mode
 
     \b
     Examples:
-      dailybot tasks view delete <view-uuid> --dry-run
-      dailybot tasks view delete <view-uuid> --yes
+      dailybot plan tasks view delete <view-uuid> --dry-run
+      dailybot plan tasks view delete <view-uuid> --yes
     """
     if not confirm_without_preview(
         f"delete saved view {view_uuid} permanently.",
@@ -1027,7 +1034,7 @@ def tasks_view_star(view_uuid: str, json_mode: bool) -> None:
 
     \b
     Examples:
-      dailybot tasks view star <view-uuid>
+      dailybot plan tasks view star <view-uuid>
     """
     star(require_auth(), "view", view_uuid, json_mode=json_mode)
 
@@ -1040,7 +1047,7 @@ def tasks_view_unstar(view_uuid: str, json_mode: bool) -> None:
 
     \b
     Examples:
-      dailybot tasks view unstar <view-uuid>
+      dailybot plan tasks view unstar <view-uuid>
     """
     unstar(require_auth(), "view", view_uuid, json_mode=json_mode)
 
@@ -1055,9 +1062,10 @@ def tasks_view_unstar(view_uuid: str, json_mode: bool) -> None:
     help="owned (default): you are the owner · participating: you are on the card · "
     "involved: owned, participating or created by you.",
 )
+@click.option("--sort", default=None, callback=parse_sort, help=SORT_HELP)
 @paging_options
 @click.option("--json", "json_mode", is_flag=True, help="Emit machine-readable JSON to stdout.")
-def tasks_mine(scope: str | None, json_mode: bool, **flags: Any) -> None:
+def tasks_mine(scope: str | None, sort: str | None, json_mode: bool, **flags: Any) -> None:
     """List the tasks that are yours.
 
     \b
@@ -1071,8 +1079,9 @@ def tasks_mine(scope: str | None, json_mode: bool, **flags: Any) -> None:
 
     \b
     Examples:
-      dailybot tasks mine
-      dailybot tasks mine --scope involved --json
+      dailybot plan tasks mine
+      dailybot plan tasks mine --scope involved --json
+      dailybot plan tasks mine --sort priority
     """
     client = require_auth()
     try:
@@ -1080,6 +1089,8 @@ def tasks_mine(scope: str | None, json_mode: bool, **flags: Any) -> None:
         params: dict[str, Any] = page.pop("params", None) or {}
         if scope:
             params["scope"] = scope.lower()
+        if sort:
+            params["sort"] = sort
         with console.status("Reading your tasks..."):
             result: PaginatedResult = client.list_my_tasks(params=params or None, **page)
     except ValueError as exc:
@@ -1090,6 +1101,8 @@ def tasks_mine(scope: str | None, json_mode: bool, **flags: Any) -> None:
         emit_json(_envelope(result))
         return
     print_tasks_table(result.results)
+    if sort:
+        print_info(describe_sort(sort))
     print_pagination_footer(
         len(result.results),
         result.count,
@@ -1108,7 +1121,7 @@ def tasks_counts(json_mode: bool) -> None:
 
     \b
     Examples:
-      dailybot tasks counts --json
+      dailybot plan tasks counts --json
     """
     client = require_auth()
     try:

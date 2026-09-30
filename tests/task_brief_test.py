@@ -1,4 +1,4 @@
-"""`dailybot task brief` — one call gives an agent the whole card.
+"""`dailybot plan task brief` — one call gives an agent the whole card.
 
 The briefing composes existing reads (task, comments, attachments, relations)
 and can save every attachment to a directory without surprises. All card text
@@ -151,7 +151,7 @@ class TestSafeAttachmentFilename:
 class TestBriefCommand:
     def _invoke(self, args: list[str], client: MagicMock) -> Any:
         with patch("dailybot_cli.commands.task.require_auth", return_value=client):
-            return CliRunner().invoke(cli, ["task", "brief", *args])
+            return CliRunner().invoke(cli, ["plan", "task", "brief", *args])
 
     def test_json_briefing(self) -> None:
         result: Any = self._invoke(["ENG-12", "--json"], _client())
@@ -226,7 +226,7 @@ class TestHumanBriefingShowsEverySection:
         flat: str = " ".join(cap.get().split())
         assert "Participants (1)" in flat and '"Jane Doe"' in flat
         assert "Recent activity" in flat and "task.updated" in flat
-        assert "dailybot task activity ENG-12" in flat
+        assert "dailybot plan task activity ENG-12" in flat
         assert "Sub-tasks (1)" in flat and "ENG-13" in flat
 
 

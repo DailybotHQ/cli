@@ -67,10 +67,10 @@ class TestThePlanMessageFiresWhereItMatters:
     @pytest.mark.parametrize(
         ("argv", "module", "door"),
         [
-            (["board", "list"], "board", "list_boards"),
-            (["task", "list"], "task", "list_tasks"),
-            (["tasks", "status"], "tasks", "get_tasks_pulse"),
-            (["project", "list"], "project", "list_projects"),
+            (["plan", "board", "list"], "board", "list_boards"),
+            (["plan", "task", "list"], "task", "list_tasks"),
+            (["plan", "tasks", "status"], "tasks", "get_tasks_pulse"),
+            (["plan", "project", "list"], "project", "list_projects"),
         ],
     )
     def test_a_tasks_door_names_tasks(
@@ -89,7 +89,7 @@ class TestThePlanMessageFiresWhereItMatters:
     def test_the_destructive_preview_path_too(self, runner: CliRunner, client: MagicMock) -> None:
         client.archive_task.side_effect = _plan_refusal()
         with patch("dailybot_cli.commands.task.require_auth", return_value=client):
-            result = runner.invoke(cli, ["task", "archive", "t-1", "--yes"])
+            result = runner.invoke(cli, ["plan", "task", "archive", "t-1", "--yes"])
         assert "agent reports" not in " ".join(result.stderr.split())
 
     def test_off_the_tasks_surface_the_shared_message_stands(self) -> None:
@@ -111,6 +111,7 @@ class TestEveryCreateSurfacesItsKey:
         [
             (
                 [
+                    "plan",
                     "board",
                     "create",
                     "--project",
@@ -123,9 +124,10 @@ class TestEveryCreateSurfacesItsKey:
                 "board",
                 "create_board",
             ),
-            (["project", "create", "-n", "P"], "project", "create_project"),
+            (["plan", "project", "create", "-n", "P"], "project", "create_project"),
             (
                 [
+                    "plan",
                     "goal",
                     "create",
                     "-n",
@@ -138,7 +140,7 @@ class TestEveryCreateSurfacesItsKey:
                 "goal",
                 "create_goal",
             ),
-            (["task", "create", "-t", "T"], "task", "create_task"),
+            (["plan", "task", "create", "-t", "T"], "task", "create_task"),
         ],
     )
     def test_the_key_is_printed(
@@ -173,6 +175,7 @@ class TestEveryCreateSurfacesItsKey:
             result = runner.invoke(
                 cli,
                 [
+                    "plan",
                     "board",
                     "create",
                     "--project",
@@ -230,11 +233,11 @@ class TestPagingDefaultFollowsTheDecorator:
     @pytest.mark.parametrize(
         ("argv", "module", "door"),
         [
-            (["board", "list"], "board", "list_boards"),
-            (["project", "list"], "project", "list_projects"),
-            (["goal", "list"], "goal", "list_goals"),
-            (["project", "milestones"], "project", "list_milestones"),
-            (["task", "comments", "t-1"], "task", "list_task_comments"),
+            (["plan", "board", "list"], "board", "list_boards"),
+            (["plan", "project", "list"], "project", "list_projects"),
+            (["plan", "goal", "list"], "goal", "list_goals"),
+            (["plan", "project", "milestones"], "project", "list_milestones"),
+            (["plan", "task", "comments", "t-1"], "task", "list_task_comments"),
         ],
     )
     def test_no_flags_walks_every_page(
@@ -255,10 +258,10 @@ class TestPagingDefaultFollowsTheDecorator:
     @pytest.mark.parametrize(
         ("argv", "module", "door"),
         [
-            (["task", "list"], "task", "list_tasks"),
-            (["tasks", "search", "-q", "x"], "tasks", "search_tasks"),
-            (["tasks", "inbox"], "tasks", "list_tasks_inbox"),
-            (["tasks", "mine"], "tasks", "list_my_tasks"),
+            (["plan", "task", "list"], "task", "list_tasks"),
+            (["plan", "tasks", "search", "-q", "x"], "tasks", "search_tasks"),
+            (["plan", "tasks", "inbox"], "tasks", "list_tasks_inbox"),
+            (["plan", "tasks", "mine"], "tasks", "list_my_tasks"),
         ],
     )
     def test_paging_only_commands_stay_bounded(
@@ -286,7 +289,7 @@ class TestPagingDefaultFollowsTheDecorator:
             results=[], count=0, next=None, previous=None
         )
         with patch("dailybot_cli.commands.board.require_auth", return_value=client):
-            runner.invoke(cli, ["board", "list", "--page", "2"])
+            runner.invoke(cli, ["plan", "board", "list", "--page", "2"])
         assert client.list_boards.call_args[1]["fetch_all"] is False
 
 
@@ -302,6 +305,7 @@ class TestUntrustedTextIsEscapedExactlyOnce:
         [
             (
                 [
+                    "plan",
                     "board",
                     "create",
                     "--project",
@@ -315,9 +319,10 @@ class TestUntrustedTextIsEscapedExactlyOnce:
                 "create_board",
                 "name",
             ),
-            (["project", "create", "-n", "x[y]"], "project", "create_project", "name"),
+            (["plan", "project", "create", "-n", "x[y]"], "project", "create_project", "name"),
             (
                 [
+                    "plan",
                     "goal",
                     "create",
                     "-n",
@@ -331,7 +336,7 @@ class TestUntrustedTextIsEscapedExactlyOnce:
                 "create_goal",
                 "name",
             ),
-            (["task", "create", "-t", "x[y]"], "task", "create_task", "title"),
+            (["plan", "task", "create", "-t", "x[y]"], "task", "create_task", "title"),
         ],
     )
     def test_no_stray_backslash(
@@ -365,6 +370,7 @@ class TestUntrustedTextIsEscapedExactlyOnce:
             result = runner.invoke(
                 cli,
                 [
+                    "plan",
                     "board",
                     "create",
                     "--project",
@@ -389,7 +395,7 @@ class TestGoalGetRendersWhatItWasAsked:
     def test_the_projects_rollup_is_shown(self, runner: CliRunner, client: MagicMock) -> None:
         client.get_goal.return_value = {"uuid": "g-1", "name": "Q4", "project_count": 3}
         with patch("dailybot_cli.commands.goal.require_auth", return_value=client):
-            result = runner.invoke(cli, ["goal", "get", "g-1", "--include", "projects"])
+            result = runner.invoke(cli, ["plan", "goal", "get", "g-1", "--include", "projects"])
         assert "Projects" in result.stdout
         assert "3" in result.stdout
 
@@ -397,11 +403,13 @@ class TestGoalGetRendersWhatItWasAsked:
         # Absent is one of three answers and must not be rendered as zero.
         client.get_goal.return_value = {"uuid": "g-1", "name": "Q4"}
         with patch("dailybot_cli.commands.goal.require_auth", return_value=client):
-            result = runner.invoke(cli, ["goal", "get", "g-1"])
+            result = runner.invoke(cli, ["plan", "goal", "get", "g-1"])
         assert "Projects" not in result.stdout
 
     def test_json_is_unchanged(self, runner: CliRunner, client: MagicMock) -> None:
         client.get_goal.return_value = {"uuid": "g-1", "project_count": 3}
         with patch("dailybot_cli.commands.goal.require_auth", return_value=client):
-            result = runner.invoke(cli, ["goal", "get", "g-1", "--include", "projects", "--json"])
+            result = runner.invoke(
+                cli, ["plan", "goal", "get", "g-1", "--include", "projects", "--json"]
+            )
         assert json.loads(result.stdout)["project_count"] == 3
