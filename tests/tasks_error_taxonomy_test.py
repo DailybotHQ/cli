@@ -293,3 +293,20 @@ class TestNewServerCodes:
         with pytest.raises(SystemExit):
             exit_for_tasks_error(APIError(404, "Not found.", code="not_found"), True)
         assert "retry_after" not in json.loads(capsys.readouterr().out)
+
+
+class TestThrottledMessageIsNotDoubled:
+    def test_the_wait_hint_appears_once(self, capsys: pytest.CaptureFixture[str]) -> None:
+        exc: APIError = APIError(429, "Slow down.", code="throttled", extra={"retry_after": 12})
+        with pytest.raises(SystemExit):
+            exit_for_tasks_error(exc, False)
+        flat: str = " ".join(capsys.readouterr().err.split())
+        assert flat.lower().count("try again") == 1
+        assert "12s" in flat
+
+    def test_without_a_wait_there_is_still_one_hint(
+        self, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        with pytest.raises(SystemExit):
+            exit_for_tasks_error(APIError(429, "Slow down.", code="throttled"), False)
+        assert " ".join(capsys.readouterr().err.split()).lower().count("try again") == 1

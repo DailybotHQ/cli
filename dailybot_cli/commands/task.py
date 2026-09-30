@@ -52,6 +52,7 @@ from dailybot_cli.commands.public_api_helpers import (
     exit_for_tasks_error,
     load_json_input,
     require_auth,
+    resolve_error_message,
     rows_of,
 )
 from dailybot_cli.commands.query_options import (
@@ -515,7 +516,9 @@ def _date_text(value: datetime | None) -> str | None:
 @click.option("--state", default=None, help="Initial workflow state.")
 @click.option("--owner", default=None, help=OWNER_HELP)
 @click.option("--assignee", default=None, hidden=True, help=ASSIGNEE_DEPRECATION)
-@click.option("--due", default=None, help="Due date (YYYY-MM-DD).")
+@click.option(
+    "--due", type=TASK_DATE_TYPE, default=None, metavar="YYYY-MM-DD", help="Due date (YYYY-MM-DD)."
+)
 @click.option(
     "--start-date", type=TASK_DATE_TYPE, default=None, metavar="YYYY-MM-DD", help=START_DATE_HELP
 )
@@ -545,7 +548,7 @@ def task_create(
     state: str | None,
     owner: str | None,
     assignee: str | None,
-    due: str | None,
+    due: datetime | None,
     start_date: datetime | None,
     estimate: int | None,
     parent: str | None,
@@ -581,7 +584,7 @@ def task_create(
                 description=description,
                 state=state,
                 owner=owner or assignee,
-                due_date=due,
+                due_date=_date_text(due),
                 start_date=_date_text(start_date),
                 estimate=estimate,
                 parent_task=parent,
@@ -590,8 +593,9 @@ def task_create(
             )
     except APIError as exc:
         _write_error(exc, json_mode)
-    if labels:
-        data = _attach_labels_after_create(client, data, _split_labels(labels), json_mode)
+    resolved_labels: list[str] = _split_labels(labels)
+    if resolved_labels:
+        data = _attach_labels_after_create(client, data, resolved_labels, json_mode)
     if json_mode:
         emit_json(data)
         return
@@ -613,9 +617,10 @@ def _attach_labels_after_create(
     left_in_place: dict[str, Any] = {
         "created_task": {"key": created.get("key"), "uuid": created.get("uuid")}
     }
+    message: str
     if not created.get("uuid"):
         # No uuid to address the label door with; the task exists all the same.
-        message: str = (
+        message = (
             f"Task {reference} was created, but the server did not return its uuid, so its "
             "labels were not attached. Run `dailybot task labels` on it; do not re-run the create."
         )
@@ -638,12 +643,24 @@ def _attach_labels_after_create(
                 created["uuid"], mode="add", labels=labels
             )
     except APIError as exc:
-        if not json_mode:
-            print_error(
-                f"Task {reference} was created, but its labels were not attached. "
-                "Fix the label and run `dailybot task labels` on it; do not re-run the create."
+        message = (
+            f"Task {reference} was created, but its labels were not attached "
+            f"({resolve_error_message(exc, tasks_surface=True)}) "
+            "Fix the label and run `dailybot task labels` on it; do not re-run the create."
+        )
+        if json_mode:
+            emit_json(
+                {
+                    "status": "error",
+                    "code": exc.code,
+                    "detail": exc.detail,
+                    "message": message,
+                    **left_in_place,
+                }
             )
-        exit_for_tasks_error(exc, json_mode, envelope_extra=left_in_place)
+        else:
+            print_error(message)
+        raise SystemExit(EXIT_PARTIAL_WRITE) from exc
     # The batch door answers `{labels: [...]}`, not the task: fold them into what was created.
     attached: Any = labelled.get("labels") if isinstance(labelled, dict) else None
     return {**created, "labels": attached} if isinstance(attached, list) else created
@@ -654,7 +671,13 @@ def _attach_labels_after_create(
 @click.option("-t", "--title", default=None, help="New title.")
 @click.option("-d", "--description", default=None, help="New description.")
 @click.option("--state", default=None, help="New workflow state.")
-@click.option("--due", default=None, help="New due date (YYYY-MM-DD).")
+@click.option(
+    "--due",
+    type=TASK_DATE_TYPE,
+    default=None,
+    metavar="YYYY-MM-DD",
+    help="New due date (YYYY-MM-DD).",
+)
 @click.option(
     "--start-date", type=TASK_DATE_TYPE, default=None, metavar="YYYY-MM-DD", help=START_DATE_HELP
 )
@@ -675,7 +698,7 @@ def task_update(
     title: str | None,
     description: str | None,
     state: str | None,
-    due: str | None,
+    due: datetime | None,
     start_date: datetime | None,
     estimate: int | None,
     milestone: str | None,
@@ -704,7 +727,7 @@ def task_update(
         "title": title,
         "description": description,
         "state": state,
-        "due_date": due,
+        "due_date": _date_text(due),
         "start_date": _date_text(start_date),
         "estimate": estimate,
         "milestone": milestone,

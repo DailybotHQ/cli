@@ -799,3 +799,58 @@ def test_move_help_warns_that_a_cross_board_move_changes_the_key(runner: CliRunn
     flat: str = " ".join(runner.invoke(cli, ["task", "move", "--help"]).output.split())
     assert "NEW key" in flat
     assert "uuid" in flat
+
+
+class TestReviewFollowUps:
+    """PR #121 review round 1: partial-write exit, blank labels, a typed --due."""
+
+    TASK: ClassVar[dict[str, Any]] = {"uuid": "t-1", "key": "K-1", "title": "x"}
+    LABEL: str = "00000000-0000-0000-0000-00000000000a"
+
+    def test_a_label_failure_exits_with_the_partial_write_code_and_says_what_exists(
+        self, runner: CliRunner, client: MagicMock
+    ) -> None:
+        client.create_task.return_value = self.TASK
+        client.batch_task_labels.side_effect = APIError(404, "Not found.", code="not_found")
+        result = _invoke(
+            runner, client, ["task", "create", "-t", "x", "--label", self.LABEL, "--json"]
+        )
+        assert result.exit_code == 1
+        envelope: dict[str, Any] = json.loads(result.stdout)
+        assert "was created" in envelope["message"]
+        assert "K-1" in envelope["message"]
+        assert envelope["code"] == "not_found"
+        assert envelope["created_task"]["key"] == "K-1"
+
+    def test_the_human_mode_says_it_once(self, runner: CliRunner, client: MagicMock) -> None:
+        client.create_task.return_value = self.TASK
+        client.batch_task_labels.side_effect = APIError(404, "Not found.", code="not_found")
+        result = _invoke(runner, client, ["task", "create", "-t", "x", "--label", self.LABEL])
+        assert result.exit_code == 1
+        assert result.output.count("was created") == 1
+
+    @pytest.mark.parametrize("blank", ["", ",,,", " , "])
+    def test_a_blank_label_makes_no_label_call(
+        self, runner: CliRunner, client: MagicMock, blank: str
+    ) -> None:
+        client.create_task.return_value = self.TASK
+        result = _invoke(runner, client, ["task", "create", "-t", "x", "--label", blank, "--json"])
+        assert result.exit_code == 0, result.output
+        client.batch_task_labels.assert_not_called()
+
+    @pytest.mark.parametrize("argv", [["task", "create", "-t", "x"], ["task", "update", "K-1"]])
+    @pytest.mark.parametrize("bad", ["2026-13-01", "tomorrow", "10/05/2026"])
+    def test_due_is_refused_locally_when_it_is_not_a_date(
+        self, runner: CliRunner, client: MagicMock, argv: list[str], bad: str
+    ) -> None:
+        result = _invoke(runner, client, [*argv, "--due", bad])
+        assert result.exit_code == 2
+        client.create_task.assert_not_called()
+        client.update_task.assert_not_called()
+
+    def test_a_valid_due_still_reaches_the_client_as_text(
+        self, runner: CliRunner, client: MagicMock
+    ) -> None:
+        client.update_task.return_value = self.TASK
+        _invoke(runner, client, ["task", "update", "K-1", "--due", "2026-10-09", "--json"])
+        assert client.update_task.call_args.kwargs["due_date"] == "2026-10-09"

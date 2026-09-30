@@ -66,10 +66,7 @@ ERROR_CODE_MESSAGES: dict[str, str] = {
         "`dailybot project update-unreact`) before adding another; "
         "re-adding an emoji you already hold changes nothing."
     ),
-    "throttled": (
-        "You are sending requests faster than your account allows. "
-        "Wait a few seconds, then try again."
-    ),
+    "throttled": ("You are sending requests faster than your account allows."),
     "task_archived": (
         "This task is archived, so it cannot be changed or duplicated. "
         "Bring it back with `dailybot task restore <task>` first."
@@ -816,6 +813,13 @@ def _retry_after_seconds(exc: APIError) -> int | None:
     return max(int(exc.retry_after), 0) if exc.retry_after is not None else None
 
 
+def _throttle_hint(exc: APIError, wait: int | None) -> str:
+    """The one wait hint a 429 gets: the exact seconds when known, else a generic nudge."""
+    if exc.status_code != 429:
+        return ""
+    return f" Try again in {wait}s." if wait is not None else " Wait a few seconds, then try again."
+
+
 def exit_for_tasks_error(
     exc: APIError,
     json_mode: bool,
@@ -853,7 +857,7 @@ def exit_for_tasks_error(
             }
         )
     else:
-        print_error(f"{message} Try again in {wait}s." if wait is not None else message)
+        print_error(f"{message}{_throttle_hint(exc, wait)}")
     raise SystemExit(code)
 
 
