@@ -110,7 +110,7 @@ RUN printf '%s\n' \
 # dev-user). `-f` makes an HTTP error a non-zero curl exit instead of piping an error
 # page into bash; the `SHELL … pipefail` above makes a failing curl abort the build.
 # install.sh itself runs `set -euo pipefail`, so failures inside it abort too.
-RUN curl -fsSL https://cli.dailybot.com/install.sh | DAILYBOT_VERSION='>=3.15.0' bash
+RUN curl -fsSL https://cli.dailybot.com/install.sh | DAILYBOT_VERSION='>=3.25.2' bash
 
 # Install all Python dev/runtime deps from the repo's lock file.
 # This single COPY/RUN pair is the only build cache layer pip touches — it
