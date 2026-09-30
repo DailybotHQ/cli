@@ -27,6 +27,7 @@ from dailybot_cli.commands.interactive import run_interactive
 from dailybot_cli.commands.interactive_chat import interactive
 from dailybot_cli.commands.kudos import kudos
 from dailybot_cli.commands.label import label
+from dailybot_cli.commands.plan import plan
 from dailybot_cli.commands.project import project
 from dailybot_cli.commands.public_api_helpers import emit_json
 from dailybot_cli.commands.status import status
@@ -238,6 +239,7 @@ cli.add_command(tasks)
 cli.add_command(task)
 cli.add_command(board)
 cli.add_command(project)
+cli.add_command(plan)
 cli.add_command(goal)
 cli.add_command(label)
 cli.add_command(featured)
