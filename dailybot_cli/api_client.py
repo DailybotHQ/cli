@@ -2605,6 +2605,56 @@ class DailyBotClient:
             params["include_unscheduled"] = 1
         return self._tasks_read("timeline/", params=params or None)
 
+    # --- Notifications, channels (PLAN_004) ---
+
+    def get_notifications_catalog(self) -> dict[str, Any]:
+        """GET /v1/tasks/notifications/catalog/ — every notification kind, personal and org."""
+        return self._tasks_read("notifications/catalog/")
+
+    def get_my_notifications(self) -> dict[str, Any]:
+        """GET /v1/tasks/me/notifications/ — effective personal preferences (person door)."""
+        return self._tasks_read("me/notifications/")
+
+    def put_my_notifications(
+        self,
+        *,
+        items: list[dict[str, Any]] | None = None,
+        destination: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        """PUT /v1/tasks/me/notifications/ — a partial update (person door).
+
+        Only what is passed is sent. ``paused_until`` is never sent: the API accepts only null
+        today (a datetime answers 501). The agent name is not stamped: the door rejects
+        ``agent_name`` as an unknown field, and a preference is not task work.
+        """
+        payload: dict[str, Any] = {}
+        if items is not None:
+            payload["items"] = items
+        if destination is not None:
+            payload["destination"] = destination
+        if not payload:
+            raise ValueError("Nothing to update: pass items and/or a destination.")
+        result: dict[str, Any] = self._tasks_write(
+            "PUT", "me/notifications/", json=payload, stamp_agent=False
+        )
+        return result
+
+    def search_channels(
+        self, *, search: str | None = None, channel_type: str | None = None, **page: Any
+    ) -> PaginatedResult:
+        """GET /v1/tasks/channels/ — chat channels the caller may pick (paged).
+
+        Organization admins also see the private channels the bot is in; everyone else sees
+        public channels only (a private one is absent, not an error). ``channel_type='channel'``
+        means public only for anyone.
+        """
+        params: dict[str, Any] = {}
+        if search:
+            params["search"] = search
+        if channel_type:
+            params["type"] = channel_type
+        return self._tasks_list("channels/", params=params or None, **page)
+
     # --- Boards ---
 
     def list_boards(self, **page: Any) -> PaginatedResult:
