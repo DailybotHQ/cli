@@ -38,6 +38,7 @@ from dailybot_cli.commands.public_api_helpers import (
 from dailybot_cli.commands.query_options import PAGING_ONLY_MORE_HINT, paging_options
 from dailybot_cli.display import (
     console,
+    print_briefing,
     print_channels_table,
     print_my_notifications,
     print_notification_catalog,
@@ -67,6 +68,7 @@ DEFAULT_REPORT_TIME: str = "09:00"
 PERSONAL_SCOPE: str = "personal"
 ORG_SCOPE: str = "org"
 MY_NOTIFICATIONS_DOOR: str = "me/notifications"
+MY_BRIEFING_DOOR: str = "me/briefing"
 JSON_HELP: str = "Emit machine-readable JSON to stdout."
 
 
@@ -1128,4 +1130,161 @@ def reports_runs(report: str, json_mode: bool, **flags: Any) -> None:
         result.count,
         has_more=bool(result.next),
         more_hint=PAGING_ONLY_MORE_HINT,
+    )
+
+
+# ------------------------------------------------------------------------------------- briefing
+
+
+@click.group("briefing")
+def briefing() -> None:
+    """Your personal daily Tasks briefing.
+
+    \b
+    A digest of your day: overdue, due today, in progress, blocked, next up, unread mentions and the
+    projects you lead. Your briefing arrives by DM and/or email (never in a channel: it holds your
+    private work). Pick the weekdays, the time and the timezone (yours by default). Person doors:
+    `dailybot login` or a personal API key.
+    """
+
+
+mark_beta(briefing)
+
+
+@briefing.command("get")
+@click.option("--json", "json_mode", is_flag=True, help=JSON_HELP)
+def briefing_get(json_mode: bool) -> None:
+    """Show your briefing settings (defaults with an `effective` flag when none is stored).
+
+    \b
+    Examples:
+      dailybot tasks briefing get
+      dailybot tasks briefing get --json
+    """
+    client = require_auth()
+    try:
+        with console.status("Reading your briefing..."):
+            data: dict[str, Any] = client.get_my_briefing()
+    except APIError as exc:
+        exit_for_tasks_error(exc, json_mode, door=MY_BRIEFING_DOOR)
+    if json_mode:
+        emit_json(data)
+        return
+    print_briefing(data)
+
+
+@briefing.command("set")
+@click.option("--enabled/--disabled", default=None, help="Turn the briefing on or off.")
+@click.option("--weekdays", multiple=True, callback=weekdays_callback, help=WEEKDAYS_HELP)
+@click.option("--time", "time_of_day", type=TIME_OF_DAY, default=None, help=TIME_HELP)
+@click.option("--timezone", type=IANA_TZ, default=None, help=TIMEZONE_HELP)
+@click.option("--chat/--no-chat", default=None, help="Deliver by DM (or not).")
+@click.option("--email/--no-email", default=None, help="Deliver by email (or not).")
+@click.option(
+    "--skip-when-empty/--send-when-empty",
+    default=None,
+    help="Skip the day when there is nothing to report.",
+)
+@click.option("--json", "json_mode", is_flag=True, help=JSON_HELP)
+def briefing_set(
+    enabled: bool | None,
+    weekdays: list[int] | None,
+    time_of_day: str | None,
+    timezone: str | None,
+    chat: bool | None,
+    email: bool | None,
+    skip_when_empty: bool | None,
+    json_mode: bool,
+) -> None:
+    """Change your briefing (a partial update: only what you pass is sent).
+
+    \b
+    The timezone is sent only when you pass --timezone; otherwise the server keeps yours.
+
+    \b
+    Examples:
+      dailybot tasks briefing set --enabled --weekdays mon,tue,wed,thu,fri --time 08:30
+      dailybot tasks briefing set --email --no-chat
+      dailybot tasks briefing set --timezone America/Bogota
+    """
+    fields: dict[str, Any] = {
+        key: value
+        for key, value in (
+            ("enabled", enabled),
+            ("weekdays", weekdays),
+            ("time", time_of_day),
+            ("timezone", timezone),
+            ("chat", chat),
+            ("email", email),
+            ("skip_when_empty", skip_when_empty),
+        )
+        if value is not None
+    }
+    if not fields:
+        raise click.UsageError("Nothing to change. Pass at least one flag (see --help).")
+    client = require_auth()
+    try:
+        with console.status("Saving your briefing..."):
+            data: dict[str, Any] = client.put_my_briefing(**fields)
+    except APIError as exc:
+        exit_for_tasks_error(exc, json_mode, door=MY_BRIEFING_DOOR)
+    if json_mode:
+        emit_json(data)
+        return
+    print_success(f"Updated {', '.join(fields)}.")
+    print_briefing(data)
+
+
+@briefing.command("preview")
+@click.option("--json", "json_mode", is_flag=True, help=JSON_HELP)
+def briefing_preview(json_mode: bool) -> None:
+    """Show your briefing as it would read right now. Sends nothing.
+
+    \b
+    Examples:
+      dailybot tasks briefing preview
+      dailybot tasks briefing preview --json
+    """
+    client = require_auth()
+    try:
+        with console.status("Rendering your briefing..."):
+            document: dict[str, Any] = client.get_my_briefing_preview()
+    except APIError as exc:
+        exit_for_tasks_error(exc, json_mode, door=MY_BRIEFING_DOOR)
+    if json_mode:
+        emit_json(document)
+        return
+    print_report_document(document)
+
+
+@briefing.command("send-test")
+@click.option("--dry-run", is_flag=True, help="Show what would be sent and send nothing.")
+@click.option(
+    "--yes",
+    "-y",
+    "assume_yes",
+    is_flag=True,
+    help="Skip the confirmation (the preview is still fetched and shown).",
+)
+@click.option("--json", "json_mode", is_flag=True, help=JSON_HELP)
+def briefing_send_test(dry_run: bool, assume_yes: bool, json_mode: bool) -> None:
+    """Send yourself the briefing now, after a preview.
+
+    \b
+    It always asks the API for a dry run first and shows the document; it sends for real (DM and/or
+    email, to you) only after you confirm or pass --yes. --dry-run stops after the preview.
+
+    \b
+    Examples:
+      dailybot tasks briefing send-test --dry-run
+      dailybot tasks briefing send-test --yes
+    """
+    client = require_auth()
+    send_test_flow(
+        lambda preview: client.send_my_briefing_test(dry_run=preview),
+        what="briefing",
+        dry_run=dry_run,
+        assume_yes=assume_yes,
+        json_mode=json_mode,
+        door=MY_BRIEFING_DOOR,
     )
