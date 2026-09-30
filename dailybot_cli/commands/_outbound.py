@@ -15,6 +15,7 @@ from dailybot_cli.commands.public_api_helpers import emit_json, exit_for_tasks_e
 from dailybot_cli.display import (
     console,
     error_console,
+    plain_text,
     present_untrusted,
     print_error,
     print_send_test_preview,
@@ -35,7 +36,7 @@ def _destination_sentence(what: str, preview: dict[str, Any], default_target: st
     if isinstance(channel, dict):
         parts.append(
             f"the channel {present_untrusted(channel.get('name'), limit=60)} "
-            f"({channel.get('external_id')})"
+            f"({plain_text(channel.get('external_id'))})"
         )
     if people:
         parts.append(f"{len(people)} email recipient(s)")

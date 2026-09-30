@@ -29,7 +29,7 @@ def normalize_sort(value: str) -> str:
     text: str = value.strip()
     descending: bool = text.startswith(DESCENDING_PREFIX)
     field: str = text[len(DESCENDING_PREFIX) :] if descending else text
-    mapped: str = SORT_ALIASES.get(field.lower(), field)
+    mapped: str = SORT_ALIASES.get(field.lower(), field.lower())
     return f"{DESCENDING_PREFIX if descending else ''}{mapped}"
 
 

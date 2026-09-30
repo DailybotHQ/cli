@@ -314,3 +314,42 @@ class TestPullRequestReviewRound3:
             PaginatedResult(results=[row], count=1),
         ]
         assert resolve_channel(client, "123456789012345678")["external_id"] == "123456789012345678"
+
+
+class TestPullRequestReviewRound4:
+    def test_a_sort_name_is_case_insensitive(self) -> None:
+        from dailybot_cli.commands._sorting import normalize_sort
+
+        assert normalize_sort("Priority") == "priority"
+        assert normalize_sort("-DUE_DATE") == "-due_date"
+
+    def test_report_recipients_show_the_inactive_marker(self) -> None:
+        from dailybot_cli.display import _people_text
+
+        text: str = _people_text(
+            [{"name": "Ana", "is_active": False}, {"name": "Bo", "is_active": True}]
+        )
+        assert '"Ana" (inactive)' in text and '"Bo" (inactive)' not in text
+
+    def test_a_hostile_channel_id_is_neutralized_in_the_error(self) -> None:
+        client: MagicMock = MagicMock(spec=DailyBotClient)
+        client.search_channels.return_value = PaginatedResult(
+            results=[
+                {"external_id": "C1\x1b[31mX", "name": "eng", "type": "channel"},
+                {"external_id": "C2", "name": "eng", "type": "channel"},
+            ],
+            count=2,
+        )
+        with pytest.raises(click.UsageError) as raised:
+            resolve_channel(client, "eng")
+        assert "\x1b" not in raised.value.message
+
+    def test_the_readme_has_no_bare_top_level_command_fragments(self) -> None:
+        import pathlib
+        import re
+
+        readme: str = (pathlib.Path(__file__).resolve().parent.parent / "README.md").read_text(
+            encoding="utf-8"
+        )
+        bare: re.Pattern[str] = re.compile(r"· `(task|tasks|board|project|goal) ")
+        assert not bare.findall(readme)

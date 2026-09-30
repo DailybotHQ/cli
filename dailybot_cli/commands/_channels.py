@@ -11,7 +11,7 @@ from typing import Any
 
 import click
 
-from dailybot_cli.display import present_untrusted
+from dailybot_cli.display import plain_text, present_untrusted
 
 PUBLIC_CHANNEL_TYPE: str = "channel"
 # A platform id (Slack `C0123`, a Discord snowflake, a Teams `19:...@thread`) is one token; a name the
@@ -21,7 +21,7 @@ MAX_CANDIDATES_SHOWN: int = 8
 
 
 def _describe(channel: dict[str, Any]) -> str:
-    return f"{present_untrusted(channel.get('name'), limit=40)} ({channel.get('external_id')})"
+    return f"{present_untrusted(channel.get('name'), limit=40)} ({plain_text(channel.get('external_id'))})"
 
 
 def resolve_channel(client: Any, reference: str, *, public_only: bool = False) -> dict[str, str]:

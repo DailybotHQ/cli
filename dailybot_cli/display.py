@@ -2240,9 +2240,7 @@ def _channel_text(channel: Any) -> str:
 
 
 def _people_text(people: Any) -> str:
-    names: list[str] = [
-        present_untrusted(p.get("name"), limit=40) for p in (people or []) if isinstance(p, dict)
-    ]
+    names: list[str] = [_person_cell(p, limit=40) for p in (people or []) if isinstance(p, dict)]
     return ", ".join(names) if names else "none"
 
 
