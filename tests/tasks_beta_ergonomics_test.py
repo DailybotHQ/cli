@@ -138,15 +138,23 @@ class TestTaskListSort:
         assert result.exit_code == 0, result.output
         assert client.list_tasks.call_args.kwargs["filters"]["sort"] == value
 
-    @pytest.mark.parametrize("value", ["title", "--rank", "-", "status"])
-    def test_an_unknown_field_is_a_usage_error_that_lists_the_choices(
+    @pytest.mark.parametrize("value", ["-", ""])
+    def test_a_blank_sort_is_a_usage_error(
         self, runner: CliRunner, client: MagicMock, value: str
     ) -> None:
         with patch("dailybot_cli.commands.task.require_auth", return_value=client):
             result = runner.invoke(cli, ["plan", "task", "list", "--sort", value])
         assert result.exit_code == 2
-        assert "updated_at" in result.output
         client.list_tasks.assert_not_called()
+
+    @pytest.mark.parametrize("value", ["title", "status"])
+    def test_an_unknown_field_is_left_to_the_server_to_judge(
+        self, runner: CliRunner, client: MagicMock, value: str
+    ) -> None:
+        client.list_tasks.return_value = _page()
+        with patch("dailybot_cli.commands.task.require_auth", return_value=client):
+            runner.invoke(cli, ["plan", "task", "list", "--sort", value])
+        assert client.list_tasks.call_args.kwargs["filters"]["sort"] == value
 
 
 # ---------------------------------------------------------------------------

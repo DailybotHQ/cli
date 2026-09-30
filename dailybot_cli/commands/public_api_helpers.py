@@ -425,6 +425,7 @@ ERROR_CODE_MESSAGES: dict[str, str] = {
     ),
     # Validation (400)
     "target_user_inactive": "That user is inactive. Choose an active user.",
+    "invalid_sort": "That sort is not one the API offers. Pick one of the allowed fields.",
     "user_inactive": (
         "That person is inactive in this organization and cannot be given new work. "
         "Choose an active person (history and existing assignments are kept)."
@@ -633,6 +634,12 @@ def _augment_code_message(base: str, code: str, extra: dict[str, Any]) -> str:
         offenders: Any = extra.get("uuids")
         if isinstance(offenders, list) and offenders:
             return f"{base} Not visible to everyone ({len(offenders)}): {_uuid_list(offenders)}."
+    elif code == "invalid_sort":
+        allowed: Any = extra.get("allowed")
+        if isinstance(allowed, list) and allowed:
+            return (
+                f"{base} Allowed: {', '.join(str(a) for a in allowed)} (prefix with - to reverse)."
+            )
     elif code == "user_inactive":
         bits: list[str] = []
         named: Any = extra.get("parameter")
@@ -682,6 +689,7 @@ TASKS_ERROR_CODES: frozenset[str] = frozenset(
         "platform_not_connected",
         "route_scope_not_org_visible",
         "user_inactive",
+        "invalid_sort",
         "notification_routes_limit_reached",
         "report_schedules_limit_reached",
         "not_implemented",

@@ -1051,6 +1051,10 @@ Every Tasks command in this release (141), generated from the CLI's own command 
 | `dailybot plan goal unlink GOAL PROJECT` | Stop a project counting toward a goal. The project itself is untouched. | yes |
 | `dailybot plan goal update GOAL` | Change a goal, or declare its status. | yes |
 
+### Sorting
+
+`--sort` takes `priority` (urgent first), `due`, `start`, `created`, `updated`, `completed` or `rank`, also as the API names (`due_date`, `updated_at`, ...); prefix `-` for the reverse. Dates sort null-last both ways. Anything else is passed through and the API answers `invalid_sort` with `extra.allowed`, which the CLI prints. The same flag works on `plan tasks mine`.
+
 ### Inactive people
 
 An *inactive* person (deactivated, pending approval or billing-only) cannot be given new work and

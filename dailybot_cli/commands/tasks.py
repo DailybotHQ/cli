@@ -30,6 +30,7 @@ from dailybot_cli.commands._favorites import (
 )
 from dailybot_cli.commands._paging import envelope as _envelope, page_kwargs as _page_kwargs
 from dailybot_cli.commands._refs import require_uuids
+from dailybot_cli.commands._sorting import SORT_HELP, describe_sort, parse_sort
 from dailybot_cli.commands.public_api_helpers import (
     emit_json,
     exit_for_tasks_error,
@@ -1061,9 +1062,10 @@ def tasks_view_unstar(view_uuid: str, json_mode: bool) -> None:
     help="owned (default): you are the owner · participating: you are on the card · "
     "involved: owned, participating or created by you.",
 )
+@click.option("--sort", default=None, callback=parse_sort, help=SORT_HELP)
 @paging_options
 @click.option("--json", "json_mode", is_flag=True, help="Emit machine-readable JSON to stdout.")
-def tasks_mine(scope: str | None, json_mode: bool, **flags: Any) -> None:
+def tasks_mine(scope: str | None, sort: str | None, json_mode: bool, **flags: Any) -> None:
     """List the tasks that are yours.
 
     \b
@@ -1079,6 +1081,7 @@ def tasks_mine(scope: str | None, json_mode: bool, **flags: Any) -> None:
     Examples:
       dailybot plan tasks mine
       dailybot plan tasks mine --scope involved --json
+      dailybot plan tasks mine --sort priority
     """
     client = require_auth()
     try:
@@ -1086,6 +1089,8 @@ def tasks_mine(scope: str | None, json_mode: bool, **flags: Any) -> None:
         params: dict[str, Any] = page.pop("params", None) or {}
         if scope:
             params["scope"] = scope.lower()
+        if sort:
+            params["sort"] = sort
         with console.status("Reading your tasks..."):
             result: PaginatedResult = client.list_my_tasks(params=params or None, **page)
     except ValueError as exc:
@@ -1096,6 +1101,8 @@ def tasks_mine(scope: str | None, json_mode: bool, **flags: Any) -> None:
         emit_json(_envelope(result))
         return
     print_tasks_table(result.results)
+    if sort:
+        print_info(describe_sort(sort))
     print_pagination_footer(
         len(result.results),
         result.count,

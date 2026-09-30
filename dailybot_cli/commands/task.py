@@ -46,6 +46,7 @@ from dailybot_cli.commands._destructive import (
     report_preview_not_honoured,
 )
 from dailybot_cli.commands._refs import require_uuids
+from dailybot_cli.commands._sorting import SORT_HELP, describe_sort, parse_sort
 from dailybot_cli.commands._writes import IDEMPOTENCY_TTL_HOURS, named, report_write
 from dailybot_cli.commands.public_api_helpers import (
     EXIT_USAGE_ERROR,
@@ -70,6 +71,7 @@ from dailybot_cli.display import (
     print_bulk_preview,
     print_deprecation,
     print_error,
+    print_info,
     print_pagination_footer,
     print_reaction_list,
     print_success,
@@ -103,15 +105,6 @@ LABEL_MODES: tuple[str, ...] = ("add", "remove", "replace")
 OWNER_HELP: str = "Owner: a user uuid, or `me`."
 OWNER_FILTER_HELP: str = (
     "Only tasks owned by this user (uuid, `me` or `unowned`). Repeat to OR several."
-)
-# The values `/v1/plan/tasks/` accepts for `sort`; a leading `-` sorts descending.
-TASK_SORT_FIELDS: tuple[str, ...] = (
-    "rank",
-    "priority",
-    "due_date",
-    "updated_at",
-    "created_at",
-    "completed_at",
 )
 
 
@@ -226,20 +219,6 @@ def resolve_state(states: Any, value: str) -> str:
     )
 
 
-def _parse_sort(_ctx: click.Context, _param: click.Parameter, value: str | None) -> str | None:
-    """Accept `field` or `-field` for a declared sort field; say what is allowed otherwise."""
-    if value is None:
-        return None
-    field: str = value[1:] if value.startswith("-") else value
-    if field not in TASK_SORT_FIELDS:
-        allowed: str = ", ".join(TASK_SORT_FIELDS)
-        raise click.BadParameter(
-            f"{value!r} is not a sort field. Use one of: {allowed} "
-            "(prefix with - for descending, e.g. -updated_at)."
-        )
-    return value
-
-
 ASSIGNEE_DEPRECATION: str = "`--assignee` is deprecated; use `--owner` (same value)."
 ASSIGN_DEPRECATION: str = "`dailybot plan task assign` is deprecated; use `dailybot plan task set-owner <task> <user|me>`."
 
@@ -297,9 +276,8 @@ mark_beta(task)
 @click.option(
     "--sort",
     default=None,
-    callback=_parse_sort,
-    help="Order by rank, priority, due_date, updated_at, created_at or completed_at; "
-    "prefix with - for descending.",
+    callback=parse_sort,
+    help=SORT_HELP,
 )
 @click.option(
     "--has-dates/--no-has-dates",
@@ -396,6 +374,8 @@ def task_list(
         emit_json(_envelope(result))
         return
     print_tasks_table(result.results)
+    if sort:
+        print_info(describe_sort(sort))
     print_pagination_footer(
         len(result.results),
         result.count,
