@@ -72,6 +72,13 @@ Don't reinvent panels and tables in command code. The existing helpers cover mos
 | `print_checkin_complete_result(data)` | Check-in completion confirmation panel |
 | `print_tasks_rows(title, rows, columns, empty=, hide_when_uniform=)` | Every Tasks list table. Columns are `(header, dotted path, trusted)`: trusted ids/dates/statuses never wrap, user-authored text goes through the untrusted presenter and keeps a minimum width; a header in `hide_when_uniform` is dropped while no row has a truthy value there |
 | `print_timeline(document, include_unscheduled=)` | `tasks timeline`: the window, the goals that overlap it, the dated work, the unscheduled count and a truncation warning |
+| `print_notification_catalog(catalog)` | Notification kinds grouped, with scope, defaults and whether they fire immediately |
+| `print_my_notifications(data)` | Personal preference matrix (effective chat/email, set or default), destination, pause |
+| `print_notification_routes(result)` / `print_reports(result)` | Routes and scheduled reports as cards (name, state, channel and recipients, schedule in command-line terms, whole uuid); hint when the viewer cannot manage |
+| `print_route_deliveries(result)` / `print_report_runs(result)` | Delivery log and run history tables |
+| `print_briefing(data)` | Personal briefing: days, time, timezone (default noted), DM and email legs, effectiveness |
+| `print_report_document(document)` | A ReportDocument: header, narrative first, sections, typed items, `+N more`, `200+` saturation; all text quoted |
+| `print_send_test_preview(data)` | A dry-run (or real) send-test: destination first, then the message or document, then "nothing was sent" |
 
 If you need a new shape, add a helper here rather than building it inline.
 

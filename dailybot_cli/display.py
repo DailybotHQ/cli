@@ -16,7 +16,7 @@ from rich.panel import Panel
 from rich.table import Table
 from rich.text import Text
 
-from dailybot_cli.api_client import TASKS_DELTA_MAX_WINDOW_DAYS, resource_uuid
+from dailybot_cli.api_client import TASKS_DELTA_MAX_WINDOW_DAYS, PaginatedResult, resource_uuid
 from dailybot_cli.config import get_api_url, get_app_url
 
 console: Console = Console()
@@ -2099,6 +2099,282 @@ def print_timeline(document: dict[str, Any], *, include_unscheduled: bool = Fals
         unscheduled = unscheduled.get("count")
     if isinstance(unscheduled, int) and unscheduled and not include_unscheduled:
         print_info(f"{unscheduled} task(s) have no dates. Add --include-unscheduled to list them.")
+
+
+# --- Tasks notifications, routes, reports, briefing (PLAN_004) ---------------
+
+REPORT_COUNT_SATURATION: int = 200  # the API stops counting here: show "200+", never a false total
+WEEKDAY_SHORT: tuple[str, ...] = ("mon", "tue", "wed", "thu", "fri", "sat", "sun")
+_CATALOG_COLUMNS: list[tuple[str, str, bool]] = [
+    ("Kind", "key", True),
+    ("Title", "title", False),
+    ("Default", "defaults", True),
+    ("When", "when", True),
+]
+_NOTIFICATION_COLUMNS: list[tuple[str, str, bool]] = [
+    ("Kind", "kind", True),
+    ("Title", "title", False),
+    ("Chat", "chat_text", True),
+    ("Email", "email_text", True),
+    ("Value", "origin", True),
+]
+_DELIVERY_COLUMNS: list[tuple[str, str, bool]] = [
+    ("When", "created_at", True),
+    ("Kind", "kind", True),
+    ("Status", "status", True),
+    ("Error", "error", True),
+]
+_RUN_COLUMNS: list[tuple[str, str, bool]] = [
+    ("Period", "period_key", True),
+    ("Status", "status", True),
+    ("Sent at", "sent_at", True),
+    ("Emails", "email_count", True),
+    ("Message", "channel_message_id", True),
+    ("Test", "test_text", True),
+    ("Error", "error", True),
+]
+
+
+def _flag(value: Any) -> str:
+    return "on" if value else "off"
+
+
+def _weekday_text(days: Any) -> str:
+    numbers: list[int] = (
+        sorted({d for d in days if isinstance(d, int)}) if isinstance(days, list) else []
+    )
+    return ",".join(
+        WEEKDAY_SHORT[d - 1] if 1 <= d <= len(WEEKDAY_SHORT) else str(d) for d in numbers
+    )
+
+
+def _channel_text(channel: Any) -> str:
+    """A channel reference as quoted data plus its whole external id (what the commands take)."""
+    if not isinstance(channel, dict):
+        return "no channel"
+    return f"{present_untrusted(channel.get('name'), limit=40)} ({safe_text(channel.get('external_id', '?'))})"
+
+
+def _people_text(people: Any) -> str:
+    names: list[str] = [
+        present_untrusted(p.get("name"), limit=40) for p in (people or []) if isinstance(p, dict)
+    ]
+    return ", ".join(names) if names else "none"
+
+
+def _scope_text(scope: Any) -> str:
+    if not isinstance(scope, dict) or scope.get("type") in (None, "all"):
+        return "all"
+    return f"{safe_text(scope.get('type'))} ({len(scope.get('uuids') or [])})"
+
+
+def print_notification_catalog(catalog: dict[str, Any]) -> None:
+    """The notification kinds, grouped, with scope and defaults."""
+    kinds: list[dict[str, Any]] = [k for k in catalog.get("kinds") or [] if isinstance(k, dict)]
+    if not kinds:
+        print_info("There are no notification kinds.")
+        return
+    for group in [g for g in catalog.get("groups") or [] if isinstance(g, dict)]:
+        rows: list[dict[str, Any]] = [
+            {
+                **k,
+                "defaults": "/".join(
+                    name for name in ("chat", "email") if (k.get("default") or {}).get(name)
+                )
+                or "off",
+                "when": "immediately" if k.get("immediate") else "batched",
+            }
+            for k in kinds
+            if k.get("group") == group.get("key")
+        ]
+        if rows:
+            print_tasks_rows(
+                f"{group.get('title', group.get('key'))}", rows, _CATALOG_COLUMNS, empty=""
+            )
+    console.print(
+        "[dim]personal kinds: `tasks notifications set`; org kinds: `tasks routes`.[/dim]"
+    )
+
+
+def print_my_notifications(data: dict[str, Any]) -> None:
+    """The preference matrix (effective values, stored or default) and where they are delivered."""
+    rows: list[dict[str, Any]] = [
+        {
+            **item,
+            "chat_text": _flag(item.get("chat")) if "chat" in (item.get("supports") or []) else "-",
+            "email_text": _flag(item.get("email"))
+            if "email" in (item.get("supports") or [])
+            else "-",
+            "origin": "set" if item.get("stored") else "default",
+        }
+        for item in data.get("items") or []
+        if isinstance(item, dict)
+    ]
+    print_tasks_rows(
+        "My notifications", rows, _NOTIFICATION_COLUMNS, empty="No notification kinds."
+    )
+    destination: dict[str, Any] = data.get("destination") or {}
+    if destination.get("type") == "channel":
+        print_info(
+            f"Delivered in the channel {_channel_text(destination.get('channel'))}; work on private boards and projects always comes by DM."
+        )
+    else:
+        print_info("Delivered by DM.")
+    if data.get("paused_until"):
+        print_warning(f"Paused until {safe_text(data['paused_until'])}.")
+
+
+def _print_card(lines: list[str]) -> None:
+    console.print(lines[0])
+    for extra in lines[1:]:
+        console.print(f"  {extra}")
+
+
+def _manage_hint(result: PaginatedResult, what: str) -> None:
+    viewer: Any = result.extra.get("viewer")
+    if isinstance(viewer, dict) and viewer.get("can_manage") is False:
+        print_info(f"Only organization admins change {what}.")
+
+
+def print_notification_routes(result: PaginatedResult) -> None:
+    """Routes as cards: name and state, channel and scope, kinds, and the whole uuid."""
+    if not result.results:
+        print_info("There are no notification routes.")
+        _manage_hint(result, "routes")
+        return
+    for route in result.results:
+        _print_card(
+            [
+                f"{present_untrusted(route.get('name'), limit=60)} [{_flag(route.get('enabled'))}]  "
+                f"{_channel_text(route.get('channel'))}",
+                f"scope: {_scope_text(route.get('scope'))}   kinds ({len(route.get('kinds') or [])}): "
+                + ", ".join(safe_text(k) for k in route.get("kinds") or []),
+                f"uuid: {safe_text(route.get('uuid', ''))}",
+            ]
+        )
+    _manage_hint(result, "routes")
+
+
+def print_reports(result: PaginatedResult) -> None:
+    """Reports as cards: name, kind, schedule in command-line terms, destinations, whole uuid."""
+    if not result.results:
+        print_info("There are no scheduled reports.")
+        _manage_hint(result, "reports")
+        return
+    for report in result.results:
+        where: str = _channel_text(report.get("channel")) if report.get("channel") else "no channel"
+        _print_card(
+            [
+                f"{present_untrusted(report.get('name'), limit=60)} [{_flag(report.get('enabled'))}]  "
+                f"{safe_text(report.get('kind', ''))}  {_weekday_text(report.get('weekdays'))} "
+                f"{safe_text(report.get('time', ''))} {safe_text(report.get('timezone', ''))}",
+                f"channel: {where}   email: {_people_text(report.get('email_recipients'))}",
+                f"scope: {_scope_text(report.get('scope'))}   uuid: {safe_text(report.get('uuid', ''))}",
+            ]
+        )
+    _manage_hint(result, "reports")
+
+
+def print_route_deliveries(result: PaginatedResult) -> None:
+    rows: list[dict[str, Any]] = list(result.results)
+    print_tasks_rows("Deliveries", rows, _DELIVERY_COLUMNS, empty="There are no deliveries yet.")
+
+
+def print_report_runs(result: PaginatedResult) -> None:
+    rows: list[dict[str, Any]] = [
+        {**r, "test_text": "test" if r.get("is_test") else ""} for r in result.results
+    ]
+    print_tasks_rows("Runs", rows, _RUN_COLUMNS, empty="There are no runs yet.")
+
+
+def print_briefing(data: dict[str, Any]) -> None:
+    """The personal briefing: schedule, where it arrives, and whether it will actually run."""
+    zone: str = safe_text(data.get("timezone", "?")) + (
+        " (default)" if data.get("timezone_is_default") else ""
+    )
+    print_info(f"Daily briefing: {'enabled' if data.get('enabled') else 'disabled'}")
+    console.print(
+        f"  days: {_weekday_text(data.get('weekdays'))}   time: {safe_text(data.get('time', ''))} {zone}"
+    )
+    console.print(f"  arrives by: DM {_flag(data.get('chat'))}, email {_flag(data.get('email'))}")
+    if not data.get("chat") and not data.get("email"):
+        print_warning("Both DM and email are off, so nothing would arrive.")
+    console.print(
+        f"  skipped when empty: {'yes' if data.get('skip_when_empty') else 'no'}   last sent: {safe_text(data.get('last_sent_at') or 'never')}"
+    )
+    if data.get("enabled") and data.get("effective") is False:
+        print_warning(
+            "It is enabled but not effective right now (for example Tasks is switched off for the organization)."
+        )
+
+
+def _item_line(item: dict[str, Any]) -> str:
+    kind: str = str(item.get("type", "text"))
+    title: str = present_untrusted(item.get("title"), limit=90)
+    badges: str = " ".join(f"\\[{safe_text(b)}]" for b in item.get("badges") or [])
+    bits: list[str] = []
+    owner: Any = item.get("owner")
+    if isinstance(owner, dict) and owner.get("name"):
+        bits.append(present_untrusted(owner.get("name"), limit=30))
+    if item.get("due_date"):
+        bits.append(f"due {safe_text(item['due_date'])}")
+    if kind == "task" and item.get("state"):
+        bits.append(present_untrusted(item.get("state"), limit=30))
+    if kind == "project" and item.get("health"):
+        bits.append(safe_text(item["health"]))
+    prefix: str = f"{safe_text(item['key'])}  " if kind == "task" and item.get("key") else ""
+    tail: str = f"  [dim]({', '.join(bits)})[/dim]" if bits else ""
+    return f"  - {prefix}{title}{(' ' + badges) if badges else ''}{tail}"
+
+
+def print_report_document(document: dict[str, Any]) -> None:
+    """Render a ReportDocument: header, narrative first when present, sections, items, "+N more"."""
+    header: dict[str, Any] = document.get("header") or {}
+    console.print(
+        f"[bold]{present_untrusted(header.get('title'), limit=90)}[/bold]  [dim]{safe_text(header.get('period_label', ''))}[/dim]"
+    )
+    if document.get("narrative"):
+        console.print(
+            Panel(present_untrusted(document["narrative"]), title="Narrative", border_style="cyan")
+        )
+    sections: list[dict[str, Any]] = [
+        s for s in document.get("sections") or [] if isinstance(s, dict)
+    ]
+    if document.get("empty") or not any(s.get("items") or s.get("count") for s in sections):
+        print_info("Nothing to report.")
+        return
+    for section in sections:
+        count: int = int(section.get("count") or 0)
+        shown: list[dict[str, Any]] = [i for i in section.get("items") or [] if isinstance(i, dict)]
+        total: str = (
+            f"{REPORT_COUNT_SATURATION}+" if count >= REPORT_COUNT_SATURATION else str(count)
+        )
+        title: str = present_untrusted(section.get("title"), limit=80)
+        if not shown and not count:
+            console.print(f"[dim]{title} - none[/dim]")
+            continue
+        console.print(f"[bold]{title}[/bold] ({total})")
+        for item in shown:
+            console.print(_item_line(item))
+        if count > len(shown):
+            console.print(f"  [dim]+{count - len(shown)} more[/dim]")
+
+
+def print_send_test_preview(data: dict[str, Any]) -> None:
+    """What a send-test would post (dry run) or did post: destination first, then the content."""
+    console.print(
+        f"Channel: {_channel_text(data.get('channel'))}" if data.get("channel") else "Channel: none"
+    )
+    if "email_recipients" in data:
+        console.print(f"Email to: {_people_text(data.get('email_recipients'))}")
+    if isinstance(data.get("text"), str):
+        console.print(Panel(present_untrusted(data["text"]), title="Message", border_style="cyan"))
+    if isinstance(data.get("document"), dict):
+        print_report_document(data["document"])
+    if data.get("sent"):
+        print_success("Sent.")
+    else:
+        print_info("Dry run: nothing was sent.")
 
 
 def print_bulk_preview(preview: dict[str, Any]) -> None:

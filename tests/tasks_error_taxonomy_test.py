@@ -310,3 +310,70 @@ class TestThrottledMessageIsNotDoubled:
         with pytest.raises(SystemExit):
             exit_for_tasks_error(APIError(429, "Slow down.", code="throttled"), False)
         assert " ".join(capsys.readouterr().err.split()).lower().count("try again") == 1
+
+
+NOTIFICATION_CODES: tuple[str, ...] = (
+    "invalid_schedule",
+    "unknown_notification_kind",
+    "unknown_field",
+    "channel_not_found",
+    "platform_not_connected",
+    "route_scope_not_org_visible",
+    "notification_routes_limit_reached",
+    "report_schedules_limit_reached",
+    "not_implemented",
+)
+
+
+class TestNotificationCodes:
+    @pytest.mark.parametrize("code", NOTIFICATION_CODES)
+    def test_each_code_is_in_the_vocabulary_with_a_message(self, code: str) -> None:
+        assert code in TASKS_ERROR_CODES
+        assert code in ERROR_CODE_MESSAGES
+
+    @pytest.mark.parametrize(
+        ("code", "parameter", "flag"),
+        [
+            ("invalid_schedule", "weekdays", "--weekdays"),
+            ("invalid_schedule", "time", "--time"),
+            ("invalid_schedule", "timezone", "--timezone"),
+            ("invalid_schedule", "channel", "--channel"),
+            ("unknown_notification_kind", "kind", "--kind"),
+        ],
+    )
+    def test_the_message_names_the_flag_the_parameter_maps_to(
+        self, code: str, parameter: str, flag: str
+    ) -> None:
+        exc: APIError = APIError(400, "x", code=code, extra={"parameter": parameter})
+        assert flag in resolve_error_message(exc, tasks_surface=True)
+
+    def test_an_unknown_parameter_is_shown_as_data_not_a_flag(self) -> None:
+        exc: APIError = APIError(400, "x", code="unknown_field", extra={"parameter": "bogus"})
+        assert "bogus" in resolve_error_message(exc, tasks_surface=True)
+
+    @pytest.mark.parametrize(
+        "code", ["notification_routes_limit_reached", "report_schedules_limit_reached"]
+    )
+    def test_a_limit_code_states_the_limit(self, code: str) -> None:
+        exc: APIError = APIError(400, "x", code=code, extra={"limit": 10})
+        assert "10" in resolve_error_message(exc, tasks_surface=True)
+
+    def test_a_scope_refusal_counts_the_offending_uuids(self) -> None:
+        uuids: list[str] = [f"00000000-0000-0000-0000-00000000000{i}" for i in range(1, 5)]
+        exc: APIError = APIError(
+            400, "x", code="route_scope_not_org_visible", extra={"uuids": uuids}
+        )
+        message: str = resolve_error_message(exc, tasks_surface=True)
+        assert uuids[0] in message
+        assert "4" in message
+
+    def test_the_json_envelope_keeps_extra_for_agents(
+        self, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        exc: APIError = APIError(400, "bad", code="invalid_schedule", extra={"parameter": "time"})
+        with pytest.raises(SystemExit) as raised:
+            exit_for_tasks_error(exc, True)
+        assert raised.value.code == 2
+        envelope: dict[str, object] = json.loads(capsys.readouterr().out)
+        assert envelope["code"] == "invalid_schedule"
+        assert envelope["extra"] == {"parameter": "time"}

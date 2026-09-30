@@ -66,6 +66,25 @@ ERROR_CODE_MESSAGES: dict[str, str] = {
         "`dailybot project update-unreact`) before adding another; "
         "re-adding an emoji you already hold changes nothing."
     ),
+    "invalid_schedule": ("That schedule is not valid: weekdays, time, timezone or destination."),
+    "unknown_notification_kind": (
+        "That notification kind does not exist, or does not apply to this setting. "
+        "See the valid kinds with `dailybot tasks notifications catalog`."
+    ),
+    "channel_not_found": (
+        "That channel was not found, or it is private and you cannot use it. "
+        "List what you can pick with `dailybot tasks channels search`."
+    ),
+    "platform_not_connected": (
+        "No chat platform is connected for this organization, so channels and messages "
+        "are not available."
+    ),
+    "route_scope_not_org_visible": (
+        "A route or report can only cover boards and projects that the whole organization can see."
+    ),
+    "notification_routes_limit_reached": "The organization already has the most routes allowed.",
+    "report_schedules_limit_reached": "The organization already has the most scheduled reports allowed.",
+    "not_implemented": "The API does not support that yet.",
     "throttled": ("You are sending requests faster than your account allows."),
     "task_archived": (
         "This task is archived, so it cannot be changed or duplicated. "
@@ -544,6 +563,27 @@ def emit_json_error(message: str, status: int) -> None:
     emit_json({"error": message, "status": status})
 
 
+# Codes whose `extra.parameter` names what to fix, and how a parameter maps to a command-line flag.
+_PARAMETER_CODES: frozenset[str] = frozenset(
+    {"invalid_schedule", "unknown_notification_kind", "unknown_field", "channel_not_found"}
+)
+_PARAMETER_FLAGS: dict[str, str] = {
+    "weekdays": "--weekdays",
+    "weekday": "--weekdays",
+    "time": "--time",
+    "timezone": "--timezone",
+    "channel": "--channel",
+    "kind": "--kind",
+    "scope": "--scope",
+    "name": "--name",
+    "email_recipients": "--email-to",
+}
+_LIMIT_CODES: frozenset[str] = frozenset(
+    {"notification_routes_limit_reached", "report_schedules_limit_reached"}
+)
+_MAX_UUIDS_SHOWN: int = 3
+
+
 def _augment_code_message(base: str, code: str, extra: dict[str, Any]) -> str:
     """Enrich a code's base message with machine-readable `extra` context."""
     if code == "plan_upgrade_required":
@@ -564,6 +604,25 @@ def _augment_code_message(base: str, code: str, extra: dict[str, Any]) -> str:
         limit: Any = extra.get("limit")
         if isinstance(limit, int):
             return f"{base} The limit is {limit} different emojis per person."
+    elif code in _LIMIT_CODES:
+        org_limit: Any = extra.get("limit")
+        if isinstance(org_limit, int):
+            return f"{base} The limit is {org_limit}; delete one first."
+    elif code in _PARAMETER_CODES:
+        parameter: Any = extra.get("parameter")
+        if isinstance(parameter, str) and parameter:
+            flag: str | None = _PARAMETER_FLAGS.get(parameter)
+            return f"{base} Check {flag}." if flag else f"{base} Field: {parameter!r}."
+    elif code == "route_scope_not_org_visible":
+        offenders: Any = extra.get("uuids")
+        if isinstance(offenders, list) and offenders:
+            shown: str = ", ".join(str(u) for u in offenders[:_MAX_UUIDS_SHOWN])
+            more: str = (
+                f" (+{len(offenders) - _MAX_UUIDS_SHOWN} more)"
+                if len(offenders) > _MAX_UUIDS_SHOWN
+                else ""
+            )
+            return f"{base} Not visible to everyone ({len(offenders)}): {shown}{more}."
     return base
 
 
@@ -594,6 +653,15 @@ PERSON_SHAPED_TASKS_DOORS: frozenset[str] = frozenset(
 # that nobody forgot one.
 TASKS_ERROR_CODES: frozenset[str] = frozenset(
     {
+        "invalid_schedule",
+        "unknown_notification_kind",
+        "unknown_field",
+        "channel_not_found",
+        "platform_not_connected",
+        "route_scope_not_org_visible",
+        "notification_routes_limit_reached",
+        "report_schedules_limit_reached",
+        "not_implemented",
         "throttled",
         "task_archived",
         "project_name_conflict",
@@ -852,6 +920,7 @@ def exit_for_tasks_error(
                 "code": exc.code,
                 "detail": exc.detail,
                 "message": message,
+                **({"extra": exc.extra} if exc.extra else {}),
                 **({"retry_after": wait} if wait is not None else {}),
                 **(envelope_extra or {}),
             }
