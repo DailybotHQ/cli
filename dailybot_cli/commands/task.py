@@ -44,6 +44,7 @@ from dailybot_cli.commands._destructive import (
     preview_then_confirm,
     report_preview_not_honoured,
 )
+from dailybot_cli.commands._refs import require_uuids
 from dailybot_cli.commands._writes import IDEMPOTENCY_TTL_HOURS, named, report_write
 from dailybot_cli.commands.public_api_helpers import (
     EXIT_USAGE_ERROR,
@@ -288,6 +289,13 @@ mark_beta(task)
 @click.option("--assignee", "assignees", multiple=True, hidden=True, help=ASSIGNEE_DEPRECATION)
 @click.option("--label", default=None, help="Only tasks carrying this label.")
 @click.option(
+    "--milestone",
+    "milestones",
+    multiple=True,
+    callback=require_uuids,
+    help="Only tasks in this milestone (uuid, repeatable).",
+)
+@click.option(
     "--sort",
     default=None,
     callback=_parse_sort,
@@ -317,6 +325,7 @@ def task_list(
     owners: tuple[str, ...],
     assignees: tuple[str, ...],
     label: str | None,
+    milestones: tuple[str, ...],
     sort: str | None,
     has_dates: bool | None,
     include: tuple[str, ...],
@@ -355,6 +364,8 @@ def task_list(
         filters["owner"] = owner_values
     if label:
         filters["label"] = label
+    if milestones:
+        filters["milestone"] = list(milestones)
     if sort:
         filters["sort"] = sort
     if has_dates is not None:

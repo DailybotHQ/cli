@@ -2057,6 +2057,22 @@ _TIMELINE_FLAGS: tuple[tuple[str, str], ...] = (
 )
 
 
+_TIMELINE_MILESTONE_COLUMNS: list[tuple[str, str, bool]] = [
+    ("Date", "date", True),
+    ("Milestone", "name", False),
+    ("Project", "project.name", False),
+    ("Done", "progress_text", True),
+    ("Flags", "flags", True),
+]
+_TIMELINE_PROJECT_COLUMNS: list[tuple[str, str, bool]] = [
+    ("Project", "name", False),
+    ("Lead", "lead.name", False),
+    ("Health", "health", True),
+    ("Target", "target_date", True),
+    ("Done", "progress_text", True),
+]
+
+
 def print_timeline(document: dict[str, Any], *, include_unscheduled: bool = False) -> None:
     """Render the timeline document: its window, the goals that overlap it, the dated work.
 
@@ -2082,8 +2098,49 @@ def print_timeline(document: dict[str, Any], *, include_unscheduled: bool = Fals
             for row in rows
         ]
         print_tasks_rows("Dated work", shown, _TIMELINE_ROW_COLUMNS, empty="")
+    milestones: list[dict[str, Any]] = [
+        m for m in document.get("milestones") or [] if isinstance(m, dict)
+    ]
+    if milestones:
+        print_tasks_rows(
+            "Milestones",
+            [
+                {
+                    **m,
+                    "progress_text": f"{m.get('done_count', 0)}/{m.get('task_count', 0)}",
+                    "flags": ", ".join(
+                        word
+                        for field, word in (("is_completed", "done"), ("is_overdue", "overdue"))
+                        if m.get(field)
+                    ),
+                }
+                for m in milestones
+            ],
+            _TIMELINE_MILESTONE_COLUMNS,
+            empty="",
+        )
+    projects: list[dict[str, Any]] = [
+        p for p in document.get("projects") or [] if isinstance(p, dict)
+    ]
+    if projects:
+        print_tasks_rows(
+            "Projects",
+            [
+                {
+                    **p,
+                    "progress_text": f"{(p.get('progress') or {}).get('done', 0)}/{(p.get('progress') or {}).get('total', 0)}",
+                }
+                for p in projects
+            ],
+            _TIMELINE_PROJECT_COLUMNS,
+            empty="",
+        )
     if document.get("truncated"):
         print_warning("The list was cut short. Narrow the window with --since / --until.")
+    if document.get("milestones_truncated"):
+        print_warning("Some milestones are not shown. Narrow the window with --since / --until.")
+    if document.get("projects_truncated"):
+        print_warning("Some projects are not shown. Narrow the window with --since / --until.")
     unscheduled: Any = document.get("unscheduled")
     if isinstance(unscheduled, dict):
         results: list[dict[str, Any]] = [

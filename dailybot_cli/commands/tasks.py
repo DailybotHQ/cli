@@ -29,6 +29,7 @@ from dailybot_cli.commands._favorites import (
     unstar,
 )
 from dailybot_cli.commands._paging import envelope as _envelope, page_kwargs as _page_kwargs
+from dailybot_cli.commands._refs import require_uuids
 from dailybot_cli.commands.public_api_helpers import (
     emit_json,
     exit_for_tasks_error,
@@ -457,19 +458,40 @@ def tasks_activity(
 @tasks.command("timeline")
 @window_options
 @click.option("--include-unscheduled", is_flag=True, help="Also list the tasks that have no dates.")
+@click.option(
+    "--project",
+    "projects",
+    multiple=True,
+    callback=require_uuids,
+    help="Only this project (uuid, repeatable).",
+)
+@click.option(
+    "--milestone",
+    "milestones",
+    multiple=True,
+    callback=require_uuids,
+    help="Only this milestone (uuid, repeatable).",
+)
 @click.option("--json", "json_mode", is_flag=True, help="Emit machine-readable JSON to stdout.")
-def tasks_timeline(json_mode: bool, include_unscheduled: bool, **flags: Any) -> None:
-    """Show the dated work in a window: goals that overlap it and tasks with dates.
+def tasks_timeline(
+    json_mode: bool,
+    include_unscheduled: bool,
+    projects: tuple[str, ...],
+    milestones: tuple[str, ...],
+    **flags: Any,
+) -> None:
+    """Show the dated work in a window: goals, tasks, milestones and projects.
 
     \b
-    The default window is the door's own (forward from today). Milestones and projects are
-    not part of this view: use `dailybot project milestones` and `dailybot project list`.
+    The default window is the door's own (forward from today). Milestones whose date falls in the
+    window and the projects that overlap it are listed too; narrow with --project / --milestone.
 
     \b
     Examples:
       dailybot tasks timeline --since 2026-10-01 --until 2026-12-31
       dailybot tasks timeline --today --json
       dailybot tasks timeline --include-unscheduled
+      dailybot tasks timeline --project <project-uuid> --since 2026-10-01 --until 2026-12-31
     """
     client = require_auth()
     try:
@@ -479,6 +501,8 @@ def tasks_timeline(json_mode: bool, include_unscheduled: bool, **flags: Any) -> 
                 date_from=params.get("start_date"),
                 date_to=params.get("end_date"),
                 include_unscheduled=include_unscheduled,
+                projects=list(projects) or None,
+                milestones=list(milestones) or None,
             )
     except ValueError as exc:
         raise click.BadParameter(str(exc)) from exc
