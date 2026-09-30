@@ -795,14 +795,11 @@ key, where the wording would be misleading).
 | 429 | passes through | `agent email send` adds "Hourly email limit exceeded"; `agent register` adds "Rate limited. Try again in a few minutes." |
 | `httpx.TimeoutException` | propagates from httpx | `update.py` and `interactive.py` catch and emit a "may be processing your update" message |
 
-## Plan (formerly Tasks) — `/v1/plan/*`
+## Plan — `/v1/plan/*`
 
-> **Renamed.** The product formerly called Tasks is now **Dailybot Plan** and the public API root is
-> `/v1/plan/` (it replaces `/v1/tasks/` with no fallback). The CLI calls `/v1/plan/` from 3.25.0; earlier
-> versions call `/v1/tasks/`, which a current server answers with 404, so upgrade. Resource names, shapes,
-> scopes (`tasks:read|write|admin`), webhook events (`tasks.*`) and error codes are unchanged. Every command
-> now lives under `dailybot plan` (for example `dailybot plan tasks status`); the old top-level
-> `dailybot tasks|task|board|project|goal` forms are removed, with no alias.
+> Dailybot Plan is served under `/v1/plan/`, and every command lives under `dailybot plan`
+> (for example `dailybot plan tasks status`). Scopes keep the names `tasks:read|write|admin` and webhook
+> events `tasks.*`.
 
 Projects, boards, tasks, goals and milestones. Two CLI groups serve it: `dailybot plan tasks`
 (workspace-level) and `dailybot plan task` (object-level).

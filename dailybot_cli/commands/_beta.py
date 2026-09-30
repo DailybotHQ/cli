@@ -1,4 +1,4 @@
-"""The Plan Beta notice (the product formerly called Tasks), shared by every Plan command group.
+"""The Plan Beta notice, shared by every Plan command group.
 
 The facts are fixed product copy (the same words ship in the README, the agent
 skill and the web app). Terminal help cannot render Markdown, so the help block
