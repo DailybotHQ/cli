@@ -1042,10 +1042,11 @@ def project_attachments(project_uuid: str, json_mode: bool) -> None:
 
 @project.group("attachment")
 def project_attachment() -> None:
-    """Download or delete one attachment on a project.
+    """Download, rename or delete one attachment on a project.
 
     \b
     Examples:
+      dailybot plan project attachment rename <project-uuid> <attachment-uuid> plan-v2.pdf
       dailybot plan project attachment get <project-uuid> <attachment-uuid> -o ./plan.pdf
       dailybot plan project attachment delete <project-uuid> <attachment-uuid> --dry-run
     """
@@ -1078,6 +1079,30 @@ def project_attachment_get(
         output,
         attachment_uuid=attachment_uuid,
         force=force,
+        json_mode=json_mode,
+        require_auth=require_auth,
+    )
+
+
+@project_attachment.command("rename")
+@click.argument("project_uuid", metavar="PROJECT")
+@click.argument("attachment_uuid", metavar="ATTACHMENT")
+@click.argument("filename")
+@click.option("--json", "json_mode", is_flag=True, help="Emit machine-readable JSON to stdout.")
+def project_attachment_rename(
+    project_uuid: str, attachment_uuid: str, filename: str, json_mode: bool
+) -> None:
+    """Rename a project's attachment (1 to 255 characters).
+
+    \b
+    Examples:
+      dailybot plan project attachment rename <project-uuid> <attachment-uuid> plan-v2.pdf
+    """
+    run_rename(
+        lambda client, name: client.rename_project_attachment(
+            project_uuid, attachment_uuid, filename=name
+        ),
+        filename,
         json_mode=json_mode,
         require_auth=require_auth,
     )

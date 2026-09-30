@@ -50,7 +50,7 @@ def _option_names(command: click.Command) -> set[str]:
 
 def test_the_sweep_sees_the_whole_surface() -> None:
     # A floor, so a broken walker cannot pass by checking nothing.
-    assert len(COMMANDS) >= 160
+    assert len(COMMANDS) >= 170
 
 
 @pytest.mark.parametrize(("path", "command"), COMMANDS, ids=IDS)

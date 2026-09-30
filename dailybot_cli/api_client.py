@@ -3661,6 +3661,10 @@ class DailyBotClient:
         return f"projects/{_path_segment(project_uuid)}"
 
     @staticmethod
+    def _board_parent(board_uuid: str) -> str:
+        return f"boards/{_path_segment(board_uuid)}"
+
+    @staticmethod
     def _goal_parent(goal_uuid: str) -> str:
         return f"goals/{_path_segment(goal_uuid)}"
 
@@ -3690,6 +3694,34 @@ class DailyBotClient:
     def delete_task_attachment(self, task_uuid: str, attachment_uuid: str) -> Any:
         """DELETE …/attachments/<uuid>/ — also removes the stored object when unshared."""
         return self._delete_attachment_of(self._task_parent(task_uuid), attachment_uuid)
+
+    def rename_task_attachment(self, task_uuid: str, attachment_uuid: str, *, filename: str) -> Any:
+        """PATCH …/tasks/<t>/attachments/<a>/ — rename the file."""
+        return self._rename_attachment_of(
+            self._task_parent(task_uuid), attachment_uuid, filename=filename
+        )
+
+    def rename_comment_attachment(
+        self, task_uuid: str, comment_uuid: str, attachment_uuid: str, *, filename: str
+    ) -> Any:
+        """PATCH …/comments/<c>/attachments/<a>/ — rename the file."""
+        return self._rename_attachment_of(
+            self._comment_parent(task_uuid, comment_uuid), attachment_uuid, filename=filename
+        )
+
+    def rename_project_attachment(
+        self, project_uuid: str, attachment_uuid: str, *, filename: str
+    ) -> Any:
+        """PATCH …/projects/<p>/attachments/<a>/ — rename the file."""
+        return self._rename_attachment_of(
+            self._project_parent(project_uuid), attachment_uuid, filename=filename
+        )
+
+    def rename_goal_attachment(self, goal_uuid: str, attachment_uuid: str, *, filename: str) -> Any:
+        """PATCH …/goals/<g>/attachments/<a>/ — rename the file."""
+        return self._rename_attachment_of(
+            self._goal_parent(goal_uuid), attachment_uuid, filename=filename
+        )
 
     def download_attachment(self, task_uuid: str, attachment_uuid: str) -> bytes:
         """GET …/attachments/<uuid>/content/ — the bytes of a task attachment."""
@@ -3765,6 +3797,44 @@ class DailyBotClient:
     def download_project_attachment(self, project_uuid: str, attachment_uuid: str) -> bytes:
         """GET /v1/plan/projects/<p>/attachments/<a>/content/."""
         return self._download_attachment_of(self._project_parent(project_uuid), attachment_uuid)
+
+    def upload_board_attachment(
+        self,
+        board_uuid: str,
+        *,
+        filename: str,
+        content_type: str,
+        data: bytes,
+        caption: str | None = None,
+    ) -> dict[str, Any]:
+        """POST /v1/plan/boards/<b>/attachments/ — multipart, ≤5 MiB, person session."""
+        return self._upload_attachment_to(
+            self._board_parent(board_uuid),
+            filename=filename,
+            content_type=content_type,
+            data=data,
+            caption=caption,
+        )
+
+    def list_board_attachments(self, board_uuid: str) -> Any:
+        """GET /v1/plan/boards/<b>/attachments/."""
+        return self._list_attachments_of(self._board_parent(board_uuid))
+
+    def delete_board_attachment(self, board_uuid: str, attachment_uuid: str) -> Any:
+        """DELETE /v1/plan/boards/<b>/attachments/<a>/ — person session."""
+        return self._delete_attachment_of(self._board_parent(board_uuid), attachment_uuid)
+
+    def download_board_attachment(self, board_uuid: str, attachment_uuid: str) -> bytes:
+        """GET /v1/plan/boards/<b>/attachments/<a>/content/."""
+        return self._download_attachment_of(self._board_parent(board_uuid), attachment_uuid)
+
+    def rename_board_attachment(
+        self, board_uuid: str, attachment_uuid: str, *, filename: str
+    ) -> Any:
+        """PATCH /v1/plan/boards/<b>/attachments/<a>/ — rename the file."""
+        return self._rename_attachment_of(
+            self._board_parent(board_uuid), attachment_uuid, filename=filename
+        )
 
     # Milestone and project-update attachments: the same row shape as project ones.
     @staticmethod

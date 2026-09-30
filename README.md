@@ -969,8 +969,8 @@ humans who own them.
 | `dailybot plan task children <task>` · `task events <task>` · `task activity <task>` | Sub-tasks, raw event history, and the readable activity feed (`--updated-since`, `--type`) |
 | `dailybot plan task duplicate <task>` | Copy into the same column (`--include` picks fields); sends an idempotency key so a retry returns the same copy |
 | `dailybot plan task attach <task> <file>` | Attach a file (≤25 MiB; `--caption` uses a single-request upload, ≤5 MiB). Credentials never go to the storage host |
-| `dailybot plan task attachments <task>` · `task attachment get <task> <id> -o <path>` · `task attachment delete` | List, download (never overwrites without `--force`) or delete attachments |
-| `dailybot plan task comment-attach <task> <comment> <file>` · `task comment-attachments` · `task comment-attachment get\|delete` | Files on a comment (≤5 MiB, one request). Only the comment's author can attach |
+| `dailybot plan task attachments <task>` · `task attachment get <task> <id> -o <path>` · `task attachment rename` · `task attachment delete` | List, download (never overwrites without `--force`) or delete attachments |
+| `dailybot plan task comment-attach <task> <comment> <file>` · `task comment-attachments` · `task comment-attachment get\|rename\|delete` | Files on a comment (≤5 MiB, one request). Only the comment's author can attach |
 | `dailybot plan task archive <uuid>` | Archive a task. Previews the consequence first; reversible |
 | `dailybot plan task delete <uuid>` | Alias of archive — nothing is destroyed |
 | `dailybot plan task restore <uuid>` | Restore an archived task |
@@ -1013,7 +1013,8 @@ humans who own them.
 | `dailybot plan project milestone-create\|milestone-update\|milestone-delete` | Dated milestones; delete retires it (tasks keep pointing at it) |
 | `dailybot plan project milestone-attach\|milestone-attachments <project> <milestone>` · `milestone-attachment get\|rename\|delete` | Files on a milestone (≤5 MiB); reference one in the description with `attachment:<uuid>`. `project milestone-restore` brings a retired milestone back |
 | `dailybot plan project archive <uuid>` | Archive a project |
-| `dailybot plan project attach <uuid> <file>` · `project attachments` · `project attachment get\|delete` | Files on a project (≤5 MiB, one request). Attaching and deleting need a person (`dailybot login` or a personal API key) |
+| `dailybot plan board attach <uuid> <file>` · `board attachments` · `board attachment get\|rename\|delete` | Files on a board (≤5 MiB, one request). Attaching, renaming and deleting need a person (`dailybot login` or a personal API key); `attachment delete` previews with `--dry-run` |
+| `dailybot plan project attach <uuid> <file>` · `project attachments` · `project attachment get\|rename\|delete` | Files on a project (≤5 MiB, one request). Attaching and deleting need a person (`dailybot login` or a personal API key) |
 | `dailybot plan goal list` | List goals (`--include` is repeatable: `--include progress --include projects`) |
 | `dailybot plan goal get <uuid>` | Show one goal, with its progress and linked projects (always included) |
 | `dailybot plan goal create --name <n> --period-start <d> --period-end <d>` | Create a goal (a dated commitment) — **needs a person: `dailybot login` or a personal API key** |
@@ -1021,7 +1022,7 @@ humans who own them.
 | `dailybot plan goal restore <uuid>` | Restore an archived goal |
 | `dailybot plan goal link\|unlink <goal> <project>` | Make a project count toward a goal (or stop it) |
 | `dailybot plan goal archive <uuid>` | Archive a goal (its projects are not archived) |
-| `dailybot plan goal attach <uuid> <file>` · `goal attachments` · `goal attachment get\|delete` | Files on a goal (≤5 MiB, one request). Attaching and deleting need a person (`dailybot login` or a personal API key) |
+| `dailybot plan goal attach <uuid> <file>` · `goal attachments` · `goal attachment get\|rename\|delete` | Files on a goal (≤5 MiB, one request). Attaching and deleting need a person (`dailybot login` or a personal API key) |
 
 **Three things worth knowing before you script against this:**
 

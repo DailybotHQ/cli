@@ -8,11 +8,19 @@ That handoff is named in both commands' help on purpose.
 """
 
 from collections.abc import Callable
+from pathlib import Path
 from typing import Any
 
 import click
 
-from dailybot_cli.api_client import APIError, PaginatedResult
+from dailybot_cli.api_client import ATTACHMENT_MULTIPART_MAX_BYTES, APIError, PaginatedResult
+from dailybot_cli.commands._attachments import (
+    run_attach,
+    run_delete,
+    run_get,
+    run_list,
+    run_rename,
+)
 from dailybot_cli.commands._beta import mark_beta
 from dailybot_cli.commands._destructive import confirm_without_preview, preview_then_confirm
 from dailybot_cli.commands._favorites import star, unstar
@@ -1261,3 +1269,156 @@ def board_restore(board_uuid: str, idempotency_key: str | None, json_mode: bool)
         emit_json(data)
         return
     report_write(data, "Board restored. Cascaded tasks stay archived.")
+
+
+# ---------------------------------------------------------------------------
+# Attachments. Reading needs only visibility; attaching, renaming and deleting
+# need a person (a login or a personal API key) who can change the board.
+# ---------------------------------------------------------------------------
+
+
+@board.command("attach")
+@click.argument("board_uuid", metavar="BOARD")
+@click.argument(
+    "file_path",
+    metavar="FILE",
+    type=click.Path(exists=True, dir_okay=False, readable=True, path_type=Path),
+)
+@click.option("--caption", default=None, help="Short caption shown with the file.")
+@click.option("--json", "json_mode", is_flag=True, help="Emit machine-readable JSON to stdout.")
+def board_attach(board_uuid: str, file_path: Path, caption: str | None, json_mode: bool) -> None:
+    """Attach a file to a board. Needs a person (any non-guest member): `dailybot login` or a personal API key.
+
+    \b
+    One request, up to 5 MiB. Your Dailybot credentials go only to the API.
+
+    \b
+    Examples:
+      dailybot plan board attach <board-uuid> ./plan.pdf
+      dailybot plan board attach <board-uuid> ./roadmap.png --caption "Q4 roadmap" --json
+    """
+    run_attach(
+        lambda client, **file: client.upload_board_attachment(board_uuid, **file),
+        file_path,
+        caption=caption,
+        limit=ATTACHMENT_MULTIPART_MAX_BYTES,
+        where="per file on a board",
+        json_mode=json_mode,
+        require_auth=require_auth,
+    )
+
+
+@board.command("attachments")
+@click.argument("board_uuid", metavar="BOARD")
+@click.option("--json", "json_mode", is_flag=True, help="Emit machine-readable JSON to stdout.")
+def board_attachments(board_uuid: str, json_mode: bool) -> None:
+    """List a board's attachments.
+
+    \b
+    Examples:
+      dailybot plan board attachments <board-uuid>
+      dailybot plan board attachments <board-uuid> --json
+    """
+    run_list(
+        lambda client: client.list_board_attachments(board_uuid),
+        json_mode=json_mode,
+        require_auth=require_auth,
+    )
+
+
+@board.group("attachment")
+def board_attachment() -> None:
+    """Download, rename or delete one attachment on a board.
+
+    \b
+    Examples:
+      dailybot plan board attachment get <board-uuid> <attachment-uuid> -o ./plan.pdf
+      dailybot plan board attachment rename <board-uuid> <attachment-uuid> spec-v2.pdf
+      dailybot plan board attachment delete <board-uuid> <attachment-uuid> --dry-run
+    """
+
+
+@board_attachment.command("get")
+@click.argument("board_uuid", metavar="BOARD")
+@click.argument("attachment_uuid", metavar="ATTACHMENT")
+@click.option(
+    "-o",
+    "--output",
+    "output",
+    type=click.Path(dir_okay=False, writable=True, path_type=Path),
+    required=True,
+    help="Where to write the file.",
+)
+@click.option("--force", is_flag=True, help="Overwrite the output file if it exists.")
+@click.option("--json", "json_mode", is_flag=True, help="Emit machine-readable JSON to stdout.")
+def board_attachment_get(
+    board_uuid: str, attachment_uuid: str, output: Path, force: bool, json_mode: bool
+) -> None:
+    """Download a board's attachment to a file. Never overwrites without --force.
+
+    \b
+    Examples:
+      dailybot plan board attachment get <board-uuid> <attachment-uuid> -o ./plan.pdf
+    """
+    run_get(
+        lambda client: client.download_board_attachment(board_uuid, attachment_uuid),
+        output,
+        attachment_uuid=attachment_uuid,
+        force=force,
+        json_mode=json_mode,
+        require_auth=require_auth,
+    )
+
+
+@board_attachment.command("rename")
+@click.argument("board_uuid", metavar="BOARD")
+@click.argument("attachment_uuid", metavar="ATTACHMENT")
+@click.argument("filename")
+@click.option("--json", "json_mode", is_flag=True, help="Emit machine-readable JSON to stdout.")
+def board_attachment_rename(
+    board_uuid: str, attachment_uuid: str, filename: str, json_mode: bool
+) -> None:
+    """Rename a board's attachment (1 to 255 characters).
+
+    \b
+    Examples:
+      dailybot plan board attachment rename <board-uuid> <attachment-uuid> spec-v2.pdf
+    """
+    run_rename(
+        lambda client, name: client.rename_board_attachment(
+            board_uuid, attachment_uuid, filename=name
+        ),
+        filename,
+        json_mode=json_mode,
+        require_auth=require_auth,
+    )
+
+
+@board_attachment.command("delete")
+@click.argument("board_uuid", metavar="BOARD")
+@click.argument("attachment_uuid", metavar="ATTACHMENT")
+@click.option("--dry-run", is_flag=True, help="Say what would happen and send nothing.")
+@click.option("-y", "--yes", "assume_yes", is_flag=True, help="Skip the confirmation.")
+@click.option("--json", "json_mode", is_flag=True, help="Emit machine-readable JSON to stdout.")
+def board_attachment_delete(
+    board_uuid: str, attachment_uuid: str, dry_run: bool, assume_yes: bool, json_mode: bool
+) -> None:
+    """Remove an attachment from a board. This cannot be undone. Needs a person: `dailybot login` or a personal API key.
+
+    \b
+    Examples:
+      dailybot plan board attachment delete <board-uuid> <attachment-uuid> --dry-run
+      dailybot plan board attachment delete <board-uuid> <attachment-uuid> --yes
+    """
+    run_delete(
+        lambda client: client.delete_board_attachment(board_uuid, attachment_uuid),
+        f"delete attachment {attachment_uuid} from board {board_uuid}.",
+        receipt={"board": board_uuid, "attachment": attachment_uuid},
+        dry_run=dry_run,
+        assume_yes=assume_yes,
+        json_mode=json_mode,
+        require_auth=require_auth,
+    )
+
+
+# ---------------------------------------------------------------------------

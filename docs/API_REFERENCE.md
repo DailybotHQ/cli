@@ -911,6 +911,7 @@ Every Tasks command in this release (141), generated from the CLI's own command 
 | `dailybot plan task attach TASK FILE` | Attach a file to a task. |  |
 | `dailybot plan task attachment delete TASK ATTACHMENT` | Remove an attachment from a task. This cannot be undone. |  |
 | `dailybot plan task attachment get TASK ATTACHMENT` | Download an attachment to a file. Never overwrites without --force. |  |
+| `dailybot plan task attachment rename TASK ATTACHMENT FILENAME` | Rename a task's attachment (1 to 255 characters). |  |
 | `dailybot plan task attachments TASK` | List a task's attachments. |  |
 | `dailybot plan task brief TASK` | Read the whole card an agent was handed: task, comments, files, links. |  |
 | `dailybot plan task bulk` | Apply one operation to up to 100 tasks in a single call. |  |
@@ -919,6 +920,7 @@ Every Tasks command in this release (141), generated from the CLI's own command 
 | `dailybot plan task comment-attach TASK COMMENT FILE` | Attach a file to a comment. Only the comment's author can. |  |
 | `dailybot plan task comment-attachment delete TASK COMMENT ATTACHMENT` | Remove an attachment from a comment. This cannot be undone. |  |
 | `dailybot plan task comment-attachment get TASK COMMENT ATTACHMENT` | Download a comment's attachment to a file. Never overwrites without --force. |  |
+| `dailybot plan task comment-attachment rename TASK COMMENT ATTACHMENT FILENAME` | Rename a comment's attachment (1 to 255 characters). |  |
 | `dailybot plan task comment-attachments TASK COMMENT` | List a comment's attachments. |  |
 | `dailybot plan task comment-delete TASK COMMENT` | Delete a comment. Its text is blanked; the entry stays so history resolves. |  |
 | `dailybot plan task comment-edit TASK COMMENT BODY` | Replace a comment's text. `-` reads the new body from stdin. |  |
@@ -953,6 +955,11 @@ Every Tasks command in this release (141), generated from the CLI's own command 
 | Command | What it does | Needs a person |
 | --- | --- | --- |
 | `dailybot plan board archive BOARD` | Archive a board. Every live task on it is cascade-archived. | yes |
+| `dailybot plan board attach BOARD FILE` | Attach a file to a board (up to 5 MiB, one request). |  |
+| `dailybot plan board attachment delete BOARD ATTACHMENT` | Remove an attachment from a board. This cannot be undone. | yes |
+| `dailybot plan board attachment get BOARD ATTACHMENT` | Download a board's attachment to a file. Never overwrites without --force. |  |
+| `dailybot plan board attachment rename BOARD ATTACHMENT FILENAME` | Rename a board's attachment (1 to 255 characters). |  |
+| `dailybot plan board attachments BOARD` | List a board's attachments. |  |
 | `dailybot plan board create` | Create a board in a project. Needs a person (any non-guest member): `dailybot login` or a personal API key. | yes |
 | `dailybot plan board get BOARD` | Show one board's metadata. |  |
 | `dailybot plan board label create BOARD` | Create an organization label from this board. | yes |
@@ -988,6 +995,7 @@ Every Tasks command in this release (141), generated from the CLI's own command 
 | `dailybot plan project attach PROJECT FILE` | Attach a file to a project. Needs a person (any non-guest member): `dailybot login` or a personal API key. | yes |
 | `dailybot plan project attachment delete PROJECT ATTACHMENT` | Remove an attachment from a project. This cannot be undone. | yes |
 | `dailybot plan project attachment get PROJECT ATTACHMENT` | Download a project's attachment to a file. Never overwrites without --force. |  |
+| `dailybot plan project attachment rename PROJECT ATTACHMENT FILENAME` | Rename a project's attachment (1 to 255 characters). |  |
 | `dailybot plan project attachments PROJECT` | List a project's attachments. |  |
 | `dailybot plan project create` | Create a project. Needs a person (any non-guest member): `dailybot login` or a personal API key. | yes |
 | `dailybot plan project get PROJECT` | Show one project. |  |
@@ -1033,6 +1041,7 @@ Every Tasks command in this release (141), generated from the CLI's own command 
 | `dailybot plan goal attach GOAL FILE` | Attach a file to a goal. Needs a person (any non-guest member): `dailybot login` or a personal API key. | yes |
 | `dailybot plan goal attachment delete GOAL ATTACHMENT` | Remove an attachment from a goal. This cannot be undone. | yes |
 | `dailybot plan goal attachment get GOAL ATTACHMENT` | Download a goal's attachment to a file. Never overwrites without --force. |  |
+| `dailybot plan goal attachment rename GOAL ATTACHMENT FILENAME` | Rename a goal's attachment (1 to 255 characters). |  |
 | `dailybot plan goal attachments GOAL` | List a goal's attachments. |  |
 | `dailybot plan goal create` | Create a goal. Needs a person (any non-guest member): `dailybot login` or a personal API key. | yes |
 | `dailybot plan goal get GOAL` | Show one goal, with its progress and linked projects. |  |

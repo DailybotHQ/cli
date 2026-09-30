@@ -7,7 +7,13 @@ from typing import Any
 import click
 
 from dailybot_cli.api_client import ATTACHMENT_MULTIPART_MAX_BYTES, APIError, PaginatedResult
-from dailybot_cli.commands._attachments import run_attach, run_delete, run_get, run_list
+from dailybot_cli.commands._attachments import (
+    run_attach,
+    run_delete,
+    run_get,
+    run_list,
+    run_rename,
+)
 from dailybot_cli.commands._beta import mark_beta
 from dailybot_cli.commands._destructive import confirm_without_preview, preview_then_confirm
 from dailybot_cli.commands._rollups import render_rollup
@@ -477,10 +483,11 @@ def goal_attachments(goal_uuid: str, json_mode: bool) -> None:
 
 @goal.group("attachment")
 def goal_attachment() -> None:
-    """Download or delete one attachment on a goal.
+    """Download, rename or delete one attachment on a goal.
 
     \b
     Examples:
+      dailybot plan goal attachment rename <goal-uuid> <attachment-uuid> plan-v2.pdf
       dailybot plan goal attachment get <goal-uuid> <attachment-uuid> -o ./plan.pdf
       dailybot plan goal attachment delete <goal-uuid> <attachment-uuid> --dry-run
     """
@@ -513,6 +520,30 @@ def goal_attachment_get(
         output,
         attachment_uuid=attachment_uuid,
         force=force,
+        json_mode=json_mode,
+        require_auth=require_auth,
+    )
+
+
+@goal_attachment.command("rename")
+@click.argument("goal_uuid", metavar="GOAL")
+@click.argument("attachment_uuid", metavar="ATTACHMENT")
+@click.argument("filename")
+@click.option("--json", "json_mode", is_flag=True, help="Emit machine-readable JSON to stdout.")
+def goal_attachment_rename(
+    goal_uuid: str, attachment_uuid: str, filename: str, json_mode: bool
+) -> None:
+    """Rename a goal's attachment (1 to 255 characters).
+
+    \b
+    Examples:
+      dailybot plan goal attachment rename <goal-uuid> <attachment-uuid> plan-v2.pdf
+    """
+    run_rename(
+        lambda client, name: client.rename_goal_attachment(
+            goal_uuid, attachment_uuid, filename=name
+        ),
+        filename,
         json_mode=json_mode,
         require_auth=require_auth,
     )

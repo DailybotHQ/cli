@@ -36,6 +36,7 @@ from dailybot_cli.commands._attachments import (
     run_delete,
     run_get,
     run_list,
+    run_rename,
 )
 from dailybot_cli.commands._beta import mark_beta
 from dailybot_cli.commands._briefing import build_briefing, download_attachments
@@ -1760,11 +1761,12 @@ def task_attachments(task_uuid: str, json_mode: bool) -> None:
 
 @task.group("attachment")
 def task_attachment() -> None:
-    """Download or delete one attachment.
+    """Download, rename or delete one attachment.
 
     \b
     Examples:
       dailybot plan task attachment get ENG-142 <attachment-uuid> -o ./crash.log
+      dailybot plan task attachment rename ENG-142 <attachment-uuid> crash-v2.log
       dailybot plan task attachment delete ENG-142 <attachment-uuid> --dry-run
     """
 
@@ -1800,6 +1802,30 @@ def attachment_get(
         output,
         attachment_uuid=attachment_uuid,
         force=force,
+        json_mode=json_mode,
+        require_auth=require_auth,
+    )
+
+
+@task_attachment.command("rename")
+@click.argument("task_uuid", metavar="TASK")
+@click.argument("attachment_uuid", metavar="ATTACHMENT")
+@click.argument("filename")
+@click.option("--json", "json_mode", is_flag=True, help="Emit machine-readable JSON to stdout.")
+def task_attachment_rename(
+    task_uuid: str, attachment_uuid: str, filename: str, json_mode: bool
+) -> None:
+    """Rename a task's attachment (1 to 255 characters).
+
+    \b
+    Examples:
+      dailybot plan task attachment rename ENG-142 <attachment-uuid> crash-v2.log
+    """
+    run_rename(
+        lambda client, name: client.rename_task_attachment(
+            task_uuid, attachment_uuid, filename=name
+        ),
+        filename,
         json_mode=json_mode,
         require_auth=require_auth,
     )
@@ -1888,10 +1914,11 @@ def comment_attachments(task_uuid: str, comment_uuid: str, json_mode: bool) -> N
 
 @task.group("comment-attachment")
 def comment_attachment() -> None:
-    """Download or delete one attachment on a comment.
+    """Download, rename or delete one attachment on a comment.
 
     \b
     Examples:
+      dailybot plan task comment-attachment rename ENG-142 <comment-uuid> <attachment-uuid> trace-v2.txt
       dailybot plan task comment-attachment get ENG-142 <comment-uuid> <attachment-uuid> -o ./trace.txt
       dailybot plan task comment-attachment delete ENG-142 <comment-uuid> <attachment-uuid> --dry-run
     """
@@ -1923,6 +1950,31 @@ def comment_attachment_get(
         output,
         attachment_uuid=attachment_uuid,
         force=force,
+        json_mode=json_mode,
+        require_auth=require_auth,
+    )
+
+
+@comment_attachment.command("rename")
+@click.argument("task_uuid", metavar="TASK")
+@click.argument("comment_uuid", metavar="COMMENT")
+@click.argument("attachment_uuid", metavar="ATTACHMENT")
+@click.argument("filename")
+@click.option("--json", "json_mode", is_flag=True, help="Emit machine-readable JSON to stdout.")
+def comment_attachment_rename(
+    task_uuid: str, comment_uuid: str, attachment_uuid: str, filename: str, json_mode: bool
+) -> None:
+    """Rename a comment's attachment (1 to 255 characters).
+
+    \b
+    Examples:
+      dailybot plan task comment-attachment rename ENG-142 <comment-uuid> <attachment-uuid> trace-v2.txt
+    """
+    run_rename(
+        lambda client, name: client.rename_comment_attachment(
+            task_uuid, comment_uuid, attachment_uuid, filename=name
+        ),
+        filename,
         json_mode=json_mode,
         require_auth=require_auth,
     )
