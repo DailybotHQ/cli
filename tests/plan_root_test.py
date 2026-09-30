@@ -40,7 +40,7 @@ def test_the_plan_root_mounts_every_group() -> None:
 
 def test_the_plan_help_explains_the_product_name(runner: CliRunner) -> None:
     flat: str = " ".join(runner.invoke(cli, ["plan", "--help"]).output.split())
-    assert "formerly Tasks" in flat and "dailybot plan tasks" in flat
+    assert "Dailybot Plan" in flat and "dailybot plan tasks" in flat
 
 
 def test_no_help_text_or_hint_names_the_removed_top_level_form() -> None:

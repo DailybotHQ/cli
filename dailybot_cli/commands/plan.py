@@ -1,8 +1,7 @@
 """`dailybot plan`: the one root of the Dailybot Plan command groups.
 
-The product formerly called Tasks is **Dailybot Plan** (public API root ``/v1/plan/``). Its groups
-(``tasks``, ``task``, ``board``, ``project``, ``goal``) are reachable only under this root, e.g.
-``dailybot plan tasks routes list``; there are no top-level aliases.
+Dailybot Plan (public API root ``/v1/plan/``). Its groups (``tasks``, ``task``, ``board``,
+``project``, ``goal``) are reachable only under this root, e.g. ``dailybot plan tasks routes list``.
 """
 
 import click
@@ -16,7 +15,7 @@ from dailybot_cli.commands.tasks import tasks
 
 @click.group("plan")
 def plan() -> None:
-    """Dailybot Plan (formerly Tasks): tasks, boards, projects, goals and their notifications.
+    """Dailybot Plan: tasks, boards, projects, goals and their notifications.
 
     \b
     Every command lives under `dailybot plan`:

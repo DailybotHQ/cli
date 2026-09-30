@@ -67,7 +67,7 @@ dailybot_cli/                # Source package
     ├── hook.py              # `hook` group: session-start / post-commit / activity /
     │                        #   stop / dismiss (agent harness lifecycle hooks)
     ├── plan.py              # `plan` root: the only mount point of tasks / task / board / project / goal
-    │                        #   (the product formerly called Tasks is now Dailybot Plan, /v1/plan/)
+    │                        #   (Dailybot Plan, API root /v1/plan/)
     ├── tasks_settings.py    # `tasks notifications|channels|routes|reports|briefing`: who is told
     │                        #   what, where and when (personal prefs, org routes, scheduled
     │                        #   reports, briefing); hung under `tasks`
@@ -90,7 +90,7 @@ dailybot_cli/                # Source package
     │                        #   milestones / milestone-create|update|delete|complete|reopen
     ├── goal.py              # `goal` group: list / get / create / update / restore / archive / link / unlink
     ├── _rollups.py          # absent vs null vs zero for roll-up fields (AD-01)
-    ├── _beta.py             # Tasks Beta notice (group help + status line)
+    ├── _beta.py             # Plan Beta notice (group help + status line)
     ├── _favorites.py        # pin/unpin boards and views (person-only), shared by board + tasks
     ├── _attachments.py      # attach / list / get / delete flows shared by task, comment, project, goal
     ├── _destructive.py      # shared preview-then-confirm for destructive Tasks doors
