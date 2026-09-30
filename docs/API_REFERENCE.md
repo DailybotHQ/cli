@@ -876,7 +876,19 @@ Every Tasks command in this release (141), generated from the CLI's own command 
 | `dailybot tasks recents` | List the boards you opened most recently. | yes |
 | `dailybot tasks search` | Search tasks, boards and projects by text. |  |
 | `dailybot tasks status` | Show the workspace pulse — open, overdue and blocked counts. |  |
-| `dailybot tasks timeline` | Show the dated work in a window: goals that overlap it and tasks with dates. One document, not a paged list; `--include-unscheduled`. |  |
+| `dailybot tasks timeline` | Show the dated work in a window: goals, tasks, milestones and projects. One document, not a paged list; `--include-unscheduled`, repeatable `--project` / `--milestone`. |  |
+| `dailybot tasks notifications catalog` | Every notification kind, personal and organization, with defaults. |  |
+| `dailybot tasks notifications get` | Your notification preferences and destination. | yes |
+| `dailybot tasks notifications set` | Change your preferences (partial): `--kind` with `--chat/--email`, `--dm` or `--channel`. | yes |
+| `dailybot tasks channels search` | Chat channels you can pick (public only unless you are an admin). |  |
+| `dailybot tasks routes list` / `get` / `deliveries` | Organization notification routes and their delivery log (members read). |  |
+| `dailybot tasks routes create` / `update` / `delete` | Manage routes (org admin): channel, organization kinds, board/project scope. `create` is idempotent. |  |
+| `dailybot tasks routes send-test` | Post a sample to a route's channel, **dry run first**, then confirm or `--yes`. |  |
+| `dailybot tasks reports list` / `get` / `preview` / `runs` | Scheduled reports, the exact rendered document, and run history (members read). |  |
+| `dailybot tasks reports create` / `update` / `delete` | Manage reports (org admin): kind, weekdays, time, timezone, channel and/or email recipients, scope. |  |
+| `dailybot tasks reports send-test` | Send a report now as a test, **dry run first**, then confirm or `--yes`. |  |
+| `dailybot tasks briefing get` / `set` / `preview` | Your personal daily briefing settings and its rendered document. | yes |
+| `dailybot tasks briefing send-test` | Send yourself the briefing, **dry run first**. | yes |
 | `dailybot tasks view delete VIEW` | Delete one saved view. This is permanent. | yes |
 | `dailybot tasks view get VIEW` | Show one saved view. | yes |
 | `dailybot tasks view star VIEW` | Pin a saved view to your favorites. | yes |
@@ -1023,6 +1035,21 @@ Every Tasks command in this release (141), generated from the CLI's own command 
 | `dailybot goal unlink GOAL PROJECT` | Stop a project counting toward a goal. The project itself is untouched. | yes |
 | `dailybot goal update GOAL` | Change a goal, or declare its status. | yes |
 
+### Notifications, routes, reports and briefing (PLAN_004)
+
+| Door | Command | Who |
+| --- | --- | --- |
+| `GET /v1/tasks/notifications/catalog/` | `tasks notifications catalog` | any key with Tasks scope |
+| `GET` / `PUT /v1/tasks/me/notifications/` | `tasks notifications get` / `set` | a person (login or personal key); agent/org keys: 400 `actor_required` |
+| `GET /v1/tasks/channels/?search=&type=` | `tasks channels search` | members (public channels only); org admins also see private ones the bot is in |
+| `GET /v1/tasks/notification-routes/` (+ `{id}/`, `deliveries/`) | `tasks routes list` / `get` / `deliveries` | members read; `viewer.can_manage` |
+| `POST` `PATCH` `DELETE …/notification-routes/…`, `…/send-test/?dry_run=true` | `tasks routes create` / `update` / `delete` / `send-test` | org admins (403 `insufficient_scope` for others) |
+| `GET /v1/tasks/reports/` (+ `{id}/`, `preview/`, `runs/`) | `tasks reports list` / `get` / `preview` / `runs` | members read |
+| `POST` `PATCH` `DELETE …/reports/…`, `…/send-test/?dry_run=true` | `tasks reports create` / `update` / `delete` / `send-test` | org admins |
+| `GET` / `PUT /v1/tasks/me/briefing/` (+ `preview/`, `send-test/`) | `tasks briefing get` / `set` / `preview` / `send-test` | a person |
+
+Conventions: weekdays are ISO ints 1-7 on the wire and `mon,tue,...` on the command line; `time` is `HH:MM`; `timezone` is IANA and is sent only when `--timezone` is passed (the server stores the org or user timezone). A channel is `{external_id, name, type}` and is sent as `{"external_id": ...}`; the command takes a name or the external id and resolves it through `channels search`. Creates send an idempotency key; updates are partial (`--no-channel` sends `channel: null`, `--no-email-to` sends `email_recipients: []`; a report with neither is `invalid_schedule`). None of these doors takes `agent_name` (400 `unknown_field`), so the CLI never stamps it. Every `send-test` first calls the door with `dry_run=true`, shows the destination and the rendered content, and posts only after a confirmation or `--yes`. `paused_until` accepts only null (a datetime answers 501 `not_implemented`): there is no `--pause-until`.
+
 ### Exit codes (Tasks family)
 
 | Code | Meaning |
@@ -1068,6 +1095,12 @@ Dispatch on `code`, never on the English `detail`.
 | `preview_not_honoured` | a `--dry-run` answer without `dry_run: true`: the server may have applied the change; nothing more was sent | 1 |
 | `column_too_large` | a column too big to return in one read — page with `board tasks` | 4 |
 | `too_many_items` | bulk over 100 items | 2 |
+| `invalid_schedule` | a weekday, time, timezone or destination the API refuses (`extra.parameter` names which; a report with neither channel nor recipients too) | 2 |
+| `unknown_notification_kind` | a kind that does not exist or is of the other scope (`extra.parameter: kind`) | 2 |
+| `channel_not_found` / `platform_not_connected` | the channel is unknown or private to you / no chat platform is connected | 2 |
+| `route_scope_not_org_visible` | a route or report scope names a private board or project (`extra.uuids`) | 2 |
+| `notification_routes_limit_reached` / `report_schedules_limit_reached` | 10 per organization (`extra.limit`) | 2 |
+| `not_implemented` | the API does not support it yet (for example `paused_until` with a datetime) | 1 |
 | `throttled` | too many requests from one actor (writes 60, bulk 30, reads 120, delta reads 240 per minute); the body's `extra.retry_after` (or the `Retry-After` header) is whole seconds, printed by the CLI and put in the `--json` envelope as `retry_after` | **6** |
 | `task_archived` | the task is archived: it cannot be changed or duplicated until `task restore` | 4 |
 | `project_name_conflict` | another project uses the name, archived ones included | 4 |

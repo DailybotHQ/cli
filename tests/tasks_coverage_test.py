@@ -365,3 +365,90 @@ class TestNoTestReachesTheNetwork:
                 if direct_call and not mocked:
                     offenders.append(f"{path}: {stripped}")
         assert offenders == [], f"tests appear to call httpx directly: {offenders}"
+
+
+PLAN4_COMMANDS: list[tuple[str, ...]] = [
+    ("tasks", "notifications", "catalog"),
+    ("tasks", "notifications", "get"),
+    ("tasks", "notifications", "set"),
+    ("tasks", "channels", "search"),
+    ("tasks", "routes", "list"),
+    ("tasks", "routes", "get"),
+    ("tasks", "routes", "create"),
+    ("tasks", "routes", "update"),
+    ("tasks", "routes", "delete"),
+    ("tasks", "routes", "send-test"),
+    ("tasks", "routes", "deliveries"),
+    ("tasks", "reports", "list"),
+    ("tasks", "reports", "get"),
+    ("tasks", "reports", "create"),
+    ("tasks", "reports", "update"),
+    ("tasks", "reports", "delete"),
+    ("tasks", "reports", "preview"),
+    ("tasks", "reports", "send-test"),
+    ("tasks", "reports", "runs"),
+    ("tasks", "briefing", "get"),
+    ("tasks", "briefing", "set"),
+    ("tasks", "briefing", "preview"),
+    ("tasks", "briefing", "send-test"),
+]
+OUTBOUND_SENDS: list[tuple[str, ...]] = [p for p in PLAN4_COMMANDS if p[-1] == "send-test"]
+
+
+class TestNotificationSettingsSurface:
+    """The PLAN_004 command surface: present, beta-marked, previewed before any real send."""
+
+    @staticmethod
+    def _resolve(path: tuple[str, ...]) -> Any:
+        import click
+
+        node: click.Command = cli
+        for part in path:
+            assert isinstance(node, click.Group), path
+            node = node.commands[part]
+        return node
+
+    @pytest.mark.parametrize("path", PLAN4_COMMANDS, ids=[" ".join(p) for p in PLAN4_COMMANDS])
+    def test_every_command_exists_with_json_and_an_example(self, path: tuple[str, ...]) -> None:
+        command = self._resolve(path)
+        assert "--json" in [opt for param in command.params for opt in getattr(param, "opts", [])]
+        assert "Examples" in (command.help or "")
+
+    @pytest.mark.parametrize(
+        "group", ["notifications", "channels", "routes", "reports", "briefing"]
+    )
+    def test_every_group_carries_the_beta_notice(self, runner: CliRunner, group: str) -> None:
+        assert "Beta" in runner.invoke(cli, ["tasks", group, "--help"]).output
+
+    @pytest.mark.parametrize("path", OUTBOUND_SENDS, ids=[" ".join(p) for p in OUTBOUND_SENDS])
+    def test_every_send_test_offers_dry_run_and_yes(self, path: tuple[str, ...]) -> None:
+        opts: set[str] = {
+            opt for param in self._resolve(path).params for opt in getattr(param, "opts", [])
+        }
+        assert {"--dry-run", "--yes"} <= opts
+
+    def test_the_tasks_group_lists_every_new_group(self, runner: CliRunner) -> None:
+        out: str = runner.invoke(cli, ["tasks", "--help"]).output
+        for group in ("notifications", "channels", "routes", "reports", "briefing"):
+            assert group in out
+
+    def test_no_settings_write_stamps_the_agent_name(self) -> None:
+        """Settings doors reject `agent_name` (400 unknown_field); the client never adds it there."""
+        import inspect
+
+        source: str = inspect.getsource(DailyBotClient)
+        for name in (
+            "put_my_notifications",
+            "create_notification_route",
+            "update_notification_route",
+            "delete_notification_route",
+            "send_route_test",
+            "create_report",
+            "update_report",
+            "delete_report",
+            "send_report_test",
+            "put_my_briefing",
+            "send_my_briefing_test",
+        ):
+            body: str = source.split(f"def {name}(")[1].split("\n    def ")[0]
+            assert "stamp_agent=False" in body, name

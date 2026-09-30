@@ -346,3 +346,16 @@ If you find a security issue in the CLI:
 - Include a minimal reproduction and the version (`dailybot --version`).
 
 For the API itself, follow Dailybot's main responsible-disclosure process.
+
+## Outbound messages from the notification commands
+
+`tasks routes send-test`, `tasks reports send-test` and `tasks briefing send-test` post real messages (to a chat
+channel, to email recipients, to your DM). They never go out cold: the CLI first calls the door with
+`dry_run=true`, shows the destination and the rendered content, and sends only after a confirmation or `--yes`;
+a preview that fails, or that the server answers as if it had already acted, stops the command before anything is
+sent. Automation and the test suite never send for real. Channel names, route and report names, and every title in a
+report document are user-authored text: they are rendered quoted (`present_untrusted`), never as markup, and the
+server neutralises `<!channel>`, `@here` and disguised links in the chat text it posts. These settings doors reject
+`agent_name`, so the CLI never stamps an agent on them (a preference is not task work). Members read routes and
+reports; only organization admins change them, and the CLI never refuses before the request: it renders the server's
+`insufficient_scope`.

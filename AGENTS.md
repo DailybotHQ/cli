@@ -66,6 +66,13 @@ dailybot_cli/                # Source package
     │                        #   response get / update / transition / delete
     ├── hook.py              # `hook` group: session-start / post-commit / activity /
     │                        #   stop / dismiss (agent harness lifecycle hooks)
+    ├── tasks_settings.py    # `tasks notifications|channels|routes|reports|briefing`: who is told
+    │                        #   what, where and when (personal prefs, org routes, scheduled
+    │                        #   reports, briefing); hung under `tasks`
+    ├── _schedule.py         # weekday / HH:MM / IANA timezone parsing for those commands
+    ├── _channels.py         # resolve a channel by name or external id
+    ├── _outbound.py         # send-test flow: dry-run preview, confirm, then send
+    ├── _paging.py, _refs.py # shared paging helpers; uuid reference callbacks
     ├── tasks.py             # `tasks` group: workspace-level — status / entitlements /
     │                        #   search / activity / timeline / changes (delta) /
     │                        #   inbox / inbox-read / inbox-read-all / inbox-unread / cursor /
@@ -111,6 +118,14 @@ tests/                       # pytest suite (file naming: *_test.py)
 ├── chat_commands_test.py    # `chat` group (payload builder, send/update, headless)
 ├── tasks_api_client_test.py # Tasks transport (constants, Z-form datetimes, idempotency)
 ├── tasks_commands_test.py   # `tasks` group reads
+├── tasks_schedule_helpers_test.py  # weekday/time/timezone parsing, channel resolution
+├── tasks_notifications_client_test.py, tasks_routes_reports_client_test.py,
+│   tasks_briefing_client_test.py  # PLAN_004 client wire tests
+├── tasks_notifications_display_test.py  # catalog, matrix, routes, reports, report documents
+├── tasks_notifications_commands_test.py, tasks_channels_commands_test.py,
+│   tasks_routes_commands_test.py, tasks_reports_commands_test.py,
+│   tasks_briefing_commands_test.py  # the new command groups
+├── tasks_timeline_filters_test.py  # timeline milestones/projects + project/milestone filters
 ├── tasks_delta_test.py      # `tasks changes` cursor lifecycle + window expiry
 ├── tasks_person_shaped_test.py  # person-only Tasks doors
 ├── tasks_catchup_test.py    # pulse bands, inbox read, activity cursor, mentionables

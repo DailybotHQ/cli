@@ -54,6 +54,10 @@ tests/
 │                                  #   idempotency posture, dry-run, timeout tiering
 ├── tasks_commands_test.py         # `tasks` group: status/entitlements/search/activity/timeline (one document)
 ├── tasks_delta_test.py            # `tasks changes`: cursor lifecycle, window expiry
+├── tasks_schedule_helpers_test.py # weekday/time/timezone parsing and channel resolution
+├── tasks_*_client_test.py         # notifications/routes/reports/briefing wire tests
+├── tasks_notifications_display_test.py, tasks_*_commands_test.py  # PLAN_004 renderers and commands
+├── tasks_timeline_filters_test.py # timeline milestones/projects and the filters
 ├── tasks_person_shaped_test.py    # inbox / mine / counts: person doors (personal keys reach the server)
 ├── tasks_catchup_test.py         # pulse bands, inbox read/unread, activity cursor, mentionables
 ├── task_commands_test.py          # `task` group: reads, writes, collaboration, bulk, archive
