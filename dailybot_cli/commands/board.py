@@ -193,6 +193,8 @@ _STATE_COLUMNS: list[tuple[str, str, bool]] = [
     ("Archived", "is_archived", True),
     ("UUID", "uuid", True),
 ]
+# `Archived` is a column of `False` unless --include-archived brought retired columns in.
+_STATE_UNIFORM_HIDDEN: tuple[str, ...] = ("Archived",)
 _MEMBER_COLUMNS: list[tuple[str, str, bool]] = [
     ("Name", "user.name", False),
     ("Role", "role", True),
@@ -219,6 +221,7 @@ def _read_board_collection(
     columns: list[tuple[str, str, bool]],
     empty: str,
     json_mode: bool,
+    hide_when_uniform: tuple[str, ...] = (),
 ) -> None:
     """Shared body of the board sub-collection reads: one GET, raw JSON or a table."""
     try:
@@ -229,7 +232,9 @@ def _read_board_collection(
     if json_mode:
         emit_json(data)
         return
-    print_tasks_rows(title, rows_of(data), columns, empty=empty)
+    print_tasks_rows(
+        title, rows_of(data), columns, empty=empty, hide_when_uniform=hide_when_uniform
+    )
 
 
 @board.command("states")
@@ -257,6 +262,7 @@ def board_states(board_uuid: str, include_archived: bool, json_mode: bool) -> No
         columns=_STATE_COLUMNS,
         empty="This board has no states.",
         json_mode=json_mode,
+        hide_when_uniform=_STATE_UNIFORM_HIDDEN,
     )
 
 
@@ -325,7 +331,7 @@ def board_views(board_uuid: str, etag_only: bool, json_mode: bool) -> None:
     \b
     Examples:
       dailybot board views <board-uuid>
-      dailybot board views <board-uuid> --json > views.json
+      dailybot board views <board-uuid> --json   # the current views, under `results`
       ETAG=$(dailybot board views <board-uuid> --etag)
     """
     client = require_auth()
@@ -346,10 +352,11 @@ def board_views(board_uuid: str, etag_only: bool, json_mode: bool) -> None:
         print_info(f"ETag: {etag} (pass it to `board view save --if-match`)")
 
 
+# The token carries the whole uuid, so a separate UUID column only cost the name its
+# width; a row that cannot be mentioned puts its uuid in the same cell instead.
 _MENTIONABLE_COLUMNS: list[tuple[str, str, bool]] = [
     ("Name", "name", False),
     ("Kind", "kind", True),
-    ("UUID", "uuid", True),
     ("Mention as", "mention", True),
 ]
 
@@ -392,7 +399,7 @@ def board_mentionables(board_uuid: str, query: str | None, json_mode: bool) -> N
     shown: list[dict[str, Any]] = [
         {**row, "mention": f"<@DB@{row['uuid']}>"}
         if row.get("uuid") and row.get("kind") in (None, "user")
-        else row
+        else {**row, "mention": f"(not mentionable) {row.get('uuid') or ''}".strip()}
         for row in rows
     ]
     print_tasks_rows("Mentionable", shown, _MENTIONABLE_COLUMNS, empty="Nobody matches.")
@@ -647,7 +654,13 @@ def board_state_reorder(board_uuid: str, state_uuids: tuple[str, ...], json_mode
     if json_mode:
         emit_json(data)
         return
-    print_tasks_rows("States", rows_of(data), _STATE_COLUMNS, empty="No live columns.")
+    print_tasks_rows(
+        "States",
+        rows_of(data),
+        _STATE_COLUMNS,
+        empty="No live columns.",
+        hide_when_uniform=_STATE_UNIFORM_HIDDEN,
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -944,8 +957,23 @@ def board_view_save(
     only guards the moment between that read and this write.
 
     \b
+    The file is a JSON array; each view is an object:
+      name         text, up to 64 characters (required)
+      view_mode    list | board | kanban | timeline | calendar
+      group_by     state | owner | priority | category
+      sort         a sort expression, as the web app saves it
+      visibility   personal | shared | board_default (the last two need a board manager)
+      filters      an object of filters (may be {})
+    `dailybot board views <board-uuid> --json` lists your current views under `results`; the
+    file takes just that array, so copy the objects out of `results`.
+
+    \b
+    The ETag `views --etag` prints may start with `W/` (weak). Pass it as printed: the
+    CLI sends the strong form the server compares against.
+
+    \b
     Examples:
-      dailybot board views <board-uuid> --json > views.json
+      dailybot board views <board-uuid> --json   # the current views, under `results`
       dailybot board view save <board-uuid> -f views.json --if-match '"3"'
       dailybot board view save <board-uuid> -f views.json --fetch-etag --json
     """

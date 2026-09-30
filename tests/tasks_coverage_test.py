@@ -102,7 +102,6 @@ def _default_return(method: str) -> Any:
         "list_milestones",
         "list_task_comments",
         "list_tasks_activity",
-        "list_tasks_timeline",
         "list_my_tasks",
     }
     if method in listy:

@@ -38,10 +38,10 @@ from dailybot_cli.commands.public_api_helpers import (
 from dailybot_cli.commands.query_options import (
     PAGING_ONLY_MORE_HINT,
     build_query_params,
-    date_options,
     last_week_range,
     paging_options,
     resolve_fetch_all,
+    window_options,
 )
 from dailybot_cli.display import (
     TASKS_TRUSTED_FIELDS,
@@ -57,6 +57,7 @@ from dailybot_cli.display import (
     print_tasks_detail_panel,
     print_tasks_rows,
     print_tasks_table,
+    print_timeline,
     safe_text,
 )
 
@@ -468,48 +469,43 @@ def tasks_activity(
     )
 
 
-# `date_options`, not `query_options`: the timeline door declares a date window and
-# nothing else. `--search` used to appear in `--help` here and was dropped on the
-# way to the wire, so an unfiltered timeline read as "the filter matched everything".
+# `window_options`, not `date_options`: the timeline answers one document for a date window
+# and does not page. `--page` and `--search` used to appear in `--help` and were dropped on
+# the way to the wire, so the caller could not tell the filter had not applied.
 @tasks.command("timeline")
-@date_options
+@window_options
+@click.option("--include-unscheduled", is_flag=True, help="Also list the tasks that have no dates.")
 @click.option("--json", "json_mode", is_flag=True, help="Emit machine-readable JSON to stdout.")
-def tasks_timeline(json_mode: bool, **flags: Any) -> None:
-    """Show a dated view of the workspace.
+def tasks_timeline(json_mode: bool, include_unscheduled: bool, **flags: Any) -> None:
+    """Show the dated work in a window: goals that overlap it and tasks with dates.
+
+    \b
+    The default window is the door's own (forward from today). Milestones and projects are
+    not part of this view: use `dailybot project milestones` and `dailybot project list`.
 
     \b
     Examples:
-      dailybot tasks timeline --since 2026-09-01 --until 2026-09-19
+      dailybot tasks timeline --since 2026-10-01 --until 2026-12-31
       dailybot tasks timeline --today --json
+      dailybot tasks timeline --include-unscheduled
     """
     client = require_auth()
     try:
-        page: dict[str, Any] = _page_kwargs(**flags)
-        params: dict[str, Any] = page.pop("params", None) or {}
+        params: dict[str, Any] = _page_kwargs(**flags).get("params") or {}
         with console.status("Reading the timeline..."):
-            result: PaginatedResult = client.list_tasks_timeline(
+            document: dict[str, Any] = client.get_tasks_timeline(
                 date_from=params.get("start_date"),
                 date_to=params.get("end_date"),
-                **page,
+                include_unscheduled=include_unscheduled,
             )
     except ValueError as exc:
         raise click.BadParameter(str(exc)) from exc
     except APIError as exc:
         exit_for_tasks_error(exc, json_mode)
     if json_mode:
-        emit_json(_envelope(result))
+        emit_json(document)
         return
-    for entry in result.results:
-        console.print(
-            f"[dim]{safe_text(entry.get('date', ''))}[/dim] "
-            f"{present_untrusted(entry.get('title') or entry.get('summary'), limit=90)}"
-        )
-    print_pagination_footer(
-        len(result.results),
-        result.count,
-        has_more=bool(result.next),
-        more_hint=PAGING_ONLY_MORE_HINT,
-    )
+    print_timeline(document, include_unscheduled=include_unscheduled)
 
 
 @tasks.command("changes")

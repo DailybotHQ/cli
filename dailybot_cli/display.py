@@ -1558,6 +1558,8 @@ TASKS_TRUSTED_FIELDS: frozenset[str] = frozenset(
 
 # Table cells truncate; a 4 KB description must not blow up a row.
 UNTRUSTED_CELL_LIMIT: int = 60
+# Narrowest a table's text column may be squeezed to; fits "In progress" and a first name.
+MIN_TEXT_COLUMN_WIDTH: int = 14
 _EMPTY_PLACEHOLDER: str = "—"
 
 
@@ -1994,22 +1996,38 @@ def print_tasks_rows(
     columns: list[tuple[str, str, bool]],
     *,
     empty: str,
+    hide_when_uniform: tuple[str, ...] = (),
 ) -> None:
     """Render Tasks rows as a table.
 
     Each column is ``(header, dotted field path, trusted)``. Identifiers the server
     mints (keys, uuids, roles) are trusted; anything a person typed goes through
     ``present_untrusted`` so it renders as data, never as markup.
+
+    Trusted columns never wrap (an identifier cut in two cannot be copied), so on a
+    narrow terminal they take the width first. A text column keeps a floor
+    (``MIN_TEXT_COLUMN_WIDTH``) so it is squeezed, never squeezed out. A header in
+    ``hide_when_uniform`` is dropped while no row has a truthy value there
+    (a column of ``False`` or blanks says nothing) to give that width back to the names.
     """
     if not rows:
         print_info(empty)
         return
+    shown: list[tuple[str, str, bool]] = [
+        column
+        for column in columns
+        if column[0] not in hide_when_uniform or any(_dig(row, column[1]) for row in rows)
+    ]
     table: Table = Table(title=title)
-    for header, _path, trusted in columns:
-        table.add_column(header, no_wrap=trusted)
+    for header, _path, trusted in shown:
+        table.add_column(
+            header,
+            no_wrap=trusted,
+            min_width=None if trusted else MIN_TEXT_COLUMN_WIDTH,
+        )
     for row in rows:
         cells: list[str] = []
-        for _header, path, trusted in columns:
+        for _header, path, trusted in shown:
             value: Any = _dig(row, path)
             if trusted:
                 cells.append("" if value is None else safe_text(value))
@@ -2017,6 +2035,70 @@ def print_tasks_rows(
                 cells.append(present_untrusted(value))
         table.add_row(*cells)
     console.print(table)
+
+
+_TIMELINE_BAND_COLUMNS: list[tuple[str, str, bool]] = [
+    ("Goal", "name", False),
+    ("Status", "status", True),
+    ("From", "period_start", True),
+    ("To", "period_end", True),
+]
+_TIMELINE_ROW_COLUMNS: list[tuple[str, str, bool]] = [
+    ("Key", "key", True),
+    ("Title", "title", False),
+    ("State", "state", False),
+    ("Start", "start_date", True),
+    ("Due", "due_date", True),
+    ("Flags", "flags", True),
+]
+_TIMELINE_FLAGS: tuple[tuple[str, str], ...] = (
+    ("is_blocked", "blocked"),
+    ("is_overdue", "overdue"),
+)
+
+
+def print_timeline(document: dict[str, Any], *, include_unscheduled: bool = False) -> None:
+    """Render the timeline document: its window, the goals that overlap it, the dated work.
+
+    Every name and title is user-authored, so it goes through the untrusted presenter; keys,
+    dates and status words come from the server.
+    """
+    window: dict[str, Any] = document.get("window") or {}
+    print_info(
+        f"Window: {safe_text(window.get('from', '?'))} to {safe_text(window.get('to', '?'))}"
+    )
+    bands: list[dict[str, Any]] = [b for b in document.get("bands") or [] if isinstance(b, dict)]
+    rows: list[dict[str, Any]] = [r for r in document.get("rows") or [] if isinstance(r, dict)]
+    if not bands and not rows:
+        print_info("Nothing dated in this window.")
+    if bands:
+        print_tasks_rows("Goals in the window", bands, _TIMELINE_BAND_COLUMNS, empty="")
+    if rows:
+        shown: list[dict[str, Any]] = [
+            {
+                **row,
+                "flags": ", ".join(word for field, word in _TIMELINE_FLAGS if row.get(field)),
+            }
+            for row in rows
+        ]
+        print_tasks_rows("Dated work", shown, _TIMELINE_ROW_COLUMNS, empty="")
+    if document.get("truncated"):
+        print_warning("The list was cut short. Narrow the window with --since / --until.")
+    unscheduled: Any = document.get("unscheduled")
+    if isinstance(unscheduled, dict):
+        results: list[dict[str, Any]] = [
+            r for r in unscheduled.get("results") or [] if isinstance(r, dict)
+        ]
+        if results:
+            print_tasks_rows(
+                "Without dates",
+                results,
+                [("Key", "key", True), ("Title", "title", False)],
+                empty="",
+            )
+        unscheduled = unscheduled.get("count")
+    if isinstance(unscheduled, int) and unscheduled and not include_unscheduled:
+        print_info(f"{unscheduled} task(s) have no dates. Add --include-unscheduled to list them.")
 
 
 def print_bulk_preview(preview: dict[str, Any]) -> None:

@@ -1,7 +1,7 @@
 """`dailybot task` object-level group (plan tasks 8, 11-14)."""
 
 import json
-from typing import Any
+from typing import Any, ClassVar
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -564,3 +564,238 @@ class TestBulkHelp:
         out: str = runner.invoke(cli, ["task", "bulk", "--help"]).output.lower()
         assert "--dry-run" in out
         assert "rolls it back" in " ".join(out.split())
+
+
+class TestSchedulingFlags:
+    """`--start-date`, `--estimate`, `--parent` and `--label` on the single-task doors."""
+
+    TASK: ClassVar[dict[str, Any]] = {"uuid": "t-1", "key": "K-1", "title": "x"}
+    LABEL_A: str = "00000000-0000-0000-0000-00000000000a"
+    LABEL_B: str = "00000000-0000-0000-0000-00000000000b"
+
+    def test_create_forwards_start_date_estimate_and_parent(
+        self, runner: CliRunner, client: MagicMock
+    ) -> None:
+        client.create_task.return_value = self.TASK
+        result = _invoke(
+            runner,
+            client,
+            [
+                "task",
+                "create",
+                "-t",
+                "x",
+                "--start-date",
+                "2026-10-05",
+                "--estimate",
+                "5",
+                "--parent",
+                "K-9",
+                "--json",
+            ],
+        )
+        assert result.exit_code == 0, result.output
+        kwargs: dict[str, Any] = client.create_task.call_args.kwargs
+        assert kwargs["start_date"] == "2026-10-05"
+        assert kwargs["estimate"] == 5
+        assert kwargs["parent_task"] == "K-9"
+
+    def test_create_attaches_labels_through_the_label_door(
+        self, runner: CliRunner, client: MagicMock
+    ) -> None:
+        client.create_task.return_value = self.TASK
+        client.batch_task_labels.return_value = {"labels": [{"uuid": self.LABEL_A, "name": "a"}]}
+        result = _invoke(
+            runner,
+            client,
+            [
+                "task",
+                "create",
+                "-t",
+                "x",
+                "--label",
+                self.LABEL_A,
+                "--label",
+                f"{self.LABEL_B},{self.LABEL_A}",
+                "--json",
+            ],
+        )
+        assert result.exit_code == 0, result.output
+        assert "labels" not in client.create_task.call_args.kwargs
+        call = client.batch_task_labels.call_args
+        assert call.args[0] == "t-1"
+        assert call.kwargs["mode"] == "add"
+        assert call.kwargs["labels"] == [self.LABEL_A, self.LABEL_B]
+        # The batch door answers `{labels: [...]}`, not the task: the printed task carries them.
+        printed: dict[str, Any] = json.loads(result.output)
+        assert printed["key"] == "K-1"
+        assert [label["name"] for label in printed["labels"]] == ["a"]
+
+    def test_a_label_failure_after_create_names_the_created_task(
+        self, runner: CliRunner, client: MagicMock
+    ) -> None:
+        client.create_task.return_value = self.TASK
+        client.batch_task_labels.side_effect = APIError(404, "Not found.", code="not_found")
+        result = _invoke(runner, client, ["task", "create", "-t", "x", "--label", self.LABEL_A])
+        assert result.exit_code != 0
+        assert "K-1" in result.output
+        assert "was created" in result.output
+
+    def test_no_label_means_no_label_call(self, runner: CliRunner, client: MagicMock) -> None:
+        client.create_task.return_value = self.TASK
+        _invoke(runner, client, ["task", "create", "-t", "x", "--json"])
+        client.batch_task_labels.assert_not_called()
+
+    def test_update_forwards_start_date_and_estimate(
+        self, runner: CliRunner, client: MagicMock
+    ) -> None:
+        client.update_task.return_value = self.TASK
+        result = _invoke(
+            runner,
+            client,
+            ["task", "update", "K-1", "--start-date", "2026-10-06", "--estimate", "8", "--json"],
+        )
+        assert result.exit_code == 0, result.output
+        kwargs: dict[str, Any] = client.update_task.call_args.kwargs
+        assert kwargs["start_date"] == "2026-10-06"
+        assert kwargs["estimate"] == 8
+
+    @pytest.mark.parametrize("bad", ["2026-13-01", "10/05/2026", "tomorrow"])
+    def test_a_bad_date_is_refused_locally(
+        self, runner: CliRunner, client: MagicMock, bad: str
+    ) -> None:
+        result = _invoke(runner, client, ["task", "create", "-t", "x", "--start-date", bad])
+        assert result.exit_code == 2
+        client.create_task.assert_not_called()
+
+    def test_a_negative_estimate_is_refused_locally(
+        self, runner: CliRunner, client: MagicMock
+    ) -> None:
+        result = _invoke(runner, client, ["task", "update", "K-1", "--estimate", "-1"])
+        assert result.exit_code == 2
+        client.update_task.assert_not_called()
+
+    def test_the_help_lists_the_new_flags(self, runner: CliRunner) -> None:
+        create = runner.invoke(cli, ["task", "create", "--help"]).output
+        update = runner.invoke(cli, ["task", "update", "--help"]).output
+        for flag in ("--start-date", "--estimate", "--parent", "--label"):
+            assert flag in create
+        for flag in ("--start-date", "--estimate"):
+            assert flag in update
+
+
+class TestMilestoneFlag:
+    """`task update --milestone <uuid>` and `--clear-milestone` (single PATCH; create refuses it)."""
+
+    MILESTONE: str = "00000000-0000-0000-0000-0000000000f1"
+
+    def test_it_forwards_the_milestone(self, runner: CliRunner, client: MagicMock) -> None:
+        client.update_task.return_value = {"uuid": "t-1"}
+        result = _invoke(
+            runner, client, ["task", "update", "K-1", "--milestone", self.MILESTONE, "--json"]
+        )
+        assert result.exit_code == 0, result.output
+        assert client.update_task.call_args.kwargs["milestone"] == self.MILESTONE
+
+    def test_clear_sends_an_explicit_null_through_the_client_flag(
+        self, runner: CliRunner, client: MagicMock
+    ) -> None:
+        client.update_task.return_value = {"uuid": "t-1"}
+        result = _invoke(runner, client, ["task", "update", "K-1", "--clear-milestone", "--json"])
+        assert result.exit_code == 0, result.output
+        kwargs: dict[str, Any] = client.update_task.call_args.kwargs
+        assert kwargs["clear_milestone"] is True
+        assert "milestone" not in kwargs
+
+    def test_both_at_once_is_a_usage_error(self, runner: CliRunner, client: MagicMock) -> None:
+        result = _invoke(
+            runner,
+            client,
+            ["task", "update", "K-1", "--milestone", self.MILESTONE, "--clear-milestone"],
+        )
+        assert result.exit_code == 2
+        client.update_task.assert_not_called()
+
+    def test_a_milestone_that_is_not_a_uuid_is_refused_locally(
+        self, runner: CliRunner, client: MagicMock
+    ) -> None:
+        result = _invoke(runner, client, ["task", "update", "K-1", "--milestone", "beta"])
+        assert result.exit_code == 2
+        client.update_task.assert_not_called()
+
+    def test_the_refusal_for_a_foreign_milestone_is_explained(
+        self, runner: CliRunner, client: MagicMock
+    ) -> None:
+        client.update_task.side_effect = APIError(
+            400, "Milestone is not on this project.", code="milestone_not_on_project"
+        )
+        result = _invoke(runner, client, ["task", "update", "K-1", "--milestone", self.MILESTONE])
+        assert result.exit_code != 0
+        assert "project" in result.output.lower()
+
+    def test_the_client_sends_null_only_when_asked(self) -> None:
+        real: DailyBotClient = DailyBotClient(
+            api_url="https://api.example.test", token="test-token"
+        )
+        response: MagicMock = MagicMock()
+        response.status_code = 200
+        response.json.return_value = {}
+        response.headers = {}
+        with patch("dailybot_cli.api_client.httpx.patch", return_value=response) as patched:
+            real.update_task("t-1", clear_milestone=True)
+            assert patched.call_args.kwargs["json"] == {"milestone": None}
+            real.update_task("t-1", priority=2)
+            assert "milestone" not in patched.call_args.kwargs["json"]
+
+    def test_the_help_lists_both_flags(self, runner: CliRunner) -> None:
+        output: str = runner.invoke(cli, ["task", "update", "--help"]).output
+        assert "--milestone" in output
+        assert "--clear-milestone" in output
+
+
+class TestLabelFailureAfterCreate:
+    """A refused label step leaves the task in place; the caller must be able to tell (any mode)."""
+
+    TASK: ClassVar[dict[str, Any]] = {"uuid": "t-1", "key": "K-1", "title": "x"}
+    LABEL: str = "00000000-0000-0000-0000-00000000000a"
+
+    def test_json_mode_names_the_created_task_in_the_error_envelope(
+        self, runner: CliRunner, client: MagicMock
+    ) -> None:
+        client.create_task.return_value = self.TASK
+        client.batch_task_labels.side_effect = APIError(404, "Not found.", code="not_found")
+        result = _invoke(
+            runner, client, ["task", "create", "-t", "x", "--label", self.LABEL, "--json"]
+        )
+        assert result.exit_code != 0
+        envelope: dict[str, Any] = json.loads(result.stdout)
+        assert envelope["status"] == "error"
+        assert envelope["code"] == "not_found"
+        assert envelope["created_task"] == {"key": "K-1", "uuid": "t-1"}
+
+    def test_a_create_answer_without_a_uuid_is_reported_not_a_traceback(
+        self, runner: CliRunner, client: MagicMock
+    ) -> None:
+        client.create_task.return_value = {"key": "K-1", "title": "x"}
+        result = _invoke(runner, client, ["task", "create", "-t", "x", "--label", self.LABEL])
+        assert result.exit_code != 0
+        assert "Traceback" not in result.output
+        assert "K-1" in result.output
+        client.batch_task_labels.assert_not_called()
+
+    def test_an_unexpected_batch_answer_keeps_the_created_task(
+        self, runner: CliRunner, client: MagicMock
+    ) -> None:
+        client.create_task.return_value = self.TASK
+        client.batch_task_labels.return_value = {"detail": "ok"}
+        result = _invoke(
+            runner, client, ["task", "create", "-t", "x", "--label", self.LABEL, "--json"]
+        )
+        assert result.exit_code == 0
+        assert json.loads(result.output)["key"] == "K-1"
+
+
+def test_move_help_warns_that_a_cross_board_move_changes_the_key(runner: CliRunner) -> None:
+    flat: str = " ".join(runner.invoke(cli, ["task", "move", "--help"]).output.split())
+    assert "NEW key" in flat
+    assert "uuid" in flat

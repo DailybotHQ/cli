@@ -1,13 +1,14 @@
 """`dailybot board` commands (plan tasks 9, 16)."""
 
 import json
-from typing import Any
+from typing import Any, ClassVar
 from unittest.mock import MagicMock, patch
 
 import pytest
 from click.testing import CliRunner
 
 from dailybot_cli.api_client import APIError, DailyBotClient, PaginatedResult
+from dailybot_cli.display import console as display_console
 from dailybot_cli.main import cli
 
 
@@ -230,3 +231,132 @@ class TestBoardLimitIsSurfaced:
         )
         assert result.exit_code != 0
         assert "limit" in " ".join(result.output.lower().split())
+
+
+class TestTablesAtEightyColumns:
+    """The tables an agent copies from must stay readable in a plain 80-column terminal."""
+
+    STATES: ClassVar[list[str]] = [
+        "Backlog",
+        "To do",
+        "In progress",
+        "In review",
+        "Done",
+        "Canceled",
+    ]
+    CATEGORIES: ClassVar[list[str]] = [
+        "backlog",
+        "todo",
+        "in_progress",
+        "in_progress",
+        "done",
+        "canceled",
+    ]
+    PEOPLE: ClassVar[list[tuple[str, str]]] = [
+        ("Emma Watson", "00000000-0000-0000-0000-0000000000e1"),
+        ("Oscar Marin Molina", "00000000-0000-0000-0000-0000000000e2"),
+    ]
+
+    @pytest.fixture(autouse=True)
+    def eighty_columns(self) -> Any:
+        previous: int | None = display_console._width
+        display_console.width = 80
+        try:
+            yield
+        finally:
+            display_console._width = previous
+
+    def test_board_states_shows_every_column_name_in_full(
+        self, runner: CliRunner, client: MagicMock
+    ) -> None:
+        client.list_board_states.return_value = [
+            {
+                "position": i + 1,
+                "name": name,
+                "category": self.CATEGORIES[i],
+                "is_archived": False,
+                "uuid": f"00000000-0000-0000-0000-00000000000{i}",
+            }
+            for i, name in enumerate(self.STATES)
+        ]
+        result = _invoke(runner, client, ["board", "states", "b-1"])
+        assert result.exit_code == 0, result.output
+        for name in self.STATES:
+            assert name in result.output
+        assert "…" not in result.output
+        assert "00000000-0000-0000-0000-000000000005" in result.output
+
+    def test_the_archived_column_only_appears_when_something_is_archived(
+        self, runner: CliRunner, client: MagicMock
+    ) -> None:
+        live: dict[str, Any] = {
+            "position": 1,
+            "name": "Backlog",
+            "category": "backlog",
+            "is_archived": False,
+            "uuid": "00000000-0000-0000-0000-000000000001",
+        }
+        client.list_board_states.return_value = [live]
+        assert "Archived" not in _invoke(runner, client, ["board", "states", "b-1"]).output
+        client.list_board_states.return_value = [
+            live,
+            {
+                **live,
+                "position": 2,
+                "is_archived": True,
+                "name": "Old",
+                "uuid": live["uuid"][:-1] + "2",
+            },
+        ]
+        assert (
+            "Archived"
+            in _invoke(runner, client, ["board", "states", "b-1", "--include-archived"]).output
+        )
+
+    def test_mentionables_shows_the_name_and_the_whole_token(
+        self, runner: CliRunner, client: MagicMock
+    ) -> None:
+        client.list_board_mentionables.return_value = [
+            {"uuid": uuid, "name": name, "kind": "user"} for name, uuid in self.PEOPLE
+        ]
+        result = _invoke(runner, client, ["board", "mentionables", "b-1"])
+        assert result.exit_code == 0, result.output
+        for name, uuid in self.PEOPLE:
+            assert name in result.output
+            assert f"<@DB@{uuid}>" in result.output
+        assert "…" not in result.output
+
+    def test_a_row_without_a_mention_token_keeps_its_uuid(
+        self, runner: CliRunner, client: MagicMock
+    ) -> None:
+        client.list_board_mentionables.return_value = [
+            {"uuid": "00000000-0000-0000-0000-0000000000aa", "name": "Ops team", "kind": "team"}
+        ]
+        result = _invoke(runner, client, ["board", "mentionables", "b-1"])
+        assert "00000000-0000-0000-0000-0000000000aa" in result.output
+        assert "(not mentionable)" in result.output
+        assert "<@DB@" not in result.output
+
+
+class TestUniformColumns:
+    """`hide_when_uniform` hides a column that says nothing, never one that says something."""
+
+    def _states(self, archived: bool) -> list[dict[str, Any]]:
+        return [
+            {
+                "position": 1,
+                "name": "Old",
+                "category": "backlog",
+                "is_archived": archived,
+                "uuid": "00000000-0000-0000-0000-000000000001",
+            }
+        ]
+
+    def test_a_column_of_false_is_hidden(self, runner: CliRunner, client: MagicMock) -> None:
+        client.list_board_states.return_value = self._states(False)
+        assert "Archived" not in _invoke(runner, client, ["board", "states", "b-1"]).output
+
+    def test_a_column_of_true_is_kept(self, runner: CliRunner, client: MagicMock) -> None:
+        client.list_board_states.return_value = self._states(True)
+        result = _invoke(runner, client, ["board", "states", "b-1", "--include-archived"])
+        assert "Archived" in result.output

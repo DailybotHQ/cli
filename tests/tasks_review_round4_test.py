@@ -267,14 +267,6 @@ class TestDoorsOnlyAdvertiseFiltersTheyCarry:
             result = runner.invoke(cli, [*argv, "--search", "deploy"])
         assert result.exit_code == EXIT_USAGE_ERROR
 
-    def test_timeline_keeps_the_date_window_it_does_carry(
-        self, runner: CliRunner, client: MagicMock
-    ) -> None:
-        client.list_tasks_timeline.return_value = _page()
-        with patch("dailybot_cli.commands.tasks.require_auth", return_value=client):
-            runner.invoke(cli, ["tasks", "timeline", "--since", "2026-09-01"])
-        assert client.list_tasks_timeline.call_args[1]["date_from"] == "2026-09-01"
-
     def test_mine_keeps_the_one_filter_the_door_declares(
         self, runner: CliRunner, client: MagicMock
     ) -> None:

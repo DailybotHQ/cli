@@ -66,6 +66,22 @@ ERROR_CODE_MESSAGES: dict[str, str] = {
         "`dailybot project update-unreact`) before adding another; "
         "re-adding an emoji you already hold changes nothing."
     ),
+    "throttled": (
+        "You are sending requests faster than your account allows. "
+        "Wait a few seconds, then try again."
+    ),
+    "task_archived": (
+        "This task is archived, so it cannot be changed or duplicated. "
+        "Bring it back with `dailybot task restore <task>` first."
+    ),
+    "project_name_conflict": (
+        "Another project already uses that name, and archived projects keep theirs. "
+        "Pick a different name, or restore the archived project with `dailybot project restore`."
+    ),
+    "milestone_not_on_project": (
+        "That milestone belongs to a different project than this task's board. "
+        "List the right ones with `dailybot project milestones <project>`."
+    ),
     "label_in_use": (
         "This label is still in use, so it cannot be deleted. Archive it instead "
         "(`dailybot label archive <label>` for organization labels, or "
@@ -581,6 +597,10 @@ PERSON_SHAPED_TASKS_DOORS: frozenset[str] = frozenset(
 # that nobody forgot one.
 TASKS_ERROR_CODES: frozenset[str] = frozenset(
     {
+        "throttled",
+        "task_archived",
+        "project_name_conflict",
+        "milestone_not_on_project",
         "credential_absent",
         "credential_malformed",
         "credential_expired",
@@ -786,8 +806,27 @@ def rows_of(data: Any) -> list[dict[str, Any]]:
     return []
 
 
-def exit_for_tasks_error(exc: APIError, json_mode: bool, *, door: str | None = None) -> NoReturn:
+def _retry_after_seconds(exc: APIError) -> int | None:
+    """Whole seconds to wait after a 429: the body's `extra.retry_after`, else the header's."""
+    if exc.status_code != 429:
+        return None
+    from_body: Any = (exc.extra or {}).get("retry_after")
+    if isinstance(from_body, (int, float)) and not isinstance(from_body, bool):
+        return max(int(from_body), 0)
+    return max(int(exc.retry_after), 0) if exc.retry_after is not None else None
+
+
+def exit_for_tasks_error(
+    exc: APIError,
+    json_mode: bool,
+    *,
+    door: str | None = None,
+    envelope_extra: dict[str, Any] | None = None,
+) -> NoReturn:
     """Surface a Tasks refusal and exit with the documented code.
+
+    ``envelope_extra`` adds fields to the ``--json`` error envelope, for a refusal that
+    happened after part of the command already succeeded (say what was left in place).
 
     Honours ``--json`` on every path: an agent parsing stdout must not get an
     empty stream with prose on stderr just because the failure was a refusal
@@ -801,10 +840,20 @@ def exit_for_tasks_error(exc: APIError, json_mode: bool, *, door: str | None = N
         if is_person_shaped_refusal(exc, door=door)
         else tasks_write_exit_code(exc)
     )
+    wait: int | None = _retry_after_seconds(exc)
     if json_mode:
-        emit_json({"status": "error", "code": exc.code, "detail": exc.detail, "message": message})
+        emit_json(
+            {
+                "status": "error",
+                "code": exc.code,
+                "detail": exc.detail,
+                "message": message,
+                **({"retry_after": wait} if wait is not None else {}),
+                **(envelope_extra or {}),
+            }
+        )
     else:
-        print_error(message)
+        print_error(f"{message} Try again in {wait}s." if wait is not None else message)
     raise SystemExit(code)
 
 

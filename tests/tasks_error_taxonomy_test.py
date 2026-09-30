@@ -5,6 +5,8 @@ task 1's live probe (`analysis_results/PERMISSION_MATRIX_OBSERVED.md`), not agai
 the handoff's documented shapes. Where the two disagree, both are handled.
 """
 
+import json
+
 import pytest
 
 from dailybot_cli.api_client import APIError
@@ -12,8 +14,10 @@ from dailybot_cli.commands.public_api_helpers import (
     ERROR_CODE_MESSAGES,
     EXIT_NOT_AUTHENTICATED,
     EXIT_NOT_FOUND,
+    EXIT_RATE_LIMITED,
     PERSON_SHAPED_TASKS_DOORS,
     TASKS_ERROR_CODES,
+    exit_for_tasks_error,
     is_person_shaped_refusal,
     resolve_error_message,
 )
@@ -246,3 +250,46 @@ class TestKeyWithoutTasksScopes:
             message: str = resolve_error_message(self._refusal("tasks:read"), tasks_surface=True)
         assert "API key" not in message
         assert "tasks:read" in message
+
+
+class TestNewServerCodes:
+    """Codes the API agent added: `throttled`, `task_archived`, `project_name_conflict`."""
+
+    @pytest.mark.parametrize("code", ["throttled", "task_archived", "project_name_conflict"])
+    def test_each_new_code_is_in_the_vocabulary_with_a_message(self, code: str) -> None:
+        assert code in TASKS_ERROR_CODES
+        assert code in ERROR_CODE_MESSAGES
+
+    def test_the_removed_duplicate_code_is_not_advertised(self) -> None:
+        assert "task_delete_forbidden" not in TASKS_ERROR_CODES
+
+    def test_a_throttled_json_envelope_carries_retry_after(
+        self, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        exc: APIError = APIError(
+            429,
+            "Request was throttled. Expected available in 12 seconds.",
+            code="throttled",
+            extra={"retry_after": 12},
+        )
+        with pytest.raises(SystemExit) as raised:
+            exit_for_tasks_error(exc, True)
+        assert raised.value.code == EXIT_RATE_LIMITED
+        envelope: dict[str, object] = json.loads(capsys.readouterr().out)
+        assert envelope["code"] == "throttled"
+        assert envelope["retry_after"] == 12
+
+    def test_the_header_value_is_used_when_the_body_has_none(
+        self, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        exc: APIError = APIError(429, "Slow down.", code="throttled", retry_after=7.0)
+        with pytest.raises(SystemExit):
+            exit_for_tasks_error(exc, True)
+        assert json.loads(capsys.readouterr().out)["retry_after"] == 7
+
+    def test_a_non_429_envelope_has_no_retry_after(
+        self, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        with pytest.raises(SystemExit):
+            exit_for_tasks_error(APIError(404, "Not found.", code="not_found"), True)
+        assert "retry_after" not in json.loads(capsys.readouterr().out)
