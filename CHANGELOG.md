@@ -9,6 +9,27 @@ Do not edit it by hand — your edits will be overwritten on the next release.
 
 <!-- version list -->
 
+## v3.24.0 (2026-09-30)
+
+### Bug Fixes
+
+- **tasks**: Address review round 1 on the roadmap gaps PR
+  ([#121](https://github.com/DailybotHQ/cli/pull/121),
+  [`4a5ec06`](https://github.com/DailybotHQ/cli/commit/4a5ec061d8a9ca5b7ea38b0891ffb8f3bbfbd6ab))
+
+### Chores
+
+- **skills**: Sync vendored dailybot skill pack to v3.21.1
+  ([#120](https://github.com/DailybotHQ/cli/pull/120),
+  [`6c48105`](https://github.com/DailybotHQ/cli/commit/6c48105707ec8d1f4496108703025745124d674c))
+
+### Features
+
+- **tasks**: Close the gaps found building a Q4 roadmap with the CLI
+  ([#121](https://github.com/DailybotHQ/cli/pull/121),
+  [`4a5ec06`](https://github.com/DailybotHQ/cli/commit/4a5ec061d8a9ca5b7ea38b0891ffb8f3bbfbd6ab))
+
+
 ## v3.23.1 (2026-09-29)
 
 ### Bug Fixes
