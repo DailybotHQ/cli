@@ -9,6 +9,15 @@ Do not edit it by hand — your edits will be overwritten on the next release.
 
 <!-- version list -->
 
+## v3.25.0 (2026-09-30)
+
+### Features
+
+- **tasks**: Dailybot Plan commands, notifications, reports, inactive people and sorting
+  ([#123](https://github.com/DailybotHQ/cli/pull/123),
+  [`fb3d1ac`](https://github.com/DailybotHQ/cli/commit/fb3d1ac239680ee5bda5433522d131943a02c813))
+
+
 ## v3.24.0 (2026-09-30)
 
 ### Bug Fixes
