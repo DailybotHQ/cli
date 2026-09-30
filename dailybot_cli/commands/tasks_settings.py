@@ -10,10 +10,14 @@ from typing import Any
 
 import click
 
-from dailybot_cli.api_client import APIError
+from dailybot_cli.api_client import APIError, PaginatedResult
 from dailybot_cli.commands._beta import mark_beta
 from dailybot_cli.commands._channels import PUBLIC_CHANNEL_TYPE, resolve_channel
+from dailybot_cli.commands._destructive import confirm_without_preview
+from dailybot_cli.commands._outbound import send_test_flow
 from dailybot_cli.commands._paging import envelope, page_kwargs
+from dailybot_cli.commands._refs import require_uuid, require_uuids
+from dailybot_cli.commands._writes import named, report_write
 from dailybot_cli.commands.public_api_helpers import emit_json, exit_for_tasks_error, require_auth
 from dailybot_cli.commands.query_options import PAGING_ONLY_MORE_HINT, paging_options
 from dailybot_cli.display import (
@@ -21,7 +25,9 @@ from dailybot_cli.display import (
     print_channels_table,
     print_my_notifications,
     print_notification_catalog,
+    print_notification_routes,
     print_pagination_footer,
+    print_route_deliveries,
     print_success,
 )
 
@@ -32,6 +38,7 @@ CHANNEL_TYPE_CHOICES: tuple[str, ...] = (
     "direct_message",
     "public",
 )
+ROUTE_SCOPE_TYPES: tuple[str, ...] = ("boards", "projects")
 PERSONAL_SCOPE: str = "personal"
 ORG_SCOPE: str = "org"
 MY_NOTIFICATIONS_DOOR: str = "me/notifications"
@@ -287,6 +294,349 @@ def channels_search(
         emit_json(envelope(result))
         return
     print_channels_table(result.results)
+    print_pagination_footer(
+        len(result.results),
+        result.count,
+        has_more=bool(result.next),
+        more_hint=PAGING_ONLY_MORE_HINT,
+    )
+
+
+# --------------------------------------------------------------------------------------- routes
+
+
+def _scope_from(
+    boards: tuple[str, ...], projects: tuple[str, ...], *, clear: bool = False
+) -> dict[str, Any] | None:
+    """The ``scope`` object for ``--board`` / ``--project`` (one kind at a time), or all on ``--clear-scope``."""
+    if clear:
+        if boards or projects:
+            raise click.UsageError("--clear-scope cannot be combined with --board or --project.")
+        return {"type": "all", "uuids": []}
+    if boards and projects:
+        raise click.UsageError("Scope by boards or by projects, not both.")
+    if boards:
+        return {"type": "boards", "uuids": list(dict.fromkeys(boards))}
+    if projects:
+        return {"type": "projects", "uuids": list(dict.fromkeys(projects))}
+    return None
+
+
+def _org_kinds(client: Any, kinds: tuple[str, ...]) -> list[str]:
+    """Split, de-duplicate and validate ``--kind`` values against the catalog's organization kinds."""
+    kind_list: list[str] = _split_kinds(kinds)
+    with console.status("Checking the notification kinds..."):
+        validate_kinds(client.get_notifications_catalog(), kind_list, scope=ORG_SCOPE)
+    return kind_list
+
+
+@click.group("routes")
+def routes() -> None:
+    """Post organization Tasks events to a chat channel (admins change them; members read).
+
+    \b
+    A route = a channel + the organization event kinds it receives (card created or completed,
+    project health or lead changed, milestone reached, ...), optionally limited to some boards or
+    projects. Private boards and projects never post to a channel. Up to 10 routes per organization.
+    Find channels with `dailybot tasks channels search`; see kinds with
+    `dailybot tasks notifications catalog`.
+    """
+
+
+mark_beta(routes)
+
+
+@routes.command("list")
+@paging_options
+@click.option("--json", "json_mode", is_flag=True, help=JSON_HELP)
+def routes_list(json_mode: bool, **flags: Any) -> None:
+    """List the notification routes.
+
+    \b
+    Examples:
+      dailybot tasks routes list
+      dailybot tasks routes list --json
+    """
+    client = require_auth()
+    try:
+        page: dict[str, Any] = page_kwargs(**flags)
+        page.pop("params", None)
+        with console.status("Reading the routes..."):
+            result = client.list_notification_routes(**page)
+    except ValueError as exc:
+        raise click.BadParameter(str(exc)) from exc
+    except APIError as exc:
+        exit_for_tasks_error(exc, json_mode)
+    if json_mode:
+        emit_json(envelope(result))
+        return
+    print_notification_routes(result)
+    print_pagination_footer(
+        len(result.results),
+        result.count,
+        has_more=bool(result.next),
+        more_hint=PAGING_ONLY_MORE_HINT,
+    )
+
+
+@routes.command("get")
+@click.argument("route", metavar="ROUTE", callback=require_uuid)
+@click.option("--json", "json_mode", is_flag=True, help=JSON_HELP)
+def routes_get(route: str, json_mode: bool) -> None:
+    """Show one route.
+
+    \b
+    Examples:
+      dailybot tasks routes get <route-uuid>
+    """
+    client = require_auth()
+    try:
+        with console.status("Reading the route..."):
+            data: dict[str, Any] = client.get_notification_route(route)
+    except APIError as exc:
+        exit_for_tasks_error(exc, json_mode)
+    if json_mode:
+        emit_json(data)
+        return
+    print_notification_routes(PaginatedResult(results=[data], count=1))
+
+
+@routes.command("create")
+@click.option("--name", required=True, help="A name for the route.")
+@click.option(
+    "--channel", "channel_ref", required=True, help="Channel to post to (name or external id)."
+)
+@click.option(
+    "--kind",
+    "kinds",
+    multiple=True,
+    required=True,
+    help="Organization kind to post (repeatable, or comma-separated).",
+)
+@click.option(
+    "--board",
+    "boards",
+    multiple=True,
+    callback=require_uuids,
+    help="Only this board (uuid, repeatable).",
+)
+@click.option(
+    "--project",
+    "projects",
+    multiple=True,
+    callback=require_uuids,
+    help="Only this project (uuid, repeatable).",
+)
+@click.option("--enabled/--disabled", default=None, help="Start enabled (the default) or disabled.")
+@click.option("--idempotency-key", default=None, help="Reuse a key to make a retry safe.")
+@click.option("--json", "json_mode", is_flag=True, help=JSON_HELP)
+def routes_create(
+    name: str,
+    channel_ref: str,
+    kinds: tuple[str, ...],
+    boards: tuple[str, ...],
+    projects: tuple[str, ...],
+    enabled: bool | None,
+    idempotency_key: str | None,
+    json_mode: bool,
+) -> None:
+    """Create a route (admin only). Sends an idempotency key and prints it.
+
+    \b
+    Examples:
+      dailybot tasks routes create --name Completions --channel eng --kind task.completed,project.health_changed
+      dailybot tasks routes create --name "Design board" --channel design --kind task.created --board <board-uuid>
+    """
+    scope: dict[str, Any] | None = _scope_from(boards, projects)
+    client = require_auth()
+    try:
+        kind_list: list[str] = _org_kinds(client, kinds)
+        with console.status("Finding the channel..."):
+            channel: dict[str, str] = resolve_channel(client, channel_ref)
+        with console.status("Creating the route..."):
+            data: dict[str, Any] = client.create_notification_route(
+                name=name,
+                channel={"external_id": channel["external_id"]},
+                kinds=kind_list,
+                scope=scope,
+                enabled=enabled,
+                idempotency_key=idempotency_key,
+            )
+    except APIError as exc:
+        exit_for_tasks_error(exc, json_mode)
+    if json_mode:
+        emit_json(data)
+        return
+    report_write(data, f"Created route {named(data, name)}")
+    print_notification_routes(PaginatedResult(results=[data], count=1))
+
+
+@routes.command("update")
+@click.argument("route", metavar="ROUTE", callback=require_uuid)
+@click.option("--name", default=None, help="New name.")
+@click.option("--channel", "channel_ref", default=None, help="New channel (name or external id).")
+@click.option(
+    "--kind",
+    "kinds",
+    multiple=True,
+    help="Replace the kinds with these (repeatable, or comma-separated).",
+)
+@click.option(
+    "--board",
+    "boards",
+    multiple=True,
+    callback=require_uuids,
+    help="Only this board (uuid, repeatable).",
+)
+@click.option(
+    "--project",
+    "projects",
+    multiple=True,
+    callback=require_uuids,
+    help="Only this project (uuid, repeatable).",
+)
+@click.option("--clear-scope", is_flag=True, help="Cover the whole organization again.")
+@click.option("--enabled/--disabled", default=None, help="Turn the route on or off.")
+@click.option("--json", "json_mode", is_flag=True, help=JSON_HELP)
+def routes_update(
+    route: str,
+    name: str | None,
+    channel_ref: str | None,
+    kinds: tuple[str, ...],
+    boards: tuple[str, ...],
+    projects: tuple[str, ...],
+    clear_scope: bool,
+    enabled: bool | None,
+    json_mode: bool,
+) -> None:
+    """Change a route (admin only); only the flags you pass are sent.
+
+    \b
+    Examples:
+      dailybot tasks routes update <route-uuid> --disabled
+      dailybot tasks routes update <route-uuid> --kind task.completed --channel eng
+      dailybot tasks routes update <route-uuid> --clear-scope
+    """
+    scope: dict[str, Any] | None = _scope_from(boards, projects, clear=clear_scope)
+    if name is None and channel_ref is None and not kinds and scope is None and enabled is None:
+        raise click.UsageError(
+            "Nothing to update. Pass at least one of --name, --channel, --kind, --board/--project, --clear-scope, --enabled/--disabled."
+        )
+    client = require_auth()
+    try:
+        fields: dict[str, Any] = {
+            key: value
+            for key, value in (("name", name), ("enabled", enabled), ("scope", scope))
+            if value is not None
+        }
+        if kinds:
+            fields["kinds"] = _org_kinds(client, kinds)
+        if channel_ref:
+            with console.status("Finding the channel..."):
+                fields["channel"] = {
+                    "external_id": resolve_channel(client, channel_ref)["external_id"]
+                }
+        with console.status("Updating the route..."):
+            data: dict[str, Any] = client.update_notification_route(route, **fields)
+    except APIError as exc:
+        exit_for_tasks_error(exc, json_mode)
+    if json_mode:
+        emit_json(data)
+        return
+    report_write(data, "Route updated")
+    print_notification_routes(PaginatedResult(results=[data], count=1))
+
+
+@routes.command("delete")
+@click.argument("route", metavar="ROUTE", callback=require_uuid)
+@click.option("--dry-run", is_flag=True, help="Say what would happen and send nothing.")
+@click.option("--yes", "-y", "assume_yes", is_flag=True, help="Skip the confirmation.")
+@click.option("--json", "json_mode", is_flag=True, help=JSON_HELP)
+def routes_delete(route: str, dry_run: bool, assume_yes: bool, json_mode: bool) -> None:
+    """Delete a route (admin only). The channel stops receiving its events; past deliveries stay in the log.
+
+    \b
+    Examples:
+      dailybot tasks routes delete <route-uuid> --dry-run
+      dailybot tasks routes delete <route-uuid> --yes
+    """
+    consequence: str = (
+        f"Deletes the notification route {route}; its channel stops receiving those events."
+    )
+    if not confirm_without_preview(
+        consequence, assume_yes=assume_yes, dry_run=dry_run, json_mode=json_mode
+    ):
+        return
+    client = require_auth()
+    try:
+        with console.status("Deleting the route..."):
+            client.delete_notification_route(route)
+    except APIError as exc:
+        exit_for_tasks_error(exc, json_mode)
+    if json_mode:
+        emit_json({"deleted": True, "route": route})
+        return
+    print_success("Route deleted.")
+
+
+@routes.command("send-test")
+@click.argument("route", metavar="ROUTE", callback=require_uuid)
+@click.option("--dry-run", is_flag=True, help="Show what would be posted and send nothing.")
+@click.option(
+    "--yes",
+    "-y",
+    "assume_yes",
+    is_flag=True,
+    help="Skip the confirmation (the preview is still fetched and shown).",
+)
+@click.option("--json", "json_mode", is_flag=True, help=JSON_HELP)
+def routes_send_test(route: str, dry_run: bool, assume_yes: bool, json_mode: bool) -> None:
+    """Post a sample message to the route's channel (admin only), after a preview.
+
+    \b
+    It always asks the API for a dry run first and shows the channel and the message; it posts for
+    real only after you confirm (or pass --yes). --dry-run stops after the preview.
+
+    \b
+    Examples:
+      dailybot tasks routes send-test <route-uuid> --dry-run
+      dailybot tasks routes send-test <route-uuid> --yes
+    """
+    client = require_auth()
+    send_test_flow(
+        lambda preview: client.send_route_test(route, dry_run=preview),
+        what="test message",
+        dry_run=dry_run,
+        assume_yes=assume_yes,
+        json_mode=json_mode,
+    )
+
+
+@routes.command("deliveries")
+@click.argument("route", metavar="ROUTE", callback=require_uuid)
+@paging_options
+@click.option("--json", "json_mode", is_flag=True, help=JSON_HELP)
+def routes_deliveries(route: str, json_mode: bool, **flags: Any) -> None:
+    """Show a route's recent deliveries (status and error per post).
+
+    \b
+    Examples:
+      dailybot tasks routes deliveries <route-uuid>
+    """
+    client = require_auth()
+    try:
+        page: dict[str, Any] = page_kwargs(**flags)
+        page.pop("params", None)
+        with console.status("Reading the deliveries..."):
+            result = client.list_route_deliveries(route, **page)
+    except ValueError as exc:
+        raise click.BadParameter(str(exc)) from exc
+    except APIError as exc:
+        exit_for_tasks_error(exc, json_mode)
+    if json_mode:
+        emit_json(envelope(result))
+        return
+    print_route_deliveries(result)
     print_pagination_footer(
         len(result.results),
         result.count,
