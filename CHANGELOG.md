@@ -9,6 +9,15 @@ Do not edit it by hand — your edits will be overwritten on the next release.
 
 <!-- version list -->
 
+## v3.25.1 (2026-09-30)
+
+### Documentation
+
+- **tasks**: Polish the Dailybot Plan docs and drop the rename and legacy wording
+  ([#124](https://github.com/DailybotHQ/cli/pull/124),
+  [`75071b0`](https://github.com/DailybotHQ/cli/commit/75071b0e15f5c43df5342c8e09d5a4f157a00a09))
+
+
 ## v3.25.0 (2026-09-30)
 
 ### Features
