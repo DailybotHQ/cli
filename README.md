@@ -954,7 +954,7 @@ humans who own them.
 | `dailybot plan task create --title <t>` | Create a task (`--owner <user\|me>`, `--priority 1-5`, `--due`, `--start-date`, `--estimate`, `--parent <task>`, `--label <uuid>` repeatable); sends an idempotency key so a retry cannot duplicate. Labels are attached right after the create through the label door; if that step fails the task exists and the message names it |
 | `dailybot plan task update <task>` | Change fields — partial update, never an overwrite (`--priority` is 1 urgent … 5 none; `--start-date`, `--estimate`, `--milestone <uuid>` / `--clear-milestone` too; the milestone must belong to the board's project) |
 | `dailybot plan task move <task>` | Move to another column (`--state` takes a name, a category like `done`, or a uuid) or board (`--board`) |
-| `dailybot plan task set-owner <task> <user\|me>` | Set the task's owner — the accountable person (`task assign --to` still works, deprecated) |
+| `dailybot plan task set-owner <task> <user\|me>` | Set the task's owner — the accountable person (`dailybot plan task assign --to` still works, deprecated) |
 | `dailybot plan task comment <uuid> <body>` | Comment (`-` reads the body from stdin) |
 | `dailybot plan task comments <uuid>` | List a task's comments |
 | `dailybot plan task comment-react\|comment-unreact <task> <comment> <emoji>` | React to a comment with one emoji (👍, 🚀…), or remove your reaction — **needs a person: `dailybot login` or a personal API key** |
@@ -990,7 +990,7 @@ humans who own them.
 | `dailybot plan board member add <board> <user>` (or `--team <team>`) · `dailybot plan board member remove <board> <user>` | Who can see the board — **needs a person: `dailybot login` or a personal API key**. Membership is the privacy control (not org role). A team grant follows the team live. Last grant on a private board stays (`last_grant_cannot_be_removed`) |
 | `dailybot plan board label create <board> -n <name>` | Create an organization label from the board — **needs a person: `dailybot login` or a personal API key** |
 | `dailybot plan board view save <board> -f views.json --if-match <etag>` | Replace your saved views (the whole list) — **needs a person: `dailybot login` or a personal API key** |
-| `dailybot plan board snapshot <uuid>` | The whole board in one request (`--sort` orders each column); carries the `delta_cursor` that `tasks changes` consumes |
+| `dailybot plan board snapshot <uuid>` | The whole board in one request (`--sort` orders each column); carries the `delta_cursor` that `dailybot plan tasks changes` consumes |
 | `dailybot plan board update <uuid>` | Name, key (the old key stays reserved), visibility, estimate scale, auto-archive, project |
 | `dailybot plan board create --name <n> --project <uuid> --key <KEY>` | Create a board in a project; the key prefixes its tasks (`DSN-1`) — **needs a person: `dailybot login` or a personal API key** (any non-guest member) |
 | `dailybot plan board archive <uuid>` | Archive a board. **Cascade-archives its live tasks**, and restoring does not bring them back |
@@ -1000,7 +1000,7 @@ humans who own them.
 | `dailybot plan project updates [<project>]` | Batched update digest, or one project's feed |
 | `dailybot plan project update-post <uuid> <body>` | **Post a project update** — how the team sees what was done (`--health`; sends an idempotency key) |
 | `dailybot plan project update-get\|update-edit\|update-delete <project> <update>` | Read one update (author, `via <agent>`, health, files); edit its text or health (author only); delete it (author or org admin; `--dry-run`) |
-| `dailybot plan project update-attach\|update-attachments <project> <update>` · `update-attachment get\|rename\|delete` | Files on an update (≤5 MiB). Attach and rename: author only; delete: author or an organization admin. For an inline image, attach it, then `update-edit` the body with `attachment:<uuid>` |
+| `dailybot plan project update-attach\|update-attachments <project> <update>` · `dailybot plan project update-attachment get\|rename\|delete` | Files on an update (≤5 MiB). Attach and rename: author only; delete: author or an organization admin. For an inline image, attach it, then `dailybot plan project update-edit` the body with `attachment:<uuid>` |
 | `dailybot plan project update-react\|update-unreact <project> <update> <emoji>` · `update-reactions <project> <update> [--emoji 👍]` | React to a project update with one emoji or remove your reaction — **needs a person: `dailybot login` or a personal API key**; list everyone who reacted |
 | `dailybot plan project milestones [<uuid>]` | List milestones |
 | `dailybot plan project milestone-complete <p> <m>` | Complete a milestone. **Its open tasks stay open** |
@@ -1011,7 +1011,7 @@ humans who own them.
 | `dailybot plan project members <uuid>` · `dailybot plan project member add\|remove` | Who can see the project — people or whole teams (`--team`) — `members` works with a personal API key; `member add\|remove` **needs a person: `dailybot login` or a personal API key** |
 | `dailybot plan project views <uuid>` · `dailybot plan project view save` | Your saved views; save replaces the list and requires the ETag — **needs a person: `dailybot login` or a personal API key** |
 | `dailybot plan project milestone-create\|milestone-update\|milestone-delete` | Dated milestones; delete retires it (tasks keep pointing at it) |
-| `dailybot plan project milestone-attach\|milestone-attachments <project> <milestone>` · `milestone-attachment get\|rename\|delete` | Files on a milestone (≤5 MiB); reference one in the description with `attachment:<uuid>`. `project milestone-restore` brings a retired milestone back |
+| `dailybot plan project milestone-attach\|milestone-attachments <project> <milestone>` · `dailybot plan project milestone-attachment get\|rename\|delete` | Files on a milestone (≤5 MiB); reference one in the description with `attachment:<uuid>`. `dailybot plan project milestone-restore` brings a retired milestone back |
 | `dailybot plan project archive <uuid>` | Archive a project |
 | `dailybot plan board attach <uuid> <file>` · `dailybot plan board attachments` · `dailybot plan board attachment get\|rename\|delete` | Files on a board (≤5 MiB, one request). Attaching, renaming and deleting need a person (`dailybot login` or a personal API key); `attachment delete` previews with `--dry-run` |
 | `dailybot plan project attach <uuid> <file>` · `dailybot plan project attachments` · `dailybot plan project attachment get\|rename\|delete` | Files on a project (≤5 MiB, one request). Attaching and deleting need a person (`dailybot login` or a personal API key) |

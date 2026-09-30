@@ -353,3 +353,14 @@ class TestPullRequestReviewRound4:
         )
         bare: re.Pattern[str] = re.compile(r"· `(task|tasks|board|project|goal) ")
         assert not bare.findall(readme)
+        rows: list[str] = [ln for ln in readme.splitlines() if ln.startswith("| `dailybot plan")]
+        fragment: re.Pattern[str] = re.compile(
+            r"`(?:(?:task|tasks|board|project|goal) [a-z<-]|update-attachment|milestone-attachment)"
+        )
+        offenders: list[str] = [
+            ln[:80]
+            for ln in rows
+            if fragment.search(ln.split("|", 2)[2] if ln.count("|") > 2 else "")
+            or any(fragment.match(c) for c in re.findall(r"· (`[^`]+`)", ln))
+        ]
+        assert not offenders, offenders
