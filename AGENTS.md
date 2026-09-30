@@ -38,7 +38,7 @@
 - **For humans** — email-OTP login, **managing Tasks** (`tasks` for the workspace, `task` for one task, plus `board` / `project` / `goal`), viewing pending check-ins, submitting structured/free-text updates, **filling out forms** (one-shot or driven through a workflow state machine: `pre_release → qa → code_review → ready_to_release → released`), **browsing teams** (role-scoped server-side), **giving kudos to users or whole teams**, interactive TUI mode.
 - **For agents (AI assistants, CI jobs, deploy scripts, bots)** — progress reports, milestone tracking, agent health, webhook registration, agent-to-agent messaging, transactional email, standalone agent registration (creates an org without a human Dailybot account), **and the full forms-response lifecycle** (`get / responses / response get / update / transition / delete`) so an agent can drive any form — including workflow-enabled ones — end-to-end after `dailybot login`.
 
-It talks exclusively to the Dailybot HTTP API under `/v1/cli/*`, `/v1/agent*/*`, `/v1/forms/*`, `/v1/tasks/*`, `/v1/teams/*`, `/v1/kudos/`, `/v1/users/`, and `/v1/checkins/*` endpoints. There is no local database; all state is either in `~/.config/dailybot/` (credentials, agent profiles, config) or fetched from the API.
+It talks exclusively to the Dailybot HTTP API under `/v1/cli/*`, `/v1/agent*/*`, `/v1/forms/*`, `/v1/plan/*`, `/v1/teams/*`, `/v1/kudos/`, `/v1/users/`, and `/v1/checkins/*` endpoints. There is no local database; all state is either in `~/.config/dailybot/` (credentials, agent profiles, config) or fetched from the API.
 
 **Stack:** Python 3.10+, [Click](https://click.palletsprojects.com/) 8.3+, [httpx](https://www.python-httpx.org/) 0.28+, [questionary](https://questionary.readthedocs.io/) 2.1+, [rich](https://rich.readthedocs.io/) 15+. Tested with `pytest`. Built and packaged with `setuptools`; distributed via PyPI, Homebrew tap (`dailybothq/tap`), a PyInstaller-built Linux x86_64 binary, and a PowerShell installer (`install.ps1`) that wraps `pipx`/`uv`/`pip` for native Windows users.
 
@@ -66,6 +66,8 @@ dailybot_cli/                # Source package
     │                        #   response get / update / transition / delete
     ├── hook.py              # `hook` group: session-start / post-commit / activity /
     │                        #   stop / dismiss (agent harness lifecycle hooks)
+    ├── plan.py              # `plan` root: alias mounting tasks / task / board / project / goal
+    │                        #   (the product formerly called Tasks is now Dailybot Plan, /v1/plan/)
     ├── tasks_settings.py    # `tasks notifications|channels|routes|reports|briefing`: who is told
     │                        #   what, where and when (personal prefs, org routes, scheduled
     │                        #   reports, briefing); hung under `tasks`
