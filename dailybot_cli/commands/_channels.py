@@ -67,7 +67,7 @@ def resolve_channel(client: Any, reference: str, *, public_only: bool = False) -
     scope: str = "public channel" if public_only else "channel"
     raise click.UsageError(
         f"No {scope} matches {present_untrusted(wanted, limit=40)}. "
-        "List them with `dailybot tasks channels search`."
+        "List them with `dailybot plan tasks channels search`."
     )
 
 

@@ -73,12 +73,12 @@ def board() -> None:
 
     \b
     `board snapshot` is the one call that gives cold context in a single request,
-    and it carries the cursor `dailybot tasks changes` consumes.
+    and it carries the cursor `dailybot plan tasks changes` consumes.
 
     \b
     Examples:
-      dailybot board list
-      dailybot board snapshot <board-uuid>
+      dailybot plan board list
+      dailybot plan board snapshot <board-uuid>
     """
 
 
@@ -93,8 +93,8 @@ def board_list(json_mode: bool, **flags: Any) -> None:
 
     \b
     Examples:
-      dailybot board list
-      dailybot board list --json
+      dailybot plan board list
+      dailybot plan board list --json
     """
     client = require_auth()
     try:
@@ -126,7 +126,7 @@ def board_get(board_uuid: str, json_mode: bool) -> None:
 
     \b
     Examples:
-      dailybot board get <board-uuid>
+      dailybot plan board get <board-uuid>
     """
     client = require_auth()
     try:
@@ -155,8 +155,8 @@ def board_tasks(board_uuid: str, json_mode: bool, **flags: Any) -> None:
 
     \b
     Examples:
-      dailybot board tasks <board-uuid>
-      dailybot board tasks <board-uuid> --page 2 --json
+      dailybot plan board tasks <board-uuid>
+      dailybot plan board tasks <board-uuid> --page 2 --json
     """
     client = require_auth()
     try:
@@ -250,8 +250,8 @@ def board_states(board_uuid: str, include_archived: bool, json_mode: bool) -> No
 
     \b
     Examples:
-      dailybot board states <board-uuid>
-      dailybot board states <board-uuid> --include-archived --json
+      dailybot plan board states <board-uuid>
+      dailybot plan board states <board-uuid> --include-archived --json
     """
     client = require_auth()
     _read_board_collection(
@@ -274,8 +274,8 @@ def board_members(board_uuid: str, json_mode: bool) -> None:
 
     \b
     Examples:
-      dailybot board members <board-uuid>
-      dailybot board members <board-uuid> --json
+      dailybot plan board members <board-uuid>
+      dailybot plan board members <board-uuid> --json
     """
     client = require_auth()
     _read_board_collection(
@@ -301,8 +301,8 @@ def board_labels(board_uuid: str, json_mode: bool) -> None:
 
     \b
     Examples:
-      dailybot board labels <board-uuid>
-      dailybot board labels <board-uuid> --json
+      dailybot plan board labels <board-uuid>
+      dailybot plan board labels <board-uuid> --json
     """
     client = require_auth()
     _read_board_collection(
@@ -330,9 +330,9 @@ def board_views(board_uuid: str, etag_only: bool, json_mode: bool) -> None:
 
     \b
     Examples:
-      dailybot board views <board-uuid>
-      dailybot board views <board-uuid> --json   # the current views, under `results`
-      ETAG=$(dailybot board views <board-uuid> --etag)
+      dailybot plan board views <board-uuid>
+      dailybot plan board views <board-uuid> --json   # the current views, under `results`
+      ETAG=$(dailybot plan board views <board-uuid> --etag)
     """
     client = require_auth()
     try:
@@ -379,8 +379,8 @@ def board_mentionables(board_uuid: str, query: str | None, json_mode: bool) -> N
 
     \b
     Examples:
-      dailybot board mentionables <board-uuid> -q jane
-      dailybot board mentionables <board-uuid> --json
+      dailybot plan board mentionables <board-uuid> -q jane
+      dailybot plan board mentionables <board-uuid> --json
     """
     client = require_auth()
     try:
@@ -413,7 +413,7 @@ def board_star(board_uuid: str, json_mode: bool) -> None:
 
     \b
     Examples:
-      dailybot board star <board-uuid>
+      dailybot plan board star <board-uuid>
     """
     star(require_auth(), "board", board_uuid, json_mode=json_mode)
 
@@ -426,7 +426,7 @@ def board_unstar(board_uuid: str, json_mode: bool) -> None:
 
     \b
     Examples:
-      dailybot board unstar <board-uuid>
+      dailybot plan board unstar <board-uuid>
     """
     unstar(require_auth(), "board", board_uuid, json_mode=json_mode)
 
@@ -442,8 +442,8 @@ def board_state() -> None:
 
     \b
     Examples:
-      dailybot board state create <board-uuid> -n "In review" --category in_progress
-      dailybot board state reorder <board-uuid> <state-1> <state-2> <state-3>
+      dailybot plan board state create <board-uuid> -n "In review" --category in_progress
+      dailybot plan board state reorder <board-uuid> <state-1> <state-2> <state-3>
     """
 
 
@@ -481,8 +481,8 @@ def board_state_create(
 
     \b
     Examples:
-      dailybot board state create <board-uuid> -n "In review" --category in_progress
-      dailybot board state create <board-uuid> -n Blocked --category todo --position 2 --json
+      dailybot plan board state create <board-uuid> -n "In review" --category in_progress
+      dailybot plan board state create <board-uuid> -n Blocked --category todo --position 2 --json
     """
     client = require_auth()
     try:
@@ -529,8 +529,8 @@ def board_state_update(
 
     \b
     Examples:
-      dailybot board state update <board-uuid> <state-uuid> --name "Shipped"
-      dailybot board state update <board-uuid> <state-uuid> --position 1 --json
+      dailybot plan board state update <board-uuid> <state-uuid> --name "Shipped"
+      dailybot plan board state update <board-uuid> <state-uuid> --position 1 --json
     """
     fields: dict[str, Any] = {
         k: v
@@ -578,8 +578,8 @@ def board_state_archive(
 
     \b
     Examples:
-      dailybot board state archive <board-uuid> <state-uuid> --dry-run
-      dailybot board state archive <board-uuid> <state-uuid> --migrate-to <other-state> --yes
+      dailybot plan board state archive <board-uuid> <state-uuid> --dry-run
+      dailybot plan board state archive <board-uuid> <state-uuid> --migrate-to <other-state> --yes
     """
     client = require_auth()
     if not preview_then_confirm(
@@ -601,7 +601,7 @@ def board_state_archive(
     if json_mode:
         emit_json(data)
         return
-    report_write(data, "Column retired. Restore it with `dailybot board state restore`.")
+    report_write(data, "Column retired. Restore it with `dailybot plan board state restore`.")
 
 
 @board_state.command("restore")
@@ -613,7 +613,7 @@ def board_state_restore(board_uuid: str, state_uuid: str, json_mode: bool) -> No
 
     \b
     Examples:
-      dailybot board state restore <board-uuid> <state-uuid>
+      dailybot plan board state restore <board-uuid> <state-uuid>
     """
     client = require_auth()
     try:
@@ -637,11 +637,11 @@ def board_state_reorder(board_uuid: str, state_uuids: tuple[str, ...], json_mode
     \b
     List EVERY live column exactly once. A partial list, an unknown uuid or a
     duplicate is refused (`states_reorder_invalid`); read the current set with
-    `dailybot board states <board>`.
+    `dailybot plan board states <board>`.
 
     \b
     Examples:
-      dailybot board state reorder <board-uuid> <backlog> <todo> <doing> <done>
+      dailybot plan board state reorder <board-uuid> <backlog> <todo> <doing> <done>
     """
     if len(set(state_uuids)) != len(state_uuids):
         raise click.UsageError("A column appears twice. List each live column exactly once.")
@@ -685,8 +685,8 @@ def board_member() -> None:
 
     \b
     Examples:
-      dailybot board member add <board-uuid> <user-uuid>
-      dailybot board member remove <board-uuid> <user-uuid> --dry-run
+      dailybot plan board member add <board-uuid> <user-uuid>
+      dailybot plan board member remove <board-uuid> <user-uuid> --dry-run
     """
 
 
@@ -716,8 +716,8 @@ def board_member_add(
 
     \b
     Examples:
-      dailybot board member add <board-uuid> <user-uuid>
-      dailybot board member add <board-uuid> --team <team-uuid> --json
+      dailybot plan board member add <board-uuid> <user-uuid>
+      dailybot plan board member add <board-uuid> --team <team-uuid> --json
     """
     if (user_uuid is None) == (team_uuid is None):
         raise click.UsageError("Pass exactly one of USER or --team.")
@@ -753,8 +753,8 @@ def board_member_remove(
 
     \b
     Examples:
-      dailybot board member remove <board-uuid> <user-uuid> --dry-run
-      dailybot board member remove <board-uuid> <user-uuid> --yes
+      dailybot plan board member remove <board-uuid> <user-uuid> --dry-run
+      dailybot plan board member remove <board-uuid> <user-uuid> --yes
     """
     if not confirm_without_preview(
         f"remove user {user_uuid} from board {board_uuid}; they lose sight of it if it is private.",
@@ -790,7 +790,7 @@ def board_label() -> None:
 
     \b
     Examples:
-      dailybot board label create <board-uuid> -n bug --color "#ef4444"
+      dailybot plan board label create <board-uuid> -n bug --color "#ef4444"
     """
 
 
@@ -807,8 +807,8 @@ def board_label_create(
 
     \b
     Examples:
-      dailybot board label create <board-uuid> -n bug --color "#ef4444"
-      dailybot board label create <board-uuid> -n "needs design" --json
+      dailybot plan board label create <board-uuid> -n bug --color "#ef4444"
+      dailybot plan board label create <board-uuid> -n "needs design" --json
     """
     client = require_auth()
     try:
@@ -847,8 +847,8 @@ def board_label_update(
 
     \b
     Examples:
-      dailybot board label update <label-uuid> -n "needs-design" --color "#8b5cf6"
-      dailybot board label update <label-uuid> --archive --json
+      dailybot plan board label update <label-uuid> -n "needs-design" --color "#8b5cf6"
+      dailybot plan board label update <label-uuid> --archive --json
     """
     fields: dict[str, Any] = {
         k: v
@@ -889,8 +889,8 @@ def board_label_delete(label_uuid: str, dry_run: bool, assume_yes: bool, json_mo
 
     \b
     Examples:
-      dailybot board label delete <label-uuid> --dry-run
-      dailybot board label delete <label-uuid> --yes
+      dailybot plan board label delete <label-uuid> --dry-run
+      dailybot plan board label delete <label-uuid> --yes
     """
     if not confirm_without_preview(
         f"permanently delete label {label_uuid}.",
@@ -917,7 +917,7 @@ def board_view() -> None:
 
     \b
     Examples:
-      dailybot board view save <board-uuid> -f views.json --if-match '"3"'
+      dailybot plan board view save <board-uuid> -f views.json --if-match '"3"'
     """
 
 
@@ -964,7 +964,7 @@ def board_view_save(
       sort         a sort expression, as the web app saves it
       visibility   personal | shared | board_default (the last two need a board manager)
       filters      an object of filters (may be {})
-    `dailybot board views <board-uuid> --json` lists your current views under `results`; the
+    `dailybot plan board views <board-uuid> --json` lists your current views under `results`; the
     file takes just that array, so copy the objects out of `results`.
 
     \b
@@ -973,9 +973,9 @@ def board_view_save(
 
     \b
     Examples:
-      dailybot board views <board-uuid> --json   # the current views, under `results`
-      dailybot board view save <board-uuid> -f views.json --if-match '"3"'
-      dailybot board view save <board-uuid> -f views.json --fetch-etag --json
+      dailybot plan board views <board-uuid> --json   # the current views, under `results`
+      dailybot plan board view save <board-uuid> -f views.json --if-match '"3"'
+      dailybot plan board view save <board-uuid> -f views.json --fetch-etag --json
     """
     if (if_match is None) == (not fetch_etag):
         raise click.UsageError("Pass exactly one of --if-match <etag> or --fetch-etag.")
@@ -1013,14 +1013,14 @@ def board_snapshot(board_uuid: str, json_mode: bool) -> None:
     """Show the whole board in one request — the cold-context read.
 
     \b
-    The response carries `delta_cursor`. Pass it to `dailybot tasks changes` to
+    The response carries `delta_cursor`. Pass it to `dailybot plan tasks changes` to
     read only what changed since; that command's own refusal for a missing cursor
     does not say where to get one, so this is the place.
 
     \b
     Examples:
-      dailybot board snapshot <board-uuid>
-      dailybot board snapshot <board-uuid> --json
+      dailybot plan board snapshot <board-uuid>
+      dailybot plan board snapshot <board-uuid> --json
     """
     client = require_auth()
     try:
@@ -1044,7 +1044,7 @@ def board_visit(board_uuid: str, json_mode: bool) -> None:
 
     \b
     Examples:
-      dailybot board visit <board-uuid>
+      dailybot plan board visit <board-uuid>
     """
     client = require_auth()
     try:
@@ -1093,12 +1093,12 @@ def board_create(
 
     \b
     Examples:
-      dailybot board create --name "Design" --project <project-uuid> --key DSN
+      dailybot plan board create --name "Design" --project <project-uuid> --key DSN
     """
     if description is not None:
         raise click.UsageError(
             "Boards have no description. Put the context in a project "
-            "(`dailybot project create -d ...`) and create the board under it."
+            "(`dailybot plan project create -d ...`) and create the board under it."
         )
     client = require_auth()
     try:
@@ -1158,8 +1158,8 @@ def board_update(
 
     \b
     Examples:
-      dailybot board update <board-uuid> --name "Design (Q4)"
-      dailybot board update <board-uuid> --key DSN --visibility members --json
+      dailybot plan board update <board-uuid> --name "Design (Q4)"
+      dailybot plan board update <board-uuid> --key DSN --visibility members --json
     """
     fields: dict[str, Any] = {
         k: v
@@ -1209,7 +1209,7 @@ def board_archive(
 
     \b
     Examples:
-      dailybot board archive <board-uuid> --dry-run
+      dailybot plan board archive <board-uuid> --dry-run
     """
     client = require_auth()
     if not preview_then_confirm(
@@ -1245,11 +1245,11 @@ def board_restore(board_uuid: str, idempotency_key: str | None, json_mode: bool)
 
     \b
     Tasks that cascade-archived with it stay archived. Restore them with
-    `dailybot task restore`.
+    `dailybot plan task restore`.
 
     \b
     Examples:
-      dailybot board restore <board-uuid>
+      dailybot plan board restore <board-uuid>
     """
     client = require_auth()
     try:

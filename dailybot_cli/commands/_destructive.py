@@ -102,7 +102,7 @@ def preview_then_confirm(
             )
         else:
             print_error(message)
-        # The documented table, not a flat 1: `dailybot task archive <gone> --yes`
+        # The documented table, not a flat 1: `dailybot plan task archive <gone> --yes`
         # must exit 5 like every other not-found, or an agent branching
         # "5 → skip, 1 → alert" pages on every already-archived object.
         raise SystemExit(tasks_write_exit_code(exc)) from exc

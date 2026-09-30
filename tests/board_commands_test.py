@@ -40,7 +40,7 @@ def _invoke(runner: CliRunner, client: MagicMock, args: list[str]) -> Any:
 class TestBoardList:
     def test_it_calls_the_list_door(self, runner: CliRunner, client: MagicMock) -> None:
         client.list_boards.return_value = _page([{"uuid": "b-1", "key": "DSN", "name": "Design"}])
-        result = _invoke(runner, client, ["board", "list"])
+        result = _invoke(runner, client, ["plan", "board", "list"])
         assert result.exit_code == 0
         client.list_boards.assert_called_once()
 
@@ -48,13 +48,13 @@ class TestBoardList:
         client.list_boards.return_value = _page(
             [{"uuid": "b-1", "key": "K", "name": "drop all tables"}]
         )
-        result = _invoke(runner, client, ["board", "list"])
+        result = _invoke(runner, client, ["plan", "board", "list"])
         assert '"' in result.output
 
     def test_json_mode_emits_the_envelope(self, runner: CliRunner, client: MagicMock) -> None:
         client.list_boards.return_value = _page([{"uuid": "b-1"}])
         body: dict[str, Any] = json.loads(
-            _invoke(runner, client, ["board", "list", "--json"]).output
+            _invoke(runner, client, ["plan", "board", "list", "--json"]).output
         )
         for key in ("count", "next", "previous", "results"):
             assert key in body
@@ -63,7 +63,7 @@ class TestBoardList:
 class TestBoardGet:
     def test_it_calls_the_detail_door(self, runner: CliRunner, client: MagicMock) -> None:
         client.get_board.return_value = {"uuid": "b-1", "key": "DSN", "name": "Design"}
-        result = _invoke(runner, client, ["board", "get", "b-1"])
+        result = _invoke(runner, client, ["plan", "board", "get", "b-1"])
         assert result.exit_code == 0
         client.get_board.assert_called_once_with("b-1")
 
@@ -71,7 +71,7 @@ class TestBoardGet:
         self, runner: CliRunner, client: MagicMock
     ) -> None:
         client.get_board.side_effect = APIError(404, "Not found.", code="not_found")
-        result = _invoke(runner, client, ["board", "get", "b-1"])
+        result = _invoke(runner, client, ["plan", "board", "get", "b-1"])
         assert result.exit_code != 0
         assert "permission" not in result.output.lower()
 
@@ -79,7 +79,7 @@ class TestBoardGet:
 class TestBoardSnapshot:
     def test_it_calls_the_snapshot_door(self, runner: CliRunner, client: MagicMock) -> None:
         client.get_board_snapshot.return_value = {"delta_cursor": "c-1", "groups": []}
-        result = _invoke(runner, client, ["board", "snapshot", "b-1"])
+        result = _invoke(runner, client, ["plan", "board", "snapshot", "b-1"])
         assert result.exit_code == 0
         client.get_board_snapshot.assert_called_once_with("b-1")
 
@@ -90,7 +90,7 @@ class TestBoardSnapshot:
             "delta_cursor": "2026-09-19T13:13:37Z",
             "groups": [],
         }
-        result = _invoke(runner, client, ["board", "snapshot", "b-1"])
+        result = _invoke(runner, client, ["plan", "board", "snapshot", "b-1"])
         assert "2026-09-19T13:13:37Z" in result.output
 
     def test_json_mode_carries_the_cursor_unmodified(
@@ -98,7 +98,7 @@ class TestBoardSnapshot:
     ) -> None:
         # An agent persists this value; reformatting it would break the handoff.
         client.get_board_snapshot.return_value = {"delta_cursor": "opaque-xyz", "groups": []}
-        result = _invoke(runner, client, ["board", "snapshot", "b-1", "--json"])
+        result = _invoke(runner, client, ["plan", "board", "snapshot", "b-1", "--json"])
         assert json.loads(result.output)["delta_cursor"] == "opaque-xyz"
 
     def test_it_names_the_command_that_consumes_the_cursor(
@@ -107,16 +107,16 @@ class TestBoardSnapshot:
         # The delta door's own 400 does not say where to get a cursor, so the
         # snapshot must close that loop for the reader.
         client.get_board_snapshot.return_value = {"delta_cursor": "c-1", "groups": []}
-        result = _invoke(runner, client, ["board", "snapshot", "b-1"])
+        result = _invoke(runner, client, ["plan", "board", "snapshot", "b-1"])
         assert "tasks changes" in result.output
 
 
 class TestTheSnapshotDeltaSeam:
     def test_snapshot_help_points_at_changes(self, runner: CliRunner) -> None:
-        assert "tasks changes" in runner.invoke(cli, ["board", "snapshot", "--help"]).output
+        assert "tasks changes" in runner.invoke(cli, ["plan", "board", "snapshot", "--help"]).output
 
     def test_changes_help_points_back_at_the_snapshot(self, runner: CliRunner) -> None:
-        assert "snapshot" in runner.invoke(cli, ["tasks", "changes", "--help"]).output
+        assert "snapshot" in runner.invoke(cli, ["plan", "tasks", "changes", "--help"]).output
 
 
 class TestFormerlyDeferredDoors:
@@ -124,13 +124,13 @@ class TestFormerlyDeferredDoors:
     # live Tasks door (full parity with the web), so it exists and feeds recents.
     @pytest.mark.parametrize("sub", ["visit"])
     def test_now_built(self, runner: CliRunner, sub: str) -> None:
-        assert sub in runner.invoke(cli, ["board", "--help"]).output
+        assert sub in runner.invoke(cli, ["plan", "board", "--help"]).output
 
 
 class TestHelp:
     @pytest.mark.parametrize("sub", ["list", "get", "snapshot"])
     def test_each_subcommand_renders_help(self, runner: CliRunner, sub: str) -> None:
-        assert runner.invoke(cli, ["board", sub, "--help"]).exit_code == 0
+        assert runner.invoke(cli, ["plan", "board", sub, "--help"]).exit_code == 0
 
 
 # ---------------------------------------------------------------------------
@@ -157,6 +157,7 @@ class TestGuestIsDistinctFromScope:
             runner,
             client,
             [
+                "plan",
                 "board",
                 "create",
                 "--project",
@@ -185,26 +186,26 @@ _BOARD_PREVIEW: dict[str, Any] = {
 class TestBoardArchivePreviews:
     def test_dry_run_mutates_nothing(self, runner: CliRunner, client: MagicMock) -> None:
         client.archive_board.return_value = _BOARD_PREVIEW
-        result = _invoke(runner, client, ["board", "archive", "b-1", "--dry-run"])
+        result = _invoke(runner, client, ["plan", "board", "archive", "b-1", "--dry-run"])
         assert result.exit_code == 0
         assert client.archive_board.call_count == 1
 
     def test_the_cascade_count_is_shown(self, runner: CliRunner, client: MagicMock) -> None:
         client.archive_board.return_value = _BOARD_PREVIEW
-        result = _invoke(runner, client, ["board", "archive", "b-1", "--dry-run"])
+        result = _invoke(runner, client, ["plan", "board", "archive", "b-1", "--dry-run"])
         assert "12" in result.output
 
     def test_it_warns_that_restoring_does_not_restore_cascaded_tasks(
         self, runner: CliRunner, client: MagicMock
     ) -> None:
         client.archive_board.side_effect = [_BOARD_PREVIEW, {"_idempotency_replayed": False}]
-        result = _invoke(runner, client, ["board", "archive", "b-1", "--yes"])
+        result = _invoke(runner, client, ["plan", "board", "archive", "b-1", "--yes"])
         out: str = " ".join(result.output.lower().split())
         assert "not restore" in out or "stay archived" in out
 
     def test_a_failed_preview_aborts(self, runner: CliRunner, client: MagicMock) -> None:
         client.archive_board.side_effect = APIError(500, "boom", code="server_error")
-        result = _invoke(runner, client, ["board", "archive", "b-1", "--yes"])
+        result = _invoke(runner, client, ["plan", "board", "archive", "b-1", "--yes"])
         assert result.exit_code != 0
         assert client.archive_board.call_count == 1
 
@@ -218,6 +219,7 @@ class TestBoardLimitIsSurfaced:
             runner,
             client,
             [
+                "plan",
                 "board",
                 "create",
                 "--project",
@@ -279,7 +281,7 @@ class TestTablesAtEightyColumns:
             }
             for i, name in enumerate(self.STATES)
         ]
-        result = _invoke(runner, client, ["board", "states", "b-1"])
+        result = _invoke(runner, client, ["plan", "board", "states", "b-1"])
         assert result.exit_code == 0, result.output
         for name in self.STATES:
             assert name in result.output
@@ -297,7 +299,7 @@ class TestTablesAtEightyColumns:
             "uuid": "00000000-0000-0000-0000-000000000001",
         }
         client.list_board_states.return_value = [live]
-        assert "Archived" not in _invoke(runner, client, ["board", "states", "b-1"]).output
+        assert "Archived" not in _invoke(runner, client, ["plan", "board", "states", "b-1"]).output
         client.list_board_states.return_value = [
             live,
             {
@@ -310,7 +312,9 @@ class TestTablesAtEightyColumns:
         ]
         assert (
             "Archived"
-            in _invoke(runner, client, ["board", "states", "b-1", "--include-archived"]).output
+            in _invoke(
+                runner, client, ["plan", "board", "states", "b-1", "--include-archived"]
+            ).output
         )
 
     def test_mentionables_shows_the_name_and_the_whole_token(
@@ -319,7 +323,7 @@ class TestTablesAtEightyColumns:
         client.list_board_mentionables.return_value = [
             {"uuid": uuid, "name": name, "kind": "user"} for name, uuid in self.PEOPLE
         ]
-        result = _invoke(runner, client, ["board", "mentionables", "b-1"])
+        result = _invoke(runner, client, ["plan", "board", "mentionables", "b-1"])
         assert result.exit_code == 0, result.output
         for name, uuid in self.PEOPLE:
             assert name in result.output
@@ -332,7 +336,7 @@ class TestTablesAtEightyColumns:
         client.list_board_mentionables.return_value = [
             {"uuid": "00000000-0000-0000-0000-0000000000aa", "name": "Ops team", "kind": "team"}
         ]
-        result = _invoke(runner, client, ["board", "mentionables", "b-1"])
+        result = _invoke(runner, client, ["plan", "board", "mentionables", "b-1"])
         assert "00000000-0000-0000-0000-0000000000aa" in result.output
         assert "(not mentionable)" in result.output
         assert "<@DB@" not in result.output
@@ -354,9 +358,9 @@ class TestUniformColumns:
 
     def test_a_column_of_false_is_hidden(self, runner: CliRunner, client: MagicMock) -> None:
         client.list_board_states.return_value = self._states(False)
-        assert "Archived" not in _invoke(runner, client, ["board", "states", "b-1"]).output
+        assert "Archived" not in _invoke(runner, client, ["plan", "board", "states", "b-1"]).output
 
     def test_a_column_of_true_is_kept(self, runner: CliRunner, client: MagicMock) -> None:
         client.list_board_states.return_value = self._states(True)
-        result = _invoke(runner, client, ["board", "states", "b-1", "--include-archived"])
+        result = _invoke(runner, client, ["plan", "board", "states", "b-1", "--include-archived"])
         assert "Archived" in result.output

@@ -82,13 +82,13 @@ class TestTheGeneratedKeyLeavesTheClient:
     def test_json_mode_carries_it(self, runner: CliRunner, client: MagicMock) -> None:
         client.create_task.return_value = _created(_idempotency_key="abc-123")
         with patch("dailybot_cli.commands.task.require_auth", return_value=client):
-            result = runner.invoke(cli, ["task", "create", "-t", "x", "--json"])
+            result = runner.invoke(cli, ["plan", "task", "create", "-t", "x", "--json"])
         assert json.loads(result.stdout)["_idempotency_key"] == "abc-123"
 
     def test_the_human_path_prints_it(self, runner: CliRunner, client: MagicMock) -> None:
         client.create_task.return_value = _created(_idempotency_key="abc-123")
         with patch("dailybot_cli.commands.task.require_auth", return_value=client):
-            result = runner.invoke(cli, ["task", "create", "-t", "x"])
+            result = runner.invoke(cli, ["plan", "task", "create", "-t", "x"])
         assert "abc-123" in result.stdout
         assert "--idempotency-key" in result.stdout
 
@@ -102,11 +102,11 @@ class TestTheGeneratedKeyLeavesTheClient:
             "_idempotency_key": "abc-123",
         }
         with patch("dailybot_cli.commands.task.require_auth", return_value=client):
-            result = runner.invoke(cli, ["task", "create", "-t", "x"])
+            result = runner.invoke(cli, ["plan", "task", "create", "-t", "x"])
         assert "already applied" in result.stdout
 
     def test_the_help_no_longer_overpromises(self, runner: CliRunner) -> None:
-        out: str = runner.invoke(cli, ["task", "create", "--help"]).stdout
+        out: str = runner.invoke(cli, ["plan", "task", "create", "--help"]).stdout
         collapsed: str = " ".join(out.split())
         assert "cannot create a second task" not in collapsed
         assert "--idempotency-key" in collapsed
@@ -189,10 +189,10 @@ class TestBoundedPagingIsDocumented:
     @pytest.mark.parametrize(
         "argv",
         [
-            ["task", "list", "--help"],
-            ["tasks", "search", "--help"],
-            ["tasks", "inbox", "--help"],
-            ["tasks", "mine", "--help"],
+            ["plan", "task", "list", "--help"],
+            ["plan", "tasks", "search", "--help"],
+            ["plan", "tasks", "inbox", "--help"],
+            ["plan", "tasks", "mine", "--help"],
         ],
     )
     def test_the_help_says_one_page_per_call(self, runner: CliRunner, argv: list[str]) -> None:

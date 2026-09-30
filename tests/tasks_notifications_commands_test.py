@@ -1,4 +1,4 @@
-"""`dailybot tasks notifications catalog|get|set` (PLAN_004)."""
+"""`dailybot plan tasks notifications catalog|get|set` (PLAN_004)."""
 
 import json
 from typing import Any, ClassVar
@@ -83,17 +83,17 @@ def client() -> MagicMock:
 
 def _invoke(runner: CliRunner, client: MagicMock, args: list[str]) -> Any:
     with patch("dailybot_cli.commands.tasks_settings.require_auth", return_value=client):
-        return runner.invoke(cli, ["tasks", "notifications", *args])
+        return runner.invoke(cli, ["plan", "tasks", "notifications", *args])
 
 
 class TestWiring:
     def test_the_group_is_listed_under_tasks_with_the_beta_notice(self, runner: CliRunner) -> None:
-        assert "notifications" in runner.invoke(cli, ["tasks", "--help"]).output
-        assert "Beta" in runner.invoke(cli, ["tasks", "notifications", "--help"]).output
+        assert "notifications" in runner.invoke(cli, ["plan", "tasks", "--help"]).output
+        assert "Beta" in runner.invoke(cli, ["plan", "tasks", "notifications", "--help"]).output
 
     @pytest.mark.parametrize("sub", ["catalog", "get", "set"])
     def test_each_subcommand_renders_its_help(self, runner: CliRunner, sub: str) -> None:
-        result = runner.invoke(cli, ["tasks", "notifications", sub, "--help"])
+        result = runner.invoke(cli, ["plan", "tasks", "notifications", sub, "--help"])
         assert result.exit_code == 0
         assert "Examples" in result.output
 

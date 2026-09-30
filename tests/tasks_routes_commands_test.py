@@ -1,4 +1,4 @@
-"""`dailybot tasks routes list|get|create|update|delete|send-test|deliveries` (PLAN_004)."""
+"""`dailybot plan tasks routes list|get|create|update|delete|send-test|deliveries` (PLAN_004)."""
 
 import json
 from typing import Any
@@ -97,14 +97,14 @@ def _invoke(
     runner: CliRunner, client: MagicMock, args: list[str], *, input_text: str | None = None
 ) -> Any:
     with patch("dailybot_cli.commands.tasks_settings.require_auth", return_value=client):
-        return runner.invoke(cli, ["tasks", "routes", *args], input=input_text)
+        return runner.invoke(cli, ["plan", "tasks", "routes", *args], input=input_text)
 
 
 class TestWiring:
     def test_group_and_help(self, runner: CliRunner) -> None:
-        assert "routes" in runner.invoke(cli, ["tasks", "--help"]).output
+        assert "routes" in runner.invoke(cli, ["plan", "tasks", "--help"]).output
         for sub in ("list", "get", "create", "update", "delete", "send-test", "deliveries"):
-            result = runner.invoke(cli, ["tasks", "routes", sub, "--help"])
+            result = runner.invoke(cli, ["plan", "tasks", "routes", sub, "--help"])
             assert result.exit_code == 0 and "Examples" in result.output, sub
 
 

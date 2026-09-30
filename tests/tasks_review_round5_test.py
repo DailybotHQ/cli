@@ -69,7 +69,7 @@ class TestEveryEchoedValueIsEscaped:
         }
         with patch("dailybot_cli.commands.task.require_auth", return_value=client):
             result = runner.invoke(
-                cli, ["task", "bulk", "--operation", "archive", "-f", batch, "--yes"]
+                cli, ["plan", "task", "bulk", "--operation", "archive", "-f", batch, "--yes"]
             )
         assert "Unexpected error" not in result.stderr
         assert "MarkupError" not in result.stderr
@@ -82,7 +82,7 @@ class TestEveryEchoedValueIsEscaped:
         }
         with patch("dailybot_cli.commands.task.require_auth", return_value=client):
             result = runner.invoke(
-                cli, ["task", "bulk", "--operation", "archive", "-f", batch, "--yes"]
+                cli, ["plan", "task", "bulk", "--operation", "archive", "-f", batch, "--yes"]
             )
         assert "Unexpected error" not in result.stderr
 
@@ -95,7 +95,7 @@ class TestEveryEchoedValueIsEscaped:
         }
         with patch("dailybot_cli.commands.task.require_auth", return_value=client):
             result = runner.invoke(
-                cli, ["task", "bulk", "--operation", "archive", "-f", batch, "--yes"]
+                cli, ["plan", "task", "bulk", "--operation", "archive", "-f", batch, "--yes"]
             )
         assert result.exit_code == 1
         assert "not_found" in result.stdout
@@ -119,7 +119,7 @@ class TestBulkHonoursTheJsonStreamContract:
         with patch("dailybot_cli.commands.task.require_auth", return_value=client):
             result = runner.invoke(
                 cli,
-                ["task", "bulk", "--operation", "archive", "-f", batch, "--json"],
+                ["plan", "task", "bulk", "--operation", "archive", "-f", batch, "--json"],
                 input="y\n",
             )
         assert "About to apply" not in result.stdout
@@ -133,7 +133,7 @@ class TestBulkHonoursTheJsonStreamContract:
         with patch("dailybot_cli.commands.task.require_auth", return_value=client):
             result = runner.invoke(
                 cli,
-                ["task", "bulk", "--operation", "archive", "-f", batch, "--yes", "--json"],
+                ["plan", "task", "bulk", "--operation", "archive", "-f", batch, "--yes", "--json"],
             )
         assert json.loads(result.stdout) == {"results": [{"uuid": "t-1", "status": "ok"}]}
 
@@ -144,7 +144,7 @@ class TestBulkHonoursTheJsonStreamContract:
         with patch("dailybot_cli.commands.task.require_auth", return_value=client):
             result = runner.invoke(
                 cli,
-                ["task", "bulk", "--operation", "archive", "-f", batch, "--json"],
+                ["plan", "task", "bulk", "--operation", "archive", "-f", batch, "--json"],
                 input="y\n",
             )
         assert "Preview it first with --dry-run" in result.stderr
@@ -155,7 +155,7 @@ class TestBulkHonoursTheJsonStreamContract:
         client.bulk_tasks.return_value = {"results": []}
         with patch("dailybot_cli.commands.task.require_auth", return_value=client):
             result = runner.invoke(
-                cli, ["task", "bulk", "--operation", "archive", "-f", batch], input="y\n"
+                cli, ["plan", "task", "bulk", "--operation", "archive", "-f", batch], input="y\n"
             )
         assert "Preview it first with --dry-run" in result.stdout
 
@@ -163,7 +163,7 @@ class TestBulkHonoursTheJsonStreamContract:
 class TestFailedPreviewUsesTheDocumentedExit:
     """Finding 3: an aborted preview always exited 1, whatever the refusal was.
 
-    `dailybot task archive <already-gone> --yes` exited 1 instead of the
+    `dailybot plan task archive <already-gone> --yes` exited 1 instead of the
     documented 5, so an agent branching "5 → skip, 1 → alert" paged on every
     object someone else had already archived.
     """
@@ -171,14 +171,14 @@ class TestFailedPreviewUsesTheDocumentedExit:
     def test_not_found_exits_five(self, runner: CliRunner, client: MagicMock) -> None:
         client.archive_task.side_effect = APIError(status_code=404, detail="gone", code="not_found")
         with patch("dailybot_cli.commands.task.require_auth", return_value=client):
-            result = runner.invoke(cli, ["task", "archive", "t-1", "--yes"])
+            result = runner.invoke(cli, ["plan", "task", "archive", "t-1", "--yes"])
         assert result.exit_code == EXIT_NOT_FOUND
 
     def test_nothing_was_mutated(self, runner: CliRunner, client: MagicMock) -> None:
         # The exit code changed; the abort did not.
         client.archive_task.side_effect = APIError(status_code=404, detail="gone")
         with patch("dailybot_cli.commands.task.require_auth", return_value=client):
-            runner.invoke(cli, ["task", "archive", "t-1", "--yes"])
+            runner.invoke(cli, ["plan", "task", "archive", "t-1", "--yes"])
         assert client.archive_task.call_count == 1
 
     def test_the_message_still_says_nothing_changed(
@@ -186,7 +186,7 @@ class TestFailedPreviewUsesTheDocumentedExit:
     ) -> None:
         client.archive_task.side_effect = APIError(status_code=404, detail="gone")
         with patch("dailybot_cli.commands.task.require_auth", return_value=client):
-            result = runner.invoke(cli, ["task", "archive", "t-1", "--yes"])
+            result = runner.invoke(cli, ["plan", "task", "archive", "t-1", "--yes"])
         assert "nothing was changed" in result.stderr.lower()
 
 

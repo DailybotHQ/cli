@@ -1,4 +1,4 @@
-"""`dailybot tasks channels search` (PLAN_004)."""
+"""`dailybot plan tasks channels search` (PLAN_004)."""
 
 import json
 from typing import Any
@@ -44,18 +44,18 @@ def eighty_columns() -> Any:
 
 def _invoke(runner: CliRunner, client: MagicMock, args: list[str]) -> Any:
     with patch("dailybot_cli.commands.tasks_settings.require_auth", return_value=client):
-        return runner.invoke(cli, ["tasks", "channels", *args])
+        return runner.invoke(cli, ["plan", "tasks", "channels", *args])
 
 
 def test_help_explains_the_difference_with_channels_list(runner: CliRunner) -> None:
     flat: str = " ".join(
-        runner.invoke(cli, ["tasks", "channels", "search", "--help"]).output.split()
+        runner.invoke(cli, ["plan", "tasks", "channels", "search", "--help"]).output.split()
     )
     assert "channels list" in flat and "external id" in flat and "Examples" in flat
 
 
 def test_the_group_is_listed_under_tasks(runner: CliRunner) -> None:
-    assert "channels" in runner.invoke(cli, ["tasks", "--help"]).output
+    assert "channels" in runner.invoke(cli, ["plan", "tasks", "--help"]).output
 
 
 def test_search_text_and_type_reach_the_client(runner: CliRunner, client: MagicMock) -> None:

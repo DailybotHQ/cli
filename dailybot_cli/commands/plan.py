@@ -1,9 +1,8 @@
-"""`dailybot plan`: the product's own name for the Tasks command groups.
+"""`dailybot plan`: the one root of the Dailybot Plan command groups.
 
-The product formerly called Tasks is now **Dailybot Plan** (public API root ``/v1/plan/``). Every existing
-group keeps its name (``tasks``, ``task``, ``board``, ``project``, ``goal``) so no script or agent breaks;
-this root mounts the very same group objects, so ``dailybot plan tasks routes list`` and
-``dailybot tasks routes list`` are one command.
+The product formerly called Tasks is **Dailybot Plan** (public API root ``/v1/plan/``). Its groups
+(``tasks``, ``task``, ``board``, ``project``, ``goal``) are reachable only under this root, e.g.
+``dailybot plan tasks routes list``; there are no top-level aliases.
 """
 
 import click
@@ -20,9 +19,9 @@ def plan() -> None:
     """Dailybot Plan (formerly Tasks): tasks, boards, projects, goals and their notifications.
 
     \b
-    `dailybot plan <group> ...` is the same as `dailybot <group> ...`; both keep working:
-      dailybot plan tasks status      = dailybot tasks status
-      dailybot plan task get ENG-142  = dailybot task get ENG-142
+    Every command lives under `dailybot plan`:
+      dailybot plan tasks status
+      dailybot plan task get ENG-142
       dailybot plan board | project | goal ...
     Notifications, routes, reports and the briefing live under the tasks group:
       dailybot plan tasks notifications get

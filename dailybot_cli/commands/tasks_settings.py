@@ -1,6 +1,6 @@
 """Tasks notification settings: personal preferences, organization routes, scheduled reports, briefing.
 
-These groups hang under ``dailybot tasks`` (``tasks notifications``, ``tasks routes``, ``tasks reports``,
+These groups hang under ``dailybot plan tasks`` (``tasks notifications``, ``tasks routes``, ``tasks reports``,
 ``tasks briefing``, ``tasks channels``). They configure who is told what, where and when; they are not task
 work, so no agent name is stamped on their writes. Every name, title and channel name the API returns is
 user-authored data and is rendered quoted (``display.present_untrusted``).
@@ -108,7 +108,7 @@ def notifications() -> None:
     \b
     Personal preferences: a kind x chat x email matrix, plus where chat notifications land (your DM,
     or a public channel). Work on private boards and projects always comes by DM. Organization-wide
-    posts to a channel are `dailybot tasks routes`; scheduled digests are `dailybot tasks reports`.
+    posts to a channel are `dailybot plan tasks routes`; scheduled digests are `dailybot plan tasks reports`.
     """
 
 
@@ -122,8 +122,8 @@ def notifications_catalog(json_mode: bool) -> None:
 
     \b
     Examples:
-      dailybot tasks notifications catalog
-      dailybot tasks notifications catalog --json
+      dailybot plan tasks notifications catalog
+      dailybot plan tasks notifications catalog --json
     """
     client = require_auth()
     try:
@@ -150,8 +150,8 @@ def notifications_get(me: bool, json_mode: bool) -> None:
 
     \b
     Examples:
-      dailybot tasks notifications get
-      dailybot tasks notifications get --json
+      dailybot plan tasks notifications get
+      dailybot plan tasks notifications get --json
     """
     client = require_auth()
     try:
@@ -206,10 +206,10 @@ def notifications_set(
 
     \b
     Examples:
-      dailybot tasks notifications set --kind tasks_assigned,tasks_commented --chat --no-email
-      dailybot tasks notifications set --kind tasks_reactions --chat
-      dailybot tasks notifications set --channel eng
-      dailybot tasks notifications set --dm
+      dailybot plan tasks notifications set --kind tasks_assigned,tasks_commented --chat --no-email
+      dailybot plan tasks notifications set --kind tasks_reactions --chat
+      dailybot plan tasks notifications set --channel eng
+      dailybot plan tasks notifications set --dm
     """
     kind_list: list[str] = _split_kinds(kinds)
     if to_dm and channel:
@@ -220,7 +220,7 @@ def notifications_set(
         )
     if not kind_list and (chat is not None or email is not None):
         raise click.UsageError(
-            "Name the kinds with --kind (see `dailybot tasks notifications catalog`)."
+            "Name the kinds with --kind (see `dailybot plan tasks notifications catalog`)."
         )
     if not kind_list and not to_dm and not channel:
         raise click.UsageError(
@@ -300,8 +300,8 @@ def channels_search(
 
     \b
     Examples:
-      dailybot tasks channels search -q eng
-      dailybot tasks channels search --type public --json
+      dailybot plan tasks channels search -q eng
+      dailybot plan tasks channels search --type public --json
     """
     wire_type: str | None = None
     if channel_type:
@@ -368,8 +368,8 @@ def routes() -> None:
     A route = a channel + the organization event kinds it receives (card created or completed,
     project health or lead changed, milestone reached, ...), optionally limited to some boards or
     projects. Private boards and projects never post to a channel. Up to 10 routes per organization.
-    Find channels with `dailybot tasks channels search`; see kinds with
-    `dailybot tasks notifications catalog`.
+    Find channels with `dailybot plan tasks channels search`; see kinds with
+    `dailybot plan tasks notifications catalog`.
     """
 
 
@@ -384,8 +384,8 @@ def routes_list(json_mode: bool, **flags: Any) -> None:
 
     \b
     Examples:
-      dailybot tasks routes list
-      dailybot tasks routes list --json
+      dailybot plan tasks routes list
+      dailybot plan tasks routes list --json
     """
     client = require_auth()
     try:
@@ -417,7 +417,7 @@ def routes_get(route: str, json_mode: bool) -> None:
 
     \b
     Examples:
-      dailybot tasks routes get <route-uuid>
+      dailybot plan tasks routes get <route-uuid>
     """
     client = require_auth()
     try:
@@ -474,8 +474,8 @@ def routes_create(
 
     \b
     Examples:
-      dailybot tasks routes create --name Completions --channel eng --kind task.completed,project.health_changed
-      dailybot tasks routes create --name "Design board" --channel design --kind task.created --board <board-uuid>
+      dailybot plan tasks routes create --name Completions --channel eng --kind task.completed,project.health_changed
+      dailybot plan tasks routes create --name "Design board" --channel design --kind task.created --board <board-uuid>
     """
     scope: dict[str, Any] | None = _scope_from(boards, projects)
     client = require_auth()
@@ -543,9 +543,9 @@ def routes_update(
 
     \b
     Examples:
-      dailybot tasks routes update <route-uuid> --disabled
-      dailybot tasks routes update <route-uuid> --kind task.completed --channel eng
-      dailybot tasks routes update <route-uuid> --clear-scope
+      dailybot plan tasks routes update <route-uuid> --disabled
+      dailybot plan tasks routes update <route-uuid> --kind task.completed --channel eng
+      dailybot plan tasks routes update <route-uuid> --clear-scope
     """
     scope: dict[str, Any] | None = _scope_from(boards, projects, clear=clear_scope)
     if name is None and channel_ref is None and not kinds and scope is None and enabled is None:
@@ -587,8 +587,8 @@ def routes_delete(route: str, dry_run: bool, assume_yes: bool, json_mode: bool) 
 
     \b
     Examples:
-      dailybot tasks routes delete <route-uuid> --dry-run
-      dailybot tasks routes delete <route-uuid> --yes
+      dailybot plan tasks routes delete <route-uuid> --dry-run
+      dailybot plan tasks routes delete <route-uuid> --yes
     """
     consequence: str = (
         f"Deletes the notification route {route}; its channel stops receiving those events."
@@ -629,8 +629,8 @@ def routes_send_test(route: str, dry_run: bool, assume_yes: bool, json_mode: boo
 
     \b
     Examples:
-      dailybot tasks routes send-test <route-uuid> --dry-run
-      dailybot tasks routes send-test <route-uuid> --yes
+      dailybot plan tasks routes send-test <route-uuid> --dry-run
+      dailybot plan tasks routes send-test <route-uuid> --yes
     """
     client = require_auth()
     send_test_flow(
@@ -651,7 +651,7 @@ def routes_deliveries(route: str, json_mode: bool, **flags: Any) -> None:
 
     \b
     Examples:
-      dailybot tasks routes deliveries <route-uuid>
+      dailybot plan tasks routes deliveries <route-uuid>
     """
     client = require_auth()
     try:
@@ -724,8 +724,8 @@ def reports_list(json_mode: bool, **flags: Any) -> None:
 
     \b
     Examples:
-      dailybot tasks reports list
-      dailybot tasks reports list --json
+      dailybot plan tasks reports list
+      dailybot plan tasks reports list --json
     """
     client = require_auth()
     try:
@@ -757,7 +757,7 @@ def reports_get(report: str, json_mode: bool) -> None:
 
     \b
     Examples:
-      dailybot tasks reports get <report-uuid>
+      dailybot plan tasks reports get <report-uuid>
     """
     client = require_auth()
     try:
@@ -838,8 +838,8 @@ def reports_create(
 
     \b
     Examples:
-      dailybot tasks reports create --name Standup --kind daily --channel eng
-      dailybot tasks reports create --name "Week end" --kind week_end --weekdays fri --time 16:00 --channel eng --email-to "Ana Ruiz"
+      dailybot plan tasks reports create --name Standup --kind daily --channel eng
+      dailybot plan tasks reports create --name "Week end" --kind week_end --weekdays fri --time 16:00 --channel eng --email-to "Ana Ruiz"
     """
     kind = kind.lower()
     days: list[int] = weekdays if weekdays is not None else DEFAULT_REPORT_WEEKDAYS[kind]
@@ -932,9 +932,9 @@ def reports_update(
 
     \b
     Examples:
-      dailybot tasks reports update <report-uuid> --time 10:15
-      dailybot tasks reports update <report-uuid> --weekdays mon,wed,fri --disabled
-      dailybot tasks reports update <report-uuid> --no-channel --email-to "Ana Ruiz"
+      dailybot plan tasks reports update <report-uuid> --time 10:15
+      dailybot plan tasks reports update <report-uuid> --weekdays mon,wed,fri --disabled
+      dailybot plan tasks reports update <report-uuid> --no-channel --email-to "Ana Ruiz"
     """
     if channel_ref and no_channel:
         raise click.UsageError("Pass --channel or --no-channel, not both.")
@@ -1031,8 +1031,8 @@ def reports_delete(report: str, dry_run: bool, assume_yes: bool, json_mode: bool
 
     \b
     Examples:
-      dailybot tasks reports delete <report-uuid> --dry-run
-      dailybot tasks reports delete <report-uuid> --yes
+      dailybot plan tasks reports delete <report-uuid> --dry-run
+      dailybot plan tasks reports delete <report-uuid> --yes
     """
     consequence: str = f"Deletes the scheduled report {report}; it stops posting and emailing."
     if not confirm_without_preview(
@@ -1059,8 +1059,8 @@ def reports_preview(report: str, json_mode: bool) -> None:
 
     \b
     Examples:
-      dailybot tasks reports preview <report-uuid>
-      dailybot tasks reports preview <report-uuid> --json
+      dailybot plan tasks reports preview <report-uuid>
+      dailybot plan tasks reports preview <report-uuid> --json
     """
     client = require_auth()
     try:
@@ -1095,8 +1095,8 @@ def reports_send_test(report: str, dry_run: bool, assume_yes: bool, json_mode: b
 
     \b
     Examples:
-      dailybot tasks reports send-test <report-uuid> --dry-run
-      dailybot tasks reports send-test <report-uuid> --yes
+      dailybot plan tasks reports send-test <report-uuid> --dry-run
+      dailybot plan tasks reports send-test <report-uuid> --yes
     """
     client = require_auth()
     send_test_flow(
@@ -1117,7 +1117,7 @@ def reports_runs(report: str, json_mode: bool, **flags: Any) -> None:
 
     \b
     Examples:
-      dailybot tasks reports runs <report-uuid>
+      dailybot plan tasks reports runs <report-uuid>
     """
     client = require_auth()
     try:
@@ -1166,8 +1166,8 @@ def briefing_get(json_mode: bool) -> None:
 
     \b
     Examples:
-      dailybot tasks briefing get
-      dailybot tasks briefing get --json
+      dailybot plan tasks briefing get
+      dailybot plan tasks briefing get --json
     """
     client = require_auth()
     try:
@@ -1211,9 +1211,9 @@ def briefing_set(
 
     \b
     Examples:
-      dailybot tasks briefing set --enabled --weekdays mon,tue,wed,thu,fri --time 08:30
-      dailybot tasks briefing set --email --no-chat
-      dailybot tasks briefing set --timezone America/Bogota
+      dailybot plan tasks briefing set --enabled --weekdays mon,tue,wed,thu,fri --time 08:30
+      dailybot plan tasks briefing set --email --no-chat
+      dailybot plan tasks briefing set --timezone America/Bogota
     """
     fields: dict[str, Any] = {
         key: value
@@ -1250,8 +1250,8 @@ def briefing_preview(json_mode: bool) -> None:
 
     \b
     Examples:
-      dailybot tasks briefing preview
-      dailybot tasks briefing preview --json
+      dailybot plan tasks briefing preview
+      dailybot plan tasks briefing preview --json
     """
     client = require_auth()
     try:
@@ -1284,8 +1284,8 @@ def briefing_send_test(dry_run: bool, assume_yes: bool, json_mode: bool) -> None
 
     \b
     Examples:
-      dailybot tasks briefing send-test --dry-run
-      dailybot tasks briefing send-test --yes
+      dailybot plan tasks briefing send-test --dry-run
+      dailybot plan tasks briefing send-test --yes
     """
     client = require_auth()
     send_test_flow(

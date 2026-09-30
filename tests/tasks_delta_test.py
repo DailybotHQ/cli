@@ -1,4 +1,4 @@
-"""`dailybot tasks changes` — the delta poll loop (plan task 6).
+"""`dailybot plan tasks changes` — the delta poll loop (plan task 6).
 
 The door refuses three different things (MEASURED_ANSWERS.md §4) and only one of
 them is recoverable. These tests exist mostly to stop the recoverable one from
@@ -40,7 +40,7 @@ class TestCursorAcquisition:
         # one; the snapshot is the only source.
         client.get_board_snapshot.return_value = {"delta_cursor": "2026-09-19T13:13:37Z"}
         client.get_board_delta.return_value = {"changed": [], "delta_cursor": "c-2"}
-        result = _invoke(runner, client, ["tasks", "changes", "b-1"])
+        result = _invoke(runner, client, ["plan", "tasks", "changes", "b-1"])
         assert result.exit_code == 0
         client.get_board_snapshot.assert_called_once_with("b-1")
         assert client.get_board_delta.call_args[1]["updated_since"] == "2026-09-19T13:13:37Z"
@@ -49,7 +49,7 @@ class TestCursorAcquisition:
         self, runner: CliRunner, client: MagicMock
     ) -> None:
         client.get_board_delta.return_value = {"changed": [], "delta_cursor": "c-2"}
-        result = _invoke(runner, client, ["tasks", "changes", "b-1", "--cursor", "c-1"])
+        result = _invoke(runner, client, ["plan", "tasks", "changes", "b-1", "--cursor", "c-1"])
         assert result.exit_code == 0
         client.get_board_snapshot.assert_not_called()
 
@@ -57,7 +57,9 @@ class TestCursorAcquisition:
         self, runner: CliRunner, client: MagicMock
     ) -> None:
         client.get_board_delta.return_value = {"changed": [], "delta_cursor": "c-2"}
-        _invoke(runner, client, ["tasks", "changes", "b-1", "--since", "2026-09-01T00:00:00Z"])
+        _invoke(
+            runner, client, ["plan", "tasks", "changes", "b-1", "--since", "2026-09-01T00:00:00Z"]
+        )
         assert client.get_board_delta.call_args[1]["updated_since"] == "2026-09-01T00:00:00Z"
 
 
@@ -69,7 +71,7 @@ class TestTheEncodingTrap:
     ) -> None:
         client.get_board_snapshot.return_value = {"delta_cursor": "2026-09-19T13:13:37+00:00"}
         client.get_board_delta.return_value = {"changed": [], "delta_cursor": "c-2"}
-        _invoke(runner, client, ["tasks", "changes", "b-1"])
+        _invoke(runner, client, ["plan", "tasks", "changes", "b-1"])
         sent: str = client.get_board_delta.call_args[1]["updated_since"]
         assert "+" not in sent
         assert sent.endswith("Z")
@@ -85,7 +87,7 @@ class TestWindowExpiry:
             code="delta_window_expired",
             extra={"full_resync_required": True, "max_window_days": 7},
         )
-        _invoke(runner, client, ["tasks", "changes", "b-1", "--cursor", "old"])
+        _invoke(runner, client, ["plan", "tasks", "changes", "b-1", "--cursor", "old"])
         # Retrying is an infinite loop: exactly one attempt.
         assert client.get_board_delta.call_count == 1
 
@@ -95,7 +97,7 @@ class TestWindowExpiry:
         client.get_board_delta.side_effect = APIError(
             400, "expired", code="delta_window_expired", extra={"full_resync_required": True}
         )
-        result = _invoke(runner, client, ["tasks", "changes", "b-1", "--cursor", "old"])
+        result = _invoke(runner, client, ["plan", "tasks", "changes", "b-1", "--cursor", "old"])
         assert result.exit_code == EXIT_DELTA_WINDOW_EXPIRED
         assert EXIT_DELTA_WINDOW_EXPIRED not in (0, 1, 2, 3, 4, 5, 6, 7)
 
@@ -106,7 +108,9 @@ class TestWindowExpiry:
             400, "expired", code="delta_window_expired", extra={"full_resync_required": True}
         )
         client.get_board_snapshot.return_value = {"delta_cursor": "fresh", "groups": []}
-        result = _invoke(runner, client, ["tasks", "changes", "b-1", "--cursor", "old", "--resync"])
+        result = _invoke(
+            runner, client, ["plan", "tasks", "changes", "b-1", "--cursor", "old", "--resync"]
+        )
         assert result.exit_code == 0
         client.get_board_snapshot.assert_called_once_with("b-1")
         assert "fresh" in result.output
@@ -119,7 +123,9 @@ class TestOtherRefusals:
         client.get_board_delta.side_effect = APIError(
             400, "bad", code="invalid_filter_value", extra={"parameter": "updated_since"}
         )
-        result = _invoke(runner, client, ["tasks", "changes", "b-1", "--cursor", "nonsense"])
+        result = _invoke(
+            runner, client, ["plan", "tasks", "changes", "b-1", "--cursor", "nonsense"]
+        )
         assert result.exit_code != 0
 
 
@@ -130,11 +136,11 @@ class TestSingleRead:
         # D8: the loop belongs to the caller, who owns the rate limit. A CLI that
         # sleeps and retries hides both the ceiling and the window.
         client.get_board_delta.return_value = {"changed": [], "delta_cursor": "c-2"}
-        _invoke(runner, client, ["tasks", "changes", "b-1", "--cursor", "c-1"])
+        _invoke(runner, client, ["plan", "tasks", "changes", "b-1", "--cursor", "c-1"])
         assert client.get_board_delta.call_count == 1
 
     def test_there_is_no_follow_flag(self, runner: CliRunner) -> None:
-        result = runner.invoke(cli, ["tasks", "changes", "--help"])
+        result = runner.invoke(cli, ["plan", "tasks", "changes", "--help"])
         assert "--follow" not in result.output
 
 
@@ -143,15 +149,17 @@ class TestJsonMode:
         self, runner: CliRunner, client: MagicMock
     ) -> None:
         client.get_board_delta.return_value = {"changed": [{"uuid": "t-1"}], "delta_cursor": "c-2"}
-        result = _invoke(runner, client, ["tasks", "changes", "b-1", "--cursor", "c-1", "--json"])
+        result = _invoke(
+            runner, client, ["plan", "tasks", "changes", "b-1", "--cursor", "c-1", "--json"]
+        )
         assert json.loads(result.output)["delta_cursor"] == "c-2"
 
 
 class TestHelpDocumentsTheContract:
     def test_the_seven_day_window_is_documented(self, runner: CliRunner) -> None:
-        result = runner.invoke(cli, ["tasks", "changes", "--help"])
+        result = runner.invoke(cli, ["plan", "tasks", "changes", "--help"])
         assert "7-day" in result.output or "seven-day" in result.output
 
     def test_the_delta_rate_limit_is_documented(self, runner: CliRunner) -> None:
-        result = runner.invoke(cli, ["tasks", "changes", "--help"])
+        result = runner.invoke(cli, ["plan", "tasks", "changes", "--help"])
         assert "240" in result.output

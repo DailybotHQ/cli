@@ -53,7 +53,7 @@ class TestTheAttackIsPresentedAsData:
     ) -> None:
         client.list_tasks.return_value = _page([{"uuid": "t-1", "key": "K-1", "title": attack}])
         with patch("dailybot_cli.commands.task.require_auth", return_value=client):
-            result = runner.invoke(cli, ["task", "list"])
+            result = runner.invoke(cli, ["plan", "task", "list"])
         assert result.exit_code == 0
         # The value appears, but inside quotes — a datum, not a sentence addressed
         # to the reader.
@@ -67,7 +67,7 @@ class TestTheAttackIsPresentedAsData:
             [{"uuid": "c-1", "body": attack, "provenance": "typed"}]
         )
         with patch("dailybot_cli.commands.task.require_auth", return_value=client):
-            result = runner.invoke(cli, ["task", "comments", "t-1"])
+            result = runner.invoke(cli, ["plan", "task", "comments", "t-1"])
         assert result.exit_code == 0
         assert '"' in result.output
 
@@ -90,7 +90,7 @@ class TestJsonModeCarriesDataNotNarration:
         # An agent consuming --json must be able to tell field from narration.
         client.list_tasks.return_value = _page([{"uuid": "t-1", "key": "K-1", "title": attack}])
         with patch("dailybot_cli.commands.task.require_auth", return_value=client):
-            result = runner.invoke(cli, ["task", "list", "--json"])
+            result = runner.invoke(cli, ["plan", "task", "list", "--json"])
         body: dict[str, Any] = json.loads(result.output)
         assert body["results"][0]["title"] == attack  # verbatim, as data
         assert isinstance(body["results"][0]["title"], str)
@@ -135,11 +135,11 @@ class TestIsolationIsNeverPermission:
     @pytest.mark.parametrize(
         "args,method",
         [
-            (["task", "get", "t-1"], "get_task"),
-            (["board", "get", "b-1"], "get_board"),
-            (["board", "snapshot", "b-1"], "get_board_snapshot"),
-            (["project", "get", "p-1"], "get_project"),
-            (["goal", "get", "g-1"], "get_goal"),
+            (["plan", "task", "get", "t-1"], "get_task"),
+            (["plan", "board", "get", "b-1"], "get_board"),
+            (["plan", "board", "snapshot", "b-1"], "get_board_snapshot"),
+            (["plan", "project", "get", "p-1"], "get_project"),
+            (["plan", "goal", "get", "g-1"], "get_goal"),
         ],
     )
     def test_not_found_never_renders_permission_language(
@@ -149,7 +149,7 @@ class TestIsolationIsNeverPermission:
         # Leaking the difference at the presentation layer undoes 404-not-403.
         getattr(client, method).side_effect = APIError(404, "Not found.", code="not_found")
         module: str = {"task": "task", "board": "board", "project": "project", "goal": "goal"}[
-            args[0]
+            args[1]
         ]
         with (
             patch(f"dailybot_cli.commands.{module}.require_auth", return_value=client),
@@ -185,7 +185,7 @@ class TestAttributionHonesty:
             ]
         )
         with patch("dailybot_cli.commands.tasks.require_auth", return_value=client):
-            result = runner.invoke(cli, ["tasks", "activity"])
+            result = runner.invoke(cli, ["plan", "tasks", "activity"])
         out: str = result.output.lower()
         for invented in ("you ", "claude", "the agent did"):
             assert invented not in out
@@ -195,11 +195,11 @@ class TestDestructivePathsCannotRunUnpreviewed:
     @pytest.mark.parametrize(
         "args,module,method",
         [
-            (["task", "archive", "t-1", "--yes"], "task", "archive_task"),
-            (["task", "delete", "t-1", "--yes"], "task", "archive_task"),
-            (["board", "archive", "b-1", "--yes"], "board", "archive_board"),
-            (["project", "archive", "p-1", "--yes"], "project", "archive_project"),
-            (["goal", "archive", "g-1", "--yes"], "goal", "archive_goal"),
+            (["plan", "task", "archive", "t-1", "--yes"], "task", "archive_task"),
+            (["plan", "task", "delete", "t-1", "--yes"], "task", "archive_task"),
+            (["plan", "board", "archive", "b-1", "--yes"], "board", "archive_board"),
+            (["plan", "project", "archive", "p-1", "--yes"], "project", "archive_project"),
+            (["plan", "goal", "archive", "g-1", "--yes"], "goal", "archive_goal"),
         ],
     )
     def test_the_first_call_is_always_the_preview(
@@ -231,10 +231,10 @@ class TestDestructivePathsCannotRunUnpreviewed:
     @pytest.mark.parametrize(
         "args,module,method",
         [
-            (["task", "archive", "t-1", "--yes"], "task", "archive_task"),
-            (["board", "archive", "b-1", "--yes"], "board", "archive_board"),
-            (["project", "archive", "p-1", "--yes"], "project", "archive_project"),
-            (["goal", "archive", "g-1", "--yes"], "goal", "archive_goal"),
+            (["plan", "task", "archive", "t-1", "--yes"], "task", "archive_task"),
+            (["plan", "board", "archive", "b-1", "--yes"], "board", "archive_board"),
+            (["plan", "project", "archive", "p-1", "--yes"], "project", "archive_project"),
+            (["plan", "goal", "archive", "g-1", "--yes"], "goal", "archive_goal"),
         ],
     )
     def test_a_failed_preview_never_proceeds(
@@ -284,13 +284,13 @@ class TestNoWebUrlIsEverEmitted:
         "args,module,method,payload",
         [
             (
-                ["task", "get", "t-1"],
+                ["plan", "task", "get", "t-1"],
                 "task",
                 "get_task",
                 {"uuid": "t-1", "key": "K-1", "title": "x", "url": "https://evil.example/t/1"},
             ),
             (
-                ["board", "get", "b-1"],
+                ["plan", "board", "get", "b-1"],
                 "board",
                 "get_board",
                 {"uuid": "b-1", "key": "B", "name": "x", "web_url": "https://evil.example/b/1"},

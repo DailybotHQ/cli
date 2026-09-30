@@ -1,4 +1,4 @@
-"""`dailybot tasks reports list|get|create|update|delete|preview|send-test|runs` (PLAN_004)."""
+"""`dailybot plan tasks reports list|get|create|update|delete|preview|send-test|runs` (PLAN_004)."""
 
 import json
 from typing import Any
@@ -120,7 +120,7 @@ def _invoke(
     runner: CliRunner, client: MagicMock, args: list[str], *, input_text: str | None = None
 ) -> Any:
     with patch("dailybot_cli.commands.tasks_settings.require_auth", return_value=client):
-        return runner.invoke(cli, ["tasks", "reports", *args], input=input_text)
+        return runner.invoke(cli, ["plan", "tasks", "reports", *args], input=input_text)
 
 
 def _create(runner: CliRunner, client: MagicMock, *extra: str) -> Any:
@@ -129,9 +129,9 @@ def _create(runner: CliRunner, client: MagicMock, *extra: str) -> Any:
 
 class TestWiring:
     def test_group_and_help(self, runner: CliRunner) -> None:
-        assert "reports" in runner.invoke(cli, ["tasks", "--help"]).output
+        assert "reports" in runner.invoke(cli, ["plan", "tasks", "--help"]).output
         for sub in ("list", "get", "create", "update", "delete", "preview", "send-test", "runs"):
-            result = runner.invoke(cli, ["tasks", "reports", sub, "--help"])
+            result = runner.invoke(cli, ["plan", "tasks", "reports", sub, "--help"])
             assert result.exit_code == 0 and "Examples" in result.output, sub
 
 

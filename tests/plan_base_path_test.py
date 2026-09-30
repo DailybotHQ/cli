@@ -48,7 +48,7 @@ def test_no_request_is_built_under_the_old_root() -> None:
 
 
 def test_the_beta_notice_names_the_product_plan() -> None:
-    out: str = CliRunner().invoke(cli, ["tasks", "--help"]).output
+    out: str = CliRunner().invoke(cli, ["plan", "tasks", "--help"]).output
     assert "Dailybot Plan" in out
 
 

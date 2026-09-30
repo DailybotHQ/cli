@@ -32,7 +32,7 @@ def _commands() -> Iterator[tuple[str, click.Command]]:
             yield " ".join(path), command
 
     for group in TASKS_GROUPS:
-        yield from walk(cli.commands[group], [group])  # type: ignore[attr-defined]
+        yield from walk(cli.commands["plan"].commands[group], [group])  # type: ignore[attr-defined]
 
 
 COMMANDS: list[tuple[str, click.Command]] = list(_commands())
@@ -60,10 +60,10 @@ def test_every_command_has_json(path: str, command: click.Command) -> None:
 
 @pytest.mark.parametrize(("path", "command"), COMMANDS, ids=IDS)
 def test_every_help_has_an_example(path: str, command: click.Command) -> None:
-    result = CliRunner().invoke(cli, [*path.split(), "--help"])
+    result = CliRunner().invoke(cli, ["plan", *path.split(), "--help"])
     assert result.exit_code == 0, path
     assert "Examples:" in result.output, path
-    assert f"dailybot {path.split()[0]}" in result.output, path
+    assert f"dailybot plan {path.split()[0]}" in result.output, path
 
 
 @pytest.mark.parametrize(("path", "command"), COMMANDS, ids=IDS)

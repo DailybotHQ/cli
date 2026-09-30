@@ -38,7 +38,7 @@ class TestAnAgentKeyRefusedByTheServer:
         exc = APIError(
             403, "no", code="insufficient_scope", extra={"required_scope": "tasks:admin"}
         )
-        result = _invoke("project", ["project", "create", "--name", "X", "--json"], exc)
+        result = _invoke("project", ["plan", "project", "create", "--name", "X", "--json"], exc)
         assert result.exit_code == EXIT_PERMISSION_DENIED, result.output
         body: dict[str, Any] = json.loads(result.output)
         assert body["code"] == "insufficient_scope"
@@ -56,7 +56,7 @@ class TestAnAgentKeyRefusedByTheServer:
             patch("dailybot_cli.commands.tasks.require_auth", return_value=client),
             patch("dailybot_cli.commands.public_api_helpers.get_person_token", return_value=None),
         ):
-            result = CliRunner().invoke(cli, ["tasks", "mine", "--json"])
+            result = CliRunner().invoke(cli, ["plan", "tasks", "mine", "--json"])
         assert result.exit_code == EXIT_NOT_AUTHENTICATED, result.output
         assert "personal API key" in " ".join(json.loads(result.output)["message"].split())
 
@@ -70,7 +70,7 @@ class TestAnAgentKeyRefusedByTheServer:
             patch("dailybot_cli.commands.task.require_auth", return_value=client),
             patch("dailybot_cli.commands.public_api_helpers.get_person_token", return_value=None),
         ):
-            result = CliRunner().invoke(cli, ["task", "mute", "ENG-1", "--json"])
+            result = CliRunner().invoke(cli, ["plan", "task", "mute", "ENG-1", "--json"])
         assert result.exit_code == EXIT_PERMISSION_DENIED, result.output
         body: dict[str, Any] = json.loads(result.output)
         assert body["code"] == "insufficient_scope"
@@ -78,7 +78,7 @@ class TestAnAgentKeyRefusedByTheServer:
 
 
 class TestAGuestRefusedByTheServer:
-    @pytest.mark.parametrize("argv", [["project", "create", "--name", "X", "--json"]])
+    @pytest.mark.parametrize("argv", [["plan", "project", "create", "--name", "X", "--json"]])
     def test_guest_is_a_role_limit(self, argv: list[str]) -> None:
         exc = APIError(403, "no", code="guest_not_allowed")
         result = _invoke("project", argv, exc)

@@ -110,7 +110,7 @@ def eighty_columns() -> Any:
 
 def _timeline(runner: CliRunner, client: MagicMock, *args: str) -> Any:
     with patch("dailybot_cli.commands.tasks.require_auth", return_value=client):
-        return runner.invoke(cli, ["tasks", "timeline", *args])
+        return runner.invoke(cli, ["plan", "tasks", "timeline", *args])
 
 
 def _flat(result: Any) -> str:
@@ -196,7 +196,7 @@ class TestRendering:
         assert json.loads(_timeline(runner, client, "--json").output) == DOC
 
     def test_the_help_points_milestones_at_the_timeline_now(self, runner: CliRunner) -> None:
-        flat = " ".join(runner.invoke(cli, ["tasks", "timeline", "--help"]).output.split())
+        flat = " ".join(runner.invoke(cli, ["plan", "tasks", "timeline", "--help"]).output.split())
         assert "--project" in flat and "--milestone" in flat
         assert "not part of this view" not in flat
 
@@ -230,6 +230,7 @@ class TestFilters:
             result = runner.invoke(
                 cli,
                 [
+                    "plan",
                     "task",
                     "list",
                     "--milestone",
@@ -248,5 +249,5 @@ class TestFilters:
         self, runner: CliRunner, client: MagicMock
     ) -> None:
         with patch("dailybot_cli.commands.task.require_auth", return_value=client):
-            assert runner.invoke(cli, ["task", "list", "--milestone", "x"]).exit_code == 2
+            assert runner.invoke(cli, ["plan", "task", "list", "--milestone", "x"]).exit_code == 2
         client.list_tasks.assert_not_called()

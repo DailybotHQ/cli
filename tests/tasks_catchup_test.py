@@ -77,7 +77,7 @@ class TestPulseBands:
             "activity": [],
             "goal_progress": [{"name": "Q4", "status": "at_risk", "percent_complete": 40}],
         }
-        result = _invoke(runner, client, ["tasks", "status"])
+        result = _invoke(runner, client, ["plan", "tasks", "status"])
         assert result.exit_code == 0, result.output
         for text in ("Apollo", "ENG-1", '"[b]x[/b]"', "Q4", "7"):
             assert text in result.output
@@ -85,7 +85,7 @@ class TestPulseBands:
     def test_json_is_the_pulse_unchanged(self, runner: CliRunner, client: MagicMock) -> None:
         pulse: dict[str, Any] = {"open": 3, "unread_count": 7, "projects": []}
         client.get_tasks_pulse.return_value = pulse
-        result = _invoke(runner, client, ["tasks", "status", "--json"])
+        result = _invoke(runner, client, ["plan", "tasks", "status", "--json"])
         assert json.loads(result.output) == pulse
 
 
@@ -100,18 +100,18 @@ class TestInbox:
 
     def test_read_reports_the_new_count(self, runner: CliRunner, client: MagicMock) -> None:
         client.mark_inbox_item_read.return_value = {"last_seen_at": "t", "unread_count": 2}
-        result = _invoke(runner, client, ["tasks", "inbox-read", "i-1"])
+        result = _invoke(runner, client, ["plan", "tasks", "inbox-read", "i-1"])
         assert result.exit_code == 0, result.output
         assert "2" in result.output
 
     def test_read_all(self, runner: CliRunner, client: MagicMock) -> None:
         client.mark_inbox_read_all.return_value = {"last_seen_at": "t"}
-        result = _invoke(runner, client, ["tasks", "inbox-read-all", "--json"])
+        result = _invoke(runner, client, ["plan", "tasks", "inbox-read-all", "--json"])
         assert json.loads(result.output) == {"last_seen_at": "t"}
 
     def test_unread(self, runner: CliRunner, client: MagicMock) -> None:
         client.get_tasks_inbox_unread_count.return_value = {"unread_count": 4}
-        result = _invoke(runner, client, ["tasks", "inbox-unread"])
+        result = _invoke(runner, client, ["plan", "tasks", "inbox-unread"])
         assert "4" in result.output
 
     def test_the_inbox_list_shows_the_item_uuid(self, runner: CliRunner, client: MagicMock) -> None:
@@ -120,7 +120,7 @@ class TestInbox:
         client.list_tasks_inbox.return_value = PaginatedResult(
             results=[{"uuid": "i-9", "title": "moved"}], count=1, next=None, previous=None
         )
-        result = _invoke(runner, client, ["tasks", "inbox"])
+        result = _invoke(runner, client, ["plan", "tasks", "inbox"])
         assert "i-9" in result.output
 
 
@@ -138,35 +138,39 @@ class TestActivityCursor:
 
     def test_read(self, runner: CliRunner, client: MagicMock) -> None:
         client.get_activity_cursor.return_value = {"last_seen_at": "2026-09-25T09:00:00Z"}
-        result = _invoke(runner, client, ["tasks", "cursor", "--json"])
+        result = _invoke(runner, client, ["plan", "tasks", "cursor", "--json"])
         assert json.loads(result.output) == {"last_seen_at": "2026-09-25T09:00:00Z"}
         client.set_activity_cursor.assert_not_called()
 
     def test_set(self, runner: CliRunner, client: MagicMock) -> None:
         client.set_activity_cursor.return_value = {"last_seen_at": "x"}
-        result = _invoke(runner, client, ["tasks", "cursor", "--set", "2026-09-25T09:00:00Z"])
+        result = _invoke(
+            runner, client, ["plan", "tasks", "cursor", "--set", "2026-09-25T09:00:00Z"]
+        )
         assert result.exit_code == 0, result.output
         assert client.set_activity_cursor.call_args.args[0].startswith("2026-09-25T09:00:00")
 
     def test_now_sends_a_utc_timestamp(self, runner: CliRunner, client: MagicMock) -> None:
         client.set_activity_cursor.return_value = {"last_seen_at": "x"}
-        _invoke(runner, client, ["tasks", "cursor", "--now"])
+        _invoke(runner, client, ["plan", "tasks", "cursor", "--now"])
         sent: str = client.set_activity_cursor.call_args.args[0]
         assert sent.endswith("Z")
 
     def test_set_and_now_conflict(self, runner: CliRunner, client: MagicMock) -> None:
-        result = _invoke(runner, client, ["tasks", "cursor", "--now", "--set", "2026-01-01"])
+        result = _invoke(
+            runner, client, ["plan", "tasks", "cursor", "--now", "--set", "2026-01-01"]
+        )
         assert result.exit_code == EXIT_USAGE_ERROR
 
 
 @pytest.mark.parametrize(
     "argv",
     [
-        ["tasks", "inbox-read", "i-1", "--json"],
-        ["tasks", "inbox-read-all", "--json"],
-        ["tasks", "inbox-unread", "--json"],
-        ["tasks", "cursor", "--json"],
-        ["tasks", "cursor", "--now", "--json"],
+        ["plan", "tasks", "inbox-read", "i-1", "--json"],
+        ["plan", "tasks", "inbox-read-all", "--json"],
+        ["plan", "tasks", "inbox-unread", "--json"],
+        ["plan", "tasks", "cursor", "--json"],
+        ["plan", "tasks", "cursor", "--now", "--json"],
     ],
 )
 def test_catch_up_doors_send_the_request_for_a_key(
@@ -191,7 +195,7 @@ class TestMentionables:
     def test_query_filters_and_shows_the_token(self, runner: CliRunner, client: MagicMock) -> None:
         client.list_board_mentionables.return_value = self.ROWS
         result = _invoke(
-            runner, client, ["board", "mentionables", "b-1", "-q", "jane"], module="board"
+            runner, client, ["plan", "board", "mentionables", "b-1", "-q", "jane"], module="board"
         )
         assert result.exit_code == 0, result.output
         assert "<@DB@u-1>" in result.output
@@ -199,20 +203,29 @@ class TestMentionables:
 
     def test_json_unfiltered_is_the_payload(self, runner: CliRunner, client: MagicMock) -> None:
         client.list_board_mentionables.return_value = {"results": self.ROWS}
-        result = _invoke(runner, client, ["board", "mentionables", "b-1", "--json"], module="board")
+        result = _invoke(
+            runner, client, ["plan", "board", "mentionables", "b-1", "--json"], module="board"
+        )
         assert json.loads(result.output) == {"results": self.ROWS}
 
     def test_json_filtered_is_the_matching_rows(self, runner: CliRunner, client: MagicMock) -> None:
         client.list_board_mentionables.return_value = self.ROWS
         result = _invoke(
-            runner, client, ["board", "mentionables", "b-1", "-q", "roe", "--json"], module="board"
+            runner,
+            client,
+            ["plan", "board", "mentionables", "b-1", "-q", "roe", "--json"],
+            module="board",
         )
         assert json.loads(result.output) == [self.ROWS[1]]
 
     def test_sends_the_request_for_a_key(self, runner: CliRunner, client: MagicMock) -> None:
         client.list_board_mentionables.return_value = []
         _invoke(
-            runner, client, ["board", "mentionables", "b-1", "--json"], module="board", person=False
+            runner,
+            client,
+            ["plan", "board", "mentionables", "b-1", "--json"],
+            module="board",
+            person=False,
         )
         client.list_board_mentionables.assert_called_once()
 
@@ -224,7 +237,7 @@ class TestWorkspaceActivityWire:
         real: DailyBotClient = DailyBotClient(api_url=API_URL, token="test-token")
         envelope: dict[str, Any] = {"count": 0, "next": None, "previous": None, "results": []}
         with patch("dailybot_cli.api_client.httpx.get", return_value=_response(envelope)) as get:
-            result = _invoke(runner, real, ["tasks", "activity", *argv, "--json"])
+            result = _invoke(runner, real, ["plan", "tasks", "activity", *argv, "--json"])
         assert result.exit_code == 0, result.output
         assert get.call_args.args[0] == f"{BASE}activity/"
         return dict(get.call_args.kwargs.get("params") or {})
@@ -266,6 +279,6 @@ class TestWorkspaceActivityWire:
         assert self._sent(runner, []) == {}
 
     def test_search_is_no_longer_offered(self, runner: CliRunner) -> None:
-        output: str = runner.invoke(cli, ["tasks", "activity", "--help"]).output
+        output: str = runner.invoke(cli, ["plan", "tasks", "activity", "--help"]).output
         assert "--search" not in output
         assert "--all" not in output  # one page per call, stated in the help

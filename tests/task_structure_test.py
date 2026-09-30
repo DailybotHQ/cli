@@ -98,20 +98,20 @@ class TestWire:
 class TestChildren:
     def test_json_is_the_payload(self, runner: CliRunner, client: MagicMock) -> None:
         client.list_task_children.return_value = [{"uuid": "t-2", "key": "ENG-143"}]
-        result = _invoke(runner, client, ["task", "children", TASK, "--json"])
+        result = _invoke(runner, client, ["plan", "task", "children", TASK, "--json"])
         assert json.loads(result.output) == [{"uuid": "t-2", "key": "ENG-143"}]
 
     def test_table_renders(self, runner: CliRunner, client: MagicMock) -> None:
         client.list_task_children.return_value = {
             "results": [{"uuid": "t-2", "key": "ENG-143", "title": "child"}]
         }
-        result = _invoke(runner, client, ["task", "children", TASK])
+        result = _invoke(runner, client, ["plan", "task", "children", TASK])
         assert result.exit_code == 0, result.output
         assert "ENG-143" in result.output
 
     def test_missing_task_is_not_found(self, runner: CliRunner, client: MagicMock) -> None:
         client.list_task_children.side_effect = APIError(404, "Gone.", code="not_found")
-        result = _invoke(runner, client, ["task", "children", TASK, "--json"])
+        result = _invoke(runner, client, ["plan", "task", "children", TASK, "--json"])
         assert result.exit_code == EXIT_NOT_FOUND
 
 
@@ -121,7 +121,17 @@ class TestDuplicate:
         result = _invoke(
             runner,
             client,
-            ["task", "duplicate", TASK, "--include", "title", "--include", "due_date", "--json"],
+            [
+                "plan",
+                "task",
+                "duplicate",
+                TASK,
+                "--include",
+                "title",
+                "--include",
+                "due_date",
+                "--json",
+            ],
         )
         assert result.exit_code == 0, result.output
         assert client.duplicate_task.call_args.kwargs == {
@@ -131,13 +141,13 @@ class TestDuplicate:
 
     def test_no_include_lets_the_server_default(self, runner: CliRunner, client: MagicMock) -> None:
         client.duplicate_task.return_value = {"key": "ENG-143"}
-        result = _invoke(runner, client, ["task", "duplicate", TASK])
+        result = _invoke(runner, client, ["plan", "task", "duplicate", TASK])
         assert result.exit_code == 0, result.output
         assert client.duplicate_task.call_args.kwargs == {"include": None, "idempotency_key": None}
         assert "ENG-143" in result.output
 
     def test_an_unknown_field_is_a_usage_error(self, runner: CliRunner, client: MagicMock) -> None:
-        result = _invoke(runner, client, ["task", "duplicate", TASK, "--include", "state"])
+        result = _invoke(runner, client, ["plan", "task", "duplicate", TASK, "--include", "state"])
         assert result.exit_code == EXIT_USAGE_ERROR
         client.duplicate_task.assert_not_called()
 
@@ -146,7 +156,7 @@ class TestDuplicate:
     ) -> None:
         client.duplicate_task.return_value = {"key": "ENG-143", "_idempotency_key": "k-12345678"}
         result = _invoke(
-            runner, client, ["task", "duplicate", TASK, "--idempotency-key", "k-12345678"]
+            runner, client, ["plan", "task", "duplicate", TASK, "--idempotency-key", "k-12345678"]
         )
         assert result.exit_code == 0, result.output
         assert client.duplicate_task.call_args.kwargs["idempotency_key"] == "k-12345678"
@@ -157,14 +167,14 @@ class TestEventsAndActivity:
         client.list_task_events.return_value = [
             {"type": "task.moved", "created_at": "2026-09-25", "actor": {"name": "[b]Eve[/b]"}}
         ]
-        result = _invoke(runner, client, ["task", "events", TASK])
+        result = _invoke(runner, client, ["plan", "task", "events", TASK])
         assert result.exit_code == 0, result.output
         assert "task.moved" in result.output
         assert '"[b]Eve[/b]"' in result.output
 
     def test_activity_json_is_the_envelope(self, runner: CliRunner, client: MagicMock) -> None:
         client.list_task_activity.return_value = _page([{"type": "task.moved"}])
-        result = _invoke(runner, client, ["task", "activity", TASK, "--json"])
+        result = _invoke(runner, client, ["plan", "task", "activity", TASK, "--json"])
         assert result.exit_code == 0, result.output
         assert set(json.loads(result.output)) == {"count", "next", "previous", "results"}
 
@@ -174,7 +184,7 @@ class TestEventsAndActivity:
             runner,
             client,
             [
-                "task", "activity", TASK, "--updated-since", "2026-09-20T00:00:00Z",
+                "plan", "task", "activity", TASK, "--updated-since", "2026-09-20T00:00:00Z",
                 "--type", "task.moved", "--json",
             ],
         )  # fmt: skip
@@ -186,5 +196,5 @@ class TestEventsAndActivity:
 
 def test_delegation_is_not_built() -> None:
     # Not part of the public Tasks API yet.
-    output: str = CliRunner().invoke(cli, ["task", "--help"]).output
+    output: str = CliRunner().invoke(cli, ["plan", "task", "--help"]).output
     assert "delegat" not in output

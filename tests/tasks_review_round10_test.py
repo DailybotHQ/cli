@@ -56,12 +56,16 @@ class TestTheKeyHintNamesAFlagTheCommandHas:
     """
 
     def test_the_flag_exists(self, runner: CliRunner) -> None:
-        assert "--idempotency-key" in runner.invoke(cli, ["task", "delete", "--help"]).stdout
+        assert (
+            "--idempotency-key" in runner.invoke(cli, ["plan", "task", "delete", "--help"]).stdout
+        )
 
     def test_it_reaches_the_client(self, runner: CliRunner, client: MagicMock) -> None:
         client.archive_task.side_effect = [_PREVIEW, {"uuid": "t-1"}]
         with patch("dailybot_cli.commands.task.require_auth", return_value=client):
-            runner.invoke(cli, ["task", "delete", "t-1", "--yes", "--idempotency-key", "mine-1"])
+            runner.invoke(
+                cli, ["plan", "task", "delete", "t-1", "--yes", "--idempotency-key", "mine-1"]
+            )
         assert client.archive_task.call_args[1]["idempotency_key"] == "mine-1"
 
     def test_the_hint_is_actionable(self, runner: CliRunner, client: MagicMock) -> None:
@@ -70,10 +74,10 @@ class TestTheKeyHintNamesAFlagTheCommandHas:
             {"uuid": "t-1", IDEMPOTENCY_KEY_SENT_KEY: "key-9"},
         ]
         with patch("dailybot_cli.commands.task.require_auth", return_value=client):
-            result = runner.invoke(cli, ["task", "delete", "t-1", "--yes"])
+            result = runner.invoke(cli, ["plan", "task", "delete", "t-1", "--yes"])
         assert "key-9" in result.stdout
         # And the flag it names is one this command really takes.
-        replay = runner.invoke(cli, ["task", "delete", "--help"]).stdout
+        replay = runner.invoke(cli, ["plan", "task", "delete", "--help"]).stdout
         assert "--idempotency-key" in replay
 
 
@@ -110,7 +114,7 @@ class TestATooLongQueryIsRefusedNotTruncated:
             400, "Search query is too long.", code="search_query_too_long"
         )
         with patch("dailybot_cli.commands.tasks.require_auth", return_value=client):
-            result = runner.invoke(cli, ["tasks", "search", "-q", "x" * 300])
+            result = runner.invoke(cli, ["plan", "tasks", "search", "-q", "x" * 300])
         assert result.exit_code != 0
 
 
@@ -141,14 +145,14 @@ class TestOneConstantAndNoDeadHelpers:
     def test_the_help_and_the_hint_cannot_disagree(
         self, runner: CliRunner, client: MagicMock
     ) -> None:
-        help_text: str = runner.invoke(cli, ["task", "create", "--help"]).stdout
+        help_text: str = runner.invoke(cli, ["plan", "task", "create", "--help"]).stdout
         client.create_task.return_value = {
             "title": "x",
             IDEMPOTENCY_KEY_SENT_KEY: "k",
             "_idempotency_replayed": False,
         }
         with patch("dailybot_cli.commands.task.require_auth", return_value=client):
-            printed: str = runner.invoke(cli, ["task", "create", "-t", "x"]).stdout
+            printed: str = runner.invoke(cli, ["plan", "task", "create", "-t", "x"]).stdout
         marker: str = f"{IDEMPOTENCY_TTL_HOURS}h"
         assert marker in help_text
         assert marker in printed
@@ -163,6 +167,7 @@ class TestOneConstantAndNoDeadHelpers:
         [
             (
                 [
+                    "plan",
                     "board",
                     "create",
                     "--project",
@@ -176,9 +181,10 @@ class TestOneConstantAndNoDeadHelpers:
                 "create_board",
                 "name",
             ),
-            (["project", "create", "-n", "P"], "project", "create_project", "name"),
+            (["plan", "project", "create", "-n", "P"], "project", "create_project", "name"),
             (
                 [
+                    "plan",
                     "goal",
                     "create",
                     "-n",
@@ -192,7 +198,7 @@ class TestOneConstantAndNoDeadHelpers:
                 "create_goal",
                 "name",
             ),
-            (["task", "create", "-t", "T"], "task", "create_task", "title"),
+            (["plan", "task", "create", "-t", "T"], "task", "create_task", "title"),
         ],
     )
     def test_the_creates_report_the_servers_name(

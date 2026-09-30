@@ -70,11 +70,11 @@ class TestTasksOffIsDiagnosedCorrectly:
     @pytest.mark.parametrize(
         ("argv", "module", "door"),
         [
-            (["tasks", "status"], "tasks", "get_tasks_pulse"),
-            (["board", "list"], "board", "list_boards"),
-            (["task", "list"], "task", "list_tasks"),
-            (["project", "list"], "project", "list_projects"),
-            (["goal", "list"], "goal", "list_goals"),
+            (["plan", "tasks", "status"], "tasks", "get_tasks_pulse"),
+            (["plan", "board", "list"], "board", "list_boards"),
+            (["plan", "task", "list"], "task", "list_tasks"),
+            (["plan", "project", "list"], "project", "list_projects"),
+            (["plan", "goal", "list"], "goal", "list_goals"),
         ],
     )
     def test_every_door_refuses_with_the_documented_exit(
@@ -136,6 +136,7 @@ class TestTheWritesKillSwitchIsTransient:
             runner,
             client,
             [
+                "plan",
                 "board",
                 "create",
                 "--project",
@@ -157,6 +158,7 @@ class TestTheWritesKillSwitchIsTransient:
             runner,
             client,
             [
+                "plan",
                 "board",
                 "create",
                 "--project",
@@ -192,7 +194,7 @@ class TestPermissionWinsOverEntitlement:
         client.list_boards.side_effect = APIError(
             status_code=403, detail="no", code="guest_not_allowed"
         )
-        result = _invoke(runner, client, ["board", "list"], "board")
+        result = _invoke(runner, client, ["plan", "board", "list"], "board")
         collapsed: str = " ".join(result.stderr.split())
         assert "Guest accounts" in collapsed
         assert "not enabled for this organization" not in collapsed
@@ -206,7 +208,7 @@ class TestPermissionWinsOverEntitlement:
             code="insufficient_scope",
             extra={"required_scope": "tasks:read"},
         )
-        result = _invoke(runner, client, ["board", "list"], "board")
+        result = _invoke(runner, client, ["plan", "board", "list"], "board")
         collapsed: str = " ".join(result.stderr.split())
         assert "tasks:read" in collapsed
         assert "not enabled for this organization" not in collapsed
@@ -229,7 +231,7 @@ class TestEntitlementsIsTheDoorThatAlwaysAnswers:
             "labels": {"enabled": False},
         }
         with patch("dailybot_cli.commands.tasks.require_auth", return_value=client):
-            result = runner.invoke(cli, ["tasks", "entitlements"])
+            result = runner.invoke(cli, ["plan", "tasks", "entitlements"])
         assert result.exit_code == 0
         assert "False" in result.stdout or "false" in result.stdout
 
@@ -239,7 +241,7 @@ class TestEntitlementsIsTheDoorThatAlwaysAnswers:
             "reason": "not rolled out to this organization",
         }
         with patch("dailybot_cli.commands.tasks.require_auth", return_value=client):
-            result = runner.invoke(cli, ["tasks", "entitlements"])
+            result = runner.invoke(cli, ["plan", "tasks", "entitlements"])
         assert "rolled out" in " ".join(result.stdout.split())
 
 

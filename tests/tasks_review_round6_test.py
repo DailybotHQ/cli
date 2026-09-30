@@ -54,7 +54,7 @@ class TestTheMissingCursorBranchHonoursJson:
     def test_it_emits_an_envelope(self, runner: CliRunner, client: MagicMock) -> None:
         client.get_board_snapshot.return_value = {"board": {"uuid": "b-1"}}
         with patch("dailybot_cli.commands.tasks.require_auth", return_value=client):
-            result = runner.invoke(cli, ["tasks", "changes", "b-1", "--json"])
+            result = runner.invoke(cli, ["plan", "tasks", "changes", "b-1", "--json"])
         assert result.exit_code == 1
         assert json.loads(result.stdout)["code"] == "delta_cursor_absent"
 
@@ -63,7 +63,7 @@ class TestTheMissingCursorBranchHonoursJson:
     ) -> None:
         client.get_board_snapshot.return_value = {"board": {"uuid": "b-1"}}
         with patch("dailybot_cli.commands.tasks.require_auth", return_value=client):
-            result = runner.invoke(cli, ["tasks", "changes", "b-1"])
+            result = runner.invoke(cli, ["plan", "tasks", "changes", "b-1"])
         assert "delta_cursor" in result.stderr
 
 
@@ -79,14 +79,14 @@ class TestOneErrorEnvelopeForTheWholeFamily:
     @pytest.mark.parametrize(
         ("argv", "module", "door"),
         [
-            (["board", "list", "--json"], "board", "list_boards"),
-            (["board", "get", "b-1", "--json"], "board", "get_board"),
-            (["task", "list", "--json"], "task", "list_tasks"),
-            (["task", "get", "t-1", "--json"], "task", "get_task"),
-            (["project", "list", "--json"], "project", "list_projects"),
-            (["goal", "list", "--json"], "goal", "list_goals"),
-            (["tasks", "status", "--json"], "tasks", "get_tasks_pulse"),
-            (["tasks", "search", "-q", "x", "--json"], "tasks", "search_tasks"),
+            (["plan", "board", "list", "--json"], "board", "list_boards"),
+            (["plan", "board", "get", "b-1", "--json"], "board", "get_board"),
+            (["plan", "task", "list", "--json"], "task", "list_tasks"),
+            (["plan", "task", "get", "t-1", "--json"], "task", "get_task"),
+            (["plan", "project", "list", "--json"], "project", "list_projects"),
+            (["plan", "goal", "list", "--json"], "goal", "list_goals"),
+            (["plan", "tasks", "status", "--json"], "tasks", "get_tasks_pulse"),
+            (["plan", "tasks", "search", "-q", "x", "--json"], "tasks", "search_tasks"),
         ],
     )
     def test_every_door_uses_the_same_shape(
@@ -129,14 +129,14 @@ class TestIncludeValuesAreShapedPerObject:
         self, runner: CliRunner, client: MagicMock
     ) -> None:
         with patch("dailybot_cli.commands.project.require_auth", return_value=client):
-            result = runner.invoke(cli, ["project", "list", "--include", "projects"])
+            result = runner.invoke(cli, ["plan", "project", "list", "--include", "projects"])
         assert result.exit_code == 2
         client.list_projects.assert_not_called()
 
     def test_goal_list_still_accepts_it(self, runner: CliRunner, client: MagicMock) -> None:
         client.list_goals.return_value = _empty()
         with patch("dailybot_cli.commands.goal.require_auth", return_value=client):
-            result = runner.invoke(cli, ["goal", "list", "--include", "projects"])
+            result = runner.invoke(cli, ["plan", "goal", "list", "--include", "projects"])
         assert result.exit_code == 0
 
 
@@ -148,19 +148,19 @@ class TestHelpExamplesAreValidInvocations:
     """
 
     def test_the_comma_form_is_rejected(self, runner: CliRunner) -> None:
-        result = runner.invoke(cli, ["goal", "list", "--include", "progress,projects"])
+        result = runner.invoke(cli, ["plan", "goal", "list", "--include", "progress,projects"])
         assert result.exit_code == 2
 
     def test_the_documented_form_is_accepted(self, runner: CliRunner, client: MagicMock) -> None:
         client.list_goals.return_value = _empty()
         with patch("dailybot_cli.commands.goal.require_auth", return_value=client):
             result = runner.invoke(
-                cli, ["goal", "list", "--include", "progress", "--include", "projects"]
+                cli, ["plan", "goal", "list", "--include", "progress", "--include", "projects"]
             )
         assert result.exit_code == 0
 
     def test_the_group_help_shows_the_repeatable_form(self, runner: CliRunner) -> None:
-        out: str = runner.invoke(cli, ["goal", "--help"]).stdout
+        out: str = runner.invoke(cli, ["plan", "goal", "--help"]).stdout
         assert "progress,projects" not in out
 
 

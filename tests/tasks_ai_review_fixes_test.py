@@ -52,7 +52,17 @@ class TestBulkDryRunMustBeAPreview:
         with patch("dailybot_cli.commands.task.require_auth", return_value=client):
             result = CliRunner().invoke(
                 cli,
-                ["task", "bulk", "--operation", "archive", "-f", "-", "--dry-run", "--json"],
+                [
+                    "plan",
+                    "task",
+                    "bulk",
+                    "--operation",
+                    "archive",
+                    "-f",
+                    "-",
+                    "--dry-run",
+                    "--json",
+                ],
                 input='[{"task": "ENG-1"}]',
             )
         assert result.exit_code == 1, result.output
@@ -163,7 +173,7 @@ class TestServerTextInActivityFeeds:
             previous=None,
         )
         with patch("dailybot_cli.commands.tasks.require_auth", return_value=client):
-            result = CliRunner().invoke(cli, ["tasks", "activity"])
+            result = CliRunner().invoke(cli, ["plan", "tasks", "activity"])
         assert result.exit_code == 0, result.output
         assert "\x1b" not in result.output
 
@@ -181,7 +191,9 @@ class TestBoardMemberAddTakesATeam:
             patch("dailybot_cli.commands.board.require_auth", return_value=client),
             patch("dailybot_cli.commands.board.get_person_token", return_value="tok", create=True),
         ):
-            result = CliRunner().invoke(cli, ["board", "member", "add", BOARD, *argv, "--json"])
+            result = CliRunner().invoke(
+                cli, ["plan", "board", "member", "add", BOARD, *argv, "--json"]
+            )
         return result, client
 
     def test_a_team_is_sent_as_team_uuid(self) -> None:
@@ -259,7 +271,7 @@ class TestBoardPinsResolveKeys:
         with (
             patch("dailybot_cli.commands.board.require_auth", return_value=client),
         ):
-            result = CliRunner().invoke(cli, ["board", "unstar", "ENG", "--json"])
+            result = CliRunner().invoke(cli, ["plan", "board", "unstar", "ENG", "--json"])
         assert result.exit_code == 0, result.output
         client.delete_favorite.assert_called_once_with("f-1")
 
@@ -270,7 +282,7 @@ class TestBoardPinsResolveKeys:
         with (
             patch("dailybot_cli.commands.board.require_auth", return_value=client),
         ):
-            result = CliRunner().invoke(cli, ["board", "star", "ENG", "--json"])
+            result = CliRunner().invoke(cli, ["plan", "board", "star", "ENG", "--json"])
         assert result.exit_code == 0, result.output
         assert client.add_favorite.call_args.kwargs["target_uuid"] == BOARD
 
@@ -280,7 +292,7 @@ class TestBoardPinsResolveKeys:
         with (
             patch("dailybot_cli.commands.board.require_auth", return_value=client),
         ):
-            CliRunner().invoke(cli, ["board", "star", BOARD, "--json"])
+            CliRunner().invoke(cli, ["plan", "board", "star", BOARD, "--json"])
         client.get_board.assert_not_called()
 
 
@@ -436,7 +448,7 @@ class TestBoardCreateRequirements:
             patch("dailybot_cli.commands.board.require_auth", return_value=client),
             patch("dailybot_cli.commands.board.get_person_token", return_value="tok", create=True),
         ):
-            result = CliRunner().invoke(cli, ["board", "create", *argv, "--json"])
+            result = CliRunner().invoke(cli, ["plan", "board", "create", *argv, "--json"])
         return result, client
 
     def test_name_project_and_key_are_sent(self) -> None:

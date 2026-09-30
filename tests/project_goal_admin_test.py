@@ -209,7 +209,7 @@ class TestProjectCommands:
             runner,
             client,
             [
-                "project", "update", PROJECT, "--health", "at_risk", "--lead", USER,
+                "plan", "project", "update", PROJECT, "--health", "at_risk", "--lead", USER,
                 "--start-date", "2026-10-01", "--target-date", "2026-12-15",
                 "--visibility", "members", "--json",
             ],
@@ -236,28 +236,30 @@ class TestProjectCommands:
     def test_update_refuses_bad_input_before_the_request(
         self, runner: CliRunner, client: MagicMock, extra: list[str]
     ) -> None:
-        result = _invoke(runner, client, ["project", "update", PROJECT, *extra])
+        result = _invoke(runner, client, ["plan", "project", "update", PROJECT, *extra])
         assert result.exit_code == EXIT_USAGE_ERROR
         client.update_project.assert_not_called()
 
     def test_create_takes_the_same_fields(self, runner: CliRunner, client: MagicMock) -> None:
         client.create_project.return_value = {"uuid": PROJECT, "name": "Apollo"}
         result = _invoke(
-            runner, client, ["project", "create", "-n", "Apollo", "--health", "on_track", "--json"]
+            runner,
+            client,
+            ["plan", "project", "create", "-n", "Apollo", "--health", "on_track", "--json"],
         )
         assert result.exit_code == 0, result.output
         assert client.create_project.call_args.kwargs["health"] == "on_track"
 
     def test_restore(self, runner: CliRunner, client: MagicMock) -> None:
         client.restore_project.return_value = {"uuid": PROJECT, "is_archived": False}
-        result = _invoke(runner, client, ["project", "restore", PROJECT, "--json"])
+        result = _invoke(runner, client, ["plan", "project", "restore", PROJECT, "--json"])
         assert result.exit_code == 0, result.output
 
     def test_restore_out_of_slots_is_refused(self, runner: CliRunner, client: MagicMock) -> None:
         client.restore_project.side_effect = APIError(
             402, "No slots.", code="plan_upgrade_required"
         )
-        result = _invoke(runner, client, ["project", "restore", PROJECT, "--json"])
+        result = _invoke(runner, client, ["plan", "project", "restore", PROJECT, "--json"])
         assert result.exit_code == EXIT_PERMISSION_DENIED
 
     def test_project_members_sends_the_request_for_a_key(
@@ -265,35 +267,35 @@ class TestProjectCommands:
     ) -> None:
         # A personal API key is its person on the API; the server decides.
         client.list_project_members.return_value = []
-        _invoke(runner, client, ["project", "members", PROJECT, "--json"], person=False)
+        _invoke(runner, client, ["plan", "project", "members", PROJECT, "--json"], person=False)
         client.list_project_members.assert_called_once()
 
     @pytest.mark.parametrize("extra", [[], ["--user", USER, "--team", "t-1"]])
     def test_member_add_needs_exactly_one_subject(
         self, runner: CliRunner, client: MagicMock, extra: list[str]
     ) -> None:
-        result = _invoke(runner, client, ["project", "member", "add", PROJECT, *extra])
+        result = _invoke(runner, client, ["plan", "project", "member", "add", PROJECT, *extra])
         assert result.exit_code == EXIT_USAGE_ERROR
         client.add_project_member.assert_not_called()
 
     def test_member_add_a_team(self, runner: CliRunner, client: MagicMock) -> None:
         client.add_project_member.return_value = {"subject_type": "team"}
         result = _invoke(
-            runner, client, ["project", "member", "add", PROJECT, "--team", "t-1", "--json"]
+            runner, client, ["plan", "project", "member", "add", PROJECT, "--team", "t-1", "--json"]
         )
         assert result.exit_code == 0, result.output
         assert client.add_project_member.call_args.kwargs == {"user_uuid": None, "team_uuid": "t-1"}
 
     def test_member_remove_dry_run(self, runner: CliRunner, client: MagicMock) -> None:
         result = _invoke(
-            runner, client, ["project", "member", "remove", PROJECT, USER, "--dry-run"]
+            runner, client, ["plan", "project", "member", "remove", PROJECT, USER, "--dry-run"]
         )
         assert result.exit_code == 0, result.output
         client.remove_project_member.assert_not_called()
 
     def test_views_and_etag(self, runner: CliRunner, client: MagicMock) -> None:
         client.list_project_views_with_etag.return_value = ([{"uuid": "v-1"}], '"4"')
-        result = _invoke(runner, client, ["project", "views", PROJECT, "--etag"])
+        result = _invoke(runner, client, ["plan", "project", "views", PROJECT, "--etag"])
         assert result.stdout == '"4"\n'
 
     def test_view_save_fetches_the_etag(self, runner: CliRunner, client: MagicMock) -> None:
@@ -302,7 +304,7 @@ class TestProjectCommands:
         result = _invoke(
             runner,
             client,
-            ["project", "view", "save", PROJECT, "-f", "-", "--fetch-etag", "--json"],
+            ["plan", "project", "view", "save", PROJECT, "-f", "-", "--fetch-etag", "--json"],
             stdin='[{"name": "v", "filters": {}}]',
         )
         assert result.exit_code == 0, result.output
@@ -312,7 +314,7 @@ class TestProjectCommands:
         client.list_project_updates.return_value = PaginatedResult(
             results=[], count=0, next=None, previous=None
         )
-        result = _invoke(runner, client, ["project", "updates", PROJECT, "--json"])
+        result = _invoke(runner, client, ["plan", "project", "updates", PROJECT, "--json"])
         assert result.exit_code == 0, result.output
         assert client.list_project_updates.call_args.args == (PROJECT,)
 
@@ -322,7 +324,7 @@ class TestProjectCommands:
             runner,
             client,
             [
-                "project", "update-post", PROJECT, "done", "--health", "on_track",
+                "plan", "project", "update-post", PROJECT, "done", "--health", "on_track",
                 "--idempotency-key", "k-12345678", "--json",
             ],
         )  # fmt: skip
@@ -338,7 +340,7 @@ class TestProjectCommands:
         result = _invoke(
             runner,
             client,
-            ["project", "milestone-create", PROJECT, "-n", "Beta", "--date", "2026-11-01"],
+            ["plan", "project", "milestone-create", PROJECT, "-n", "Beta", "--date", "2026-11-01"],
         )
         assert result.exit_code == 0, result.output
         assert client.create_milestone.call_args.kwargs == {
@@ -348,22 +350,28 @@ class TestProjectCommands:
         }
 
     def test_milestone_create_needs_a_date(self, runner: CliRunner, client: MagicMock) -> None:
-        result = _invoke(runner, client, ["project", "milestone-create", PROJECT, "-n", "Beta"])
+        result = _invoke(
+            runner, client, ["plan", "project", "milestone-create", PROJECT, "-n", "Beta"]
+        )
         assert result.exit_code == EXIT_USAGE_ERROR
 
     def test_milestone_update_needs_a_field(self, runner: CliRunner, client: MagicMock) -> None:
-        result = _invoke(runner, client, ["project", "milestone-update", PROJECT, MILESTONE])
+        result = _invoke(
+            runner, client, ["plan", "project", "milestone-update", PROJECT, MILESTONE]
+        )
         assert result.exit_code == EXIT_USAGE_ERROR
 
     def test_milestone_delete_confirms(self, runner: CliRunner, client: MagicMock) -> None:
         result = _invoke(
-            runner, client, ["project", "milestone-delete", PROJECT, MILESTONE, "--dry-run"]
+            runner, client, ["plan", "project", "milestone-delete", PROJECT, MILESTONE, "--dry-run"]
         )
         assert result.exit_code == 0, result.output
         client.delete_milestone.assert_not_called()
         client.delete_milestone.return_value = {}
         result = _invoke(
-            runner, client, ["project", "milestone-delete", PROJECT, MILESTONE, "--yes", "--json"]
+            runner,
+            client,
+            ["plan", "project", "milestone-delete", PROJECT, MILESTONE, "--yes", "--json"],
         )
         assert json.loads(result.output)["retired"] is True
 
@@ -377,7 +385,10 @@ class TestGoalCommands:
     def test_update_declares_status(self, runner: CliRunner, client: MagicMock) -> None:
         client.update_goal.return_value = {"uuid": GOAL, "status": "at_risk"}
         result = _invoke(
-            runner, client, ["goal", "update", GOAL, "--status", "at_risk", "--json"], module="goal"
+            runner,
+            client,
+            ["plan", "goal", "update", GOAL, "--status", "at_risk", "--json"],
+            module="goal",
         )
         assert result.exit_code == 0, result.output
         assert client.update_goal.call_args.kwargs == {"status": "at_risk"}
@@ -393,31 +404,36 @@ class TestGoalCommands:
     def test_update_refuses_bad_input(
         self, runner: CliRunner, client: MagicMock, extra: list[str]
     ) -> None:
-        result = _invoke(runner, client, ["goal", "update", GOAL, *extra], module="goal")
+        result = _invoke(runner, client, ["plan", "goal", "update", GOAL, *extra], module="goal")
         assert result.exit_code == EXIT_USAGE_ERROR
         client.update_goal.assert_not_called()
 
     def test_restore_name_conflict(self, runner: CliRunner, client: MagicMock) -> None:
         client.restore_goal.side_effect = APIError(409, "Taken.", code="goal_name_conflict")
-        result = _invoke(runner, client, ["goal", "restore", GOAL, "--json"], module="goal")
+        result = _invoke(runner, client, ["plan", "goal", "restore", GOAL, "--json"], module="goal")
         assert result.exit_code == EXIT_PERMISSION_DENIED
         assert json.loads(result.output)["code"] == "goal_name_conflict"
 
     def test_link(self, runner: CliRunner, client: MagicMock) -> None:
         client.link_goal_project.return_value = {"uuid": GOAL, "projects": [{"uuid": PROJECT}]}
-        result = _invoke(runner, client, ["goal", "link", GOAL, PROJECT, "--json"], module="goal")
+        result = _invoke(
+            runner, client, ["plan", "goal", "link", GOAL, PROJECT, "--json"], module="goal"
+        )
         assert result.exit_code == 0, result.output
         assert client.link_goal_project.call_args.args == (GOAL, PROJECT)
 
     def test_unlink_confirms(self, runner: CliRunner, client: MagicMock) -> None:
         result = _invoke(
-            runner, client, ["goal", "unlink", GOAL, PROJECT, "--dry-run"], module="goal"
+            runner, client, ["plan", "goal", "unlink", GOAL, PROJECT, "--dry-run"], module="goal"
         )
         assert result.exit_code == 0, result.output
         client.unlink_goal_project.assert_not_called()
         client.unlink_goal_project.return_value = {}
         result = _invoke(
-            runner, client, ["goal", "unlink", GOAL, PROJECT, "--yes", "--json"], module="goal"
+            runner,
+            client,
+            ["plan", "goal", "unlink", GOAL, PROJECT, "--yes", "--json"],
+            module="goal",
         )
         assert json.loads(result.output)["unlinked"] is True
 
@@ -455,7 +471,7 @@ class TestProgressReadsLikeProgress:
             "project_count": 1,
             "projects": [{"uuid": PROJECT, "name": "Apollo", "health": "off_track"}],
         }
-        result = _invoke(runner, client, ["goal", "get", GOAL], module="goal")
+        result = _invoke(runner, client, ["plan", "goal", "get", GOAL], module="goal")
         assert result.exit_code == 0, result.output
         for text in ("at_risk", "2026-12-31", "25% (1 of 4 done)", "off_track"):
             assert text in result.output

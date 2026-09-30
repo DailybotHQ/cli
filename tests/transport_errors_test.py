@@ -163,7 +163,7 @@ class TestTheRootSafetyNet:
             "dailybot_cli.commands.tasks.require_auth",
             side_effect=TransportError("Could not reach Dailybot at http://x/."),
         ):
-            result = runner.invoke(cli, ["tasks", "status"])
+            result = runner.invoke(cli, ["plan", "tasks", "status"])
         assert result.exit_code == EXIT_TRANSPORT_ERROR
         assert "Traceback" not in result.output
 
@@ -173,12 +173,12 @@ class TestTheRootSafetyNet:
     def test_it_does_not_swallow_system_exit(self) -> None:
         runner = CliRunner()
         with patch("dailybot_cli.commands.tasks.require_auth", side_effect=SystemExit(3)):
-            result = runner.invoke(cli, ["tasks", "status"])
+            result = runner.invoke(cli, ["plan", "tasks", "status"])
         assert result.exit_code == 3
 
     def test_it_does_not_swallow_a_usage_error(self) -> None:
         runner = CliRunner()
-        result = runner.invoke(cli, ["tasks", "search"])  # -q is required
+        result = runner.invoke(cli, ["plan", "tasks", "search"])  # -q is required
         assert result.exit_code == 2
 
     def test_it_does_not_swallow_keyboard_interrupt(self) -> None:
@@ -187,7 +187,7 @@ class TestTheRootSafetyNet:
         # "Unexpected error ... please report it" path would be wrong and noisy.
         runner = CliRunner()
         with patch("dailybot_cli.commands.tasks.require_auth", side_effect=KeyboardInterrupt()):
-            result = runner.invoke(cli, ["tasks", "status"])
+            result = runner.invoke(cli, ["plan", "tasks", "status"])
         assert "unexpected error" not in result.output.lower()
         assert "please report it" not in result.output.lower()
 

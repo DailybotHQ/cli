@@ -58,7 +58,7 @@ def _invoke(
     runner: CliRunner, client: MagicMock, args: list[str], *, input_text: str | None = None
 ) -> Any:
     with patch("dailybot_cli.commands.tasks_settings.require_auth", return_value=client):
-        return runner.invoke(cli, ["tasks", *args], input=input_text)
+        return runner.invoke(cli, ["plan", "tasks", *args], input=input_text)
 
 
 class TestTheWholeMessageIsShownBeforeConfirming:

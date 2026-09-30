@@ -88,7 +88,7 @@ class TestCommandExit:
             patch("dailybot_cli.api_client.httpx.post") as post,
             patch("dailybot_cli.api_client.httpx.request") as request,
         ):
-            result = CliRunner().invoke(cli, ["task", "restore", HOSTILE[0]])
+            result = CliRunner().invoke(cli, ["plan", "task", "restore", HOSTILE[0]])
         assert result.exit_code == EXIT_USAGE_ERROR, result.output
         post.assert_not_called()
         request.assert_not_called()
@@ -100,7 +100,7 @@ class TestCommandExit:
             patch("dailybot_cli.api_client.httpx.post") as post,
             patch("dailybot_cli.api_client.httpx.request") as request,
         ):
-            result = CliRunner().invoke(cli, ["task", "comment", "ENG-1/archive", "hi"])
+            result = CliRunner().invoke(cli, ["plan", "task", "comment", "ENG-1/archive", "hi"])
         assert result.exit_code == EXIT_USAGE_ERROR, result.output
         post.assert_not_called()
         request.assert_not_called()

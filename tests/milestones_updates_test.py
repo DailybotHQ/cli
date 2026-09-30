@@ -89,38 +89,40 @@ class TestMilestoneRestore:
 class TestCommands:
     def test_update_edit_needs_a_field(self) -> None:
         client: MagicMock = MagicMock(spec=DailyBotClient)
-        result = _invoke(["project", "update-edit", P, U], client)
+        result = _invoke(["plan", "project", "update-edit", P, U], client)
         assert result.exit_code == 2
         client.edit_project_update.assert_not_called()
 
     def test_update_edit_by_a_non_author_names_the_rule(self) -> None:
         client: MagicMock = MagicMock(spec=DailyBotClient)
         client.edit_project_update.side_effect = APIError(403, "no", code="update_not_author")
-        result = _invoke(["project", "update-edit", P, U, "new", "--json"], client)
+        result = _invoke(["plan", "project", "update-edit", P, U, "new", "--json"], client)
         assert result.exit_code == 4
         assert "Only the person who posted" in json.loads(result.output)["message"]
 
     def test_rename_refuses_an_empty_or_long_name_locally(self) -> None:
         client: MagicMock = MagicMock(spec=DailyBotClient)
         for name in ("   ", "x" * 256):
-            result = _invoke(["project", "update-attachment", "rename", P, U, A, name], client)
+            result = _invoke(
+                ["plan", "project", "update-attachment", "rename", P, U, A, name], client
+            )
             assert result.exit_code == 2
         client.rename_update_attachment.assert_not_called()
 
     def test_delete_dry_run_sends_nothing(self) -> None:
         client: MagicMock = MagicMock(spec=DailyBotClient)
-        result = _invoke(["project", "update-delete", P, U, "--dry-run"], client)
+        result = _invoke(["plan", "project", "update-delete", P, U, "--dry-run"], client)
         assert result.exit_code == 0
         client.delete_project_update.assert_not_called()
 
     def test_delete_success_says_the_update_was_deleted(self) -> None:
         client: MagicMock = MagicMock(spec=DailyBotClient)
-        result = _invoke(["project", "update-delete", P, U, "--yes"], client)
+        result = _invoke(["plan", "project", "update-delete", P, U, "--yes"], client)
         assert result.exit_code == 0, result.output
         client.delete_project_update.assert_called_once_with(P, U)
         assert "Project update deleted." in result.output
         assert "Attachment" not in result.output
-        result = _invoke(["project", "update-delete", P, U, "--yes", "--json"], client)
+        result = _invoke(["plan", "project", "update-delete", P, U, "--yes", "--json"], client)
         assert json.loads(result.output) == {"deleted": True, "project": P, "update": U}
 
     def test_milestone_attach_uploads(self, tmp_path: Path) -> None:
@@ -128,7 +130,7 @@ class TestCommands:
         f.write_text("x")
         client: MagicMock = MagicMock(spec=DailyBotClient)
         client.upload_milestone_attachment.return_value = {"uuid": A, "filename": "spec.txt"}
-        result = _invoke(["project", "milestone-attach", P, M, str(f), "--json"], client)
+        result = _invoke(["plan", "project", "milestone-attach", P, M, str(f), "--json"], client)
         assert result.exit_code == 0, result.output
         assert client.upload_milestone_attachment.call_args.args == (P, M)
 
@@ -143,7 +145,9 @@ class TestFileCountFallback:
 
 
 class TestRendering:
-    @pytest.mark.parametrize("argv", [["project", "updates", P], ["project", "update-get", P, U]])
+    @pytest.mark.parametrize(
+        "argv", [["plan", "project", "updates", P], ["plan", "project", "update-get", P, U]]
+    )
     def test_person_via_agent_health_edited_files(self, argv: list[str]) -> None:
         row: dict[str, Any] = {
             "uuid": U,

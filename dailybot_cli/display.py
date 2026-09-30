@@ -1810,7 +1810,7 @@ def print_task_briefing(brief: dict[str, Any]) -> None:
                     f"  {present_untrusted(_person_name(person), limit=40)} "
                     f"[dim]{safe_text(participant.get('role') or '')}[/dim]"
                 )
-        _more_hint(brief, "participants", f"dailybot task participants list {ref}")
+        _more_hint(brief, "participants", f"dailybot plan task participants list {ref}")
     activity: Any = brief.get("activity") or []
     if activity:
         console.print(f"\n[bold]Recent activity ({len(activity)})[/bold]")
@@ -1828,7 +1828,7 @@ def print_task_briefing(brief: dict[str, Any]) -> None:
                     f"{safe_text(item.get('type') or item.get('verb') or '')} "
                     f"{present_untrusted(_person_name(actor), limit=40)}{via}"
                 )
-        _more_hint(brief, "activity", f"dailybot task activity {ref}")
+        _more_hint(brief, "activity", f"dailybot plan task activity {ref}")
     children: Any = brief.get("children") or []
     if children:
         console.print(f"\n[bold]Sub-tasks ({len(children)})[/bold]")
@@ -1838,7 +1838,7 @@ def print_task_briefing(brief: dict[str, Any]) -> None:
                     f"  {safe_text(child.get('key') or child.get('uuid') or '')} "
                     f"{present_untrusted(child.get('title'), limit=80)}"
                 )
-        _more_hint(brief, "children", f"dailybot task children {ref}")
+        _more_hint(brief, "children", f"dailybot plan task children {ref}")
 
 
 def _more_hint(brief: dict[str, Any], name: str, command: str) -> None:
@@ -1895,7 +1895,7 @@ def print_board_snapshot(snapshot: dict[str, Any]) -> None:
     if cursor:
         console.print(
             f"[bold]delta_cursor[/bold]  {safe_text(cursor)}\n"
-            "[dim]Pass it to `dailybot tasks changes` to read only what changed since.[/dim]"
+            "[dim]Pass it to `dailybot plan tasks changes` to read only what changed since.[/dim]"
         )
 
 

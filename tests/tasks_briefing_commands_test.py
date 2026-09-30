@@ -1,4 +1,4 @@
-"""`dailybot tasks briefing get|set|preview|send-test` (PLAN_004)."""
+"""`dailybot plan tasks briefing get|set|preview|send-test` (PLAN_004)."""
 
 import json
 from typing import Any
@@ -78,16 +78,16 @@ def _invoke(
     runner: CliRunner, client: MagicMock, args: list[str], *, input_text: str | None = None
 ) -> Any:
     with patch("dailybot_cli.commands.tasks_settings.require_auth", return_value=client):
-        return runner.invoke(cli, ["tasks", "briefing", *args], input=input_text)
+        return runner.invoke(cli, ["plan", "tasks", "briefing", *args], input=input_text)
 
 
 class TestWiring:
     def test_group_help_and_the_delivery_sentence(self, runner: CliRunner) -> None:
-        assert "briefing" in runner.invoke(cli, ["tasks", "--help"]).output
-        flat = " ".join(runner.invoke(cli, ["tasks", "briefing", "--help"]).output.split())
+        assert "briefing" in runner.invoke(cli, ["plan", "tasks", "--help"]).output
+        flat = " ".join(runner.invoke(cli, ["plan", "tasks", "briefing", "--help"]).output.split())
         assert "arrives by DM and/or email" in flat
         for sub in ("get", "set", "preview", "send-test"):
-            result = runner.invoke(cli, ["tasks", "briefing", sub, "--help"])
+            result = runner.invoke(cli, ["plan", "tasks", "briefing", sub, "--help"])
             assert result.exit_code == 0 and "Examples" in result.output, sub
 
 

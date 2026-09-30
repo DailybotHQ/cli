@@ -62,18 +62,18 @@ ERROR_CODE_MESSAGES: dict[str, str] = {
     ),
     "reaction_limit_reached": (
         "You already hold the most different emojis allowed on this comment or update. "
-        "Remove one of yours (`dailybot task comment-unreact` or "
-        "`dailybot project update-unreact`) before adding another; "
+        "Remove one of yours (`dailybot plan task comment-unreact` or "
+        "`dailybot plan project update-unreact`) before adding another; "
         "re-adding an emoji you already hold changes nothing."
     ),
     "invalid_schedule": ("That schedule is not valid: weekdays, time, timezone or destination."),
     "unknown_notification_kind": (
         "That notification kind does not exist, or does not apply to this setting. "
-        "See the valid kinds with `dailybot tasks notifications catalog`."
+        "See the valid kinds with `dailybot plan tasks notifications catalog`."
     ),
     "channel_not_found": (
         "That channel was not found, or it is private and you cannot use it. "
-        "List what you can pick with `dailybot tasks channels search`."
+        "List what you can pick with `dailybot plan tasks channels search`."
     ),
     "platform_not_connected": (
         "No chat platform is connected for this organization, so channels and messages "
@@ -88,20 +88,20 @@ ERROR_CODE_MESSAGES: dict[str, str] = {
     "throttled": ("You are sending requests faster than your account allows."),
     "task_archived": (
         "This task is archived, so it cannot be changed or duplicated. "
-        "Bring it back with `dailybot task restore <task>` first."
+        "Bring it back with `dailybot plan task restore <task>` first."
     ),
     "project_name_conflict": (
         "Another project already uses that name, and archived projects keep theirs. "
-        "Pick a different name, or restore the archived project with `dailybot project restore`."
+        "Pick a different name, or restore the archived project with `dailybot plan project restore`."
     ),
     "milestone_not_on_project": (
         "That milestone belongs to a different project than this task's board. "
-        "List the right ones with `dailybot project milestones <project>`."
+        "List the right ones with `dailybot plan project milestones <project>`."
     ),
     "label_in_use": (
         "This label is still in use, so it cannot be deleted. Archive it instead "
         "(`dailybot label archive <label>` for organization labels, or "
-        "`dailybot board label update <label> --archive` for Tasks labels), or clear what "
+        "`dailybot plan board label update <label> --archive` for Tasks labels), or clear what "
         "still references it, then delete."
     ),
     # Project update authorship
@@ -177,9 +177,9 @@ ERROR_CODE_MESSAGES: dict[str, str] = {
         # Two doors answer this code: retiring a column that still holds cards, and
         # restoring a task whose column was retired meanwhile. Name both remedies.
         "The column involved is in use or retired. To retire a column that still holds "
-        "tasks, re-run `dailybot board state archive` with `--migrate-to <state-uuid>`; to "
+        "tasks, re-run `dailybot plan board state archive` with `--migrate-to <state-uuid>`; to "
         "restore a task whose column was retired, restore the column first with "
-        "`dailybot board state restore`. `dailybot board states <board> --include-archived` "
+        "`dailybot plan board state restore`. `dailybot plan board states <board> --include-archived` "
         "lists the columns."
     ),
     # Attachments
@@ -218,7 +218,7 @@ ERROR_CODE_MESSAGES: dict[str, str] = {
     ),
     "column_too_large": (
         "That column holds too many tasks to return in one read. List them page by page "
-        "with `dailybot board tasks <board>`."
+        "with `dailybot plan board tasks <board>`."
     ),
     # Delta
     "delta_window_expired": (
@@ -766,7 +766,7 @@ def resolve_error_message(
             "Dailybot Plan (Tasks) is not enabled for this organization. It is switched on per "
             "organization, so this is not a credential or role problem and signing in "
             "again will not change it: ask a workspace admin to enable Tasks, or upgrade "
-            "the plan. `dailybot tasks entitlements` reports the current state and the "
+            "the plan. `dailybot plan tasks entitlements` reports the current state and the "
             "reason without refusing."
         )
         return f"{message} Upgrade at: {upgrade}" if upgrade else message

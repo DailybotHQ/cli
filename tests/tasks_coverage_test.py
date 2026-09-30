@@ -45,38 +45,38 @@ def _page(rows: list[dict[str, Any]] | None = None) -> PaginatedResult:
 # --- The 19 phase-1 capabilities -------------------------------------------
 # Each row: capability number, command, the client method it must call.
 CAPABILITIES: list[tuple[int, str, list[str], str]] = [
-    (1, "tasks status", ["tasks", "status"], "get_tasks_pulse"),
-    (2, "tasks changes", ["tasks", "changes", "b-1", "--cursor", "c"], "get_board_delta"),
-    (3, "tasks search", ["tasks", "search", "-q", "x"], "search_tasks"),
-    (4, "tasks inbox", ["tasks", "inbox"], "list_tasks_inbox"),
-    (5, "task list", ["task", "list"], "list_tasks"),
-    (6, "task get", ["task", "get", "t-1"], "get_task"),
-    (7, "task create", ["task", "create", "--title", "x"], "create_task"),
-    (8, "task update", ["task", "update", "t-1", "--title", "y"], "update_task"),
+    (1, "tasks status", ["plan", "tasks", "status"], "get_tasks_pulse"),
+    (2, "tasks changes", ["plan", "tasks", "changes", "b-1", "--cursor", "c"], "get_board_delta"),
+    (3, "tasks search", ["plan", "tasks", "search", "-q", "x"], "search_tasks"),
+    (4, "tasks inbox", ["plan", "tasks", "inbox"], "list_tasks_inbox"),
+    (5, "task list", ["plan", "task", "list"], "list_tasks"),
+    (6, "task get", ["plan", "task", "get", "t-1"], "get_task"),
+    (7, "task create", ["plan", "task", "create", "--title", "x"], "create_task"),
+    (8, "task update", ["plan", "task", "update", "t-1", "--title", "y"], "update_task"),
     (
         9,
         "task move",
-        ["task", "move", "t-1", "--state", "00000000-0000-0000-0000-000000000005"],
+        ["plan", "task", "move", "t-1", "--state", "00000000-0000-0000-0000-000000000005"],
         "move_task",
     ),
-    (10, "task assign", ["task", "assign", "t-1", "--to", "u-1"], "update_task"),
-    (11, "task comment", ["task", "comment", "t-1", "hi"], "comment_on_task"),
-    (12, "task link", ["task", "link", "t-1", "t-2", "--type", "blocks"], "relate_tasks"),
-    (13, "task archive", ["task", "archive", "t-1", "--dry-run"], "archive_task"),
+    (10, "task assign", ["plan", "task", "assign", "t-1", "--to", "u-1"], "update_task"),
+    (11, "task comment", ["plan", "task", "comment", "t-1", "hi"], "comment_on_task"),
+    (12, "task link", ["plan", "task", "link", "t-1", "t-2", "--type", "blocks"], "relate_tasks"),
+    (13, "task archive", ["plan", "task", "archive", "t-1", "--dry-run"], "archive_task"),
     (14, "task bulk", [], "bulk_tasks"),  # exercised in task_commands_test (needs a file)
-    (15, "board snapshot", ["board", "snapshot", "b-1"], "get_board_snapshot"),
-    (16, "project get", ["project", "get", "p-1"], "get_project"),
+    (15, "board snapshot", ["plan", "board", "snapshot", "b-1"], "get_board_snapshot"),
+    (16, "project get", ["plan", "project", "get", "p-1"], "get_project"),
     (
         17,
         "project update-post",
-        ["project", "update-post", "p-1", "shipped"],
+        ["plan", "project", "update-post", "p-1", "shipped"],
         "post_project_update",
     ),
-    (18, "goal list", ["goal", "list"], "list_goals"),
+    (18, "goal list", ["plan", "goal", "list"], "list_goals"),
     (
         19,
         "milestone complete",
-        ["project", "milestone-complete", "p-1", "m-1", "--dry-run"],
+        ["plan", "project", "milestone-complete", "p-1", "m-1", "--dry-run"],
         "complete_milestone",
     ),
 ]
@@ -140,7 +140,7 @@ class TestEveryPhaseOneCapabilityIsReachable:
         method: str,
     ) -> None:
         getattr(client, method).return_value = _default_return(method)
-        module: str = _MODULE_FOR[args[0]]
+        module: str = _MODULE_FOR[args[1]]
         with (
             patch(f"dailybot_cli.commands.{module}.require_auth", return_value=client),
             patch(
@@ -167,15 +167,15 @@ class TestFlagWiringRenders:
     def test_every_subcommand_of_every_group_renders_help(
         self, runner: CliRunner, group: str
     ) -> None:
-        subs = list(cli.commands[group].commands)  # type: ignore[attr-defined]
+        subs = list(cli.commands["plan"].commands[group].commands)  # type: ignore[attr-defined]
         assert subs, f"{group} has no subcommands"
         for sub in subs:
-            result = runner.invoke(cli, [group, sub, "--help"])
+            result = runner.invoke(cli, ["plan", group, sub, "--help"])
             assert result.exit_code == 0, f"{group} {sub} --help failed"
 
     @pytest.mark.parametrize("group", ["tasks", "task", "board", "project", "goal"])
     def test_no_short_flag_is_declared_twice_anywhere(self, group: str) -> None:
-        for sub, command in cli.commands[group].commands.items():  # type: ignore[attr-defined]
+        for sub, command in cli.commands["plan"].commands[group].commands.items():  # type: ignore[attr-defined]
             shorts: list[str] = [
                 opt
                 for param in command.params
@@ -271,10 +271,10 @@ class TestJsonModeShape:
     @pytest.mark.parametrize(
         "args,module,method",
         [
-            (["task", "list", "--json"], "task", "list_tasks"),
-            (["board", "list", "--json"], "board", "list_boards"),
-            (["goal", "list", "--json"], "goal", "list_goals"),
-            (["project", "list", "--json"], "project", "list_projects"),
+            (["plan", "task", "list", "--json"], "task", "list_tasks"),
+            (["plan", "board", "list", "--json"], "board", "list_boards"),
+            (["plan", "goal", "list", "--json"], "goal", "list_goals"),
+            (["plan", "project", "list", "--json"], "project", "list_projects"),
         ],
     )
     def test_paginated_json_carries_the_envelope(
@@ -296,10 +296,12 @@ class TestCrossCommandSequences:
         }
         client.get_board_delta.return_value = {"changed": [], "delta_cursor": "c-2"}
         with patch("dailybot_cli.commands.board.require_auth", return_value=client):
-            snap = runner.invoke(cli, ["board", "snapshot", "b-1", "--json"])
+            snap = runner.invoke(cli, ["plan", "board", "snapshot", "b-1", "--json"])
         cursor: str = json.loads(snap.output)["delta_cursor"]
         with patch("dailybot_cli.commands.tasks.require_auth", return_value=client):
-            delta = runner.invoke(cli, ["tasks", "changes", "b-1", "--cursor", cursor, "--json"])
+            delta = runner.invoke(
+                cli, ["plan", "tasks", "changes", "b-1", "--cursor", cursor, "--json"]
+            )
         assert delta.exit_code == 0
         assert client.get_board_delta.call_args[1]["updated_since"] == cursor
 
@@ -322,9 +324,9 @@ class TestCrossCommandSequences:
             {"_idempotency_replayed": False},
         ]
         with patch("dailybot_cli.commands.task.require_auth", return_value=client):
-            assert runner.invoke(cli, ["task", "create", "--title", "x"]).exit_code == 0
-            assert runner.invoke(cli, ["task", "comment", "t-9", "done"]).exit_code == 0
-            assert runner.invoke(cli, ["task", "archive", "t-9", "--yes"]).exit_code == 0
+            assert runner.invoke(cli, ["plan", "task", "create", "--title", "x"]).exit_code == 0
+            assert runner.invoke(cli, ["plan", "task", "comment", "t-9", "done"]).exit_code == 0
+            assert runner.invoke(cli, ["plan", "task", "archive", "t-9", "--yes"]).exit_code == 0
 
     def test_expired_cursor_leads_to_a_resync(self, runner: CliRunner, client: MagicMock) -> None:
         client.get_board_delta.side_effect = APIError(
@@ -332,7 +334,9 @@ class TestCrossCommandSequences:
         )
         client.get_board_snapshot.return_value = {"delta_cursor": "fresh", "groups": []}
         with patch("dailybot_cli.commands.tasks.require_auth", return_value=client):
-            result = runner.invoke(cli, ["tasks", "changes", "b-1", "--cursor", "old", "--resync"])
+            result = runner.invoke(
+                cli, ["plan", "tasks", "changes", "b-1", "--cursor", "old", "--resync"]
+            )
         assert result.exit_code == 0
         client.get_board_snapshot.assert_called_once_with("b-1")
 
@@ -403,7 +407,7 @@ class TestNotificationSettingsSurface:
         import click
 
         node: click.Command = cli
-        for part in path:
+        for part in ("plan", *path):
             assert isinstance(node, click.Group), path
             node = node.commands[part]
         return node
@@ -418,7 +422,7 @@ class TestNotificationSettingsSurface:
         "group", ["notifications", "channels", "routes", "reports", "briefing"]
     )
     def test_every_group_carries_the_beta_notice(self, runner: CliRunner, group: str) -> None:
-        assert "Beta" in runner.invoke(cli, ["tasks", group, "--help"]).output
+        assert "Beta" in runner.invoke(cli, ["plan", "tasks", group, "--help"]).output
 
     @pytest.mark.parametrize("path", OUTBOUND_SENDS, ids=[" ".join(p) for p in OUTBOUND_SENDS])
     def test_every_send_test_offers_dry_run_and_yes(self, path: tuple[str, ...]) -> None:
@@ -428,7 +432,7 @@ class TestNotificationSettingsSurface:
         assert {"--dry-run", "--yes"} <= opts
 
     def test_the_tasks_group_lists_every_new_group(self, runner: CliRunner) -> None:
-        out: str = runner.invoke(cli, ["tasks", "--help"]).output
+        out: str = runner.invoke(cli, ["plan", "tasks", "--help"]).output
         for group in ("notifications", "channels", "routes", "reports", "briefing"):
             assert group in out
 

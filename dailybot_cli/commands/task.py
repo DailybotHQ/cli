@@ -1,6 +1,6 @@
-"""Object-level Tasks commands (``dailybot task``).
+"""Object-level Tasks commands (``dailybot plan task``).
 
-Sibling of ``dailybot tasks`` (workspace-level). This group reads and mutates
+Sibling of ``dailybot plan tasks`` (workspace-level). This group reads and mutates
 **one** task. Every string it renders is user-authored and goes through
 ``display.present_untrusted``.
 
@@ -240,9 +240,7 @@ def _parse_sort(_ctx: click.Context, _param: click.Parameter, value: str | None)
 
 
 ASSIGNEE_DEPRECATION: str = "`--assignee` is deprecated; use `--owner` (same value)."
-ASSIGN_DEPRECATION: str = (
-    "`dailybot task assign` is deprecated; use `dailybot task set-owner <task> <user|me>`."
-)
+ASSIGN_DEPRECATION: str = "`dailybot plan task assign` is deprecated; use `dailybot plan task set-owner <task> <user|me>`."
 
 # Short aliases owned by the shared `query_options` decorator: -a (--all),
 # -l (--limit), -s (--search), -S (--since), -U (--until), -p (--page).
@@ -266,12 +264,12 @@ def task() -> None:
 
     \b
     For workspace-level questions — what is open, what changed, search — use
-    `dailybot tasks` instead.
+    `dailybot plan tasks` instead.
 
     \b
     Examples:
-      dailybot task list --board <board-uuid>
-      dailybot task get ENG-142
+      dailybot plan task list --board <board-uuid>
+      dailybot plan task get ENG-142
 
     \b
     TASK is a task key (ENG-142) or a uuid. The API resolves both, including a key
@@ -347,9 +345,9 @@ def task_list(
 
     \b
     Examples:
-      dailybot task list --board <board-uuid> --state doing
-      dailybot task list --owner me --owner unowned --include labels --json
-      dailybot task list --sort -updated_at --limit 10
+      dailybot plan task list --board <board-uuid> --state doing
+      dailybot plan task list --owner me --owner unowned --include labels --json
+      dailybot plan task list --sort -updated_at --limit 10
     """
     client = require_auth()
     filters: dict[str, Any] = {}
@@ -417,8 +415,8 @@ def task_get(task_uuid: str, json_mode: bool) -> None:
 
     \b
     Examples:
-      dailybot task get ENG-142
-      dailybot task get ENG-142 --json
+      dailybot plan task get ENG-142
+      dailybot plan task get ENG-142 --json
     """
     client = require_auth()
     try:
@@ -458,9 +456,9 @@ def task_brief(task_uuid: str, download_dir: Path | None, force: bool, json_mode
 
     \b
     Examples:
-      dailybot task brief ENG-142
-      dailybot task brief ENG-142 --json
-      dailybot task brief ENG-142 --download ./eng-142 --json
+      dailybot plan task brief ENG-142
+      dailybot plan task brief ENG-142 --json
+      dailybot plan task brief ENG-142 --download ./eng-142 --json
     """
     client = require_auth()
     downloads: list[dict[str, Any]] = []
@@ -580,9 +578,9 @@ def task_create(
 
     \b
     Examples:
-      dailybot task create --title "Fix the flaky test" --board <board-uuid> --owner me
-      dailybot task create -t "Ship it" --idempotency-key deploy-42 --json
-      dailybot task create -t "Load test" -b <board-uuid> --start-date 2026-11-09 --due 2026-11-20 --estimate 5 --label <label-uuid>
+      dailybot plan task create --title "Fix the flaky test" --board <board-uuid> --owner me
+      dailybot plan task create -t "Ship it" --idempotency-key deploy-42 --json
+      dailybot plan task create -t "Load test" -b <board-uuid> --start-date 2026-11-09 --due 2026-11-20 --estimate 5 --label <label-uuid>
     """
     if assignee:
         print_deprecation(ASSIGNEE_DEPRECATION)
@@ -633,7 +631,7 @@ def _attach_labels_after_create(
         # No uuid to address the label door with; the task exists all the same.
         message = (
             f"Task {reference} was created, but the server did not return its uuid, so its "
-            "labels were not attached. Run `dailybot task labels` on it; do not re-run the create."
+            "labels were not attached. Run `dailybot plan task labels` on it; do not re-run the create."
         )
         if json_mode:
             emit_json(
@@ -657,7 +655,7 @@ def _attach_labels_after_create(
         message = (
             f"Task {reference} was created, but its labels were not attached "
             f"({resolve_error_message(exc, tasks_surface=True)}) "
-            "Fix the label and run `dailybot task labels` on it; do not re-run the create."
+            "Fix the label and run `dailybot plan task labels` on it; do not re-run the create."
         )
         if json_mode:
             emit_json(
@@ -727,10 +725,10 @@ def task_update(
 
     \b
     Examples:
-      dailybot task update ENG-142 --state done
-      dailybot task update ENG-142 -t "Clearer title" --json
-      dailybot task update ENG-142 --milestone <milestone-uuid>
-      dailybot task update ENG-142 --clear-milestone
+      dailybot plan task update ENG-142 --state done
+      dailybot plan task update ENG-142 -t "Clearer title" --json
+      dailybot plan task update ENG-142 --milestone <milestone-uuid>
+      dailybot plan task update ENG-142 --clear-milestone
     """
     if milestone and clear_milestone:
         raise click.UsageError("Pass --milestone or --clear-milestone, not both.")
@@ -803,9 +801,9 @@ def task_move(
 
     \b
     Examples:
-      dailybot task move ENG-142 --state done
-      dailybot task move ENG-142 --state "In review" --json
-      dailybot task move ENG-142 --board <board-uuid>
+      dailybot plan task move ENG-142 --state done
+      dailybot plan task move ENG-142 --state "In review" --json
+      dailybot plan task move ENG-142 --board <board-uuid>
     """
     if state is None and board is None:
         raise click.UsageError("Pass --state or --board (or both) to say where it should go.")
@@ -867,8 +865,8 @@ def task_set_owner(task_ref: str, owner: str, idempotency_key: str | None, json_
 
     \b
     Examples:
-      dailybot task set-owner ENG-142 me
-      dailybot task set-owner ENG-142 <user-uuid> --json
+      dailybot plan task set-owner ENG-142 me
+      dailybot plan task set-owner ENG-142 <user-uuid> --json
     """
     _set_owner(task_ref, owner, idempotency_key, json_mode)
 
@@ -879,11 +877,11 @@ def task_set_owner(task_ref: str, owner: str, idempotency_key: str | None, json_
 @click.option("--idempotency-key", default=None, help="Reuse a key to make a retry safe.")
 @click.option("--json", "json_mode", is_flag=True, help="Emit machine-readable JSON to stdout.")
 def task_assign(task_ref: str, owner: str, idempotency_key: str | None, json_mode: bool) -> None:
-    """Deprecated alias of `dailybot task set-owner`.
+    """Deprecated alias of `dailybot plan task set-owner`.
 
     \b
     Examples:
-      dailybot task set-owner ENG-142 <user-uuid>
+      dailybot plan task set-owner ENG-142 <user-uuid>
     """
     print_deprecation(ASSIGN_DEPRECATION)
     _set_owner(task_ref, owner, idempotency_key, json_mode)
@@ -915,9 +913,9 @@ def task_comment(
 
     \b
     Examples:
-      dailybot task comment ENG-142 "Deployed to staging"
-      dailybot task comment ENG-142 "Agreed, shipping it" --reply-to <comment-uuid>
-      echo "long note" | dailybot task comment ENG-142 -
+      dailybot plan task comment ENG-142 "Deployed to staging"
+      dailybot plan task comment ENG-142 "Agreed, shipping it" --reply-to <comment-uuid>
+      echo "long note" | dailybot plan task comment ENG-142 -
     """
     client = require_auth()
     try:
@@ -950,7 +948,7 @@ def task_comments(task_uuid: str, json_mode: bool, **flags: Any) -> None:
 
     \b
     Examples:
-      dailybot task comments ENG-142
+      dailybot plan task comments ENG-142
     """
     client = require_auth()
     try:
@@ -994,7 +992,7 @@ def task_link(
 
     \b
     Examples:
-      dailybot task link ENG-142 ENG-99 --type blocks
+      dailybot plan task link ENG-142 ENG-99 --type blocks
     """
     client = require_auth()
     try:
@@ -1037,8 +1035,8 @@ def task_labels(
 
     \b
     Examples:
-      dailybot task labels ENG-142 --mode add --label <label-uuid>
-      dailybot task labels ENG-142 --mode replace --label a,b
+      dailybot plan task labels ENG-142 --mode add --label <label-uuid>
+      dailybot plan task labels ENG-142 --mode replace --label a,b
     """
     client = require_auth()
     try:
@@ -1085,7 +1083,7 @@ def participants_add(
 
     \b
     Examples:
-      dailybot task participants add ENG-142 --user <user-uuid>
+      dailybot plan task participants add ENG-142 --user <user-uuid>
     """
     client = require_auth()
     try:
@@ -1128,8 +1126,8 @@ def participants_list(task_uuid: str, json_mode: bool) -> None:
 
     \b
     Examples:
-      dailybot task participants list ENG-142
-      dailybot task participants list ENG-142 --json
+      dailybot plan task participants list ENG-142
+      dailybot plan task participants list ENG-142 --json
     """
     client = require_auth()
     try:
@@ -1158,8 +1156,8 @@ def participants_remove(
 
     \b
     Examples:
-      dailybot task participants remove ENG-142 <user-uuid> --dry-run
-      dailybot task participants remove ENG-142 <user-uuid> --yes
+      dailybot plan task participants remove ENG-142 <user-uuid> --dry-run
+      dailybot plan task participants remove ENG-142 <user-uuid> --yes
     """
     if not confirm_without_preview(
         f"take user {user_uuid} off task {task_uuid}; they stop being notified about it.",
@@ -1209,7 +1207,7 @@ def task_mute(task_uuid: str, json_mode: bool) -> None:
 
     \b
     Examples:
-      dailybot task mute ENG-142
+      dailybot plan task mute ENG-142
     """
     _set_own_mute(task_uuid, True, json_mode)
 
@@ -1222,7 +1220,7 @@ def task_unmute(task_uuid: str, json_mode: bool) -> None:
 
     \b
     Examples:
-      dailybot task unmute ENG-142
+      dailybot plan task unmute ENG-142
     """
     _set_own_mute(task_uuid, False, json_mode)
 
@@ -1238,7 +1236,7 @@ def task_watch(task_uuid: str, json_mode: bool) -> None:
 
     \b
     Examples:
-      dailybot task watch ENG-142
+      dailybot plan task watch ENG-142
     """
     client = require_auth()
     try:
@@ -1260,7 +1258,7 @@ def task_unwatch(task_uuid: str, json_mode: bool) -> None:
 
     \b
     Examples:
-      dailybot task unwatch ENG-142
+      dailybot plan task unwatch ENG-142
     """
     client = require_auth()
     try:
@@ -1282,12 +1280,12 @@ def task_relations(task_uuid: str, json_mode: bool) -> None:
 
     \b
     `blocks` + `incoming` is what "blocked by" means. Unlink with the relation
-    uuid shown here: `dailybot task unlink <task> <relation-uuid>`.
+    uuid shown here: `dailybot plan task unlink <task> <relation-uuid>`.
 
     \b
     Examples:
-      dailybot task relations ENG-142
-      dailybot task relations ENG-142 --json
+      dailybot plan task relations ENG-142
+      dailybot plan task relations ENG-142 --json
     """
     client = require_auth()
     try:
@@ -1314,8 +1312,8 @@ def task_unlink(
 
     \b
     Examples:
-      dailybot task unlink ENG-142 <relation-uuid> --dry-run
-      dailybot task unlink ENG-142 <relation-uuid> --yes
+      dailybot plan task unlink ENG-142 <relation-uuid> --dry-run
+      dailybot plan task unlink ENG-142 <relation-uuid> --yes
     """
     if not confirm_without_preview(
         f"remove relation {relation_uuid} from task {task_uuid}.",
@@ -1349,8 +1347,8 @@ def task_comment_edit(task_uuid: str, comment_uuid: str, body: str, json_mode: b
 
     \b
     Examples:
-      dailybot task comment-edit ENG-142 <comment-uuid> "Deployed to staging and prod"
-      echo "corrected note" | dailybot task comment-edit ENG-142 <comment-uuid> -
+      dailybot plan task comment-edit ENG-142 <comment-uuid> "Deployed to staging and prod"
+      echo "corrected note" | dailybot plan task comment-edit ENG-142 <comment-uuid> -
     """
     text: str = _read_body(body)
     if not text:
@@ -1379,12 +1377,12 @@ def task_comment_react(task_uuid: str, comment_uuid: str, emoji: str, json_mode:
     Emoji only (no text or :shortcodes:). Reacting twice with the same emoji is
     safe: nothing changes. One person may hold only a limited number of different
     emojis on one comment; if the server refuses with `reaction_limit_reached`,
-    remove one of yours first (`dailybot task comment-unreact`).
+    remove one of yours first (`dailybot plan task comment-unreact`).
 
     \b
     Examples:
-      dailybot task comment-react ENG-142 <comment-uuid> 👍
-      dailybot task comment-react ENG-142 <comment-uuid> 🚀 --json
+      dailybot plan task comment-react ENG-142 <comment-uuid> 👍
+      dailybot plan task comment-react ENG-142 <comment-uuid> 🚀 --json
     """
     if not is_reaction_emoji(emoji):
         raise click.UsageError("A reaction must be one emoji, e.g. 👍 (no text or :shortcodes:).")
@@ -1413,7 +1411,7 @@ def task_comment_unreact(task_uuid: str, comment_uuid: str, emoji: str, json_mod
 
     \b
     Examples:
-      dailybot task comment-unreact ENG-142 <comment-uuid> 👍
+      dailybot plan task comment-unreact ENG-142 <comment-uuid> 👍
     """
     if not is_reaction_emoji(emoji):
         raise click.UsageError("A reaction must be one emoji, e.g. 👍 (no text or :shortcodes:).")
@@ -1447,8 +1445,8 @@ def task_comment_reactions(
 
     \b
     Examples:
-      dailybot task comment-reactions ENG-142 <comment-uuid>
-      dailybot task comment-reactions ENG-142 <comment-uuid> --emoji 👍 --json
+      dailybot plan task comment-reactions ENG-142 <comment-uuid>
+      dailybot plan task comment-reactions ENG-142 <comment-uuid> --emoji 👍 --json
     """
     if emoji is not None and not is_reaction_emoji(emoji):
         raise click.UsageError("--emoji must be one emoji, e.g. 👍 (no text or :shortcodes:).")
@@ -1494,8 +1492,8 @@ def task_comment_delete(
 
     \b
     Examples:
-      dailybot task comment-delete ENG-142 <comment-uuid> --dry-run
-      dailybot task comment-delete ENG-142 <comment-uuid> --yes
+      dailybot plan task comment-delete ENG-142 <comment-uuid> --dry-run
+      dailybot plan task comment-delete ENG-142 <comment-uuid> --yes
     """
     if not confirm_without_preview(
         f"delete comment {comment_uuid} on task {task_uuid}; its text cannot be recovered.",
@@ -1531,8 +1529,8 @@ def task_children(task_uuid: str, json_mode: bool) -> None:
 
     \b
     Examples:
-      dailybot task children ENG-142
-      dailybot task children ENG-142 --json
+      dailybot plan task children ENG-142
+      dailybot plan task children ENG-142 --json
     """
     client = require_auth()
     try:
@@ -1572,9 +1570,9 @@ def task_duplicate(
 
     \b
     Examples:
-      dailybot task duplicate ENG-142
-      dailybot task duplicate ENG-142 --include title --include owner --include due_date --json
-      dailybot task duplicate ENG-142 --idempotency-key copy-eng-142
+      dailybot plan task duplicate ENG-142
+      dailybot plan task duplicate ENG-142 --include title --include owner --include due_date --json
+      dailybot plan task duplicate ENG-142 --idempotency-key copy-eng-142
     """
     client = require_auth()
     try:
@@ -1601,12 +1599,12 @@ def task_events(task_uuid: str, json_mode: bool) -> None:
     """List a task's raw event history (created, moved, owner changed, …).
 
     \b
-    For the readable feed with before/after values, use `dailybot task activity`.
+    For the readable feed with before/after values, use `dailybot plan task activity`.
 
     \b
     Examples:
-      dailybot task events ENG-142
-      dailybot task events ENG-142 --json
+      dailybot plan task events ENG-142
+      dailybot plan task events ENG-142 --json
     """
     client = require_auth()
     try:
@@ -1642,8 +1640,8 @@ def task_activity(
 
     \b
     Examples:
-      dailybot task activity ENG-142
-      dailybot task activity ENG-142 --updated-since 2026-09-20T00:00:00Z --json
+      dailybot plan task activity ENG-142
+      dailybot plan task activity ENG-142 --updated-since 2026-09-20T00:00:00Z --json
     """
     params: dict[str, Any] = {}
     if updated_since:
@@ -1703,8 +1701,8 @@ def task_attach(task_uuid: str, file_path: Path, caption: str | None, json_mode:
 
     \b
     Examples:
-      dailybot task attach ENG-142 ./crash.log
-      dailybot task attach ENG-142 ./screenshot.png --caption "After the fix" --json
+      dailybot plan task attach ENG-142 ./crash.log
+      dailybot plan task attach ENG-142 ./screenshot.png --caption "After the fix" --json
     """
     if caption:
         run_attach(
@@ -1750,8 +1748,8 @@ def task_attachments(task_uuid: str, json_mode: bool) -> None:
 
     \b
     Examples:
-      dailybot task attachments ENG-142
-      dailybot task attachments ENG-142 --json
+      dailybot plan task attachments ENG-142
+      dailybot plan task attachments ENG-142 --json
     """
     run_list(
         lambda client: client.list_task_attachments(task_uuid),
@@ -1766,8 +1764,8 @@ def task_attachment() -> None:
 
     \b
     Examples:
-      dailybot task attachment get ENG-142 <attachment-uuid> -o ./crash.log
-      dailybot task attachment delete ENG-142 <attachment-uuid> --dry-run
+      dailybot plan task attachment get ENG-142 <attachment-uuid> -o ./crash.log
+      dailybot plan task attachment delete ENG-142 <attachment-uuid> --dry-run
     """
 
 
@@ -1794,8 +1792,8 @@ def attachment_get(
 
     \b
     Examples:
-      dailybot task attachment get ENG-142 <attachment-uuid> -o ./crash.log
-      dailybot task attachment get ENG-142 <attachment-uuid> -o ./crash.log --force --json
+      dailybot plan task attachment get ENG-142 <attachment-uuid> -o ./crash.log
+      dailybot plan task attachment get ENG-142 <attachment-uuid> -o ./crash.log --force --json
     """
     run_get(
         lambda client: client.download_attachment(task_uuid, attachment_uuid),
@@ -1820,8 +1818,8 @@ def attachment_delete(
 
     \b
     Examples:
-      dailybot task attachment delete ENG-142 <attachment-uuid> --dry-run
-      dailybot task attachment delete ENG-142 <attachment-uuid> --yes
+      dailybot plan task attachment delete ENG-142 <attachment-uuid> --dry-run
+      dailybot plan task attachment delete ENG-142 <attachment-uuid> --yes
     """
     run_delete(
         lambda client: client.delete_task_attachment(task_uuid, attachment_uuid),
@@ -1855,8 +1853,8 @@ def comment_attach(
 
     \b
     Examples:
-      dailybot task comment-attach ENG-142 <comment-uuid> ./trace.txt
-      dailybot task comment-attach ENG-142 <comment-uuid> ./shot.png --caption "Before" --json
+      dailybot plan task comment-attach ENG-142 <comment-uuid> ./trace.txt
+      dailybot plan task comment-attach ENG-142 <comment-uuid> ./shot.png --caption "Before" --json
     """
     run_attach(
         lambda client, **file: client.upload_comment_attachment(task_uuid, comment_uuid, **file),
@@ -1878,8 +1876,8 @@ def comment_attachments(task_uuid: str, comment_uuid: str, json_mode: bool) -> N
 
     \b
     Examples:
-      dailybot task comment-attachments ENG-142 <comment-uuid>
-      dailybot task comment-attachments ENG-142 <comment-uuid> --json
+      dailybot plan task comment-attachments ENG-142 <comment-uuid>
+      dailybot plan task comment-attachments ENG-142 <comment-uuid> --json
     """
     run_list(
         lambda client: client.list_comment_attachments(task_uuid, comment_uuid),
@@ -1894,8 +1892,8 @@ def comment_attachment() -> None:
 
     \b
     Examples:
-      dailybot task comment-attachment get ENG-142 <comment-uuid> <attachment-uuid> -o ./trace.txt
-      dailybot task comment-attachment delete ENG-142 <comment-uuid> <attachment-uuid> --dry-run
+      dailybot plan task comment-attachment get ENG-142 <comment-uuid> <attachment-uuid> -o ./trace.txt
+      dailybot plan task comment-attachment delete ENG-142 <comment-uuid> <attachment-uuid> --dry-run
     """
 
 
@@ -1918,7 +1916,7 @@ def comment_attachment_get(
 
     \b
     Examples:
-      dailybot task comment-attachment get ENG-142 <comment-uuid> <attachment-uuid> -o ./trace.txt
+      dailybot plan task comment-attachment get ENG-142 <comment-uuid> <attachment-uuid> -o ./trace.txt
     """
     run_get(
         lambda client: client.download_comment_attachment(task_uuid, comment_uuid, attachment_uuid),
@@ -1952,8 +1950,8 @@ def comment_attachment_delete(
 
     \b
     Examples:
-      dailybot task comment-attachment delete ENG-142 <comment-uuid> <attachment-uuid> --dry-run
-      dailybot task comment-attachment delete ENG-142 <comment-uuid> <attachment-uuid> --yes
+      dailybot plan task comment-attachment delete ENG-142 <comment-uuid> <attachment-uuid> --dry-run
+      dailybot plan task comment-attachment delete ENG-142 <comment-uuid> <attachment-uuid> --yes
     """
     run_delete(
         lambda client: client.delete_comment_attachment(task_uuid, comment_uuid, attachment_uuid),
@@ -1984,8 +1982,8 @@ def task_archive(
 
     \b
     Examples:
-      dailybot task archive ENG-142 --dry-run
-      dailybot task archive ENG-142 --yes
+      dailybot plan task archive ENG-142 --dry-run
+      dailybot plan task archive ENG-142 --yes
     """
     client = require_auth()
     if not preview_then_confirm(
@@ -2005,7 +2003,7 @@ def task_archive(
     if json_mode:
         emit_json(data)
         return
-    report_write(data, "Task archived. Restore it with `dailybot task restore`.")
+    report_write(data, "Task archived. Restore it with `dailybot plan task restore`.")
 
 
 @task.command("delete")
@@ -2030,7 +2028,7 @@ def task_delete(
 
     \b
     Examples:
-      dailybot task delete ENG-142 --dry-run
+      dailybot plan task delete ENG-142 --dry-run
     """
     client = require_auth()
     if not preview_then_confirm(
@@ -2069,7 +2067,7 @@ def task_restore(task_uuid: str, idempotency_key: str | None, json_mode: bool) -
 
     \b
     Examples:
-      dailybot task restore ENG-142
+      dailybot plan task restore ENG-142
     """
     client = require_auth()
     try:
@@ -2181,9 +2179,9 @@ def task_bulk(
 
     \b
     Examples:
-      dailybot task bulk --operation set_owner -f batch.json --dry-run
-      dailybot task bulk --operation create --board ENG -f todo.json --yes --json
-      echo '[{"task":"ENG-142"}]' | dailybot task bulk --operation archive -f - --json
+      dailybot plan task bulk --operation set_owner -f batch.json --dry-run
+      dailybot plan task bulk --operation create --board ENG -f todo.json --yes --json
+      echo '[{"task":"ENG-142"}]' | dailybot plan task bulk --operation archive -f - --json
     """
     try:
         items: Any = load_json_input(batch_file)

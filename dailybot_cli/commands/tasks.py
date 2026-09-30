@@ -2,9 +2,9 @@
 
 Two groups serve this family and the split is deliberate:
 
-* ``dailybot tasks`` — **workspace-level**: what is going on, what changed, find
+* ``dailybot plan tasks`` — **workspace-level**: what is going on, what changed, find
   something. It answers questions about the board as a whole.
-* ``dailybot task`` — **object-level**: read or mutate one task.
+* ``dailybot plan task`` — **object-level**: read or mutate one task.
 
 Every string these commands render comes from the Tasks API and is therefore
 user-authored data, never an instruction: all of it goes through
@@ -138,13 +138,13 @@ def tasks() -> None:
 
     \b
     This group answers questions about the workspace: what is open, what changed,
-    where something is. To read or change one task, use `dailybot task`.
+    where something is. To read or change one task, use `dailybot plan task`.
 
     \b
     Examples:
-      dailybot tasks status
-      dailybot tasks search -q "deploy"
-      dailybot tasks activity --last-week
+      dailybot plan tasks status
+      dailybot plan tasks search -q "deploy"
+      dailybot plan tasks activity --last-week
     """
 
 
@@ -163,8 +163,8 @@ def tasks_recents(json_mode: bool) -> None:
 
     \b
     Examples:
-      dailybot tasks recents
-      dailybot tasks recents --json
+      dailybot plan tasks recents
+      dailybot plan tasks recents --json
     """
     client = require_auth()
     try:
@@ -202,7 +202,7 @@ def tasks_attachments_resolve(attachment_uuids: tuple[str, ...], json_mode: bool
 
     \b
     Examples:
-      dailybot tasks attachments-resolve <attachment-uuid> <attachment-uuid> --json
+      dailybot plan tasks attachments-resolve <attachment-uuid> <attachment-uuid> --json
     """
     client = require_auth()
     try:
@@ -238,8 +238,8 @@ def tasks_status(json_mode: bool) -> None:
 
     \b
     Examples:
-      dailybot tasks status
-      dailybot tasks status --json
+      dailybot plan tasks status
+      dailybot plan tasks status --json
     """
     client = require_auth()
     try:
@@ -269,7 +269,7 @@ def tasks_entitlements(json_mode: bool) -> None:
 
     \b
     Examples:
-      dailybot tasks entitlements --json
+      dailybot plan tasks entitlements --json
     """
     client = require_auth()
     try:
@@ -314,8 +314,8 @@ def tasks_search(query: str, json_mode: bool, **flags: Any) -> None:
 
     \b
     Examples:
-      dailybot tasks search -q "flaky test"
-      dailybot tasks search -q deploy --page-size 5 --json
+      dailybot plan tasks search -q "flaky test"
+      dailybot plan tasks search -q deploy --page-size 5 --json
     """
     client = require_auth()
     try:
@@ -405,13 +405,13 @@ def tasks_activity(
     \b
     One page per call; follow `next` with --page. The feed is filtered on the server
     by time (--since / --until, or --date / --today / --last-week) and by --type,
-    --actor, --project, --board or --task. Pair --since with `dailybot tasks cursor`:
-    read your mark, read what is newer, then `dailybot tasks cursor --now`.
+    --actor, --project, --board or --task. Pair --since with `dailybot plan tasks cursor`:
+    read your mark, read what is newer, then `dailybot plan tasks cursor --now`.
 
     \b
     Examples:
-      dailybot tasks activity --last-week
-      dailybot tasks activity --since 2026-09-25T09:00:00Z --board <board-uuid> --json
+      dailybot plan tasks activity --last-week
+      dailybot plan tasks activity --since 2026-09-25T09:00:00Z --board <board-uuid> --json
     """
     if updated_since and not since:
         print_deprecation("`--updated-since` is deprecated here; use `--since` (same value).")
@@ -488,10 +488,10 @@ def tasks_timeline(
 
     \b
     Examples:
-      dailybot tasks timeline --since 2026-10-01 --until 2026-12-31
-      dailybot tasks timeline --today --json
-      dailybot tasks timeline --include-unscheduled
-      dailybot tasks timeline --project <project-uuid> --since 2026-10-01 --until 2026-12-31
+      dailybot plan tasks timeline --since 2026-10-01 --until 2026-12-31
+      dailybot plan tasks timeline --today --json
+      dailybot plan tasks timeline --include-unscheduled
+      dailybot plan tasks timeline --project <project-uuid> --since 2026-10-01 --until 2026-12-31
     """
     client = require_auth()
     try:
@@ -559,9 +559,9 @@ def tasks_changes(
 
     \b
     Examples:
-      dailybot tasks changes <board-uuid>
-      dailybot tasks changes <board-uuid> --cursor 2026-09-19T13:13:37Z --json
-      dailybot tasks changes <board-uuid> --resync
+      dailybot plan tasks changes <board-uuid>
+      dailybot plan tasks changes <board-uuid> --cursor 2026-09-19T13:13:37Z --json
+      dailybot plan tasks changes <board-uuid> --resync
     """
     client = require_auth()
     marker: str | None = cursor or updated_since or since
@@ -675,9 +675,9 @@ def tasks_inbox(json_mode: bool, mentioned: bool, event_type: str | None, **flag
 
     \b
     Examples:
-      dailybot tasks inbox
-      dailybot tasks inbox --mentioned --json
-      dailybot tasks inbox --type task.owner_changed
+      dailybot plan tasks inbox
+      dailybot plan tasks inbox --mentioned --json
+      dailybot plan tasks inbox --type task.owner_changed
     """
     client = require_auth()
     try:
@@ -730,8 +730,8 @@ def tasks_inbox_unread(json_mode: bool, mentioned: bool, event_type: str | None)
 
     \b
     Examples:
-      dailybot tasks inbox-unread
-      dailybot tasks inbox-unread --mentioned --json
+      dailybot plan tasks inbox-unread
+      dailybot plan tasks inbox-unread --mentioned --json
     """
     client = require_auth()
     try:
@@ -755,11 +755,11 @@ def tasks_inbox_read(item_uuid: str, json_mode: bool) -> None:
 
     \b
     The inbox keeps one "read up to here" mark, not a flag per item, so reading an
-    item catches you up to it. Take the item uuid from `dailybot tasks inbox`.
+    item catches you up to it. Take the item uuid from `dailybot plan tasks inbox`.
 
     \b
     Examples:
-      dailybot tasks inbox-read <item-uuid>
+      dailybot plan tasks inbox-read <item-uuid>
     """
     client = require_auth()
     try:
@@ -780,7 +780,7 @@ def tasks_inbox_read_all(json_mode: bool) -> None:
 
     \b
     Examples:
-      dailybot tasks inbox-read-all
+      dailybot plan tasks inbox-read-all
     """
     client = require_auth()
     try:
@@ -808,14 +808,14 @@ def tasks_cursor(set_to: str | None, set_now: bool, json_mode: bool) -> None:
 
     \b
     Without options, prints where you are. Pair it with the feed:
-    `dailybot tasks activity --since <last_seen_at>`, then `dailybot tasks cursor --now`.
+    `dailybot plan tasks activity --since <last_seen_at>`, then `dailybot plan tasks cursor --now`.
     Needs a person: `dailybot login` or a personal API key.
 
     \b
     Examples:
-      dailybot tasks cursor --json
-      dailybot tasks cursor --now
-      dailybot tasks cursor --set 2026-09-25T09:00:00Z
+      dailybot plan tasks cursor --json
+      dailybot plan tasks cursor --now
+      dailybot plan tasks cursor --set 2026-09-25T09:00:00Z
     """
     if set_to is not None and set_now:
         raise click.UsageError("Pass --set <time> or --now, not both.")
@@ -858,11 +858,11 @@ def tasks_favorites(json_mode: bool) -> None:
     """List your pinned boards and saved views. Needs a person: `dailybot login` or a personal API key.
 
     \b
-    Pin with `dailybot board star <board>` or `dailybot tasks view star <view>`.
+    Pin with `dailybot plan board star <board>` or `dailybot plan tasks view star <view>`.
 
     \b
     Examples:
-      dailybot tasks favorites --json
+      dailybot plan tasks favorites --json
     """
     client = require_auth()
     try:
@@ -881,12 +881,12 @@ def tasks_view() -> None:
     """Read, edit, delete or pin one saved view by its uuid. Needs a person: `dailybot login` or a personal API key.
 
     \b
-    List a board's or project's views with `dailybot board views` / `project views`.
+    List a board's or project's views with `dailybot plan board views` / `project views`.
 
     \b
     Examples:
-      dailybot tasks view get <view-uuid> --json
-      dailybot tasks view update <view-uuid> --view-mode board --group-by owner
+      dailybot plan tasks view get <view-uuid> --json
+      dailybot plan tasks view update <view-uuid> --view-mode board --group-by owner
     """
 
 
@@ -898,7 +898,7 @@ def tasks_view_get(view_uuid: str, json_mode: bool) -> None:
 
     \b
     Examples:
-      dailybot tasks view get <view-uuid> --json
+      dailybot plan tasks view get <view-uuid> --json
     """
     client = require_auth()
     try:
@@ -956,8 +956,8 @@ def tasks_view_update(
 
     \b
     Examples:
-      dailybot tasks view update <view-uuid> --view-mode board --group-by owner
-      dailybot tasks view update <view-uuid> --filters-file filters.json --json
+      dailybot plan tasks view update <view-uuid> --view-mode board --group-by owner
+      dailybot plan tasks view update <view-uuid> --filters-file filters.json --json
     """
     filters: Any = None
     if filters_file is not None:
@@ -1003,8 +1003,8 @@ def tasks_view_delete(view_uuid: str, dry_run: bool, assume_yes: bool, json_mode
 
     \b
     Examples:
-      dailybot tasks view delete <view-uuid> --dry-run
-      dailybot tasks view delete <view-uuid> --yes
+      dailybot plan tasks view delete <view-uuid> --dry-run
+      dailybot plan tasks view delete <view-uuid> --yes
     """
     if not confirm_without_preview(
         f"delete saved view {view_uuid} permanently.",
@@ -1033,7 +1033,7 @@ def tasks_view_star(view_uuid: str, json_mode: bool) -> None:
 
     \b
     Examples:
-      dailybot tasks view star <view-uuid>
+      dailybot plan tasks view star <view-uuid>
     """
     star(require_auth(), "view", view_uuid, json_mode=json_mode)
 
@@ -1046,7 +1046,7 @@ def tasks_view_unstar(view_uuid: str, json_mode: bool) -> None:
 
     \b
     Examples:
-      dailybot tasks view unstar <view-uuid>
+      dailybot plan tasks view unstar <view-uuid>
     """
     unstar(require_auth(), "view", view_uuid, json_mode=json_mode)
 
@@ -1077,8 +1077,8 @@ def tasks_mine(scope: str | None, json_mode: bool, **flags: Any) -> None:
 
     \b
     Examples:
-      dailybot tasks mine
-      dailybot tasks mine --scope involved --json
+      dailybot plan tasks mine
+      dailybot plan tasks mine --scope involved --json
     """
     client = require_auth()
     try:
@@ -1114,7 +1114,7 @@ def tasks_counts(json_mode: bool) -> None:
 
     \b
     Examples:
-      dailybot tasks counts --json
+      dailybot plan tasks counts --json
     """
     client = require_auth()
     try:
