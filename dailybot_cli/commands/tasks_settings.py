@@ -13,14 +13,25 @@ import click
 from dailybot_cli.api_client import APIError
 from dailybot_cli.commands._beta import mark_beta
 from dailybot_cli.commands._channels import PUBLIC_CHANNEL_TYPE, resolve_channel
+from dailybot_cli.commands._paging import envelope, page_kwargs
 from dailybot_cli.commands.public_api_helpers import emit_json, exit_for_tasks_error, require_auth
+from dailybot_cli.commands.query_options import PAGING_ONLY_MORE_HINT, paging_options
 from dailybot_cli.display import (
     console,
+    print_channels_table,
     print_my_notifications,
     print_notification_catalog,
+    print_pagination_footer,
     print_success,
 )
 
+CHANNEL_TYPE_CHOICES: tuple[str, ...] = (
+    "channel",
+    "private_channel",
+    "group_chat",
+    "direct_message",
+    "public",
+)
 PERSONAL_SCOPE: str = "personal"
 ORG_SCOPE: str = "org"
 MY_NOTIFICATIONS_DOOR: str = "me/notifications"
@@ -213,3 +224,72 @@ def notifications_set(
     changed: list[str] = [*kind_list, *(["destination"] if destination else [])]
     print_success(f"Updated {', '.join(changed)}.")
     print_my_notifications(data)
+
+
+@click.group("channels")
+def channels() -> None:
+    """Find the chat channels that routes, reports and notifications can post to.
+
+    \b
+    Not the same as `dailybot channels list` (report channels for forms and check-ins): these are
+    the chat platform's own channels, and the external id is what `tasks routes`, `tasks reports`
+    and `chat send --channel` take.
+    """
+
+
+mark_beta(channels)
+
+
+@channels.command("search")
+@click.option("-q", "--query", default=None, help="Only channels whose name contains this text.")
+@click.option(
+    "--type",
+    "channel_type",
+    type=click.Choice(CHANNEL_TYPE_CHOICES, case_sensitive=False),
+    default=None,
+    help="Only this kind of channel; `public` means public channels only.",
+)
+@paging_options
+@click.option("--json", "json_mode", is_flag=True, help=JSON_HELP)
+def channels_search(
+    query: str | None, channel_type: str | None, json_mode: bool, **flags: Any
+) -> None:
+    """Search the channels you can pick, by name or type.
+
+    \b
+    These are the chat platform's channels, not the report channels of `dailybot channels list`:
+    the external id shown here is what `tasks routes`, `tasks reports` and `chat send --channel`
+    take. Organization admins also see the private channels the bot is in; everyone else sees
+    public channels only (a private channel is absent, not an error). Paging is one page per
+    call: follow `next` with --page.
+
+    \b
+    Examples:
+      dailybot tasks channels search -q eng
+      dailybot tasks channels search --type public --json
+    """
+    wire_type: str | None = None
+    if channel_type:
+        wire_type = (
+            PUBLIC_CHANNEL_TYPE if channel_type.lower() == "public" else channel_type.lower()
+        )
+    client = require_auth()
+    try:
+        page: dict[str, Any] = page_kwargs(**flags)
+        page.pop("params", None)
+        with console.status("Searching channels..."):
+            result = client.search_channels(search=query, channel_type=wire_type, **page)
+    except ValueError as exc:
+        raise click.BadParameter(str(exc)) from exc
+    except APIError as exc:
+        exit_for_tasks_error(exc, json_mode)
+    if json_mode:
+        emit_json(envelope(result))
+        return
+    print_channels_table(result.results)
+    print_pagination_footer(
+        len(result.results),
+        result.count,
+        has_more=bool(result.next),
+        more_hint=PAGING_ONLY_MORE_HINT,
+    )

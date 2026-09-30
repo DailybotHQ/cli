@@ -2275,6 +2275,16 @@ def print_reports(result: PaginatedResult) -> None:
     _manage_hint(result, "reports")
 
 
+def print_channels_table(rows: list[dict[str, Any]]) -> None:
+    """Channels: name (quoted data), type, and the whole external id a command takes."""
+    print_tasks_rows(
+        "Channels",
+        rows,
+        [("Name", "name", False), ("Type", "type", True), ("External id", "external_id", True)],
+        empty="No channels match.",
+    )
+
+
 def print_route_deliveries(result: PaginatedResult) -> None:
     rows: list[dict[str, Any]] = list(result.results)
     print_tasks_rows("Deliveries", rows, _DELIVERY_COLUMNS, empty="There are no deliveries yet.")

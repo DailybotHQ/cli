@@ -28,6 +28,7 @@ from dailybot_cli.commands._favorites import (
     star,
     unstar,
 )
+from dailybot_cli.commands._paging import envelope as _envelope, page_kwargs as _page_kwargs
 from dailybot_cli.commands.public_api_helpers import (
     emit_json,
     exit_for_tasks_error,
@@ -37,13 +38,14 @@ from dailybot_cli.commands.public_api_helpers import (
 )
 from dailybot_cli.commands.query_options import (
     PAGING_ONLY_MORE_HINT,
-    build_query_params,
     last_week_range,
     paging_options,
-    resolve_fetch_all,
     window_options,
 )
-from dailybot_cli.commands.tasks_settings import notifications as notifications_group
+from dailybot_cli.commands.tasks_settings import (
+    channels as channels_group,
+    notifications as notifications_group,
+)
 from dailybot_cli.display import (
     TASKS_TRUSTED_FIELDS,
     console,
@@ -126,35 +128,6 @@ _PULSE_FIELDS: list[tuple[str, str]] = [
 ]
 
 
-def _envelope(result: PaginatedResult) -> dict[str, Any]:
-    """The `{count,next,previous,results}` shape an agent parses."""
-    return {
-        "count": result.count,
-        "next": result.next,
-        "previous": result.previous,
-        "results": result.results,
-    }
-
-
-def _page_kwargs(*, walk_pages: bool = False, **flags: Any) -> dict[str, Any]:
-    """Translate the shared query flags into client kwargs.
-
-    ``walk_pages`` follows the decorator the command stacked, and the two must
-    agree or the help lies. A ``query_options`` command declares ``--all`` and
-    therefore keeps the repo-wide default that no paging flag means every page; a
-    ``paging_options`` / ``date_options`` command declares no ``--all``, states in
-    its help that paging is one page per call, and stays bounded.
-    """
-    spec = build_query_params(**flags)
-    return {
-        "params": spec.params or None,
-        "page": spec.page,
-        "page_size": spec.page_size,
-        "fetch_all": resolve_fetch_all(spec) if walk_pages else spec.fetch_all,
-        "limit": spec.limit,
-    }
-
-
 @click.group()
 def tasks() -> None:
     """Workspace-level view of Dailybot Tasks.
@@ -173,6 +146,7 @@ def tasks() -> None:
 
 mark_beta(tasks)
 tasks.add_command(notifications_group)
+tasks.add_command(channels_group)
 
 
 @tasks.command("recents")
