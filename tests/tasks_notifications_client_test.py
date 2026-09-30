@@ -9,7 +9,7 @@ import pytest
 from dailybot_cli.api_client import DailyBotClient
 
 API_URL: str = "https://api.example.test"
-BASE: str = f"{API_URL}/v1/tasks/"
+BASE: str = f"{API_URL}/v1/plan/"
 
 
 def _response(payload: Any, status: int = 200) -> Any:

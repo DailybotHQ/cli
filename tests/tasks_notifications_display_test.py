@@ -511,7 +511,7 @@ class TestBriefingAndPreview:
             {
                 "dry_run": True,
                 "channel": CHANNEL,
-                "text": "Dailybot Tasks test message",
+                "text": "Dailybot Plan test message",
                 "sent": False,
             }
         )
@@ -519,7 +519,7 @@ class TestBriefingAndPreview:
         assert (
             "eng" in out
             and "C0000000A" in out
-            and "Dailybot Tasks test message" in out
+            and "Dailybot Plan test message" in out
             and "nothing was sent" in out.lower()
         )
 

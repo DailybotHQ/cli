@@ -57,7 +57,7 @@ class TestTaskList:
 
     def test_has_dates_is_a_declared_parameter(self, runner: CliRunner, client: MagicMock) -> None:
         # Honoured for two years, never declared, refused the moment the door
-        # became strict. It IS declared on /v1/tasks/tasks/ (MEASURED_ANSWERS §3).
+        # became strict. It IS declared on /v1/plan/tasks/ (MEASURED_ANSWERS §3).
         client.list_tasks.return_value = _page()
         _invoke(runner, client, ["task", "list", "--has-dates"])
         assert client.list_tasks.call_args[1]["filters"]["has_dates"] is True
@@ -334,7 +334,7 @@ _PREVIEW: dict[str, Any] = {
     "operation": "task.archive",
     "dry_run": True,
     "reversible": True,
-    "restore_path": "/v1/tasks/tasks/t-1/restore/",
+    "restore_path": "/v1/plan/tasks/t-1/restore/",
     "consequence": "Soft-archives this task. Subtasks are not auto-archived.",
     "affects": {"tasks": 1},
     "_idempotency_replayed": False,

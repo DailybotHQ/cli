@@ -175,7 +175,7 @@ _BOARD_PREVIEW: dict[str, Any] = {
     "operation": "board.archive",
     "dry_run": True,
     "reversible": True,
-    "restore_path": "/v1/tasks/boards/b-1/restore/",
+    "restore_path": "/v1/plan/boards/b-1/restore/",
     "consequence": "Archives the board and cascade-archives 12 live tasks.",
     "affects": {"boards": 1, "tasks_cascaded": 12},
     "_idempotency_replayed": False,

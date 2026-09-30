@@ -43,7 +43,7 @@ class TestWire:
     def test_milestone_attachment_paths(self) -> None:
         with patch("httpx.get", return_value=_response({"results": []})) as get:
             _client().list_milestone_attachments(P, M)
-        assert get.call_args.args[0] == f"{API}/v1/tasks/projects/{P}/milestones/{M}/attachments/"
+        assert get.call_args.args[0] == f"{API}/v1/plan/projects/{P}/milestones/{M}/attachments/"
 
     def test_milestone_upload_is_multipart_and_stamped(self) -> None:
         with patch("httpx.post", return_value=_response({"uuid": A}, 201)) as post:
@@ -64,14 +64,14 @@ class TestWire:
     def test_update_detail_edit_delete(self) -> None:
         with patch("httpx.get", return_value=_response({"uuid": U})) as get:
             _client().get_project_update(P, U)
-        assert get.call_args.args[0] == f"{API}/v1/tasks/projects/{P}/updates/{U}/"
+        assert get.call_args.args[0] == f"{API}/v1/plan/projects/{P}/updates/{U}/"
         with patch("httpx.patch", return_value=_response({"uuid": U})) as patch_call:
             _client("Claude Code").edit_project_update(P, U, health="at_risk")
         body: dict[str, Any] = patch_call.call_args.kwargs["json"]
         assert body == {"health": "at_risk", "agent_name": "Claude Code"}
         with patch("httpx.request", return_value=_response(status=204)) as req:
             _client().delete_project_update(P, U)
-        assert req.call_args.args[:2] == ("DELETE", f"{API}/v1/tasks/projects/{P}/updates/{U}/")
+        assert req.call_args.args[:2] == ("DELETE", f"{API}/v1/plan/projects/{P}/updates/{U}/")
 
 
 def _invoke(argv: list[str], client: MagicMock) -> Any:
@@ -83,7 +83,7 @@ class TestMilestoneRestore:
     def test_restore_posts_to_the_restore_door(self) -> None:
         with patch("httpx.post", return_value=_response({"uuid": M, "is_archived": False})) as post:
             _client().restore_milestone(P, M)
-        assert post.call_args.args[0] == f"{API}/v1/tasks/projects/{P}/milestones/{M}/restore/"
+        assert post.call_args.args[0] == f"{API}/v1/plan/projects/{P}/milestones/{M}/restore/"
 
 
 class TestCommands:

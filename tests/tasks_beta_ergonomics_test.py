@@ -29,8 +29,8 @@ STATE_UUID: str = "00000000-0000-0000-0000-000000000005"
 
 # The canonical Beta copy, as product ships it (Markdown).
 CANONICAL_BETA: str = (
-    "**Beta** — Tasks is in beta. Everything under `/tasks` in the web app, the CLI and "
-    "agent skill commands for projects, goals, boards and tasks, and the `/v1/tasks/` "
+    "**Beta** — Dailybot Plan (formerly Tasks) is in beta. Everything under `/plan` in the web app, the CLI and "
+    "agent skill commands for projects, goals, boards and tasks, and the `/v1/plan/` "
     "public API may change before general availability. Want to try it with your team? "
     "Write to **support@dailybot.com**."
 )
@@ -108,7 +108,7 @@ class TestKeyAddressing:
         response.headers = {}
         with patch("dailybot_cli.api_client.httpx.get", return_value=response) as get:
             real.get_task(TASK_KEY)
-        assert get.call_args.args[0] == f"{API_URL}/v1/tasks/tasks/{TASK_KEY}/"
+        assert get.call_args.args[0] == f"{API_URL}/v1/plan/tasks/{TASK_KEY}/"
 
     def test_help_names_the_argument_task_not_uuid(self, runner: CliRunner) -> None:
         for sub in ("get", "update", "move", "archive", "restore", "comment", "set-owner"):
@@ -163,7 +163,7 @@ class TestBoardTasks:
         response.headers = {}
         with patch("dailybot_cli.api_client.httpx.get", return_value=response) as get:
             real.list_board_tasks("b-1")
-        assert get.call_args.args[0] == f"{API_URL}/v1/tasks/boards/b-1/tasks/"
+        assert get.call_args.args[0] == f"{API_URL}/v1/plan/boards/b-1/tasks/"
 
     def test_json_mode_emits_the_list_envelope(self, runner: CliRunner, client: MagicMock) -> None:
         client.list_board_tasks.return_value = _page([{"uuid": "t-1", "key": TASK_KEY}])
@@ -275,4 +275,4 @@ class TestBetaNotice:
         readme: str = README_PATH.read_text(encoding="utf-8")
         quoted: str = _plain(" ".join(line.lstrip("> ") for line in readme.splitlines()))
         assert _plain(CANONICAL_BETA) in quoted
-        assert "**Beta** — Tasks is in beta." in readme
+        assert "**Beta** — Dailybot Plan (formerly Tasks) is in beta." in readme

@@ -861,7 +861,7 @@ Replies to agent emails land as messages retrievable via `dailybot agent message
 
 ### Tasks
 
-> **Beta** — Tasks is in beta. Everything under `/tasks` in the web app, the CLI and agent skill commands for projects, goals, boards and tasks, and the `/v1/tasks/` public API may change before general availability. Want to try it with your team? Write to **support@dailybot.com**.
+> **Beta** — Dailybot Plan (formerly Tasks) is in beta. Everything under `/plan` in the web app, the CLI and agent skill commands for projects, goals, boards and tasks, and the `/v1/plan/` public API may change before general availability. Want to try it with your team? Write to **support@dailybot.com**.
 
 Projects, boards and tasks. Two groups: **`dailybot tasks`** answers questions about the
 workspace, **`dailybot task`** reads or changes one task.

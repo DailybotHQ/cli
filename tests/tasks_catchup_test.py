@@ -19,7 +19,7 @@ from dailybot_cli.commands.public_api_helpers import EXIT_USAGE_ERROR
 from dailybot_cli.main import cli
 
 API_URL: str = "http://test-api.example.com"
-BASE: str = f"{API_URL}/v1/tasks/"
+BASE: str = f"{API_URL}/v1/plan/"
 BANDS: str = "projects,attention,activity,goal_progress"
 
 
@@ -218,7 +218,7 @@ class TestMentionables:
 
 
 class TestWorkspaceActivityWire:
-    """GET /v1/tasks/activity/ refuses undeclared params (API 8cf13e095); exact wire."""
+    """GET /v1/plan/activity/ refuses undeclared params (API 8cf13e095); exact wire."""
 
     def _sent(self, runner: CliRunner, argv: list[str]) -> dict[str, Any]:
         real: DailyBotClient = DailyBotClient(api_url=API_URL, token="test-token")

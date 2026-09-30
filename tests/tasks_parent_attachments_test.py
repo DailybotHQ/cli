@@ -23,7 +23,7 @@ from dailybot_cli.commands.public_api_helpers import (
 from dailybot_cli.main import cli
 
 API_URL: str = "http://test-api.example.com"
-BASE: str = f"{API_URL}/v1/tasks/"
+BASE: str = f"{API_URL}/v1/plan/"
 TASK: str = "ENG-142"
 COMMENT: str = "00000000-0000-0000-0000-000000000007"
 PROJECT: str = "00000000-0000-0000-0000-000000000002"

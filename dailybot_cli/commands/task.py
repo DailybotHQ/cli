@@ -4,7 +4,7 @@ Sibling of ``dailybot tasks`` (workspace-level). This group reads and mutates
 **one** task. Every string it renders is user-authored and goes through
 ``display.present_untrusted``.
 
-`/v1/tasks/tasks/` is **strict** about parameters and names the one it refuses,
+`/v1/plan/tasks/` is **strict** about parameters and names the one it refuses,
 unlike `me/tasks/` which silently ignores unknown ones. So every filter flag here
 maps to a parameter the contract declares — a convenience flag that invents a
 parameter name would produce a 400.
@@ -80,7 +80,7 @@ from dailybot_cli.display import (
     safe_text,
 )
 
-# Parameters `/v1/tasks/tasks/` declares. `has_dates` is here deliberately: it was
+# Parameters `/v1/plan/tasks/` declares. `has_dates` is here deliberately: it was
 # honoured for two years, never declared, and refused the moment the door became
 # strict (MEASURED_ANSWERS.md §3). The declared set is the contract, not the
 # historically-tolerated set.
@@ -103,7 +103,7 @@ OWNER_HELP: str = "Owner: a user uuid, or `me`."
 OWNER_FILTER_HELP: str = (
     "Only tasks owned by this user (uuid, `me` or `unowned`). Repeat to OR several."
 )
-# The values `/v1/tasks/tasks/` accepts for `sort`; a leading `-` sorts descending.
+# The values `/v1/plan/tasks/` accepts for `sort`; a leading `-` sorts descending.
 TASK_SORT_FIELDS: tuple[str, ...] = (
     "rank",
     "priority",
@@ -142,7 +142,7 @@ DUPLICATE_FIELDS: tuple[str, ...] = (
     "due_date",
 )
 
-# Operations `/v1/tasks/tasks/bulk/` declares. `delete` is the alias of archive.
+# Operations `/v1/plan/tasks/bulk/` declares. `delete` is the alias of archive.
 BULK_OPERATIONS: tuple[str, ...] = (
     "create",
     "move",
@@ -314,7 +314,7 @@ mark_beta(task)
     multiple=True,
     help="Ask for a roll-up. Nothing is included by default — absence is a real answer.",
 )
-# `paging_options`, not `query_options`: `/v1/tasks/tasks/` is strict and declares
+# `paging_options`, not `query_options`: `/v1/plan/tasks/` is strict and declares
 # none of the shared text/date filters. Advertising --search / --last-week on a
 # command that silently drops them lets a caller believe filtering worked.
 @paging_options
@@ -375,7 +375,7 @@ def task_list(
 
     try:
         spec = build_query_params(**flags)
-        # `/v1/tasks/tasks/` is strict and refuses any parameter it does not
+        # `/v1/plan/tasks/` is strict and refuses any parameter it does not
         # declare, and it declares none of the shared text/date filters. Forwarding
         # them would spend a round trip to earn a 400 whose message blames the
         # *value*, not the parameter name. Drop them here instead.

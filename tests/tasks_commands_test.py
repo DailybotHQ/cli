@@ -140,7 +140,7 @@ class TestUnauthenticated:
 
 
 class TestTimelineIsOneDocument:
-    """`GET /v1/tasks/timeline/` answers ONE object, not a paginated list.
+    """`GET /v1/plan/timeline/` answers ONE object, not a paginated list.
 
     Reading it as a list made every window look empty (`tasks timeline` printed nothing on an
     org with 103 dated tasks). The door takes `from`/`to`; the rows are dated tasks and the

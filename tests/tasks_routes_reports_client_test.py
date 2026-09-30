@@ -9,7 +9,7 @@ import pytest
 from dailybot_cli.api_client import IDEMPOTENCY_KEY_HEADER, DailyBotClient
 
 API_URL: str = "https://api.example.test"
-BASE: str = f"{API_URL}/v1/tasks/"
+BASE: str = f"{API_URL}/v1/plan/"
 ROUTE: str = "00000000-0000-0000-0000-0000000000a1"
 REPORT: str = "00000000-0000-0000-0000-0000000000b1"
 CHANNEL: dict[str, str] = {"external_id": "C0000000A"}

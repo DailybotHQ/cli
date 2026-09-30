@@ -22,7 +22,7 @@ from dailybot_cli.commands.public_api_helpers import EXIT_NOT_FOUND, EXIT_USAGE_
 from dailybot_cli.main import cli
 
 API_URL: str = "http://test-api.example.com"
-BASE: str = f"{API_URL}/v1/tasks/tasks/"
+BASE: str = f"{API_URL}/v1/plan/tasks/"
 TASK: str = "ENG-142"
 
 

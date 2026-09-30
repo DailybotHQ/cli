@@ -20,7 +20,7 @@ from dailybot_cli.commands.public_api_helpers import EXIT_USAGE_ERROR
 from dailybot_cli.main import cli
 
 API_URL: str = "http://test-api.example.com"
-BULK_URL: str = f"{API_URL}/v1/tasks/tasks/bulk/"
+BULK_URL: str = f"{API_URL}/v1/plan/tasks/bulk/"
 ITEMS: str = '[{"task": "ENG-142", "owner": "u-1"}]'
 
 PREVIEW: dict[str, Any] = {

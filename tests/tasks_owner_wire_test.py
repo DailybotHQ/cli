@@ -1,6 +1,6 @@
 """Owner vocabulary on the wire (P0 regression guard).
 
-`/v1/tasks/tasks/` filters by `owner` (repeatable, OR-ed; a uuid, `me` or
+`/v1/plan/tasks/` filters by `owner` (repeatable, OR-ed; a uuid, `me` or
 `unowned`) and refuses `assignee` with 400 `invalid_filter_value`. The
 accountable person is WRITTEN as `owner`; `executor` is read-only and a write
 carrying it is refused with 400. These tests drive the real `DailyBotClient`
@@ -19,7 +19,7 @@ from dailybot_cli.api_client import DailyBotClient
 from dailybot_cli.main import cli
 
 API_URL: str = "http://test-api.example.com"
-TASK_PATH: str = f"{API_URL}/v1/tasks/tasks/"
+TASK_PATH: str = f"{API_URL}/v1/plan/tasks/"
 
 
 @pytest.fixture

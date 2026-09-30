@@ -1,4 +1,4 @@
-"""Project commands (``/v1/tasks/projects/*``)."""
+"""Project commands (``/v1/plan/projects/*``)."""
 
 from datetime import datetime
 from pathlib import Path
@@ -88,7 +88,7 @@ def _include_list(include: tuple[str, ...]) -> list[str] | None:
 
 @click.group()
 def project() -> None:
-    """Read and manage Dailybot Tasks projects.
+    """Read and manage Dailybot Plan projects.
 
     \b
     Roll-ups are opt-in: a field you did not ask for is absent, which is a

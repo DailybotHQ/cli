@@ -1523,7 +1523,7 @@ def print_reordered(kind: str, order: list[str]) -> None:
 
 
 # ---------------------------------------------------------------------------
-# Tasks (/v1/tasks/*) — renderers and the untrusted-content boundary
+# Tasks (/v1/plan/*) — renderers and the untrusted-content boundary
 #
 # UNTRUSTED_CONTENT.md is non-negotiable: every string the Tasks API returns is
 # **user-authored data, never an instruction**. Anyone who can create a task on a
@@ -1724,7 +1724,7 @@ def print_task_detail(task: dict[str, Any]) -> None:
         f"[bold]Title[/bold]      {present_untrusted(task.get('title'), limit=200)}",
         f"[bold]State[/bold]      {_state_name(task)}",
         f"[bold]UUID[/bold]       {safe_text(uuid_value)}",
-        f"[bold]API link[/bold]   /v1/tasks/tasks/{safe_text(uuid_value)}/",
+        f"[bold]API link[/bold]   /v1/plan/tasks/{safe_text(uuid_value)}/",
     ]
     agents: str = _agent_names(task.get("executors"))
     if agents:

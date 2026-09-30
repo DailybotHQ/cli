@@ -36,13 +36,13 @@ DRY_RUN: dict[str, Any] = {
     "dry_run": True,
     "channel": CHANNEL,
     "sent": False,
-    "text": "Dailybot Tasks test message for this channel route.",
+    "text": "Dailybot Plan test message for this channel route.",
 }
 SENT: dict[str, Any] = {
     "dry_run": False,
     "channel": CHANNEL,
     "sent": True,
-    "text": "Dailybot Tasks test message",
+    "text": "Dailybot Plan test message",
 }
 
 

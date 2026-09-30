@@ -37,7 +37,7 @@ from dailybot_cli.commands.public_api_helpers import (
 from dailybot_cli.main import cli
 
 API_URL: str = "https://api.example.com"
-BASE: str = f"{API_URL}/v1/tasks/tasks/"
+BASE: str = f"{API_URL}/v1/plan/tasks/"
 TASK: str = "ENG-142"
 ATT: str = "a-1"
 STORAGE_URL: str = "https://storage.example-bucket.com/uploads/a-1?sig=abc"
@@ -165,7 +165,7 @@ class TestUploadNeverLeaksCredentials:
         assert put.call_args.kwargs["content"] == b"hello"
 
     def test_a_relative_target_is_the_api_origin(self, real: DailyBotClient) -> None:
-        relative: str = f"/v1/tasks/tasks/{TASK}/attachments/{ATT}/content/"
+        relative: str = f"/v1/plan/tasks/{TASK}/attachments/{ATT}/content/"
         with patch("dailybot_cli.api_client.httpx.put", return_value=_response({})) as put:
             real.upload_attachment_bytes(_presign(relative), b"x")
         assert put.call_args.args[0] == f"{API_URL}{relative}"

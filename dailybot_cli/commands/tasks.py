@@ -1,4 +1,4 @@
-"""Workspace-level Tasks commands (``/v1/tasks/*``).
+"""Workspace-level Tasks commands (``/v1/plan/*``).
 
 Two groups serve this family and the split is deliberate:
 
@@ -77,7 +77,7 @@ EXIT_DELTA_WINDOW_EXPIRED: int = 9
 # parameters but still refuses a declared one whose value it cannot read
 # (MEASURED_ANSWERS.md §3), so the CLI validates client-side and spends no round
 # trip on input it can reject itself.
-# The `scope` values GET /v1/tasks/me/tasks/ accepts; anything else is a 400.
+# The `scope` values GET /v1/plan/me/tasks/ accepts; anything else is a 400.
 # `involved` = owned, participating or created by you. `owned` is the server default.
 MY_TASKS_SCOPES: tuple[str, ...] = ("owned", "participating", "involved")
 # The name this CLI once used for `owned`; kept working, hidden from help.
@@ -134,7 +134,7 @@ _PULSE_FIELDS: list[tuple[str, str]] = [
 
 @click.group()
 def tasks() -> None:
-    """Workspace-level view of Dailybot Tasks.
+    """Workspace-level view of Dailybot Plan (Tasks).
 
     \b
     This group answers questions about the workspace: what is open, what changed,

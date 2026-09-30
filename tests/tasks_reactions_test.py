@@ -98,7 +98,7 @@ class TestWire:
     def test_update_react_posts_the_emoji_stamped(self) -> None:
         with patch("httpx.post", return_value=_response({"uuid": U, "reactions": []})) as post:
             _client().add_update_reaction(P, U, "👍")
-        assert post.call_args.args[0] == f"{API}/v1/tasks/projects/{P}/updates/{U}/reactions/"
+        assert post.call_args.args[0] == f"{API}/v1/plan/projects/{P}/updates/{U}/reactions/"
         assert post.call_args.kwargs["json"] == {"emoji": "👍", "agent_name": "Claude Code"}
 
     def test_update_unreact_percent_encodes(self) -> None:
@@ -106,7 +106,7 @@ class TestWire:
             _client().remove_update_reaction(P, U, "👍")
         assert req.call_args.args[:2] == (
             "DELETE",
-            f"{API}/v1/tasks/projects/{P}/updates/{U}/reactions/%F0%9F%91%8D/",
+            f"{API}/v1/plan/projects/{P}/updates/{U}/reactions/%F0%9F%91%8D/",
         )
 
     def test_update_unreact_refuses_a_non_emoji(self) -> None:
@@ -119,14 +119,14 @@ class TestWire:
         page: dict[str, Any] = {"count": 0, "next": None, "previous": None, "results": []}
         with patch("httpx.get", return_value=_response(page)) as get:
             _client().list_comment_reactions(T, C, emoji="👍")
-        assert get.call_args.args[0] == f"{API}/v1/tasks/tasks/{T}/comments/{C}/reactions/"
+        assert get.call_args.args[0] == f"{API}/v1/plan/tasks/{T}/comments/{C}/reactions/"
         assert get.call_args.kwargs["params"]["emoji"] == "👍"
 
     def test_list_update_reactions_without_emoji(self) -> None:
         page: dict[str, Any] = {"count": 0, "next": None, "previous": None, "results": []}
         with patch("httpx.get", return_value=_response(page)) as get:
             _client().list_update_reactions(P, U)
-        assert get.call_args.args[0] == f"{API}/v1/tasks/projects/{P}/updates/{U}/reactions/"
+        assert get.call_args.args[0] == f"{API}/v1/plan/projects/{P}/updates/{U}/reactions/"
         assert "emoji" not in (get.call_args.kwargs.get("params") or {})
 
 

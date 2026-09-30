@@ -9,7 +9,7 @@ import pytest
 from dailybot_cli.api_client import IDEMPOTENCY_KEY_HEADER, DailyBotClient
 
 API_URL: str = "https://api.example.test"
-BASE: str = f"{API_URL}/v1/tasks/"
+BASE: str = f"{API_URL}/v1/plan/"
 PROJECT_A: str = "00000000-0000-0000-0000-0000000000a1"
 PROJECT_B: str = "00000000-0000-0000-0000-0000000000a2"
 MILESTONE: str = "00000000-0000-0000-0000-0000000000f1"

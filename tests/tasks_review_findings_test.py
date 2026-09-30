@@ -180,7 +180,7 @@ class TestAdvertisedFlagsAreHonoured:
         assert sent["search"] == "q4"
 
     def test_task_list_does_not_advertise_filters_the_door_refuses(self, runner: CliRunner) -> None:
-        # `/v1/tasks/tasks/` is strict and declares none of the shared text/date
+        # `/v1/plan/tasks/` is strict and declares none of the shared text/date
         # filters. The first fix dropped them silently, which still let a caller
         # believe `--search deploy` had filtered; the flags are now simply not
         # offered, so a bad invocation is a usage error instead of a wrong answer.

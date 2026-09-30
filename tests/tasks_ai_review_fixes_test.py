@@ -234,7 +234,7 @@ class TestRawUploadContentType:
     def test_a_raw_body_never_keeps_the_json_content_type(self) -> None:
         client: DailyBotClient = DailyBotClient(api_url=API_URL, token="test-token")
         with patch("dailybot_cli.api_client.httpx.put", return_value=_response()) as put:
-            client._request("PUT", f"{API_URL}/v1/tasks/x/", content=b"\x00\x01")
+            client._request("PUT", f"{API_URL}/v1/plan/x/", content=b"\x00\x01")
         headers: dict[str, str] = dict(put.call_args.kwargs["headers"])
         assert headers.get("Content-Type") != "application/json"
 
@@ -293,7 +293,7 @@ class TestRetryKeepsTheRawContentType:
             "dailybot_cli.api_client.httpx.put",
             side_effect=[_response(status=401), _response()],
         ) as put:
-            client._request("PUT", f"{API_URL}/v1/tasks/x/", content=b"\x00\x01")
+            client._request("PUT", f"{API_URL}/v1/plan/x/", content=b"\x00\x01")
         assert put.call_count == 2
         for call in put.call_args_list:
             assert dict(call.kwargs["headers"]).get("Content-Type") != "application/json"
@@ -322,7 +322,7 @@ class TestRound3:
         empty.json.side_effect = ValueError("no body")
         empty.text = ""
         presign: dict[str, Any] = {
-            "upload_url": f"{API_URL}/v1/tasks/tasks/ENG-1/attachments/{ATT}/content/",
+            "upload_url": f"{API_URL}/v1/plan/tasks/ENG-1/attachments/{ATT}/content/",
             "method": "PUT",
         }
         with patch("dailybot_cli.api_client.httpx.put", return_value=empty):
@@ -331,8 +331,8 @@ class TestRound3:
     @pytest.mark.parametrize(
         ("method", "path"),
         [
-            ("DELETE", f"/v1/tasks/tasks/ENG-1/attachments/{ATT}/content/"),
-            ("PUT", "/v1/tasks/boards/b-1/archive/"),
+            ("DELETE", f"/v1/plan/tasks/ENG-1/attachments/{ATT}/content/"),
+            ("PUT", "/v1/plan/boards/b-1/archive/"),
             ("POST", "/v1/cli/logout/"),
         ],
     )
@@ -410,7 +410,7 @@ class TestRound4:
     def test_a_same_origin_upload_redirect_is_refused(self) -> None:
         client: DailyBotClient = DailyBotClient(api_url=API_URL, token="test-token")
         presign: dict[str, Any] = {
-            "upload_url": f"{API_URL}/v1/tasks/tasks/ENG-1/attachments/{ATT}/content/",
+            "upload_url": f"{API_URL}/v1/plan/tasks/ENG-1/attachments/{ATT}/content/",
             "method": "PUT",
         }
         moved: Any = _response({}, status=302, headers={"Location": "https://elsewhere.example/"})

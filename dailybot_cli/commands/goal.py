@@ -1,4 +1,4 @@
-"""Goal commands (``/v1/tasks/goals/*``)."""
+"""Goal commands (``/v1/plan/goals/*``)."""
 
 from datetime import datetime
 from pathlib import Path
@@ -52,7 +52,7 @@ _GOAL_PROJECT_COLUMNS: list[tuple[str, str, bool]] = [
 
 @click.group()
 def goal() -> None:
-    """Read and manage Dailybot Tasks goals.
+    """Read and manage Dailybot Plan goals.
 
     \b
     Roll-ups are opt-in. An absent field, a null field and a zero are three

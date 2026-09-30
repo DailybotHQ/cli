@@ -52,7 +52,7 @@ EXIT_USER_ABORTED: int = 7
 # Server-side error codes from {detail, code} responses. Kept here so command
 # handlers and tests share a single source of truth.
 ERROR_CODE_MESSAGES: dict[str, str] = {
-    # --- Tasks (/v1/tasks/*) -------------------------------------------------
+    # --- Tasks (/v1/plan/*) -------------------------------------------------
     # Written against what the server actually returned in the live probe
     # recorded in the plan's PERMISSION_MATRIX_OBSERVED.md, not against prose.
     #
@@ -720,7 +720,7 @@ _ADMIN_SCOPE_GUIDANCE: str = (
 def is_person_shaped_refusal(exc: APIError, *, door: str | None = None) -> bool:
     """Is this refusal the "you are not a person" condition, in either shape?
 
-    ``door`` is the Tasks door being called, without the ``/v1/tasks/`` prefix.
+    ``door`` is the Tasks door being called, without the ``/v1/plan/`` prefix.
     It is required to disambiguate: ``insufficient_scope`` on ``boards`` is a
     genuine scope problem, while the same code on ``inbox`` is this condition
     wearing the permission layer's clothes.
@@ -763,7 +763,7 @@ def resolve_error_message(
         # change nothing. The server names both remedies; so do we.
         upgrade: Any = (exc.extra or {}).get("upgrade_url")
         message: str = (
-            "Dailybot Tasks is not enabled for this organization. It is switched on per "
+            "Dailybot Plan (Tasks) is not enabled for this organization. It is switched on per "
             "organization, so this is not a credential or role problem and signing in "
             "again will not change it: ask a workspace admin to enable Tasks, or upgrade "
             "the plan. `dailybot tasks entitlements` reports the current state and the "

@@ -1,4 +1,4 @@
-"""Board commands (``/v1/tasks/boards/*``).
+"""Board commands (``/v1/plan/boards/*``).
 
 The snapshot is the intentionally dense door: one request gives an agent cold
 context, and it is where every ``full_resync_required`` sends you back to. It
@@ -69,7 +69,7 @@ def _envelope(result: PaginatedResult) -> dict[str, Any]:
 
 @click.group()
 def board() -> None:
-    """Read and administer Dailybot Tasks boards.
+    """Read and administer Dailybot Plan boards.
 
     \b
     `board snapshot` is the one call that gives cold context in a single request,

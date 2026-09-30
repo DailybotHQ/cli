@@ -1,6 +1,6 @@
 """The last Tasks doors: comment reactions, label edit/delete, recents, visits, resolve.
 
-With these, every live `/v1/tasks/` operation in the API contract has a CLI
+With these, every live `/v1/plan/` operation in the API contract has a CLI
 command (task delegation answers 501 until its runtime ships). HTTP is mocked
 (``AGENTS.md`` rule 7).
 """
@@ -50,7 +50,7 @@ class TestWire:
     def test_react_posts_the_emoji_stamped(self) -> None:
         with patch("httpx.post", return_value=_response({"uuid": C, "reactions": []})) as post:
             _client().add_comment_reaction(T, C, "👍")
-        assert post.call_args.args[0] == f"{API}/v1/tasks/tasks/{T}/comments/{C}/reactions/"
+        assert post.call_args.args[0] == f"{API}/v1/plan/tasks/{T}/comments/{C}/reactions/"
         assert post.call_args.kwargs["json"] == {"emoji": "👍", "agent_name": "Claude Code"}
 
     def test_unreact_percent_encodes_the_emoji_in_the_path(self) -> None:
@@ -58,7 +58,7 @@ class TestWire:
             _client().remove_comment_reaction(T, C, "👍")
         method, url = req.call_args.args[:2]
         assert method == "DELETE"
-        assert url == f"{API}/v1/tasks/tasks/{T}/comments/{C}/reactions/%F0%9F%91%8D/"
+        assert url == f"{API}/v1/plan/tasks/{T}/comments/{C}/reactions/%F0%9F%91%8D/"
 
     def test_unreact_refuses_a_non_emoji_before_the_request(self) -> None:
         with patch("httpx.request") as req, pytest.raises(APIError) as caught:
@@ -69,23 +69,23 @@ class TestWire:
     def test_label_update_and_delete(self) -> None:
         with patch("httpx.patch", return_value=_response({"uuid": L})) as p:
             _client().update_tasks_label(L, color="#ef4444", is_archived=True)
-        assert p.call_args.args[0] == f"{API}/v1/tasks/labels/{L}/"
+        assert p.call_args.args[0] == f"{API}/v1/plan/labels/{L}/"
         assert p.call_args.kwargs["json"]["color"] == "#ef4444"
         assert p.call_args.kwargs["json"]["is_archived"] is True
         with patch("httpx.request", return_value=_response(status=204)) as req:
             _client().delete_tasks_label(L)
-        assert req.call_args.args[:2] == ("DELETE", f"{API}/v1/tasks/labels/{L}/")
+        assert req.call_args.args[:2] == ("DELETE", f"{API}/v1/plan/labels/{L}/")
 
     def test_recents_visit_resolve(self) -> None:
         with patch("httpx.get", return_value=_response({"results": []})) as get:
             _client().list_recent_boards()
-        assert get.call_args.args[0] == f"{API}/v1/tasks/me/recents/"
+        assert get.call_args.args[0] == f"{API}/v1/plan/me/recents/"
         with patch("httpx.post", return_value=_response({"board": B})) as post:
             _client().visit_board(B)
-        assert post.call_args.args[0] == f"{API}/v1/tasks/boards/{B}/visit/"
+        assert post.call_args.args[0] == f"{API}/v1/plan/boards/{B}/visit/"
         with patch("httpx.get", return_value=_response({"resolved": {}})) as get:
             _client().resolve_attachments(["a1", "b2"])
-        assert get.call_args.args[0] == f"{API}/v1/tasks/attachments/resolve/"
+        assert get.call_args.args[0] == f"{API}/v1/plan/attachments/resolve/"
         assert get.call_args.kwargs["params"] == {"ids": "a1,b2"}
 
 
