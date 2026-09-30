@@ -349,7 +349,7 @@ For the API itself, follow Dailybot's main responsible-disclosure process.
 
 ## Outbound messages from the notification commands
 
-`tasks routes send-test`, `tasks reports send-test` and `tasks briefing send-test` post real messages (to a chat
+`dailybot plan tasks routes send-test`, `dailybot plan tasks reports send-test` and `dailybot plan tasks briefing send-test` post real messages (to a chat
 channel, to email recipients, to your DM). They never go out cold: the CLI first calls the door with
 `dry_run=true`, shows the destination and the rendered content, and sends only after a confirmation or `--yes`;
 a preview that fails, or that the server answers as if it had already acted, stops the command before anything is

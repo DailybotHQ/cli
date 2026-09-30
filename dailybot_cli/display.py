@@ -2107,7 +2107,9 @@ def print_timeline(document: dict[str, Any], *, include_unscheduled: bool = Fals
     )
     bands: list[dict[str, Any]] = [b for b in document.get("bands") or [] if isinstance(b, dict)]
     rows: list[dict[str, Any]] = [r for r in document.get("rows") or [] if isinstance(r, dict)]
-    if not bands and not rows:
+    milestones_shown: Any = document.get("milestones")
+    projects_shown: Any = document.get("projects")
+    if not bands and not rows and not milestones_shown and not projects_shown:
         print_info("Nothing dated in this window.")
     if bands:
         print_tasks_rows("Goals in the window", bands, _TIMELINE_BAND_COLUMNS, empty="")
@@ -2297,8 +2299,10 @@ def print_my_notifications(data: dict[str, Any]) -> None:
     )
     destination: dict[str, Any] = data.get("destination") or {}
     if destination.get("type") == "channel":
-        print_info(
-            f"Delivered in the channel {_channel_text(destination.get('channel'))}; work on private boards and projects always comes by DM."
+        # `_channel_text` already escaped the name: print it as-is, not through `print_info` again.
+        console.print(
+            f"[dim]Delivered in the channel {_channel_text(destination.get('channel'))}; "
+            "work on private boards and projects always comes by DM.[/dim]"
         )
     else:
         print_info("Delivered by DM.")
@@ -2327,7 +2331,7 @@ def print_notification_routes(result: PaginatedResult) -> None:
     for route in result.results:
         _print_card(
             [
-                f"{present_untrusted(route.get('name'), limit=60)} [{_flag(route.get('enabled'))}]  "
+                f"{present_untrusted(route.get('name'), limit=60)} \\[{_flag(route.get('enabled'))}]  "
                 f"{_channel_text(route.get('channel'))}",
                 f"scope: {_scope_text(route.get('scope'))}   kinds ({len(route.get('kinds') or [])}): "
                 + ", ".join(safe_text(k) for k in route.get("kinds") or []),
@@ -2347,7 +2351,7 @@ def print_reports(result: PaginatedResult) -> None:
         where: str = _channel_text(report.get("channel")) if report.get("channel") else "no channel"
         _print_card(
             [
-                f"{present_untrusted(report.get('name'), limit=60)} [{_flag(report.get('enabled'))}]  "
+                f"{present_untrusted(report.get('name'), limit=60)} \\[{_flag(report.get('enabled'))}]  "
                 f"{safe_text(report.get('kind', ''))}  {_weekday_text(report.get('weekdays'))} "
                 f"{safe_text(report.get('time', ''))} {safe_text(report.get('timezone', ''))}",
                 f"channel: {where}   email: {_people_text(report.get('email_recipients'))}",

@@ -14,7 +14,9 @@ import click
 from dailybot_cli.display import present_untrusted
 
 PUBLIC_CHANNEL_TYPE: str = "channel"
-EXTERNAL_ID_PATTERN: re.Pattern[str] = re.compile(r"^[A-Z][A-Z0-9]{6,}$")
+# A platform id (Slack `C0123`, a Discord snowflake, a Teams `19:...@thread`) is one token; a name the
+# server did not match is usually several words. Only a single token is worth a scan for an exact id.
+SINGLE_TOKEN_PATTERN: re.Pattern[str] = re.compile(r"^\S+$")
 MAX_CANDIDATES_SHOWN: int = 8
 
 
@@ -40,7 +42,7 @@ def resolve_channel(client: Any, reference: str, *, public_only: bool = False) -
     # The server matches names, so a name is searched there (no scan of the whole workspace). A
     # platform id is not a name: only when the reference looks like one is the list scanned for it.
     channels: list[dict[str, Any]] = fetch(wanted)
-    if not channels and EXTERNAL_ID_PATTERN.match(wanted):
+    if not channels and SINGLE_TOKEN_PATTERN.match(wanted):
         channels = fetch(None)
     folded: str = wanted.casefold()
 

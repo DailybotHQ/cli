@@ -251,3 +251,66 @@ class TestPullRequestReviewRound1:
             resolve_channel(client, "C0123456789")
         for call in client.search_channels.call_args_list:
             assert "limit" not in call.kwargs
+
+
+class TestPullRequestReviewRound3:
+    def test_the_enabled_badge_is_visible_on_route_and_report_cards(
+        self, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        from dailybot_cli.display import print_notification_routes, print_reports
+
+        print_notification_routes(
+            PaginatedResult(
+                results=[{"name": "eng", "enabled": True, "uuid": "u", "kinds": [], "scope": {}}],
+                count=1,
+                extra={"viewer": {"can_manage": True}},
+            )
+        )
+        print_reports(
+            PaginatedResult(
+                results=[{"name": "digest", "enabled": False, "uuid": "u", "kind": "k"}], count=1
+            )
+        )
+        out: str = " ".join(capsys.readouterr().out.split())
+        assert "[on]" in out and "[off]" in out
+
+    def test_a_window_with_only_milestones_is_not_called_empty(
+        self, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        from dailybot_cli.display import print_timeline
+
+        print_timeline(
+            {"bands": [], "rows": [], "milestones": [{"name": "Beta", "uuid": "m"}], "projects": []}
+        )
+        out: str = capsys.readouterr().out
+        assert "Nothing dated" not in out and "Beta" in out
+
+    def test_a_channel_name_with_markup_is_escaped_once(
+        self, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        from dailybot_cli.display import print_my_notifications
+
+        print_my_notifications(
+            {
+                "items": [],
+                "destination": {
+                    "type": "channel",
+                    "channel": {"external_id": "C1", "name": "[bold]eng", "type": "channel"},
+                },
+            }
+        )
+        out: str = capsys.readouterr().out
+        assert "[bold]eng" in out and "\\" not in out
+
+    def test_a_numeric_platform_id_round_trips_through_the_scan(self) -> None:
+        client: MagicMock = MagicMock(spec=DailyBotClient)
+        row: dict[str, str] = {
+            "external_id": "123456789012345678",
+            "name": "eng",
+            "type": "channel",
+        }
+        client.search_channels.side_effect = [
+            PaginatedResult(results=[], count=0),
+            PaginatedResult(results=[row], count=1),
+        ]
+        assert resolve_channel(client, "123456789012345678")["external_id"] == "123456789012345678"
