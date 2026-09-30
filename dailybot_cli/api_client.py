@@ -91,6 +91,9 @@ INVALID_IDENTIFIER_CODE: str = "invalid_identifier"
 # is refused rather than printed or put in a header.
 ETAG_RE: re.Pattern[str] = re.compile(r'^(W/)?"[\x21\x23-\x7e]*"$')
 INVALID_ETAG_CODE: str = "invalid_etag"
+# `If-Match` compares strongly (RFC 9110 §13.1.1): a weak validator never matches, so the
+# `W/` the server prints on a read has to come off before the value is sent back.
+WEAK_ETAG_PREFIX: str = "W/"
 DEFAULT_PORTS: dict[str, int] = {"http": 80, "https": 443}
 # The only same-origin upload target: a task attachment's content door.
 ATTACHMENT_CONTENT_PATH_RE: re.Pattern[str] = re.compile(
@@ -2323,8 +2326,12 @@ class DailyBotClient:
         idempotency_key: str | None = None,
         headers: dict[str, str] | None = None,
         url: str | None = None,
+        stamp_agent: bool = True,
     ) -> Any:
         """Issue a Tasks write and surface the replay flag.
+
+        ``stamp_agent`` is False for a door whose serializer rejects `agent_name` as an
+        unknown field (the saved-view update): the name is a label, never a credential.
 
         ``url`` replaces ``path`` for the rare door whose last segment is not a key or
         uuid (an emoji); the caller has already validated and encoded it.
@@ -2339,7 +2346,7 @@ class DailyBotClient:
         sequential default would collide between two agents.
         """
         extra: dict[str, str] | None = dict(headers) if headers else None
-        if self._checked_agent_name():
+        if stamp_agent and self._checked_agent_name():
             if method in _AGENT_NAME_BODY_METHODS and isinstance(json, dict):
                 json = {**json, TASKS_AGENT_NAME_BODY_FIELD: self.agent_name}
             else:
@@ -2426,14 +2433,18 @@ class DailyBotClient:
 
     @staticmethod
     def _checked_if_match(if_match: str) -> str:
-        """An `If-Match` value, refused locally unless it is a well-formed entity tag."""
+        """An `If-Match` value, refused locally unless it is a well-formed entity tag.
+
+        A weak tag (`W/"x"`) is sent in its strong form (`"x"`): the saved-view doors
+        answer a weak `If-Match` with `precondition_failed` even on an unchanged list.
+        """
         if not ETAG_RE.match(if_match):
             raise APIError(
                 400,
                 'Not a valid ETag. Pass the value `views --etag` printed, e.g. "abc123".',
                 code=INVALID_ETAG_CODE,
             )
-        return if_match
+        return if_match.removeprefix(WEAK_ETAG_PREFIX)
 
     def _tasks_list(
         self,
@@ -2535,6 +2546,7 @@ class DailyBotClient:
             "PATCH",
             f"views/{_path_segment(view_uuid)}/",
             json={k: v for k, v in fields.items() if v is not None},
+            stamp_agent=False,
         )
         return result
 
@@ -2570,16 +2582,28 @@ class DailyBotClient:
         """GET /v1/tasks/activity/ — the catch-up feed after an absence."""
         return self._tasks_list("activity/", **page)
 
-    def list_tasks_timeline(
-        self, *, date_from: str | None = None, date_to: str | None = None, **page: Any
-    ) -> PaginatedResult:
-        """GET /v1/tasks/timeline/ — a dated view of the workspace."""
+    def get_tasks_timeline(
+        self,
+        *,
+        date_from: str | None = None,
+        date_to: str | None = None,
+        include_unscheduled: bool = False,
+    ) -> dict[str, Any]:
+        """GET /v1/tasks/timeline/ — ONE document, not a paginated list.
+
+        `{window, bands, rows, dependencies, unscheduled, truncated}`: `bands` are the goals
+        overlapping the window, `rows` the dated tasks, and `unscheduled` a count (or
+        `{count, results}` with `include_unscheduled`). Reading it through the paginated
+        helper found no `results` key and reported every window as empty.
+        """
         params: dict[str, Any] = {}
         if date_from:
             params["from"] = date_from
         if date_to:
             params["to"] = date_to
-        return self._tasks_list("timeline/", params=params or None, **page)
+        if include_unscheduled:
+            params["include_unscheduled"] = 1
+        return self._tasks_read("timeline/", params=params or None)
 
     # --- Boards ---
 
@@ -2872,10 +2896,21 @@ class DailyBotClient:
         )
 
     def update_task(
-        self, task_uuid: str, *, idempotency_key: str | None = None, **fields: Any
+        self,
+        task_uuid: str,
+        *,
+        idempotency_key: str | None = None,
+        clear_milestone: bool = False,
+        **fields: Any,
     ) -> dict[str, Any]:
-        """PATCH /v1/tasks/tasks/<uuid>/ — absolute fields; accepts a key."""
+        """PATCH /v1/tasks/tasks/<uuid>/ — absolute fields; accepts a key.
+
+        A field left as None is not sent, so `milestone=None` cannot mean "clear it";
+        `clear_milestone=True` sends the explicit `{"milestone": null}` that does.
+        """
         payload: dict[str, Any] = {k: v for k, v in fields.items() if v is not None}
+        if clear_milestone:
+            payload["milestone"] = None
         return self._tasks_write(
             "PATCH",
             f"tasks/{_path_segment(task_uuid)}/",

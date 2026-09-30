@@ -791,6 +791,25 @@ def project_view_save(
     """Replace your saved views on a project with the array in a file.
 
     \b
+    This replaces the WHOLE list, so the server requires the ETag you read (--if-match),
+    or --fetch-etag reads it now, which only guards the moment between read and write.
+
+    \b
+    The file is a JSON array; each view is an object:
+      name         text, up to 64 characters (required)
+      view_mode    list | board | kanban | timeline | calendar
+      group_by     state | owner | priority | category
+      sort         a sort expression, as the web app saves it
+      visibility   personal | shared | board_default (the last two need a board manager)
+      filters      an object of filters (may be {})
+    `dailybot project views <project-uuid> --json` lists your current views under `results`; the
+    file takes just that array, so copy the objects out of `results`.
+
+    \b
+    The ETag `views --etag` prints may start with `W/` (weak). Pass it as printed: the
+    CLI sends the strong form the server compares against.
+
+    \b
     Examples:
       dailybot project view save <project-uuid> -f views.json --if-match '"3"'
       dailybot project view save <project-uuid> -f views.json --fetch-etag --json

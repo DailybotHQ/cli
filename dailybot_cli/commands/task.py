@@ -12,6 +12,7 @@ parameter name would produce a 400.
 
 import re
 from collections.abc import Callable
+from datetime import datetime
 from pathlib import Path
 from typing import Any, NoReturn
 
@@ -51,6 +52,7 @@ from dailybot_cli.commands.public_api_helpers import (
     exit_for_tasks_error,
     load_json_input,
     require_auth,
+    resolve_error_message,
     rows_of,
 )
 from dailybot_cli.commands.query_options import (
@@ -114,6 +116,15 @@ TASK_SORT_FIELDS: tuple[str, ...] = (
 # Task priority on the wire: 1=urgent, 2=high, 3=medium, 4=low, 5=none.
 PRIORITY_HELP: str = "Priority 1-5: 1 urgent, 2 high, 3 medium, 4 low, 5 none."
 PRIORITY_TYPE: click.IntRange = click.IntRange(min=1, max=5)
+# Scheduling fields the single-task doors carry (bulk already did): a plain calendar date
+# and a non-negative estimate in the board's own scale.
+TASK_DATE_FORMAT: str = "%Y-%m-%d"
+TASK_DATE_TYPE: click.DateTime = click.DateTime(formats=[TASK_DATE_FORMAT])
+ESTIMATE_TYPE: click.IntRange = click.IntRange(min=0)
+# Exit 1 is the documented partial failure: the task exists, a later step did not apply.
+EXIT_PARTIAL_WRITE: int = 1
+START_DATE_HELP: str = "Start date (YYYY-MM-DD)."
+ESTIMATE_HELP: str = "Estimate, a non-negative integer in the board's scale."
 
 # Relation types the contract declares. `relates-to` (the spelling this CLI's help
 # once taught) is accepted and normalised, so an old script keeps working.
@@ -478,6 +489,26 @@ def _write_error(exc: APIError, json_mode: bool = False) -> NoReturn:
     exit_for_tasks_error(exc, json_mode)
 
 
+def _require_uuid(_ctx: click.Context, param: click.Parameter, value: str | None) -> str | None:
+    """Refuse a value that is not a uuid before any request leaves (a milestone has no key)."""
+    if value is not None and not _UUID_RE.match(value):
+        raise click.BadParameter("must be a uuid.", param=param)
+    return value
+
+
+def _split_labels(raw_labels: tuple[str, ...]) -> list[str]:
+    """Flatten repeated and comma-separated `--label` values, dropping blanks and repeats."""
+    resolved: list[str] = []
+    for raw in raw_labels:
+        resolved.extend(part.strip() for part in raw.split(",") if part.strip())
+    return list(dict.fromkeys(resolved))
+
+
+def _date_text(value: datetime | None) -> str | None:
+    """A parsed `--start-date` as the wire's YYYY-MM-DD text (None when not passed)."""
+    return value.strftime(TASK_DATE_FORMAT) if value is not None else None
+
+
 @task.command("create")
 @click.option("-t", "--title", required=True, help="Task title.")
 @click.option("-b", "--board", default=None, help="Board to create it on.")
@@ -485,7 +516,20 @@ def _write_error(exc: APIError, json_mode: bool = False) -> NoReturn:
 @click.option("--state", default=None, help="Initial workflow state.")
 @click.option("--owner", default=None, help=OWNER_HELP)
 @click.option("--assignee", default=None, hidden=True, help=ASSIGNEE_DEPRECATION)
-@click.option("--due", default=None, help="Due date (YYYY-MM-DD).")
+@click.option(
+    "--due", type=TASK_DATE_TYPE, default=None, metavar="YYYY-MM-DD", help="Due date (YYYY-MM-DD)."
+)
+@click.option(
+    "--start-date", type=TASK_DATE_TYPE, default=None, metavar="YYYY-MM-DD", help=START_DATE_HELP
+)
+@click.option("--estimate", type=ESTIMATE_TYPE, default=None, help=ESTIMATE_HELP)
+@click.option("--parent", default=None, help="Make it a sub-task of this task (key or uuid).")
+@click.option(
+    "--label",
+    "labels",
+    multiple=True,
+    help="Label uuid to attach after creating. Repeatable, or comma-separated.",
+)
 @click.option("--priority", type=PRIORITY_TYPE, default=None, help=PRIORITY_HELP)
 @click.option(
     "--idempotency-key",
@@ -504,7 +548,11 @@ def task_create(
     state: str | None,
     owner: str | None,
     assignee: str | None,
-    due: str | None,
+    due: datetime | None,
+    start_date: datetime | None,
+    estimate: int | None,
+    parent: str | None,
+    labels: tuple[str, ...],
     priority: int | None,
     idempotency_key: str | None,
     json_mode: bool,
@@ -523,6 +571,7 @@ def task_create(
     Examples:
       dailybot task create --title "Fix the flaky test" --board <board-uuid> --owner me
       dailybot task create -t "Ship it" --idempotency-key deploy-42 --json
+      dailybot task create -t "Load test" -b <board-uuid> --start-date 2026-11-09 --due 2026-11-20 --estimate 5 --label <label-uuid>
     """
     if assignee:
         print_deprecation(ASSIGNEE_DEPRECATION)
@@ -535,12 +584,18 @@ def task_create(
                 description=description,
                 state=state,
                 owner=owner or assignee,
-                due_date=due,
+                due_date=_date_text(due),
+                start_date=_date_text(start_date),
+                estimate=estimate,
+                parent_task=parent,
                 priority=priority,
                 idempotency_key=idempotency_key,
             )
     except APIError as exc:
         _write_error(exc, json_mode)
+    resolved_labels: list[str] = _split_labels(labels)
+    if resolved_labels:
+        data = _attach_labels_after_create(client, data, resolved_labels, json_mode)
     if json_mode:
         emit_json(data)
         return
@@ -548,12 +603,92 @@ def task_create(
     print_task_detail(data)
 
 
+def _attach_labels_after_create(
+    client: Any, created: dict[str, Any], labels: list[str], json_mode: bool
+) -> dict[str, Any]:
+    """Put labels on a task that was just created, through the label door.
+
+    The create body is not the door the server honours for labels (bulk create drops
+    them), so they go through `labels/batch/`. A refusal here leaves the task in
+    place: the message (and, under --json, the error envelope's `created_task`) names
+    it, so nobody re-runs the create and duplicates it.
+    """
+    reference: str = str(created.get("key") or created.get("uuid") or "?")
+    left_in_place: dict[str, Any] = {
+        "created_task": {"key": created.get("key"), "uuid": created.get("uuid")}
+    }
+    message: str
+    if not created.get("uuid"):
+        # No uuid to address the label door with; the task exists all the same.
+        message = (
+            f"Task {reference} was created, but the server did not return its uuid, so its "
+            "labels were not attached. Run `dailybot task labels` on it; do not re-run the create."
+        )
+        if json_mode:
+            emit_json(
+                {
+                    "status": "error",
+                    "code": None,
+                    "detail": message,
+                    "message": message,
+                    **left_in_place,
+                }
+            )
+        else:
+            print_error(message)
+        raise SystemExit(EXIT_PARTIAL_WRITE)
+    try:
+        with console.status("Attaching labels..."):
+            labelled: dict[str, Any] = client.batch_task_labels(
+                created["uuid"], mode="add", labels=labels
+            )
+    except APIError as exc:
+        message = (
+            f"Task {reference} was created, but its labels were not attached "
+            f"({resolve_error_message(exc, tasks_surface=True)}) "
+            "Fix the label and run `dailybot task labels` on it; do not re-run the create."
+        )
+        if json_mode:
+            emit_json(
+                {
+                    "status": "error",
+                    "code": exc.code,
+                    "detail": exc.detail,
+                    "message": message,
+                    **left_in_place,
+                }
+            )
+        else:
+            print_error(message)
+        raise SystemExit(EXIT_PARTIAL_WRITE) from exc
+    # The batch door answers `{labels: [...]}`, not the task: fold them into what was created.
+    attached: Any = labelled.get("labels") if isinstance(labelled, dict) else None
+    return {**created, "labels": attached} if isinstance(attached, list) else created
+
+
 @task.command("update")
 @click.argument("task_uuid", metavar="TASK")
 @click.option("-t", "--title", default=None, help="New title.")
 @click.option("-d", "--description", default=None, help="New description.")
 @click.option("--state", default=None, help="New workflow state.")
-@click.option("--due", default=None, help="New due date (YYYY-MM-DD).")
+@click.option(
+    "--due",
+    type=TASK_DATE_TYPE,
+    default=None,
+    metavar="YYYY-MM-DD",
+    help="New due date (YYYY-MM-DD).",
+)
+@click.option(
+    "--start-date", type=TASK_DATE_TYPE, default=None, metavar="YYYY-MM-DD", help=START_DATE_HELP
+)
+@click.option("--estimate", type=ESTIMATE_TYPE, default=None, help=ESTIMATE_HELP)
+@click.option(
+    "--milestone",
+    default=None,
+    callback=_require_uuid,
+    help="Put the task in this milestone (uuid); it must belong to the board's project.",
+)
+@click.option("--clear-milestone", is_flag=True, help="Take the task out of its milestone.")
 @click.option("--priority", type=PRIORITY_TYPE, default=None, help=PRIORITY_HELP)
 @click.option("--owner", default=None, help=OWNER_HELP)
 @click.option("--idempotency-key", default=None, help="Reuse a key to make a retry safe.")
@@ -563,7 +698,11 @@ def task_update(
     title: str | None,
     description: str | None,
     state: str | None,
-    due: str | None,
+    due: datetime | None,
+    start_date: datetime | None,
+    estimate: int | None,
+    milestone: str | None,
+    clear_milestone: bool,
     priority: int | None,
     owner: str | None,
     idempotency_key: str | None,
@@ -579,17 +718,24 @@ def task_update(
     Examples:
       dailybot task update ENG-142 --state done
       dailybot task update ENG-142 -t "Clearer title" --json
+      dailybot task update ENG-142 --milestone <milestone-uuid>
+      dailybot task update ENG-142 --clear-milestone
     """
+    if milestone and clear_milestone:
+        raise click.UsageError("Pass --milestone or --clear-milestone, not both.")
     fields: dict[str, Any] = {
         "title": title,
         "description": description,
         "state": state,
-        "due_date": due,
+        "due_date": _date_text(due),
+        "start_date": _date_text(start_date),
+        "estimate": estimate,
+        "milestone": milestone,
         "priority": priority,
         "owner": owner,
     }
     supplied: dict[str, Any] = {k: v for k, v in fields.items() if v is not None}
-    if not supplied:
+    if not supplied and not clear_milestone:
         raise click.UsageError(
             "Nothing to update. Pass at least one field, e.g. --title or --state."
         )
@@ -597,7 +743,10 @@ def task_update(
     try:
         with console.status("Updating the task..."):
             data: dict[str, Any] = client.update_task(
-                task_uuid, idempotency_key=idempotency_key, **supplied
+                task_uuid,
+                idempotency_key=idempotency_key,
+                **({"clear_milestone": True} if clear_milestone else {}),
+                **supplied,
             )
     except APIError as exc:
         _write_error(exc, json_mode)
@@ -637,7 +786,9 @@ def task_move(
 
     \b
     With --board the task changes board; without --state it lands in the column
-    with the same category there.
+    with the same category there. A task's key is its board plus a number, so a move to
+    another board gives it a NEW key there and the old key stops resolving: the answer
+    carries the new key, and the uuid never changes, so keep references by uuid.
 
     \b
     Examples:
@@ -878,16 +1029,13 @@ def task_labels(
       dailybot task labels ENG-142 --mode add --label <label-uuid>
       dailybot task labels ENG-142 --mode replace --label a,b
     """
-    resolved: list[str] = []
-    for raw in labels:
-        resolved.extend(part.strip() for part in raw.split(",") if part.strip())
     client = require_auth()
     try:
         with console.status("Updating labels..."):
             data: dict[str, Any] = client.batch_task_labels(
                 task_uuid,
                 mode=mode.lower(),
-                labels=list(dict.fromkeys(resolved)),
+                labels=_split_labels(labels),
                 idempotency_key=idempotency_key,
             )
     except APIError as exc:

@@ -150,6 +150,36 @@ def paging_options(func: Callable[..., Any]) -> Callable[..., Any]:
 PAGING_ONLY_MORE_HINT: str = "use --page / --page-size to fetch more"
 
 
+def window_options(func: Callable[..., Any]) -> Callable[..., Any]:
+    """Stack only the date-window flags (no paging, no ``--search``).
+
+    For a door that answers one document for a window and does not page, such as the
+    timeline: offering ``--page`` there would be a flag the server ignores.
+    """
+    options: list[Callable[..., Any]] = [
+        click.option("--since", "-S", "since", default=None, help="Start date (YYYY-MM-DD)."),
+        click.option("--until", "-U", "until", default=None, help="End date (YYYY-MM-DD)."),
+        click.option(
+            "--date",
+            "-D",
+            "on_date",
+            default=None,
+            help="Single day (YYYY-MM-DD): sets start and end.",
+        ),
+        click.option(
+            "--last-week",
+            "last_week",
+            is_flag=True,
+            default=False,
+            help="Previous Monday-Sunday week.",
+        ),
+        click.option("--today", "today", is_flag=True, default=False, help="Today only."),
+    ]
+    for option in reversed(options):
+        func = option(func)
+    return func
+
+
 def date_options(func: Callable[..., Any]) -> Callable[..., Any]:
     """Stack the paging flags plus the date-range flags, but no ``--search``.
 

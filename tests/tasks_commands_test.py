@@ -5,7 +5,7 @@ network (``AGENTS.md`` rule 7).
 """
 
 import json
-from typing import Any
+from typing import Any, ClassVar
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -122,15 +122,6 @@ class TestActivityAndTimeline:
         assert result.exit_code == 0
         client.list_tasks_activity.assert_called_once()
 
-    def test_timeline_forwards_the_date_range(self, runner: CliRunner, client: MagicMock) -> None:
-        client.list_tasks_timeline.return_value = _page()
-        _invoke(
-            runner, client, ["tasks", "timeline", "--since", "2026-09-01", "--until", "2026-09-19"]
-        )
-        kwargs: dict[str, Any] = client.list_tasks_timeline.call_args[1]
-        assert kwargs["date_from"] == "2026-09-01"
-        assert kwargs["date_to"] == "2026-09-19"
-
     def test_json_mode_emits_the_pagination_envelope(
         self, runner: CliRunner, client: MagicMock
     ) -> None:
@@ -146,3 +137,170 @@ class TestUnauthenticated:
         with patch("dailybot_cli.commands.tasks.require_auth", side_effect=SystemExit(3)):
             result = runner.invoke(cli, ["tasks", "status"])
         assert result.exit_code == 3
+
+
+class TestTimelineIsOneDocument:
+    """`GET /v1/tasks/timeline/` answers ONE object, not a paginated list.
+
+    Reading it as a list made every window look empty (`tasks timeline` printed nothing on an
+    org with 103 dated tasks). The door takes `from`/`to`; the rows are dated tasks and the
+    bands are the goals that overlap the window.
+    """
+
+    DOC: ClassVar[dict[str, Any]] = {
+        "window": {"from": "2026-10-01", "to": "2026-12-31"},
+        "bands": [
+            {
+                "uuid": "g-1",
+                "name": "Ship v2",
+                "status": "on_track",
+                "period_start": "2026-10-01",
+                "period_end": "2026-12-31",
+            }
+        ],
+        "rows": [
+            {
+                "uuid": "t-1",
+                "key": "API-3",
+                "title": "Finalize the model",
+                "state": "In progress",
+                "category": "in_progress",
+                "start_date": "2026-10-01",
+                "due_date": "2026-10-09",
+                "is_blocked": True,
+                "is_overdue": False,
+            },
+            {
+                "uuid": "t-2",
+                "key": "API-4",
+                "title": "Design OAuth",
+                "state": "To do",
+                "category": "todo",
+                "start_date": "2026-10-05",
+                "due_date": "2026-10-14",
+                "is_blocked": False,
+                "is_overdue": True,
+            },
+        ],
+        "dependencies": [],
+        "unscheduled": 33,
+        "truncated": False,
+    }
+
+    def test_the_window_flags_reach_the_client(self, runner: CliRunner, client: MagicMock) -> None:
+        client.get_tasks_timeline.return_value = self.DOC
+        result = _invoke(
+            runner,
+            client,
+            ["tasks", "timeline", "--since", "2026-10-01", "--until", "2026-12-31", "--json"],
+        )
+        assert result.exit_code == 0, result.output
+        kwargs: dict[str, Any] = client.get_tasks_timeline.call_args.kwargs
+        assert kwargs["date_from"] == "2026-10-01"
+        assert kwargs["date_to"] == "2026-12-31"
+        assert kwargs["include_unscheduled"] is False
+
+    def test_json_mode_passes_the_document_through_untouched(
+        self, runner: CliRunner, client: MagicMock
+    ) -> None:
+        client.get_tasks_timeline.return_value = self.DOC
+        result = _invoke(runner, client, ["tasks", "timeline", "--json"])
+        assert json.loads(result.output) == self.DOC
+
+    def test_the_human_view_shows_the_window_goals_and_dated_work(
+        self, runner: CliRunner, client: MagicMock
+    ) -> None:
+        client.get_tasks_timeline.return_value = self.DOC
+        result = _invoke(runner, client, ["tasks", "timeline"])
+        assert result.exit_code == 0, result.output
+        flat: str = " ".join(result.output.split())
+        for text in (
+            "2026-10-01",
+            "2026-12-31",
+            "Ship v2",
+            "API-3",
+            "Finalize the",
+            "2026-10-09",
+            "blocked",
+            "overdue",
+            "33",
+        ):
+            assert text in flat
+
+    def test_a_truncated_window_says_so(self, runner: CliRunner, client: MagicMock) -> None:
+        client.get_tasks_timeline.return_value = {**self.DOC, "truncated": True}
+        assert "narrow" in _invoke(runner, client, ["tasks", "timeline"]).output.lower()
+
+    def test_an_empty_window_is_said_plainly(self, runner: CliRunner, client: MagicMock) -> None:
+        client.get_tasks_timeline.return_value = {
+            **self.DOC,
+            "bands": [],
+            "rows": [],
+            "unscheduled": 0,
+        }
+        result = _invoke(runner, client, ["tasks", "timeline"])
+        assert result.exit_code == 0
+        assert "nothing" in result.output.lower()
+
+    def test_unscheduled_can_be_requested(self, runner: CliRunner, client: MagicMock) -> None:
+        client.get_tasks_timeline.return_value = {
+            **self.DOC,
+            "unscheduled": {
+                "count": 1,
+                "results": [{"uuid": "t-9", "key": "API-9", "title": "No dates yet"}],
+            },
+        }
+        result = _invoke(runner, client, ["tasks", "timeline", "--include-unscheduled"])
+        assert client.get_tasks_timeline.call_args.kwargs["include_unscheduled"] is True
+        assert "API-9" in result.output
+
+    def test_paging_flags_are_gone_because_the_door_does_not_page(
+        self, runner: CliRunner, client: MagicMock
+    ) -> None:
+        out: str = runner.invoke(cli, ["tasks", "timeline", "--help"]).output
+        for flag in ("--page", "--page-size", "--limit"):
+            assert flag not in out
+        assert _invoke(runner, client, ["tasks", "timeline", "--page", "2"]).exit_code == 2
+
+    def test_row_text_is_data_not_markup(self, runner: CliRunner, client: MagicMock) -> None:
+        hostile: dict[str, Any] = {
+            **self.DOC,
+            "rows": [{**self.DOC["rows"][0], "title": "[bold red]x[/]"}],
+        }
+        client.get_tasks_timeline.return_value = hostile
+        flat: str = " ".join(_invoke(runner, client, ["tasks", "timeline"]).output.split())
+        assert "[bold" in flat
+        assert "red]x[/]" in flat
+
+    def test_markup_in_server_dates_and_statuses_does_not_crash_the_render(
+        self, runner: CliRunner, client: MagicMock
+    ) -> None:
+        document: dict[str, Any] = {
+            **self.DOC,
+            "window": {"from": "[/dim][red]x", "to": "[/]"},
+            "bands": [{**self.DOC["bands"][0], "status": "[/red]", "period_start": "[/dim]"}],
+            "rows": [{**self.DOC["rows"][0], "start_date": "[/dim][bold red]x", "due_date": "[/]"}],
+        }
+        client.get_tasks_timeline.return_value = document
+        result = _invoke(runner, client, ["tasks", "timeline"])
+        assert result.exit_code == 0, result.output
+        assert result.exception is None
+
+    def test_the_client_reads_a_plain_object_with_from_and_to(self) -> None:
+        real: DailyBotClient = DailyBotClient(
+            api_url="https://api.example.test", token="test-token"
+        )
+        response: MagicMock = MagicMock()
+        response.status_code = 200
+        response.json.return_value = self.DOC
+        response.headers = {}
+        with patch("dailybot_cli.api_client.httpx.get", return_value=response) as get:
+            document: dict[str, Any] = real.get_tasks_timeline(
+                date_from="2026-10-01", date_to="2026-12-31", include_unscheduled=True
+            )
+        assert document == self.DOC
+        assert get.call_args.kwargs["params"] == {
+            "from": "2026-10-01",
+            "to": "2026-12-31",
+            "include_unscheduled": 1,
+        }

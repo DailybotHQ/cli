@@ -215,3 +215,66 @@ def test_projects_and_goals_cannot_be_starred() -> None:
     runner: CliRunner = CliRunner()
     for group in ("project", "goal"):
         assert " star " not in runner.invoke(cli, [group, "--help"]).output
+
+
+class TestStrongIfMatch:
+    """A weak ETag from the server is sent back as its strong form (RFC 9110 If-Match)."""
+
+    WEAK: str = 'W/"0:empty"'
+    STRONG: str = '"0:empty"'
+
+    def test_board_view_save_strips_the_weak_prefix(self, real: DailyBotClient) -> None:
+        with patch("dailybot_cli.api_client.httpx.put", return_value=_response([])) as put:
+            real.save_board_views(BOARD, [{"name": "Mine", "filters": {}}], if_match=self.WEAK)
+        assert dict(put.call_args.kwargs["headers"])["If-Match"] == self.STRONG
+
+    def test_project_view_save_strips_the_weak_prefix(self, real: DailyBotClient) -> None:
+        with patch("dailybot_cli.api_client.httpx.put", return_value=_response([])) as put:
+            real.save_project_views(BOARD, [{"name": "Mine", "filters": {}}], if_match=self.WEAK)
+        assert dict(put.call_args.kwargs["headers"])["If-Match"] == self.STRONG
+
+    def test_a_strong_etag_is_sent_unchanged(self, real: DailyBotClient) -> None:
+        with patch("dailybot_cli.api_client.httpx.put", return_value=_response([])) as put:
+            real.save_board_views(BOARD, [], if_match='"7"')
+        assert dict(put.call_args.kwargs["headers"])["If-Match"] == '"7"'
+
+    def test_the_etag_printed_by_views_stays_as_the_server_sent_it(
+        self, real: DailyBotClient
+    ) -> None:
+        response: Any = _response([])
+        response.headers = {"ETag": self.WEAK}
+        with patch("dailybot_cli.api_client.httpx.get", return_value=response):
+            _, etag = real.list_board_views_with_etag(BOARD)
+        assert etag == self.WEAK
+
+
+class TestViewUpdateHasNoAgentStamp:
+    """`PATCH views/<uuid>/` rejects `agent_name` as an unknown field, so it is not sent there."""
+
+    def test_no_agent_name_in_body_or_header(self) -> None:
+        stamped: DailyBotClient = DailyBotClient(
+            api_url=API_URL, token="test-token", agent_name="Claude Code"
+        )
+        with patch("dailybot_cli.api_client.httpx.patch", return_value=_response({})) as patch_:
+            stamped.update_view(VIEW, group_by="owner")
+        assert patch_.call_args.kwargs["json"] == {"group_by": "owner"}
+        assert not any("agent" in str(k).lower() for k in dict(patch_.call_args.kwargs["headers"]))
+
+    def test_other_doors_still_carry_the_stamp(self) -> None:
+        stamped: DailyBotClient = DailyBotClient(
+            api_url=API_URL, token="test-token", agent_name="Claude Code"
+        )
+        with patch("dailybot_cli.api_client.httpx.post", return_value=_response({}, 201)) as post:
+            stamped.add_favorite(target_type="board", target_uuid=BOARD)
+        assert post.call_args.kwargs["json"]["agent_name"] == "Claude Code"
+
+
+@pytest.mark.parametrize("group", ["board", "project"])
+def test_view_save_help_states_the_shape_of_a_view(runner: CliRunner, group: str) -> None:
+    """The file `view save -f` takes is an array of view objects; the help names their fields."""
+    output: str = runner.invoke(cli, [group, "view", "save", "--help"]).output
+    for field in ("name", "view_mode", "group_by", "visibility", "filters"):
+        assert field in output
+    for mode in ("list", "board", "kanban", "timeline", "calendar"):
+        assert mode in output
+    assert "W/" in output or "weak" in output.lower()

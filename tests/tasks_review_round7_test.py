@@ -124,12 +124,6 @@ class TestServerTimestampsAreEscaped:
                 {"created_at": "[/dim][bold red]x", "summary": "did a thing"},
             ),
             (
-                ["tasks", "timeline"],
-                "tasks",
-                "list_tasks_timeline",
-                {"date": "[/dim][red]x", "title": "a day"},
-            ),
-            (
                 ["project", "updates"],
                 "project",
                 "list_project_updates",
