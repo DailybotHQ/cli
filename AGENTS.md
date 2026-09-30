@@ -38,7 +38,7 @@
 - **For humans** — email-OTP login, **managing Tasks** (`tasks` for the workspace, `task` for one task, plus `board` / `project` / `goal`), viewing pending check-ins, submitting structured/free-text updates, **filling out forms** (one-shot or driven through a workflow state machine: `pre_release → qa → code_review → ready_to_release → released`), **browsing teams** (role-scoped server-side), **giving kudos to users or whole teams**, interactive TUI mode.
 - **For agents (AI assistants, CI jobs, deploy scripts, bots)** — progress reports, milestone tracking, agent health, webhook registration, agent-to-agent messaging, transactional email, standalone agent registration (creates an org without a human Dailybot account), **and the full forms-response lifecycle** (`get / responses / response get / update / transition / delete`) so an agent can drive any form — including workflow-enabled ones — end-to-end after `dailybot login`.
 
-It talks exclusively to the Dailybot HTTP API under `/v1/cli/*`, `/v1/agent*/*`, `/v1/forms/*`, `/v1/tasks/*`, `/v1/teams/*`, `/v1/kudos/`, `/v1/users/`, and `/v1/checkins/*` endpoints. There is no local database; all state is either in `~/.config/dailybot/` (credentials, agent profiles, config) or fetched from the API.
+It talks exclusively to the Dailybot HTTP API under `/v1/cli/*`, `/v1/agent*/*`, `/v1/forms/*`, `/v1/plan/*`, `/v1/teams/*`, `/v1/kudos/`, `/v1/users/`, and `/v1/checkins/*` endpoints. There is no local database; all state is either in `~/.config/dailybot/` (credentials, agent profiles, config) or fetched from the API.
 
 **Stack:** Python 3.10+, [Click](https://click.palletsprojects.com/) 8.3+, [httpx](https://www.python-httpx.org/) 0.28+, [questionary](https://questionary.readthedocs.io/) 2.1+, [rich](https://rich.readthedocs.io/) 15+. Tested with `pytest`. Built and packaged with `setuptools`; distributed via PyPI, Homebrew tap (`dailybothq/tap`), a PyInstaller-built Linux x86_64 binary, and a PowerShell installer (`install.ps1`) that wraps `pipx`/`uv`/`pip` for native Windows users.
 
@@ -66,6 +66,15 @@ dailybot_cli/                # Source package
     │                        #   response get / update / transition / delete
     ├── hook.py              # `hook` group: session-start / post-commit / activity /
     │                        #   stop / dismiss (agent harness lifecycle hooks)
+    ├── plan.py              # `plan` root: the only mount point of tasks / task / board / project / goal
+    │                        #   (the product formerly called Tasks is now Dailybot Plan, /v1/plan/)
+    ├── tasks_settings.py    # `tasks notifications|channels|routes|reports|briefing`: who is told
+    │                        #   what, where and when (personal prefs, org routes, scheduled
+    │                        #   reports, briefing); hung under `tasks`
+    ├── _schedule.py         # weekday / HH:MM / IANA timezone parsing for those commands
+    ├── _channels.py         # resolve a channel by name or external id
+    ├── _outbound.py         # send-test flow: dry-run preview, confirm, then send
+    ├── _paging.py, _refs.py # shared paging helpers; uuid reference callbacks
     ├── tasks.py             # `tasks` group: workspace-level — status / entitlements /
     │                        #   search / activity / timeline / changes (delta) /
     │                        #   inbox / inbox-read / inbox-read-all / inbox-unread / cursor /
@@ -111,6 +120,14 @@ tests/                       # pytest suite (file naming: *_test.py)
 ├── chat_commands_test.py    # `chat` group (payload builder, send/update, headless)
 ├── tasks_api_client_test.py # Tasks transport (constants, Z-form datetimes, idempotency)
 ├── tasks_commands_test.py   # `tasks` group reads
+├── tasks_schedule_helpers_test.py  # weekday/time/timezone parsing, channel resolution
+├── tasks_notifications_client_test.py, tasks_routes_reports_client_test.py,
+│   tasks_briefing_client_test.py  # PLAN_004 client wire tests
+├── tasks_notifications_display_test.py  # catalog, matrix, routes, reports, report documents
+├── tasks_notifications_commands_test.py, tasks_channels_commands_test.py,
+│   tasks_routes_commands_test.py, tasks_reports_commands_test.py,
+│   tasks_briefing_commands_test.py  # the new command groups
+├── tasks_timeline_filters_test.py  # timeline milestones/projects + project/milestone filters
 ├── tasks_delta_test.py      # `tasks changes` cursor lifecycle + window expiry
 ├── tasks_person_shaped_test.py  # person-only Tasks doors
 ├── tasks_catchup_test.py    # pulse bands, inbox read, activity cursor, mentionables
@@ -607,7 +624,7 @@ dailybot agent update --name "Claude Code" --milestone \
   --metadata '{"model":"claude-opus-4-7","plan":"PLAN_agent_profiles","repo":"cli"}'
 ```
 
-Full philosophy, what to report, and what to skip: [.agents/skills/dailybot/report/SKILL.md](.agents/skills/dailybot/report/SKILL.md) (part of the vendored Dailybot agent skill pack at `.agents/skills/dailybot/`, **v3.21.1**, which also ships the `chat` (incl. `--send-as-user`/`--send-as-me`, interactive buttons with approval flows / workflow triggers / modals / callbacks), the `conversation` sub-skill (open/reuse a Slack group DM with the bot and post a report, `conversation open`), `kudos` (give + browse: `list`/`org`/`wall-of-fame`), `teams` (+ account context `me`/`org`/`user get`), `channels`, the `workflow` surface (`list`/`get`/`trigger`, plus `--filter api_trigger`), the full `forms` (org-scoped `list` + `--mine`) / `checkin` **authoring** sub-skills, the `labels` sub-skill (org Labels CRUD + assign/batch), the `featured` sub-skill (private Featured stars), the `env` sub-skill (per-repo API keys via the opt-in, gitignored `.dailybot/env.json`), and the `tasks` sub-skill (boards, backlog, sprint/kanban columns, projects, goals, milestones and project updates — `dailybot tasks` for the workspace and `dailybot task` for one task, plus `board`/`project`/`goal`; open-org structure for any non-guest member) — plus the shared list pagination/search/date filters, the untrusted-content boundary, idempotent retries, the delta-cursor lifecycle, destructive previews, and the machine-readable error-code reference. The pack baseline is `dailybot-cli >= 3.9.0`; `dailybot-tasks` needs `>= 3.14.2`, recommended `>= 3.23.1`). Key rules:
+Full philosophy, what to report, and what to skip: [.agents/skills/dailybot/report/SKILL.md](.agents/skills/dailybot/report/SKILL.md) (part of the vendored Dailybot agent skill pack at `.agents/skills/dailybot/`, **v3.21.1**, which also ships the `chat` (incl. `--send-as-user`/`--send-as-me`, interactive buttons with approval flows / workflow triggers / modals / callbacks), the `conversation` sub-skill (open/reuse a Slack group DM with the bot and post a report, `conversation open`), `kudos` (give + browse: `list`/`org`/`wall-of-fame`), `teams` (+ account context `me`/`org`/`user get`), `channels`, the `workflow` surface (`list`/`get`/`trigger`, plus `--filter api_trigger`), the full `forms` (org-scoped `list` + `--mine`) / `checkin` **authoring** sub-skills, the `labels` sub-skill (org Labels CRUD + assign/batch), the `featured` sub-skill (private Featured stars), the `env` sub-skill (per-repo API keys via the opt-in, gitignored `.dailybot/env.json`), and the `tasks` sub-skill (boards, backlog, sprint/kanban columns, projects, goals, milestones and project updates — `dailybot plan tasks` for the workspace and `dailybot plan task` for one task, plus `board`/`project`/`goal`; open-org structure for any non-guest member) — plus the shared list pagination/search/date filters, the untrusted-content boundary, idempotent retries, the delta-cursor lifecycle, destructive previews, and the machine-readable error-code reference. The pack baseline is `dailybot-cli >= 3.9.0`; `dailybot-tasks` needs `>= 3.14.2`, recommended `>= 3.23.1`). Key rules:
 
 - 1–3 sentences, **always in English**
 - Focus on WHAT + WHY, never "Agent completed…"

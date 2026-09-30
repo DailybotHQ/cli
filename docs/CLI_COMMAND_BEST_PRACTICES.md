@@ -242,6 +242,16 @@ at the file/flag path.
 
 `questionary` provides arrow-key navigation; `click.prompt` is fine for everything else. If you find yourself reaching for both in the same flow, prefer `questionary` for consistency (e.g., `commands/interactive.py` uses `questionary` end-to-end).
 
+## Schedule, time and channel flags
+
+Commands that set a schedule (`tasks reports`, `tasks briefing`) share `commands/_schedule.py` and `commands/_channels.py`:
+
+- **Weekdays**: lowercase three-letter names, a comma list or a repeated flag (`--weekdays mon,tue` = `--weekdays mon --weekdays tue`); the API takes ISO ints 1..7 (Monday = 1), so the flag maps them and never accepts a bare number. A weekly report kind takes exactly one weekday; a daily one at least one.
+- **Time**: 24-hour `HH:MM` (`9:05` is sent as `09:05`). **Timezone**: an IANA name, sent only when the flag is passed so the server's default (the org or user timezone) stays in charge.
+- **Booleans**: paired flags (`--enabled/--disabled`, `--chat/--no-chat`). **Lists**: repeatable and comma-separated. **Clears**: an explicit flag (`--no-channel`), never "pass an empty string".
+- **Channels**: a person types a name or an external id; `resolve_channel` resolves it through `tasks channels search` (exact id, exact name, unique substring; ambiguity lists the candidates). The stored reference is the `external_id`. Channel names are untrusted text and are always quoted.
+- **Outbound sends are previewed first**: every `send-test` calls the door with `dry_run=true`, shows what would be posted and to which channel, and only sends after a confirmation or `--yes`. Automation and tests never send for real.
+
 ## Anti-patterns
 
 | Anti-pattern | Fix |

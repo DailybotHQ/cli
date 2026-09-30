@@ -181,7 +181,7 @@ def kudos_give(
     try:
         if receiver:
             with console.status("Resolving user receiver..."):
-                users: list[dict[str, Any]] = client.list_users()
+                users: list[dict[str, Any]] = client.list_users(include_inactive=True)
                 user_uuid, user_name = resolve_user_by_name_or_uuid(users, receiver)
                 user_receivers.append((user_uuid, user_name))
                 current_uuid = get_current_user_uuid(client)

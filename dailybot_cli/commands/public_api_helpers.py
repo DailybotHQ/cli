@@ -52,7 +52,7 @@ EXIT_USER_ABORTED: int = 7
 # Server-side error codes from {detail, code} responses. Kept here so command
 # handlers and tests share a single source of truth.
 ERROR_CODE_MESSAGES: dict[str, str] = {
-    # --- Tasks (/v1/tasks/*) -------------------------------------------------
+    # --- Tasks (/v1/plan/*) -------------------------------------------------
     # Written against what the server actually returned in the live probe
     # recorded in the plan's PERMISSION_MATRIX_OBSERVED.md, not against prose.
     #
@@ -62,27 +62,46 @@ ERROR_CODE_MESSAGES: dict[str, str] = {
     ),
     "reaction_limit_reached": (
         "You already hold the most different emojis allowed on this comment or update. "
-        "Remove one of yours (`dailybot task comment-unreact` or "
-        "`dailybot project update-unreact`) before adding another; "
+        "Remove one of yours (`dailybot plan task comment-unreact` or "
+        "`dailybot plan project update-unreact`) before adding another; "
         "re-adding an emoji you already hold changes nothing."
     ),
+    "invalid_schedule": ("That schedule is not valid: weekdays, time, timezone or destination."),
+    "unknown_notification_kind": (
+        "That notification kind does not exist, or does not apply to this setting. "
+        "See the valid kinds with `dailybot plan tasks notifications catalog`."
+    ),
+    "channel_not_found": (
+        "That channel was not found, or it is private and you cannot use it. "
+        "List what you can pick with `dailybot plan tasks channels search`."
+    ),
+    "platform_not_connected": (
+        "No chat platform is connected for this organization, so channels and messages "
+        "are not available."
+    ),
+    "route_scope_not_org_visible": (
+        "A route or report can only cover boards and projects that the whole organization can see."
+    ),
+    "notification_routes_limit_reached": "The organization already has the most routes allowed.",
+    "report_schedules_limit_reached": "The organization already has the most scheduled reports allowed.",
+    "not_implemented": "The API does not support that yet.",
     "throttled": ("You are sending requests faster than your account allows."),
     "task_archived": (
         "This task is archived, so it cannot be changed or duplicated. "
-        "Bring it back with `dailybot task restore <task>` first."
+        "Bring it back with `dailybot plan task restore <task>` first."
     ),
     "project_name_conflict": (
         "Another project already uses that name, and archived projects keep theirs. "
-        "Pick a different name, or restore the archived project with `dailybot project restore`."
+        "Pick a different name, or restore the archived project with `dailybot plan project restore`."
     ),
     "milestone_not_on_project": (
         "That milestone belongs to a different project than this task's board. "
-        "List the right ones with `dailybot project milestones <project>`."
+        "List the right ones with `dailybot plan project milestones <project>`."
     ),
     "label_in_use": (
         "This label is still in use, so it cannot be deleted. Archive it instead "
         "(`dailybot label archive <label>` for organization labels, or "
-        "`dailybot board label update <label> --archive` for Tasks labels), or clear what "
+        "`dailybot plan board label update <label> --archive` for Tasks labels), or clear what "
         "still references it, then delete."
     ),
     # Project update authorship
@@ -158,9 +177,9 @@ ERROR_CODE_MESSAGES: dict[str, str] = {
         # Two doors answer this code: retiring a column that still holds cards, and
         # restoring a task whose column was retired meanwhile. Name both remedies.
         "The column involved is in use or retired. To retire a column that still holds "
-        "tasks, re-run `dailybot board state archive` with `--migrate-to <state-uuid>`; to "
+        "tasks, re-run `dailybot plan board state archive` with `--migrate-to <state-uuid>`; to "
         "restore a task whose column was retired, restore the column first with "
-        "`dailybot board state restore`. `dailybot board states <board> --include-archived` "
+        "`dailybot plan board state restore`. `dailybot plan board states <board> --include-archived` "
         "lists the columns."
     ),
     # Attachments
@@ -199,7 +218,7 @@ ERROR_CODE_MESSAGES: dict[str, str] = {
     ),
     "column_too_large": (
         "That column holds too many tasks to return in one read. List them page by page "
-        "with `dailybot board tasks <board>`."
+        "with `dailybot plan board tasks <board>`."
     ),
     # Delta
     "delta_window_expired": (
@@ -406,6 +425,11 @@ ERROR_CODE_MESSAGES: dict[str, str] = {
     ),
     # Validation (400)
     "target_user_inactive": "That user is inactive. Choose an active user.",
+    "invalid_sort": "That sort is not one the API offers. Pick one of the allowed fields.",
+    "user_inactive": (
+        "That person is inactive in this organization and cannot be given new work. "
+        "Choose an active person (history and existing assignments are kept)."
+    ),
     "search_query_too_long": (
         "Search term is too long (maximum 256 characters). Shorten it and try again."
     ),
@@ -544,6 +568,39 @@ def emit_json_error(message: str, status: int) -> None:
     emit_json({"error": message, "status": status})
 
 
+# Codes whose `extra.parameter` names what to fix, and how a parameter maps to a command-line flag.
+_PARAMETER_CODES: frozenset[str] = frozenset(
+    {"invalid_schedule", "unknown_notification_kind", "unknown_field", "channel_not_found"}
+)
+_PARAMETER_FLAGS: dict[str, str] = {
+    "weekdays": "--weekdays",
+    "weekday": "--weekdays",
+    "time": "--time",
+    "timezone": "--timezone",
+    "channel": "--channel",
+    "kind": "--kind",
+    "scope": "--scope",
+    "name": "--name",
+    "email_recipients": "--email-to",
+    "owner": "--owner",
+    "lead": "--lead",
+    "user": "--user",
+    "collaborators": "--user",
+    "participants": "--user",
+}
+_LIMIT_CODES: frozenset[str] = frozenset(
+    {"notification_routes_limit_reached", "report_schedules_limit_reached"}
+)
+_MAX_UUIDS_SHOWN: int = 3
+
+
+def _uuid_list(uuids: list[Any]) -> str:
+    """The first few uuids, then how many more."""
+    shown: str = ", ".join(str(u) for u in uuids[:_MAX_UUIDS_SHOWN])
+    more: str = f" (+{len(uuids) - _MAX_UUIDS_SHOWN} more)" if len(uuids) > _MAX_UUIDS_SHOWN else ""
+    return f"{shown}{more}"
+
+
 def _augment_code_message(base: str, code: str, extra: dict[str, Any]) -> str:
     """Enrich a code's base message with machine-readable `extra` context."""
     if code == "plan_upgrade_required":
@@ -564,6 +621,35 @@ def _augment_code_message(base: str, code: str, extra: dict[str, Any]) -> str:
         limit: Any = extra.get("limit")
         if isinstance(limit, int):
             return f"{base} The limit is {limit} different emojis per person."
+    elif code in _LIMIT_CODES:
+        org_limit: Any = extra.get("limit")
+        if isinstance(org_limit, int):
+            return f"{base} The limit is {org_limit}; delete one first."
+    elif code in _PARAMETER_CODES:
+        parameter: Any = extra.get("parameter")
+        if isinstance(parameter, str) and parameter:
+            flag: str | None = _PARAMETER_FLAGS.get(parameter)
+            return f"{base} Check {flag}." if flag else f"{base} Field: {parameter!r}."
+    elif code == "route_scope_not_org_visible":
+        offenders: Any = extra.get("uuids")
+        if isinstance(offenders, list) and offenders:
+            return f"{base} Not visible to everyone ({len(offenders)}): {_uuid_list(offenders)}."
+    elif code == "invalid_sort":
+        allowed: Any = extra.get("allowed")
+        if isinstance(allowed, list) and allowed:
+            return (
+                f"{base} Allowed: {', '.join(str(a) for a in allowed)} (prefix with - to reverse)."
+            )
+    elif code == "user_inactive":
+        bits: list[str] = []
+        named: Any = extra.get("parameter")
+        if isinstance(named, str) and named:
+            flag_used: str | None = _PARAMETER_FLAGS.get(named)
+            bits.append(f"Check {flag_used}." if flag_used else f"Field: {named!r}.")
+        inactive: Any = extra.get("uuids")
+        if isinstance(inactive, list) and inactive:
+            bits.append(f"Inactive ({len(inactive)}): {_uuid_list(inactive)}.")
+        return " ".join([base, *bits])
     return base
 
 
@@ -586,6 +672,8 @@ PERSON_SHAPED_TASKS_DOORS: frozenset[str] = frozenset(
         "me/activity-cursor",
         "inbox",
         "inbox/unread-count",
+        "me/notifications",
+        "me/briefing",
     }
 )
 
@@ -594,6 +682,17 @@ PERSON_SHAPED_TASKS_DOORS: frozenset[str] = frozenset(
 # that nobody forgot one.
 TASKS_ERROR_CODES: frozenset[str] = frozenset(
     {
+        "invalid_schedule",
+        "unknown_notification_kind",
+        "unknown_field",
+        "channel_not_found",
+        "platform_not_connected",
+        "route_scope_not_org_visible",
+        "user_inactive",
+        "invalid_sort",
+        "notification_routes_limit_reached",
+        "report_schedules_limit_reached",
+        "not_implemented",
         "throttled",
         "task_archived",
         "project_name_conflict",
@@ -650,7 +749,7 @@ _ADMIN_SCOPE_GUIDANCE: str = (
 def is_person_shaped_refusal(exc: APIError, *, door: str | None = None) -> bool:
     """Is this refusal the "you are not a person" condition, in either shape?
 
-    ``door`` is the Tasks door being called, without the ``/v1/tasks/`` prefix.
+    ``door`` is the Tasks door being called, without the ``/v1/plan/`` prefix.
     It is required to disambiguate: ``insufficient_scope`` on ``boards`` is a
     genuine scope problem, while the same code on ``inbox`` is this condition
     wearing the permission layer's clothes.
@@ -693,10 +792,10 @@ def resolve_error_message(
         # change nothing. The server names both remedies; so do we.
         upgrade: Any = (exc.extra or {}).get("upgrade_url")
         message: str = (
-            "Dailybot Tasks is not enabled for this organization. It is switched on per "
+            "Dailybot Plan (Tasks) is not enabled for this organization. It is switched on per "
             "organization, so this is not a credential or role problem and signing in "
             "again will not change it: ask a workspace admin to enable Tasks, or upgrade "
-            "the plan. `dailybot tasks entitlements` reports the current state and the "
+            "the plan. `dailybot plan tasks entitlements` reports the current state and the "
             "reason without refusing."
         )
         return f"{message} Upgrade at: {upgrade}" if upgrade else message
@@ -852,6 +951,7 @@ def exit_for_tasks_error(
                 "code": exc.code,
                 "detail": exc.detail,
                 "message": message,
+                **({"extra": exc.extra} if exc.extra else {}),
                 **({"retry_after": wait} if wait is not None else {}),
                 **(envelope_extra or {}),
             }
@@ -1030,11 +1130,28 @@ def parse_answer_flags(answers: tuple[str, ...]) -> dict[int, str]:
     return parsed
 
 
+def _is_active(user: dict[str, Any]) -> bool:
+    """A directory row is active unless it says `is_active: false` (older rows carry no flag)."""
+    return user.get("is_active") is not False
+
+
+def _refuse_when_only_inactive(matches: list[dict[str, Any]]) -> None:
+    """Say a person is inactive when that is the only thing the lookup found."""
+    if matches and not any(_is_active(user) for user in matches):
+        who: str = str(matches[0].get("full_name") or matches[0].get("email") or matches[0]["uuid"])
+        raise ValueError(f"{who} is inactive in this organization and cannot be given new work.")
+
+
 def resolve_user_by_name_or_uuid(
     users: list[dict[str, Any]],
     identifier: str,
 ) -> tuple[str, str]:
-    """Resolve a user UUID and display name from a UUID, email, or name fragment."""
+    """Resolve a user UUID and display name from a UUID, email, or name fragment.
+
+    Inactive people (``is_active`` false) are never picked by name or email: when the only match is
+    inactive, the error says so instead of treating it as "not found". An explicit UUID is left to
+    the server, which refuses a new inactive target with ``user_inactive``.
+    """
     if UUID_PATTERN.match(identifier):
         for user in users:
             if user.get("uuid") == identifier:
@@ -1046,6 +1163,8 @@ def resolve_user_by_name_or_uuid(
         email_matches: list[dict[str, Any]] = [
             user for user in users if str(user.get("email", "")).lower() == identifier.lower()
         ]
+        _refuse_when_only_inactive(email_matches)
+        email_matches = [user for user in email_matches if _is_active(user)]
         if len(email_matches) == 1:
             hit: dict[str, Any] = email_matches[0]
             return str(hit["uuid"]), str(hit.get("full_name") or hit.get("email") or hit["uuid"])
@@ -1059,16 +1178,18 @@ def resolve_user_by_name_or_uuid(
                 )
             raise ValueError(f'No user found with email "{identifier}".')
 
-    exact_matches: list[dict[str, Any]] = [
+    exact_all: list[dict[str, Any]] = [
         user for user in users if str(user.get("full_name", "")).lower() == identifier.lower()
     ]
+    exact_matches: list[dict[str, Any]] = [user for user in exact_all if _is_active(user)]
     if len(exact_matches) == 1:
         match: dict[str, Any] = exact_matches[0]
         return str(match["uuid"]), str(match.get("full_name") or match["uuid"])
 
-    partial_matches: list[dict[str, Any]] = [
+    partial_all: list[dict[str, Any]] = [
         user for user in users if identifier.lower() in str(user.get("full_name", "")).lower()
     ]
+    partial_matches: list[dict[str, Any]] = [user for user in partial_all if _is_active(user)]
     if len(partial_matches) == 1:
         match = partial_matches[0]
         return str(match["uuid"]), str(match.get("full_name") or match["uuid"])
@@ -1076,6 +1197,7 @@ def resolve_user_by_name_or_uuid(
         names: str = ", ".join(str(user.get("full_name", "")) for user in partial_matches)
         raise ValueError(f'Ambiguous receiver "{identifier}". Matches: {names}')
 
+    _refuse_when_only_inactive(exact_all or partial_all)
     raise ValueError(f'No user found matching "{identifier}".')
 
 

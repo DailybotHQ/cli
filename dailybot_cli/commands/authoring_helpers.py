@@ -1148,7 +1148,9 @@ def parse_participants(
         if users:
             # include_email lets an admin/manager resolve people by email; it's
             # server-gated (silently omitted for members), so name/UUID still work.
-            directory: list[dict[str, Any]] = client.list_users(include_email=True)
+            directory: list[dict[str, Any]] = client.list_users(
+                include_email=True, include_inactive=True
+            )
             participants["user_uuids"] = [
                 resolve_user_by_name_or_uuid(directory, identifier)[0] for identifier in users
             ]

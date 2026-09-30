@@ -1,4 +1,4 @@
-"""The Tasks Beta notice, shared by every Tasks command group.
+"""The Plan Beta notice (the product formerly called Tasks), shared by every Plan command group.
 
 The facts are fixed product copy (the same words ship in the README, the agent
 skill and the web app). Terminal help cannot render Markdown, so the help block
@@ -13,15 +13,15 @@ BETA_SUPPORT_EMAIL: str = "support@dailybot.com"
 # `\b` keeps Click from reflowing the block into the paragraph that follows.
 BETA_HELP_BLOCK: str = (
     "\b\n"
-    "Beta — Tasks is in beta. Everything under /tasks in the web app, the CLI and\n"
-    "agent skill commands for projects, goals, boards and tasks, and the /v1/tasks/\n"
-    "public API may change before general availability. Want to try it with your\n"
+    "Beta — Dailybot Plan (formerly Tasks) is in beta. Everything under /plan in the web\n"
+    "app, the CLI and agent skill commands for projects, goals, boards and tasks, and the\n"
+    "/v1/plan/ public API may change before general availability. Want to try it with your\n"
     f"team? Write to {BETA_SUPPORT_EMAIL}."
 )
 
 # One line for human output (`tasks status`), never for `--json`.
 BETA_STATUS_LINE: str = (
-    "Beta — Tasks is in beta and may change before general availability. "
+    "Beta — Dailybot Plan (formerly Tasks) is in beta and may change before general availability. "
     f"Want to try it with your team? Write to {BETA_SUPPORT_EMAIL}."
 )
 

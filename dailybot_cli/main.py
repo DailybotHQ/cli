@@ -11,7 +11,6 @@ from dailybot_cli.api_client import EXIT_TRANSPORT_ERROR, TransportError
 from dailybot_cli.commands.agent import agent
 from dailybot_cli.commands.ask import ask
 from dailybot_cli.commands.auth import login, logout
-from dailybot_cli.commands.board import board
 from dailybot_cli.commands.channels import channels
 from dailybot_cli.commands.chat import chat
 from dailybot_cli.commands.checkin import checkin
@@ -20,18 +19,15 @@ from dailybot_cli.commands.conversation import conversation
 from dailybot_cli.commands.env import env
 from dailybot_cli.commands.featured import featured
 from dailybot_cli.commands.form import form
-from dailybot_cli.commands.goal import goal
 from dailybot_cli.commands.hook import hook
 from dailybot_cli.commands.identity import me, org
 from dailybot_cli.commands.interactive import run_interactive
 from dailybot_cli.commands.interactive_chat import interactive
 from dailybot_cli.commands.kudos import kudos
 from dailybot_cli.commands.label import label
-from dailybot_cli.commands.project import project
+from dailybot_cli.commands.plan import plan
 from dailybot_cli.commands.public_api_helpers import emit_json
 from dailybot_cli.commands.status import status
-from dailybot_cli.commands.task import task
-from dailybot_cli.commands.tasks import tasks
 from dailybot_cli.commands.team import team
 from dailybot_cli.commands.uninstall import uninstall
 from dailybot_cli.commands.update import update
@@ -234,11 +230,7 @@ cli.add_command(user)
 cli.add_command(me)
 cli.add_command(org)
 cli.add_command(workflow)
-cli.add_command(tasks)
-cli.add_command(task)
-cli.add_command(board)
-cli.add_command(project)
-cli.add_command(goal)
+cli.add_command(plan)
 cli.add_command(label)
 cli.add_command(featured)
 cli.add_command(agent)

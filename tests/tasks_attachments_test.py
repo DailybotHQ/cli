@@ -37,7 +37,7 @@ from dailybot_cli.commands.public_api_helpers import (
 from dailybot_cli.main import cli
 
 API_URL: str = "https://api.example.com"
-BASE: str = f"{API_URL}/v1/tasks/tasks/"
+BASE: str = f"{API_URL}/v1/plan/tasks/"
 TASK: str = "ENG-142"
 ATT: str = "a-1"
 STORAGE_URL: str = "https://storage.example-bucket.com/uploads/a-1?sig=abc"
@@ -165,7 +165,7 @@ class TestUploadNeverLeaksCredentials:
         assert put.call_args.kwargs["content"] == b"hello"
 
     def test_a_relative_target_is_the_api_origin(self, real: DailyBotClient) -> None:
-        relative: str = f"/v1/tasks/tasks/{TASK}/attachments/{ATT}/content/"
+        relative: str = f"/v1/plan/tasks/{TASK}/attachments/{ATT}/content/"
         with patch("dailybot_cli.api_client.httpx.put", return_value=_response({})) as put:
             real.upload_attachment_bytes(_presign(relative), b"x")
         assert put.call_args.args[0] == f"{API_URL}{relative}"
@@ -274,7 +274,7 @@ class TestAttach:
         client.presign_attachment.return_value = _presign()
         client.upload_attachment_bytes.return_value = {}
         client.confirm_attachment.return_value = {"uuid": ATT, "status": "ready"}
-        result = _invoke(runner, client, ["task", "attach", TASK, str(path), "--json"])
+        result = _invoke(runner, client, ["plan", "task", "attach", TASK, str(path), "--json"])
         assert result.exit_code == 0, result.output
         assert client.presign_attachment.call_args.kwargs == {
             "filename": "notes.txt",
@@ -291,7 +291,7 @@ class TestAttach:
         path: Path = tmp_path / "big.bin"
         with path.open("wb") as handle:
             handle.truncate(ATTACHMENT_MAX_SIZE_BYTES + 1)
-        result = _invoke(runner, client, ["task", "attach", TASK, str(path)])
+        result = _invoke(runner, client, ["plan", "task", "attach", TASK, str(path)])
         assert result.exit_code == EXIT_USAGE_ERROR
         assert "25 MiB" in result.output
         client.presign_attachment.assert_not_called()
@@ -301,7 +301,7 @@ class TestAttach:
     ) -> None:
         path: Path = tmp_path / "empty.txt"
         path.write_bytes(b"")
-        result = _invoke(runner, client, ["task", "attach", TASK, str(path)])
+        result = _invoke(runner, client, ["plan", "task", "attach", TASK, str(path)])
         assert result.exit_code == EXIT_USAGE_ERROR
         client.presign_attachment.assert_not_called()
 
@@ -312,7 +312,7 @@ class TestAttach:
         path.write_bytes(b"x")
         client.presign_attachment.return_value = _presign()
         client.confirm_attachment.return_value = {"uuid": ATT}
-        _invoke(runner, client, ["task", "attach", TASK, str(path)])
+        _invoke(runner, client, ["plan", "task", "attach", TASK, str(path)])
         assert client.presign_attachment.call_args.kwargs["content_type"] == (
             "application/octet-stream"
         )
@@ -325,7 +325,7 @@ class TestAttach:
         client.presign_attachment.side_effect = APIError(
             503, "No storage.", code="attachment_storage_unavailable"
         )
-        result = _invoke(runner, client, ["task", "attach", TASK, str(path), "--json"])
+        result = _invoke(runner, client, ["plan", "task", "attach", TASK, str(path), "--json"])
         assert result.exit_code != 0
         body: dict[str, Any] = json.loads(result.output)
         assert body["code"] == "attachment_storage_unavailable"
@@ -341,7 +341,7 @@ class TestAttach:
         client.upload_attachment_bytes.side_effect = APIError(
             302, "redirect", code="attachment_upload_redirected"
         )
-        result = _invoke(runner, client, ["task", "attach", TASK, str(path)])
+        result = _invoke(runner, client, ["plan", "task", "attach", TASK, str(path)])
         assert result.exit_code != 0
         client.confirm_attachment.assert_not_called()
 
@@ -352,7 +352,9 @@ class TestAttach:
         path.write_bytes(b"x")
         client.upload_attachment_multipart.return_value = {"uuid": ATT}
         result = _invoke(
-            runner, client, ["task", "attach", TASK, str(path), "--caption", "logs", "--json"]
+            runner,
+            client,
+            ["plan", "task", "attach", TASK, str(path), "--caption", "logs", "--json"],
         )
         assert result.exit_code == 0, result.output
         client.presign_attachment.assert_not_called()
@@ -364,7 +366,9 @@ class TestAttach:
         path: Path = tmp_path / "mid.bin"
         with path.open("wb") as handle:
             handle.truncate(ATTACHMENT_MULTIPART_MAX_BYTES + 1)
-        result = _invoke(runner, client, ["task", "attach", TASK, str(path), "--caption", "x"])
+        result = _invoke(
+            runner, client, ["plan", "task", "attach", TASK, str(path), "--caption", "x"]
+        )
         assert result.exit_code == EXIT_USAGE_ERROR
         client.upload_attachment_multipart.assert_not_called()
 
@@ -374,7 +378,7 @@ class TestAttachmentsListGetDelete:
         client.list_task_attachments.return_value = [
             {"uuid": ATT, "filename": "[b]x[/b].txt", "size": 5, "status": "ready"}
         ]
-        result = _invoke(runner, client, ["task", "attachments", TASK])
+        result = _invoke(runner, client, ["plan", "task", "attachments", TASK])
         assert result.exit_code == 0, result.output
         assert '"[b]x[/b].txt"' in result.output
 
@@ -384,7 +388,7 @@ class TestAttachmentsListGetDelete:
         client.download_attachment.return_value = b"payload"
         target: Path = tmp_path / "out.txt"
         result = _invoke(
-            runner, client, ["task", "attachment", "get", TASK, ATT, "-o", str(target)]
+            runner, client, ["plan", "task", "attachment", "get", TASK, ATT, "-o", str(target)]
         )
         assert result.exit_code == 0, result.output
         assert target.read_bytes() == b"payload"
@@ -395,7 +399,7 @@ class TestAttachmentsListGetDelete:
         target: Path = tmp_path / "out.txt"
         target.write_bytes(b"keep me")
         result = _invoke(
-            runner, client, ["task", "attachment", "get", TASK, ATT, "-o", str(target)]
+            runner, client, ["plan", "task", "attachment", "get", TASK, ATT, "-o", str(target)]
         )
         assert result.exit_code == EXIT_USAGE_ERROR
         assert target.read_bytes() == b"keep me"
@@ -410,7 +414,18 @@ class TestAttachmentsListGetDelete:
         result = _invoke(
             runner,
             client,
-            ["task", "attachment", "get", TASK, ATT, "-o", str(target), "--force", "--json"],
+            [
+                "plan",
+                "task",
+                "attachment",
+                "get",
+                TASK,
+                ATT,
+                "-o",
+                str(target),
+                "--force",
+                "--json",
+            ],
         )
         assert result.exit_code == 0, result.output
         assert target.read_bytes() == b"new"
@@ -422,17 +437,21 @@ class TestAttachmentsListGetDelete:
         client.download_attachment.side_effect = APIError(404, "Gone.", code="not_found")
         target: Path = tmp_path / "out.txt"
         result = _invoke(
-            runner, client, ["task", "attachment", "get", TASK, ATT, "-o", str(target)]
+            runner, client, ["plan", "task", "attachment", "get", TASK, ATT, "-o", str(target)]
         )
         assert result.exit_code == EXIT_NOT_FOUND
         assert not target.exists()
 
     def test_delete_dry_run_and_yes(self, runner: CliRunner, client: MagicMock) -> None:
-        result = _invoke(runner, client, ["task", "attachment", "delete", TASK, ATT, "--dry-run"])
+        result = _invoke(
+            runner, client, ["plan", "task", "attachment", "delete", TASK, ATT, "--dry-run"]
+        )
         assert result.exit_code == 0, result.output
         client.delete_task_attachment.assert_not_called()
         client.delete_task_attachment.return_value = {}
-        result = _invoke(runner, client, ["task", "attachment", "delete", TASK, ATT, "--yes"])
+        result = _invoke(
+            runner, client, ["plan", "task", "attachment", "delete", TASK, ATT, "--yes"]
+        )
         assert result.exit_code == 0, result.output
         assert client.delete_task_attachment.call_args.args == (TASK, ATT)
 
@@ -462,7 +481,9 @@ class TestReviewFindings:
         client.download_attachment.return_value = b"x"
         target: Path = tmp_path / "no-such-dir" / "out.txt"
         result = _invoke(
-            runner, client, ["task", "attachment", "get", TASK, ATT, "-o", str(target), "--json"]
+            runner,
+            client,
+            ["plan", "task", "attachment", "get", TASK, ATT, "-o", str(target), "--json"],
         )
         assert result.exit_code == EXIT_USAGE_ERROR
         body: dict[str, Any] = json.loads(result.output)
@@ -480,7 +501,7 @@ class TestReviewFindings:
 
         client.download_attachment.side_effect = download
         result = _invoke(
-            runner, client, ["task", "attachment", "get", TASK, ATT, "-o", str(target)]
+            runner, client, ["plan", "task", "attachment", "get", TASK, ATT, "-o", str(target)]
         )
         assert result.exit_code == EXIT_USAGE_ERROR
         assert target.read_bytes() == b"someone else's file"
@@ -492,7 +513,9 @@ class TestReviewFindings:
         link: Path = tmp_path / "out.txt"
         link.symlink_to(elsewhere)
         client.download_attachment.return_value = b"attachment"
-        result = _invoke(runner, client, ["task", "attachment", "get", TASK, ATT, "-o", str(link)])
+        result = _invoke(
+            runner, client, ["plan", "task", "attachment", "get", TASK, ATT, "-o", str(link)]
+        )
         assert result.exit_code == EXIT_USAGE_ERROR
         assert not elsewhere.exists()
 

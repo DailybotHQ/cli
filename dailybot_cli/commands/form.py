@@ -366,7 +366,9 @@ def _resolve_owner_uuids(
             to_resolve.append(ident)
     if to_resolve:
         with console.status("Resolving owner names..."):
-            users: list[dict[str, Any]] = client.list_users(include_email=True)
+            users: list[dict[str, Any]] = client.list_users(
+                include_email=True, include_inactive=True
+            )
         for ident in to_resolve:
             try:
                 uid, _name = resolve_user_by_name_or_uuid(users, ident)

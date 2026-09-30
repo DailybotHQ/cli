@@ -40,18 +40,18 @@ def _invoke(runner: CliRunner, client: MagicMock, args: list[str], module: str =
 class TestProjectReads:
     def test_list_calls_the_door(self, runner: CliRunner, client: MagicMock) -> None:
         client.list_projects.return_value = _page([{"uuid": "p-1", "name": "Apollo"}])
-        assert _invoke(runner, client, ["project", "list"]).exit_code == 0
+        assert _invoke(runner, client, ["plan", "project", "list"]).exit_code == 0
         client.list_projects.assert_called_once()
 
     def test_get_calls_the_door(self, runner: CliRunner, client: MagicMock) -> None:
         client.get_project.return_value = {"uuid": "p-1", "name": "Apollo"}
-        assert _invoke(runner, client, ["project", "get", "p-1"]).exit_code == 0
+        assert _invoke(runner, client, ["plan", "project", "get", "p-1"]).exit_code == 0
         client.get_project.assert_called_once()
 
     def test_updates_uses_the_batched_digest(self, runner: CliRunner, client: MagicMock) -> None:
         # The batched door exists precisely to replace one request per project.
         client.list_project_updates.return_value = _page([{"uuid": "u-1", "body": "shipped"}])
-        assert _invoke(runner, client, ["project", "updates"]).exit_code == 0
+        assert _invoke(runner, client, ["plan", "project", "updates"]).exit_code == 0
         client.list_project_updates.assert_called_once()
         client.get_project.assert_not_called()
 
@@ -59,18 +59,18 @@ class TestProjectReads:
 class TestGoalReads:
     def test_list_calls_the_door(self, runner: CliRunner, client: MagicMock) -> None:
         client.list_goals.return_value = _page([{"uuid": "g-1", "name": "Q4"}])
-        assert _invoke(runner, client, ["goal", "list"], module="goal").exit_code == 0
+        assert _invoke(runner, client, ["plan", "goal", "list"], module="goal").exit_code == 0
         client.list_goals.assert_called_once()
 
     def test_get_calls_the_door(self, runner: CliRunner, client: MagicMock) -> None:
         client.get_goal.return_value = {"uuid": "g-1", "name": "Q4"}
-        assert _invoke(runner, client, ["goal", "get", "g-1"], module="goal").exit_code == 0
+        assert _invoke(runner, client, ["plan", "goal", "get", "g-1"], module="goal").exit_code == 0
 
 
 class TestIncludesAreOptIn:
     def test_no_include_is_sent_by_default(self, runner: CliRunner, client: MagicMock) -> None:
         client.list_goals.return_value = _page()
-        _invoke(runner, client, ["goal", "list"], module="goal")
+        _invoke(runner, client, ["plan", "goal", "list"], module="goal")
         assert client.list_goals.call_args[1]["include"] is None
 
     def test_include_is_forwarded_when_asked(self, runner: CliRunner, client: MagicMock) -> None:
@@ -78,7 +78,7 @@ class TestIncludesAreOptIn:
         _invoke(
             runner,
             client,
-            ["goal", "list", "--include", "progress", "--include", "projects"],
+            ["plan", "goal", "list", "--include", "progress", "--include", "projects"],
             module="goal",
         )
         assert set(client.list_goals.call_args[1]["include"]) == {"progress", "projects"}
@@ -91,7 +91,7 @@ class TestAbsentNullZeroAreThreeAnswers:
         self, runner: CliRunner, client: MagicMock
     ) -> None:
         client.list_goals.return_value = _page([{"uuid": "g-1", "name": "Q4"}])
-        out: str = _invoke(runner, client, ["goal", "list"], module="goal").output
+        out: str = _invoke(runner, client, ["plan", "goal", "list"], module="goal").output
         assert "not requested" in out.lower()
 
     def test_a_null_rollup_renders_as_nothing_to_measure(
@@ -100,7 +100,7 @@ class TestAbsentNullZeroAreThreeAnswers:
         # null is legitimately different: the goal has nothing to measure yet.
         client.list_goals.return_value = _page([{"uuid": "g-1", "name": "Q4", "progress": None}])
         out: str = _invoke(
-            runner, client, ["goal", "list", "--include", "progress"], module="goal"
+            runner, client, ["plan", "goal", "list", "--include", "progress"], module="goal"
         ).output
         assert "nothing to measure" in out.lower()
 
@@ -112,7 +112,7 @@ class TestAbsentNullZeroAreThreeAnswers:
             [{"uuid": "g-1", "name": "Q4", "progress": 0, "project_count": 0}]
         )
         out: str = _invoke(
-            runner, client, ["goal", "list", "--include", "progress"], module="goal"
+            runner, client, ["plan", "goal", "list", "--include", "progress"], module="goal"
         ).output
         assert "0" in out
         assert "not requested" not in out.lower()
@@ -121,7 +121,7 @@ class TestAbsentNullZeroAreThreeAnswers:
         self, runner: CliRunner, client: MagicMock
     ) -> None:
         client.list_goals.return_value = _page([{"uuid": "g-1", "name": "Q4"}])
-        result = _invoke(runner, client, ["goal", "list", "--json"], module="goal")
+        result = _invoke(runner, client, ["plan", "goal", "list", "--json"], module="goal")
         row: dict[str, Any] = json.loads(result.output)["results"][0]
         assert "progress" not in row
         assert "project_count" not in row
@@ -132,7 +132,7 @@ class TestUntrustedRendering:
         self, runner: CliRunner, client: MagicMock
     ) -> None:
         client.list_projects.return_value = _page([{"uuid": "p-1", "name": "rm -rf everything"}])
-        assert '"' in _invoke(runner, client, ["project", "list"]).output
+        assert '"' in _invoke(runner, client, ["plan", "project", "list"]).output
 
 
 class TestNoCreateHintThatCannotBeHonoured:
@@ -141,7 +141,7 @@ class TestNoCreateHintThatCannotBeHonoured:
     ) -> None:
         # Container creates need tasks:admin, which no API key can hold.
         client.list_projects.return_value = _page()
-        out: str = _invoke(runner, client, ["project", "list"]).output
+        out: str = _invoke(runner, client, ["plan", "project", "list"]).output
         assert "project create" not in out
 
 
@@ -149,11 +149,11 @@ class TestHelp:
     @pytest.mark.parametrize(
         "args",
         [
-            ["project", "list"],
-            ["project", "get"],
-            ["project", "updates"],
-            ["goal", "list"],
-            ["goal", "get"],
+            ["plan", "project", "list"],
+            ["plan", "project", "get"],
+            ["plan", "project", "updates"],
+            ["plan", "goal", "list"],
+            ["plan", "goal", "get"],
         ],
     )
     def test_help_renders(self, runner: CliRunner, args: list[str]) -> None:
@@ -168,7 +168,9 @@ class TestHelp:
 class TestProjectUpdatePost:
     def test_it_posts_the_body(self, runner: CliRunner, client: MagicMock) -> None:
         client.post_project_update.return_value = {"uuid": "u-1", "_idempotency_replayed": False}
-        result = _invoke(runner, client, ["project", "update-post", "p-1", "shipped the thing"])
+        result = _invoke(
+            runner, client, ["plan", "project", "update-post", "p-1", "shipped the thing"]
+        )
         assert result.exit_code == 0
         assert client.post_project_update.call_args[1]["body"] == "shipped the thing"
 
@@ -176,7 +178,7 @@ class TestProjectUpdatePost:
         client.post_project_update.return_value = {"uuid": "u-1", "_idempotency_replayed": False}
         with patch("dailybot_cli.commands.project.require_auth", return_value=client):
             result = runner.invoke(
-                cli, ["project", "update-post", "p-1", "-"], input="a long update\n"
+                cli, ["plan", "project", "update-post", "p-1", "-"], input="a long update\n"
             )
         assert result.exit_code == 0
         assert "a long update" in client.post_project_update.call_args[1]["body"]
@@ -184,14 +186,15 @@ class TestProjectUpdatePost:
     def test_the_idempotency_key_flag_is_offered(self, runner: CliRunner) -> None:
         # The door honours Idempotency-Key now, so the flag is real now.
         assert (
-            "--idempotency-key" in runner.invoke(cli, ["project", "update-post", "--help"]).output
+            "--idempotency-key"
+            in runner.invoke(cli, ["plan", "project", "update-post", "--help"]).output
         )
 
     def test_no_web_url_is_printed_after_posting(
         self, runner: CliRunner, client: MagicMock
     ) -> None:
         client.post_project_update.return_value = {"uuid": "u-1", "_idempotency_replayed": False}
-        result = _invoke(runner, client, ["project", "update-post", "p-1", "done"])
+        result = _invoke(runner, client, ["plan", "project", "update-post", "p-1", "done"])
         for invented in ("http://", "https://", "app.dailybot.com"):
             assert invented not in result.output
 
@@ -199,7 +202,7 @@ class TestProjectUpdatePost:
 class TestMilestoneList:
     def test_it_scopes_to_a_project_when_given(self, runner: CliRunner, client: MagicMock) -> None:
         client.list_milestones.return_value = _page([{"uuid": "m-1", "name": "Beta"}])
-        result = _invoke(runner, client, ["project", "milestones", "p-1"])
+        result = _invoke(runner, client, ["plan", "project", "milestones", "p-1"])
         assert result.exit_code == 0
         assert client.list_milestones.call_args[0][0] == "p-1"
 
@@ -214,7 +217,7 @@ class TestMilestoneComplete:
             "_idempotency_replayed": False,
         }
         result = _invoke(
-            runner, client, ["project", "milestone-complete", "p-1", "m-1", "--dry-run"]
+            runner, client, ["plan", "project", "milestone-complete", "p-1", "m-1", "--dry-run"]
         )
         assert result.exit_code == 0
         assert client.complete_milestone.call_count == 1
@@ -234,18 +237,22 @@ class TestMilestoneComplete:
             },
             {"uuid": "m-1", "_idempotency_replayed": False},
         ]
-        result = _invoke(runner, client, ["project", "milestone-complete", "p-1", "m-1", "--yes"])
+        result = _invoke(
+            runner, client, ["plan", "project", "milestone-complete", "p-1", "m-1", "--yes"]
+        )
         assert result.exit_code == 0
         assert "open tasks" in result.output.lower()
 
     def test_help_says_open_tasks_stay_open(self, runner: CliRunner) -> None:
-        out: str = runner.invoke(cli, ["project", "milestone-complete", "--help"]).output.lower()
+        out: str = runner.invoke(
+            cli, ["plan", "project", "milestone-complete", "--help"]
+        ).output.lower()
         assert "open tasks" in out
 
 
 class TestMilestoneReopen:
     def test_it_calls_the_reopen_door(self, runner: CliRunner, client: MagicMock) -> None:
         client.reopen_milestone.return_value = {"uuid": "m-1", "_idempotency_replayed": False}
-        result = _invoke(runner, client, ["project", "milestone-reopen", "p-1", "m-1"])
+        result = _invoke(runner, client, ["plan", "project", "milestone-reopen", "p-1", "m-1"])
         assert result.exit_code == 0
         client.reopen_milestone.assert_called_once_with("p-1", "m-1", idempotency_key=None)

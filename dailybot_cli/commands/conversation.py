@@ -46,7 +46,7 @@ def _resolve_participants(client: DailyBotClient, identifiers: list[str]) -> lis
     """
     needs_directory: bool = any(not UUID_PATTERN.match(ident) for ident in identifiers)
     directory: list[dict[str, Any]] = (
-        client.list_users(include_email=True) if needs_directory else []
+        client.list_users(include_email=True, include_inactive=True) if needs_directory else []
     )
     resolved: list[tuple[str, str]] = []
     seen: set[str] = set()

@@ -98,7 +98,7 @@ class TestWire:
     def test_update_react_posts_the_emoji_stamped(self) -> None:
         with patch("httpx.post", return_value=_response({"uuid": U, "reactions": []})) as post:
             _client().add_update_reaction(P, U, "👍")
-        assert post.call_args.args[0] == f"{API}/v1/tasks/projects/{P}/updates/{U}/reactions/"
+        assert post.call_args.args[0] == f"{API}/v1/plan/projects/{P}/updates/{U}/reactions/"
         assert post.call_args.kwargs["json"] == {"emoji": "👍", "agent_name": "Claude Code"}
 
     def test_update_unreact_percent_encodes(self) -> None:
@@ -106,7 +106,7 @@ class TestWire:
             _client().remove_update_reaction(P, U, "👍")
         assert req.call_args.args[:2] == (
             "DELETE",
-            f"{API}/v1/tasks/projects/{P}/updates/{U}/reactions/%F0%9F%91%8D/",
+            f"{API}/v1/plan/projects/{P}/updates/{U}/reactions/%F0%9F%91%8D/",
         )
 
     def test_update_unreact_refuses_a_non_emoji(self) -> None:
@@ -119,14 +119,14 @@ class TestWire:
         page: dict[str, Any] = {"count": 0, "next": None, "previous": None, "results": []}
         with patch("httpx.get", return_value=_response(page)) as get:
             _client().list_comment_reactions(T, C, emoji="👍")
-        assert get.call_args.args[0] == f"{API}/v1/tasks/tasks/{T}/comments/{C}/reactions/"
+        assert get.call_args.args[0] == f"{API}/v1/plan/tasks/{T}/comments/{C}/reactions/"
         assert get.call_args.kwargs["params"]["emoji"] == "👍"
 
     def test_list_update_reactions_without_emoji(self) -> None:
         page: dict[str, Any] = {"count": 0, "next": None, "previous": None, "results": []}
         with patch("httpx.get", return_value=_response(page)) as get:
             _client().list_update_reactions(P, U)
-        assert get.call_args.args[0] == f"{API}/v1/tasks/projects/{P}/updates/{U}/reactions/"
+        assert get.call_args.args[0] == f"{API}/v1/plan/projects/{P}/updates/{U}/reactions/"
         assert "emoji" not in (get.call_args.kwargs.get("params") or {})
 
 
@@ -143,24 +143,30 @@ class TestCommands:
     def test_update_react_and_unreact(self) -> None:
         client: MagicMock = MagicMock(spec=DailyBotClient)
         client.add_update_reaction.return_value = {"uuid": U, "reactions": []}
-        result = _invoke("project", ["project", "update-react", P, U, "👍", "--json"], client)
+        result = _invoke(
+            "project", ["plan", "project", "update-react", P, U, "👍", "--json"], client
+        )
         assert result.exit_code == 0, result.output
         client.add_update_reaction.assert_called_once_with(P, U, "👍")
-        result = _invoke("project", ["project", "update-unreact", P, U, "👍", "--json"], client)
+        result = _invoke(
+            "project", ["plan", "project", "update-unreact", P, U, "👍", "--json"], client
+        )
         assert result.exit_code == 0, result.output
         assert json.loads(result.output)["removed"] is True
         client.remove_update_reaction.assert_called_once_with(P, U, "👍")
 
     def test_update_react_refuses_text_locally(self) -> None:
         client: MagicMock = MagicMock(spec=DailyBotClient)
-        result = _invoke("project", ["project", "update-react", P, U, ":+1:"], client)
+        result = _invoke("project", ["plan", "project", "update-react", P, U, ":+1:"], client)
         assert result.exit_code == 2
         client.add_update_reaction.assert_not_called()
 
     def test_update_react_needs_a_person(self) -> None:
         client: MagicMock = MagicMock(spec=DailyBotClient)
         client.add_update_reaction.side_effect = APIError(400, "no", code="actor_required")
-        result = _invoke("project", ["project", "update-react", P, U, "👍", "--json"], client)
+        result = _invoke(
+            "project", ["plan", "project", "update-react", P, U, "👍", "--json"], client
+        )
         assert result.exit_code == 3
         assert json.loads(result.output)["code"] == "actor_required"
 
@@ -176,7 +182,9 @@ class TestCommands:
                 }
             ]
         )
-        result = _invoke("task", ["task", "comment-reactions", T, C, "--emoji", "👍"], client)
+        result = _invoke(
+            "task", ["plan", "task", "comment-reactions", T, C, "--emoji", "👍"], client
+        )
         assert result.exit_code == 0, result.output
         assert "Jane Doe" in result.output and 'via "Claude Code"' in result.output
         assert client.list_comment_reactions.call_args.kwargs["emoji"] == "👍"
@@ -184,14 +192,16 @@ class TestCommands:
     def test_update_reactions_list_json(self) -> None:
         client: MagicMock = MagicMock(spec=DailyBotClient)
         client.list_update_reactions.return_value = _page([])
-        result = _invoke("project", ["project", "update-reactions", P, U, "--json"], client)
+        result = _invoke("project", ["plan", "project", "update-reactions", P, U, "--json"], client)
         assert result.exit_code == 0, result.output
         assert json.loads(result.output)["results"] == []
         assert client.list_update_reactions.call_args.kwargs["emoji"] is None
 
     def test_list_refuses_a_non_emoji_filter(self) -> None:
         client: MagicMock = MagicMock(spec=DailyBotClient)
-        result = _invoke("task", ["task", "comment-reactions", T, C, "--emoji", "ok"], client)
+        result = _invoke(
+            "task", ["plan", "task", "comment-reactions", T, C, "--emoji", "ok"], client
+        )
         assert result.exit_code == 2
         client.list_comment_reactions.assert_not_called()
 
@@ -202,12 +212,14 @@ class TestLimit:
         client.add_update_reaction.side_effect = APIError(
             400, "limit", code="reaction_limit_reached", extra={"limit": 20}
         )
-        result = _invoke("project", ["project", "update-react", P, U, "🎉", "--json"], client)
+        result = _invoke(
+            "project", ["plan", "project", "update-react", P, U, "🎉", "--json"], client
+        )
         assert result.exit_code == 2
         body: dict[str, Any] = json.loads(result.output)
         assert body["code"] == "reaction_limit_reached"
-        assert "dailybot project update-unreact" in body["message"]
-        assert "dailybot task comment-unreact" in body["message"]
+        assert "dailybot plan project update-unreact" in body["message"]
+        assert "dailybot plan task comment-unreact" in body["message"]
         assert "The limit is 20" in body["message"]
 
     def test_limit_without_extra_stays_generic(self) -> None:
@@ -215,7 +227,7 @@ class TestLimit:
         client.add_comment_reaction.side_effect = APIError(
             400, "limit", code="reaction_limit_reached"
         )
-        result = _invoke("task", ["task", "comment-react", T, C, "🎉", "--json"], client)
+        result = _invoke("task", ["plan", "task", "comment-react", T, C, "🎉", "--json"], client)
         assert result.exit_code == 2
         assert "The limit is" not in json.loads(result.output)["message"]
 
@@ -224,8 +236,8 @@ class TestListFlags:
     @pytest.mark.parametrize(
         ("module", "argv"),
         [
-            ("task", ["task", "comment-reactions", T, C, "--search", "Jane"]),
-            ("project", ["project", "update-reactions", P, U, "--today"]),
+            ("task", ["plan", "task", "comment-reactions", T, C, "--search", "Jane"]),
+            ("project", ["plan", "project", "update-reactions", P, U, "--today"]),
         ],
     )
     def test_no_filters_the_door_does_not_honour(self, module: str, argv: list[str]) -> None:
@@ -236,7 +248,7 @@ class TestListFlags:
     def test_all_fetches_every_page(self) -> None:
         client: MagicMock = MagicMock(spec=DailyBotClient)
         client.list_update_reactions.return_value = _page([])
-        result = _invoke("project", ["project", "update-reactions", P, U, "--all"], client)
+        result = _invoke("project", ["plan", "project", "update-reactions", P, U, "--all"], client)
         assert result.exit_code == 0, result.output
         assert client.list_update_reactions.call_args.kwargs["fetch_all"] is True
 
@@ -256,7 +268,7 @@ class TestRendering:
                 }
             ]
         )
-        result = _invoke("task", ["task", "comments", T], client)
+        result = _invoke("task", ["plan", "task", "comments", T], client)
         assert result.exit_code == 0, result.output
         assert "🚀 1" in result.output and "John Roe" in result.output
 
@@ -274,6 +286,6 @@ class TestRendering:
                 }
             ]
         )
-        result = _invoke("project", ["project", "updates", P], client)
+        result = _invoke("project", ["plan", "project", "updates", P], client)
         assert result.exit_code == 0, result.output
         assert "👍 1" in result.output

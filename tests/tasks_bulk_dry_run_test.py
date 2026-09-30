@@ -20,7 +20,7 @@ from dailybot_cli.commands.public_api_helpers import EXIT_USAGE_ERROR
 from dailybot_cli.main import cli
 
 API_URL: str = "http://test-api.example.com"
-BULK_URL: str = f"{API_URL}/v1/tasks/tasks/bulk/"
+BULK_URL: str = f"{API_URL}/v1/plan/tasks/bulk/"
 ITEMS: str = '[{"task": "ENG-142", "owner": "u-1"}]'
 
 PREVIEW: dict[str, Any] = {
@@ -101,7 +101,7 @@ class TestDryRunCommand:
         result = _invoke(
             runner,
             client,
-            ["task", "bulk", "--operation", "set_owner", "-f", "-", "--dry-run", "--json"],
+            ["plan", "task", "bulk", "--operation", "set_owner", "-f", "-", "--dry-run", "--json"],
         )
         assert result.exit_code == 0, result.output
         assert json.loads(result.output) == PREVIEW
@@ -113,7 +113,9 @@ class TestDryRunCommand:
     ) -> None:
         client.bulk_tasks.return_value = PREVIEW
         result = _invoke(
-            runner, client, ["task", "bulk", "--operation", "set_owner", "-f", "-", "--dry-run"]
+            runner,
+            client,
+            ["plan", "task", "bulk", "--operation", "set_owner", "-f", "-", "--dry-run"],
         )
         assert result.exit_code == 0, result.output
         collapsed: str = " ".join(result.output.split())
@@ -130,7 +132,7 @@ class TestDryRunCommand:
         result = _invoke(
             runner,
             client,
-            ["task", "bulk", "--operation", "set_owner", "-f", "-", "--dry-run", "--json"],
+            ["plan", "task", "bulk", "--operation", "set_owner", "-f", "-", "--dry-run", "--json"],
         )
         assert result.exit_code == 1
         assert json.loads(result.output)["refused"][0]["code"] == "version_conflict"
@@ -144,7 +146,7 @@ class TestDryRunCommand:
         result = _invoke(
             runner,
             client,
-            ["task", "bulk", "--operation", "archive", "-f", "-", "--dry-run", "--json"],
+            ["plan", "task", "bulk", "--operation", "archive", "-f", "-", "--dry-run", "--json"],
         )
         assert result.exit_code == EXIT_USAGE_ERROR
         body: dict[str, Any] = json.loads(result.output)
@@ -155,7 +157,9 @@ class TestDryRunCommand:
     def test_a_dry_run_needs_no_confirmation(self, runner: CliRunner, client: MagicMock) -> None:
         client.bulk_tasks.return_value = PREVIEW
         result = _invoke(
-            runner, client, ["task", "bulk", "--operation", "set_owner", "-f", "-", "--dry-run"]
+            runner,
+            client,
+            ["plan", "task", "bulk", "--operation", "set_owner", "-f", "-", "--dry-run"],
         )
         assert "Proceed?" not in result.output
 
@@ -165,7 +169,7 @@ class TestBulkContract:
         result = _invoke(
             runner,
             client,
-            ["task", "bulk", "--operation", "create", "-f", "-", "--yes"],
+            ["plan", "task", "bulk", "--operation", "create", "-f", "-", "--yes"],
             stdin='[{"title": "x"}]',
         )
         assert result.exit_code == EXIT_USAGE_ERROR
@@ -177,6 +181,7 @@ class TestBulkContract:
             runner,
             client,
             [
+                "plan",
                 "task",
                 "bulk",
                 "--operation",
@@ -195,7 +200,7 @@ class TestBulkContract:
 
     def test_an_undeclared_operation_is_refused(self, runner: CliRunner, client: MagicMock) -> None:
         result = _invoke(
-            runner, client, ["task", "bulk", "--operation", "explode", "-f", "-", "--yes"]
+            runner, client, ["plan", "task", "bulk", "--operation", "explode", "-f", "-", "--yes"]
         )
         assert result.exit_code == EXIT_USAGE_ERROR
         client.bulk_tasks.assert_not_called()
@@ -207,14 +212,17 @@ class TestBulkContract:
             "results": [{"task": "ENG-9", "status": "error", "code": "version_conflict"}],
         }
         result = _invoke(
-            runner, client, ["task", "bulk", "--operation", "archive", "-f", "-", "--yes"]
+            runner, client, ["plan", "task", "bulk", "--operation", "archive", "-f", "-", "--yes"]
         )
         assert result.exit_code == 1
         assert "ENG-9" in result.output
 
     def test_the_prompt_points_at_the_dry_run(self, runner: CliRunner, client: MagicMock) -> None:
         result = _invoke(
-            runner, client, ["task", "bulk", "--operation", "archive", "-f", "-"], stdin=ITEMS
+            runner,
+            client,
+            ["plan", "task", "bulk", "--operation", "archive", "-f", "-"],
+            stdin=ITEMS,
         )
         # stdin is the batch, so the prompt reads EOF and aborts; the notice is what matters.
         assert "--dry-run" in result.output

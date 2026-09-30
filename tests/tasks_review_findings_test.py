@@ -80,7 +80,7 @@ class TestCriticalListMyTasksReachesTheApi:
             patch("dailybot_cli.commands.tasks.require_auth", return_value=real_client),
             patch("httpx.get", return_value=_ok()),
         ):
-            result = runner.invoke(cli, ["tasks", "mine", "--scope", "assigned"])
+            result = runner.invoke(cli, ["plan", "tasks", "mine", "--scope", "assigned"])
         assert result.exit_code == 0, result.output
 
 
@@ -109,7 +109,7 @@ class TestExitCodesMatchTheDocumentedTable:
         with (
             patch("dailybot_cli.commands.tasks.require_auth", return_value=client),
         ):
-            result = runner.invoke(cli, ["tasks", "inbox"])
+            result = runner.invoke(cli, ["plan", "tasks", "inbox"])
         assert result.exit_code != EXIT_NOT_AUTHENTICATED
 
     def test_a_person_shaped_refusal_still_exits_three(
@@ -119,7 +119,7 @@ class TestExitCodesMatchTheDocumentedTable:
         with (
             patch("dailybot_cli.commands.tasks.require_auth", return_value=client),
         ):
-            result = runner.invoke(cli, ["tasks", "inbox"])
+            result = runner.invoke(cli, ["plan", "tasks", "inbox"])
         assert result.exit_code == EXIT_NOT_AUTHENTICATED
 
     def test_json_mode_emits_a_payload_on_a_refusal(
@@ -131,7 +131,7 @@ class TestExitCodesMatchTheDocumentedTable:
         with (
             patch("dailybot_cli.commands.tasks.require_auth", return_value=client),
         ):
-            result = runner.invoke(cli, ["tasks", "inbox", "--json"])
+            result = runner.invoke(cli, ["plan", "tasks", "inbox", "--json"])
         body: dict[str, Any] = _json.loads(result.output)
         assert body["code"] == "insufficient_scope"
 
@@ -140,7 +140,7 @@ class TestExitCodesMatchTheDocumentedTable:
     ) -> None:
         client.update_task.side_effect = APIError(404, "gone", code="not_found")
         with patch("dailybot_cli.commands.task.require_auth", return_value=client):
-            result = runner.invoke(cli, ["task", "update", "t-1", "--title", "x"])
+            result = runner.invoke(cli, ["plan", "task", "update", "t-1", "--title", "x"])
         assert result.exit_code == EXIT_NOT_FOUND
 
 
@@ -150,25 +150,25 @@ class TestAdvertisedFlagsAreHonoured:
     def test_project_list_forwards_search(self, runner: CliRunner, client: MagicMock) -> None:
         client.list_projects.return_value = _page()
         with patch("dailybot_cli.commands.project.require_auth", return_value=client):
-            runner.invoke(cli, ["project", "list", "--search", "Apollo"])
+            runner.invoke(cli, ["plan", "project", "list", "--search", "Apollo"])
         assert client.list_projects.call_args[1]["params"]["search"] == "Apollo"
 
     def test_goal_list_forwards_date_flags(self, runner: CliRunner, client: MagicMock) -> None:
         client.list_goals.return_value = _page()
         with patch("dailybot_cli.commands.goal.require_auth", return_value=client):
-            runner.invoke(cli, ["goal", "list", "--since", "2026-09-01"])
+            runner.invoke(cli, ["plan", "goal", "list", "--since", "2026-09-01"])
         assert client.list_goals.call_args[1]["params"]["start_date"] == "2026-09-01"
 
     def test_milestones_forwards_search(self, runner: CliRunner, client: MagicMock) -> None:
         client.list_milestones.return_value = _page()
         with patch("dailybot_cli.commands.project.require_auth", return_value=client):
-            runner.invoke(cli, ["project", "milestones", "p-1", "--search", "beta"])
+            runner.invoke(cli, ["plan", "project", "milestones", "p-1", "--search", "beta"])
         assert client.list_milestones.call_args[1]["params"]["search"] == "beta"
 
     def test_task_comments_forwards_search(self, runner: CliRunner, client: MagicMock) -> None:
         client.list_task_comments.return_value = _page()
         with patch("dailybot_cli.commands.task.require_auth", return_value=client):
-            runner.invoke(cli, ["task", "comments", "t-1", "--search", "deploy"])
+            runner.invoke(cli, ["plan", "task", "comments", "t-1", "--search", "deploy"])
         assert client.list_task_comments.call_args[1]["params"]["search"] == "deploy"
 
     def test_include_and_filters_coexist(self, real_client: DailyBotClient) -> None:
@@ -180,11 +180,11 @@ class TestAdvertisedFlagsAreHonoured:
         assert sent["search"] == "q4"
 
     def test_task_list_does_not_advertise_filters_the_door_refuses(self, runner: CliRunner) -> None:
-        # `/v1/tasks/tasks/` is strict and declares none of the shared text/date
+        # `/v1/plan/tasks/` is strict and declares none of the shared text/date
         # filters. The first fix dropped them silently, which still let a caller
         # believe `--search deploy` had filtered; the flags are now simply not
         # offered, so a bad invocation is a usage error instead of a wrong answer.
-        out: str = runner.invoke(cli, ["task", "list", "--help"]).output
+        out: str = runner.invoke(cli, ["plan", "task", "list", "--help"]).output
         for undeclared in ("--search", "--last-week", "--since", "--until"):
             assert undeclared not in out
 
@@ -192,12 +192,12 @@ class TestAdvertisedFlagsAreHonoured:
         self, runner: CliRunner, client: MagicMock
     ) -> None:
         with patch("dailybot_cli.commands.task.require_auth", return_value=client):
-            result = runner.invoke(cli, ["task", "list", "--last-week"])
+            result = runner.invoke(cli, ["plan", "task", "list", "--last-week"])
         assert result.exit_code == 2
         client.list_tasks.assert_not_called()
 
     def test_tasks_search_does_not_advertise_date_flags_it_drops(self, runner: CliRunner) -> None:
-        out: str = runner.invoke(cli, ["tasks", "search", "--help"]).output
+        out: str = runner.invoke(cli, ["plan", "tasks", "search", "--help"]).output
         assert "--last-week" not in out
         assert "--since" not in out
 
@@ -212,7 +212,7 @@ class TestCountsRespectsTheInjectionBoundary:
         with (
             patch("dailybot_cli.commands.tasks.require_auth", return_value=client),
         ):
-            result = runner.invoke(cli, ["tasks", "counts"])
+            result = runner.invoke(cli, ["plan", "tasks", "counts"])
         # The literal characters DO appear — that is the point: they are shown as
         # data instead of being interpreted as a style tag. What must be true is
         # that the value went through the presenter, i.e. it is quoted.
@@ -240,7 +240,7 @@ class TestRenderersAreShared:
 
         assert hasattr(display, helper)
 
-    @pytest.mark.parametrize("module", ["board", "project", "goal"])
+    @pytest.mark.parametrize("module", ["plan", "board", "project", "goal"])
     def test_no_command_module_builds_a_table_itself(self, module: str) -> None:
         import pathlib
 
@@ -280,5 +280,5 @@ class TestDocumentationMatchesTheCode:
             for doc in ("docs/API_REFERENCE.md", "README.md")
         )
         assert documented
-        result = CliRunner().invoke(cli, ["task", "participants", "remove", "--help"])
+        result = CliRunner().invoke(cli, ["plan", "task", "participants", "remove", "--help"])
         assert result.exit_code == 0
