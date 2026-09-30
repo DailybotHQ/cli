@@ -52,7 +52,7 @@ tests/
 ├── api_client_test.py             # DailyBotClient + APIError (every HTTP method)
 ├── tasks_api_client_test.py       # Tasks transport: constants, query datetimes,
 │                                  #   idempotency posture, dry-run, timeout tiering
-├── tasks_commands_test.py         # `tasks` group: status/entitlements/search/activity/timeline
+├── tasks_commands_test.py         # `tasks` group: status/entitlements/search/activity/timeline (one document)
 ├── tasks_delta_test.py            # `tasks changes`: cursor lifecycle, window expiry
 ├── tasks_person_shaped_test.py    # inbox / mine / counts: person doors (personal keys reach the server)
 ├── tasks_catchup_test.py         # pulse bands, inbox read/unread, activity cursor, mentionables

@@ -876,7 +876,7 @@ Every Tasks command in this release (141), generated from the CLI's own command 
 | `dailybot tasks recents` | List the boards you opened most recently. | yes |
 | `dailybot tasks search` | Search tasks, boards and projects by text. |  |
 | `dailybot tasks status` | Show the workspace pulse — open, overdue and blocked counts. |  |
-| `dailybot tasks timeline` | Show a dated view of the workspace. |  |
+| `dailybot tasks timeline` | Show the dated work in a window: goals that overlap it and tasks with dates. One document, not a paged list; `--include-unscheduled`. |  |
 | `dailybot tasks view delete VIEW` | Delete one saved view. This is permanent. | yes |
 | `dailybot tasks view get VIEW` | Show one saved view. | yes |
 | `dailybot tasks view star VIEW` | Pin a saved view to your favorites. | yes |
@@ -907,7 +907,7 @@ Every Tasks command in this release (141), generated from the CLI's own command 
 | `dailybot task comment-reactions TASK COMMENT` | Everyone who reacted to a comment, oldest first, with the agent that reacted for them. |  |
 | `dailybot task comment-unreact TASK COMMENT EMOJI` | Remove your emoji reaction from a comment. | yes |
 | `dailybot task comments TASK` | List a task's comments. |  |
-| `dailybot task create` | Create a task. |  |
+| `dailybot task create` | Create a task (`--start-date`, `--estimate`, `--parent`, `--label`; a failed label step exits 1 and names the created task). |  |
 | `dailybot task delete TASK` | Archive a task. An alias of `task archive` — nothing is destroyed. |  |
 | `dailybot task duplicate TASK` | Copy a task into the same column, with a new key. |  |
 | `dailybot task events TASK` | List a task's raw event history (created, moved, owner changed, …). |  |
@@ -915,7 +915,7 @@ Every Tasks command in this release (141), generated from the CLI's own command 
 | `dailybot task labels TASK` | Add, remove or replace a task's labels. |  |
 | `dailybot task link TASK OTHER_TASK` | Relate one task to another. |  |
 | `dailybot task list` | List tasks. |  |
-| `dailybot task move TASK` | Move a task to another column, or to another board. |  |
+| `dailybot task move TASK` | Move a task to another column, or to another board (a cross-board move gives the task a new key; the uuid never changes). |  |
 | `dailybot task mute TASK` | Stop notifications from a task while staying on it. | yes |
 | `dailybot task participants add TASK` | Add a participant to a task. | yes |
 | `dailybot task participants list TASK` | List who is on a task and who watches it. | yes |
@@ -926,7 +926,7 @@ Every Tasks command in this release (141), generated from the CLI's own command 
 | `dailybot task unlink TASK RELATION` | Remove a link between two tasks. Recreate it with `task link`. |  |
 | `dailybot task unmute TASK` | Resume notifications from a task you muted. | yes |
 | `dailybot task unwatch TASK` | Stop following a task. | yes |
-| `dailybot task update TASK` | Change fields on a task. |  |
+| `dailybot task update TASK` | Change fields on a task (`--start-date`, `--estimate`, `--milestone`, `--clear-milestone`). |  |
 | `dailybot task watch TASK` | Follow a task's notifications without being on it. | yes |
 
 #### Boards — `dailybot board`
@@ -957,7 +957,7 @@ Every Tasks command in this release (141), generated from the CLI's own command 
 | `dailybot board tasks BOARD` | List the tasks on one board. |  |
 | `dailybot board unstar BOARD` | Unpin a board from your favorites. | yes |
 | `dailybot board update BOARD` | Change a board's name, key, visibility or settings. | yes |
-| `dailybot board view save BOARD` | Replace your saved views on a board with the array in a file. | yes |
+| `dailybot board view save BOARD` | Replace your saved views on a board with the array in a file (`{name, view_mode, group_by, sort, visibility, filters}`; a weak ETag is sent in its strong form). | yes |
 | `dailybot board views BOARD` | List your saved views on a board, with the ETag a save needs. | yes |
 | `dailybot board visit BOARD` | Record that you opened a board, so it shows in `tasks recents`. | yes |
 
@@ -1068,6 +1068,11 @@ Dispatch on `code`, never on the English `detail`.
 | `preview_not_honoured` | a `--dry-run` answer without `dry_run: true`: the server may have applied the change; nothing more was sent | 1 |
 | `column_too_large` | a column too big to return in one read — page with `board tasks` | 4 |
 | `too_many_items` | bulk over 100 items | 2 |
+| `throttled` | too many requests from one actor (writes 60, bulk 30, reads 120, delta reads 240 per minute); the body's `extra.retry_after` (or the `Retry-After` header) is whole seconds, printed by the CLI and put in the `--json` envelope as `retry_after` | **6** |
+| `task_archived` | the task is archived: it cannot be changed or duplicated until `task restore` | 4 |
+| `project_name_conflict` | another project uses the name, archived ones included | 4 |
+| `milestone_not_on_project` | `task update --milestone` named a milestone of another project than the task's board | 2 |
+| `attachment_delete_forbidden` | only the uploader, the comment's author or an organization admin removes a comment's attachment | 4 |
 | `state_in_use` | the column still holds live tasks — re-run `board state archive` with `--migrate-to <state>` so they move first | 4 |
 | `invalid_filter_value` | a declared parameter's value was rejected | 2 |
 | `user_aborted` | a human declined the confirmation — **stop**; never re-run with `--yes` | **7** |
@@ -1215,7 +1220,8 @@ Two contracts, and each command's `--help` states which it follows:
 | Decorator | Commands | No paging flag means |
 | --- | --- | --- |
 | `query_options` (declares `--all`) | `board list`, `project list` / `updates` / `milestones`, `goal list`, `tasks activity`, `task comments` | **every page**, as everywhere else in the CLI |
-| `paging_options` / `date_options` (no `--all`) | `task list`, `tasks search` / `inbox` / `mine` / `timeline` | **one page**; `--limit` sizes that page, it does not walk |
+| `paging_options` / `date_options` (no `--all`) | `task list`, `tasks search` / `inbox` / `mine` | **one page**; `--limit` sizes that page, it does not walk |
+| `window_options` (dates only, no paging) | `tasks timeline` | one document for the window; the door does not page, so there is no `--page` or `--limit`. Read `truncated` and narrow the window |
 
 The bounded set is deliberate: those doors read a workspace's whole task surface, which has
 no natural ceiling. Follow `next` with `--page` when you need more.

@@ -166,7 +166,9 @@ URL is built. So `ENG-1/../../boards/<uuid>/archive/?` is refused with `invalid_
 ETag for shell capture, and `view save` sends it back as `If-Match`. A header value that isn't
 a quoted, visible-ASCII entity tag (optionally `W/`-prefixed) is refused (`invalid_etag`)
 before it is printed or sent. So a hostile header can't drive the terminal, break
-`ETAG=$(...)`, or inject a header.
+`ETAG=$(...)`, or inject a header. A valid weak tag (`W/"3"`) is sent back in its strong form
+(`"3"`), because `If-Match` compares strongly; the value is validated first, so the strip cannot
+turn a malformed value into a well-formed one.
 
 **Default ports are the same origin.** `https://host` and `https://host:443` compare equal
 (and `http://host` with `:80`), so an explicit default port never turns the API into a
