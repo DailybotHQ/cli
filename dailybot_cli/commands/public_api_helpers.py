@@ -645,6 +645,8 @@ PERSON_SHAPED_TASKS_DOORS: frozenset[str] = frozenset(
         "me/activity-cursor",
         "inbox",
         "inbox/unread-count",
+        "me/notifications",
+        "me/briefing",
     }
 )
 

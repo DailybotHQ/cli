@@ -75,6 +75,8 @@ class TestPersonShapedRefusal:
         assert is_person_shaped_refusal(exc, door="boards") is False
 
     def test_the_person_shaped_door_list_matches_what_was_measured(self) -> None:
+        # The first six were measured on live; `me/notifications` and `me/briefing` are the person
+        # doors of the PLAN_004 contract (an agent or organization key gets 400 actor_required there).
         assert (
             frozenset(
                 {
@@ -84,6 +86,8 @@ class TestPersonShapedRefusal:
                     "me/activity-cursor",
                     "inbox",
                     "inbox/unread-count",
+                    "me/notifications",
+                    "me/briefing",
                 }
             )
             == PERSON_SHAPED_TASKS_DOORS

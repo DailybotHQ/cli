@@ -43,6 +43,7 @@ from dailybot_cli.commands.query_options import (
     resolve_fetch_all,
     window_options,
 )
+from dailybot_cli.commands.tasks_settings import notifications as notifications_group
 from dailybot_cli.display import (
     TASKS_TRUSTED_FIELDS,
     console,
@@ -171,6 +172,7 @@ def tasks() -> None:
 
 
 mark_beta(tasks)
+tasks.add_command(notifications_group)
 
 
 @tasks.command("recents")
