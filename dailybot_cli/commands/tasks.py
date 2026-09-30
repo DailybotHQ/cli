@@ -45,6 +45,7 @@ from dailybot_cli.commands.query_options import (
 from dailybot_cli.commands.tasks_settings import (
     channels as channels_group,
     notifications as notifications_group,
+    reports as reports_group,
     routes as routes_group,
 )
 from dailybot_cli.display import (
@@ -149,6 +150,7 @@ mark_beta(tasks)
 tasks.add_command(notifications_group)
 tasks.add_command(channels_group)
 tasks.add_command(routes_group)
+tasks.add_command(reports_group)
 
 
 @tasks.command("recents")

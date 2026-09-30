@@ -17,8 +17,24 @@ from dailybot_cli.commands._destructive import confirm_without_preview
 from dailybot_cli.commands._outbound import send_test_flow
 from dailybot_cli.commands._paging import envelope, page_kwargs
 from dailybot_cli.commands._refs import require_uuid, require_uuids
+from dailybot_cli.commands._schedule import (
+    DAILY_KIND,
+    IANA_TZ,
+    REPORT_KINDS,
+    TIME_HELP,
+    TIME_OF_DAY,
+    TIMEZONE_HELP,
+    WEEKDAYS_HELP,
+    require_single_weekday_for_weekly,
+    weekdays_callback,
+)
 from dailybot_cli.commands._writes import named, report_write
-from dailybot_cli.commands.public_api_helpers import emit_json, exit_for_tasks_error, require_auth
+from dailybot_cli.commands.public_api_helpers import (
+    emit_json,
+    exit_for_tasks_error,
+    require_auth,
+    resolve_user_by_name_or_uuid,
+)
 from dailybot_cli.commands.query_options import PAGING_ONLY_MORE_HINT, paging_options
 from dailybot_cli.display import (
     console,
@@ -27,6 +43,9 @@ from dailybot_cli.display import (
     print_notification_catalog,
     print_notification_routes,
     print_pagination_footer,
+    print_report_document,
+    print_report_runs,
+    print_reports,
     print_route_deliveries,
     print_success,
 )
@@ -39,6 +58,12 @@ CHANNEL_TYPE_CHOICES: tuple[str, ...] = (
     "public",
 )
 ROUTE_SCOPE_TYPES: tuple[str, ...] = ("boards", "projects")
+DEFAULT_REPORT_WEEKDAYS: dict[str, list[int]] = {
+    DAILY_KIND: [1, 2, 3, 4, 5],
+    "week_start": [1],
+    "week_end": [5],
+}
+DEFAULT_REPORT_TIME: str = "09:00"
 PERSONAL_SCOPE: str = "personal"
 ORG_SCOPE: str = "org"
 MY_NOTIFICATIONS_DOOR: str = "me/notifications"
@@ -637,6 +662,467 @@ def routes_deliveries(route: str, json_mode: bool, **flags: Any) -> None:
         emit_json(envelope(result))
         return
     print_route_deliveries(result)
+    print_pagination_footer(
+        len(result.results),
+        result.count,
+        has_more=bool(result.next),
+        more_hint=PAGING_ONLY_MORE_HINT,
+    )
+
+
+# -------------------------------------------------------------------------------------- reports
+
+
+def _recipients(client: Any, refs: tuple[str, ...]) -> list[str]:
+    """Resolve ``--email-to`` values (a name, an email or a uuid) to user uuids, repeats removed."""
+    if not refs:
+        return []
+    with console.status("Finding the recipients..."):
+        directory: list[dict[str, Any]] = client.list_users()
+    resolved: list[str] = []
+    for ref in refs:
+        try:
+            resolved.append(resolve_user_by_name_or_uuid(directory, ref)[0])
+        except ValueError as exc:
+            raise click.UsageError(str(exc)) from exc
+    return list(dict.fromkeys(resolved))
+
+
+def _weekly_rule(kind: str, days: list[int]) -> None:
+    try:
+        require_single_weekday_for_weekly(kind, days)
+    except ValueError as exc:
+        raise click.UsageError(str(exc)) from exc
+
+
+@click.group("reports")
+def reports() -> None:
+    """Schedule Tasks digests to a channel and/or by email (admins change them; members read).
+
+    \b
+    Kinds: daily (what is due, in progress, blocked, overdue today), week_start (commitments,
+    milestones and risks for the week) and week_end (what was completed, what slipped, who posted
+    updates). Each runs on chosen weekdays at a time in a timezone (yours by default); a weekly
+    kind runs on exactly one weekday. A report needs a channel or email recipients. Private boards
+    and projects never appear in a channel post. Up to 10 per organization.
+    """
+
+
+mark_beta(reports)
+
+
+@reports.command("list")
+@paging_options
+@click.option("--json", "json_mode", is_flag=True, help=JSON_HELP)
+def reports_list(json_mode: bool, **flags: Any) -> None:
+    """List the scheduled reports.
+
+    \b
+    Examples:
+      dailybot tasks reports list
+      dailybot tasks reports list --json
+    """
+    client = require_auth()
+    try:
+        page: dict[str, Any] = page_kwargs(**flags)
+        page.pop("params", None)
+        with console.status("Reading the reports..."):
+            result = client.list_reports(**page)
+    except ValueError as exc:
+        raise click.BadParameter(str(exc)) from exc
+    except APIError as exc:
+        exit_for_tasks_error(exc, json_mode)
+    if json_mode:
+        emit_json(envelope(result))
+        return
+    print_reports(result)
+    print_pagination_footer(
+        len(result.results),
+        result.count,
+        has_more=bool(result.next),
+        more_hint=PAGING_ONLY_MORE_HINT,
+    )
+
+
+@reports.command("get")
+@click.argument("report", metavar="REPORT", callback=require_uuid)
+@click.option("--json", "json_mode", is_flag=True, help=JSON_HELP)
+def reports_get(report: str, json_mode: bool) -> None:
+    """Show one report.
+
+    \b
+    Examples:
+      dailybot tasks reports get <report-uuid>
+    """
+    client = require_auth()
+    try:
+        with console.status("Reading the report..."):
+            data: dict[str, Any] = client.get_report(report)
+    except APIError as exc:
+        exit_for_tasks_error(exc, json_mode)
+    if json_mode:
+        emit_json(data)
+        return
+    print_reports(PaginatedResult(results=[data], count=1))
+
+
+@reports.command("create")
+@click.option("--name", required=True, help="A name for the report.")
+@click.option(
+    "--kind",
+    type=click.Choice(REPORT_KINDS, case_sensitive=False),
+    required=True,
+    help="daily, week_start or week_end.",
+)
+@click.option(
+    "--weekdays",
+    multiple=True,
+    callback=weekdays_callback,
+    help=f"{WEEKDAYS_HELP} Default: mon-fri (daily), mon (week_start), fri (week_end).",
+)
+@click.option(
+    "--time",
+    "time_of_day",
+    type=TIME_OF_DAY,
+    default=DEFAULT_REPORT_TIME,
+    show_default=True,
+    help=TIME_HELP,
+)
+@click.option("--timezone", type=IANA_TZ, default=None, help=TIMEZONE_HELP)
+@click.option(
+    "--channel", "channel_ref", default=None, help="Channel to post to (name or external id)."
+)
+@click.option(
+    "--email-to",
+    "email_refs",
+    multiple=True,
+    help="Member to email (name, email or uuid; repeatable).",
+)
+@click.option(
+    "--board",
+    "boards",
+    multiple=True,
+    callback=require_uuids,
+    help="Only this board (uuid, repeatable).",
+)
+@click.option(
+    "--project",
+    "projects",
+    multiple=True,
+    callback=require_uuids,
+    help="Only this project (uuid, repeatable).",
+)
+@click.option("--enabled/--disabled", default=None, help="Start enabled (the default) or disabled.")
+@click.option("--idempotency-key", default=None, help="Reuse a key to make a retry safe.")
+@click.option("--json", "json_mode", is_flag=True, help=JSON_HELP)
+def reports_create(
+    name: str,
+    kind: str,
+    weekdays: list[int] | None,
+    time_of_day: str,
+    timezone: str | None,
+    channel_ref: str | None,
+    email_refs: tuple[str, ...],
+    boards: tuple[str, ...],
+    projects: tuple[str, ...],
+    enabled: bool | None,
+    idempotency_key: str | None,
+    json_mode: bool,
+) -> None:
+    """Create a scheduled report (admin only). Sends an idempotency key and prints it.
+
+    \b
+    Examples:
+      dailybot tasks reports create --name Standup --kind daily --channel eng
+      dailybot tasks reports create --name "Week end" --kind week_end --weekdays fri --time 16:00 --channel eng --email-to "Ana Ruiz"
+    """
+    kind = kind.lower()
+    days: list[int] = weekdays if weekdays is not None else DEFAULT_REPORT_WEEKDAYS[kind]
+    _weekly_rule(kind, days)
+    if not channel_ref and not email_refs:
+        raise click.UsageError(
+            "A report needs a destination: a channel (--channel) or recipients (--email-to)."
+        )
+    scope: dict[str, Any] | None = _scope_from(boards, projects)
+    client = require_auth()
+    try:
+        channel: dict[str, Any] | None = None
+        if channel_ref:
+            with console.status("Finding the channel..."):
+                channel = {"external_id": resolve_channel(client, channel_ref)["external_id"]}
+        recipients: list[str] = _recipients(client, email_refs)
+        with console.status("Creating the report..."):
+            data: dict[str, Any] = client.create_report(
+                name=name,
+                kind=kind,
+                weekdays=days,
+                time=time_of_day,
+                timezone=timezone,
+                channel=channel,
+                email_recipients=recipients or None,
+                scope=scope,
+                enabled=enabled,
+                idempotency_key=idempotency_key,
+            )
+    except APIError as exc:
+        exit_for_tasks_error(exc, json_mode)
+    if json_mode:
+        emit_json(data)
+        return
+    report_write(data, f"Created report {named(data, name)}")
+    print_reports(PaginatedResult(results=[data], count=1))
+
+
+@reports.command("update")
+@click.argument("report", metavar="REPORT", callback=require_uuid)
+@click.option("--name", default=None, help="New name.")
+@click.option("--weekdays", multiple=True, callback=weekdays_callback, help=WEEKDAYS_HELP)
+@click.option("--time", "time_of_day", type=TIME_OF_DAY, default=None, help=TIME_HELP)
+@click.option("--timezone", type=IANA_TZ, default=None, help=TIMEZONE_HELP)
+@click.option("--channel", "channel_ref", default=None, help="New channel (name or external id).")
+@click.option(
+    "--no-channel", is_flag=True, help="Stop posting to a channel (recipients must remain)."
+)
+@click.option(
+    "--email-to",
+    "email_refs",
+    multiple=True,
+    help="Replace the recipients with these (repeatable).",
+)
+@click.option("--no-email-to", is_flag=True, help="Stop emailing anyone (a channel must remain).")
+@click.option(
+    "--board",
+    "boards",
+    multiple=True,
+    callback=require_uuids,
+    help="Only this board (uuid, repeatable).",
+)
+@click.option(
+    "--project",
+    "projects",
+    multiple=True,
+    callback=require_uuids,
+    help="Only this project (uuid, repeatable).",
+)
+@click.option("--clear-scope", is_flag=True, help="Cover the whole organization again.")
+@click.option("--enabled/--disabled", default=None, help="Turn the report on or off.")
+@click.option("--json", "json_mode", is_flag=True, help=JSON_HELP)
+def reports_update(
+    report: str,
+    name: str | None,
+    weekdays: list[int] | None,
+    time_of_day: str | None,
+    timezone: str | None,
+    channel_ref: str | None,
+    no_channel: bool,
+    email_refs: tuple[str, ...],
+    no_email_to: bool,
+    boards: tuple[str, ...],
+    projects: tuple[str, ...],
+    clear_scope: bool,
+    enabled: bool | None,
+    json_mode: bool,
+) -> None:
+    """Change a report (admin only); only the flags you pass are sent.
+
+    \b
+    Examples:
+      dailybot tasks reports update <report-uuid> --time 10:15
+      dailybot tasks reports update <report-uuid> --weekdays mon,wed,fri --disabled
+      dailybot tasks reports update <report-uuid> --no-channel --email-to "Ana Ruiz"
+    """
+    if channel_ref and no_channel:
+        raise click.UsageError("Pass --channel or --no-channel, not both.")
+    if email_refs and no_email_to:
+        raise click.UsageError("Pass --email-to or --no-email-to, not both.")
+    scope: dict[str, Any] | None = _scope_from(boards, projects, clear=clear_scope)
+    nothing: bool = (
+        name is None
+        and weekdays is None
+        and time_of_day is None
+        and timezone is None
+        and not channel_ref
+        and not no_channel
+        and not email_refs
+        and not no_email_to
+        and scope is None
+        and enabled is None
+    )
+    if nothing:
+        raise click.UsageError("Nothing to update. Pass at least one flag (see --help).")
+    client = require_auth()
+    try:
+        current: dict[str, Any] | None = None
+        needs_state: bool = (
+            weekdays is not None
+            or (no_channel and not email_refs)
+            or (no_email_to and not channel_ref)
+        )
+        if needs_state:
+            with console.status("Reading the report..."):
+                current = client.get_report(report)
+        if weekdays is not None and current is not None:
+            _weekly_rule(str(current.get("kind", DAILY_KIND)), weekdays)
+        if (
+            no_channel
+            and not email_refs
+            and current is not None
+            and not current.get("email_recipients")
+        ):
+            raise click.UsageError(
+                "Clearing the channel would leave the report with no destination: add recipients with --email-to first."
+            )
+        if no_email_to and not channel_ref and current is not None and not current.get("channel"):
+            raise click.UsageError(
+                "Clearing the recipients would leave the report with no destination: add a channel with --channel first."
+            )
+        fields: dict[str, Any] = {
+            key: value
+            for key, value in (
+                ("name", name),
+                ("weekdays", weekdays),
+                ("time", time_of_day),
+                ("timezone", timezone),
+                ("enabled", enabled),
+                ("scope", scope),
+            )
+            if value is not None
+        }
+        if channel_ref:
+            with console.status("Finding the channel..."):
+                fields["channel"] = {
+                    "external_id": resolve_channel(client, channel_ref)["external_id"]
+                }
+        if email_refs:
+            fields["email_recipients"] = _recipients(client, email_refs)
+        with console.status("Updating the report..."):
+            data: dict[str, Any] = client.update_report(
+                report,
+                **({"clear_channel": True} if no_channel else {}),
+                **({"clear_email_recipients": True} if no_email_to else {}),
+                **fields,
+            )
+    except APIError as exc:
+        exit_for_tasks_error(exc, json_mode)
+    if json_mode:
+        emit_json(data)
+        return
+    report_write(data, "Report updated")
+    print_reports(PaginatedResult(results=[data], count=1))
+
+
+@reports.command("delete")
+@click.argument("report", metavar="REPORT", callback=require_uuid)
+@click.option("--dry-run", is_flag=True, help="Say what would happen and send nothing.")
+@click.option("--yes", "-y", "assume_yes", is_flag=True, help="Skip the confirmation.")
+@click.option("--json", "json_mode", is_flag=True, help=JSON_HELP)
+def reports_delete(report: str, dry_run: bool, assume_yes: bool, json_mode: bool) -> None:
+    """Delete a report (admin only). It stops running; its past runs stay in the history.
+
+    \b
+    Examples:
+      dailybot tasks reports delete <report-uuid> --dry-run
+      dailybot tasks reports delete <report-uuid> --yes
+    """
+    consequence: str = f"Deletes the scheduled report {report}; it stops posting and emailing."
+    if not confirm_without_preview(
+        consequence, assume_yes=assume_yes, dry_run=dry_run, json_mode=json_mode
+    ):
+        return
+    client = require_auth()
+    try:
+        with console.status("Deleting the report..."):
+            client.delete_report(report)
+    except APIError as exc:
+        exit_for_tasks_error(exc, json_mode)
+    if json_mode:
+        emit_json({"deleted": True, "report": report})
+        return
+    print_success("Report deleted.")
+
+
+@reports.command("preview")
+@click.argument("report", metavar="REPORT", callback=require_uuid)
+@click.option("--json", "json_mode", is_flag=True, help=JSON_HELP)
+def reports_preview(report: str, json_mode: bool) -> None:
+    """Show the exact document the channel and email would receive now. Sends nothing.
+
+    \b
+    Examples:
+      dailybot tasks reports preview <report-uuid>
+      dailybot tasks reports preview <report-uuid> --json
+    """
+    client = require_auth()
+    try:
+        with console.status("Rendering the report..."):
+            document: dict[str, Any] = client.get_report_preview(report)
+    except APIError as exc:
+        exit_for_tasks_error(exc, json_mode)
+    if json_mode:
+        emit_json(document)
+        return
+    print_report_document(document)
+
+
+@reports.command("send-test")
+@click.argument("report", metavar="REPORT", callback=require_uuid)
+@click.option("--dry-run", is_flag=True, help="Show what would be sent and send nothing.")
+@click.option(
+    "--yes",
+    "-y",
+    "assume_yes",
+    is_flag=True,
+    help="Skip the confirmation (the preview is still fetched and shown).",
+)
+@click.option("--json", "json_mode", is_flag=True, help=JSON_HELP)
+def reports_send_test(report: str, dry_run: bool, assume_yes: bool, json_mode: bool) -> None:
+    """Send the report now as a test (admin only), after a preview.
+
+    \b
+    It always asks the API for a dry run first and shows the destination and the document; it
+    sends for real (channel post and emails) only after you confirm or pass --yes. --dry-run
+    stops after the preview.
+
+    \b
+    Examples:
+      dailybot tasks reports send-test <report-uuid> --dry-run
+      dailybot tasks reports send-test <report-uuid> --yes
+    """
+    client = require_auth()
+    send_test_flow(
+        lambda preview: client.send_report_test(report, dry_run=preview),
+        what="report",
+        dry_run=dry_run,
+        assume_yes=assume_yes,
+        json_mode=json_mode,
+    )
+
+
+@reports.command("runs")
+@click.argument("report", metavar="REPORT", callback=require_uuid)
+@paging_options
+@click.option("--json", "json_mode", is_flag=True, help=JSON_HELP)
+def reports_runs(report: str, json_mode: bool, **flags: Any) -> None:
+    """Show a report's recent runs (period, status, message id, errors).
+
+    \b
+    Examples:
+      dailybot tasks reports runs <report-uuid>
+    """
+    client = require_auth()
+    try:
+        page: dict[str, Any] = page_kwargs(**flags)
+        page.pop("params", None)
+        with console.status("Reading the runs..."):
+            result = client.list_report_runs(report, **page)
+    except ValueError as exc:
+        raise click.BadParameter(str(exc)) from exc
+    except APIError as exc:
+        exit_for_tasks_error(exc, json_mode)
+    if json_mode:
+        emit_json(envelope(result))
+        return
+    print_report_runs(result)
     print_pagination_footer(
         len(result.results),
         result.count,
