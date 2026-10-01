@@ -9,6 +9,38 @@ Do not edit it by hand — your edits will be overwritten on the next release.
 
 <!-- version list -->
 
+## v3.26.0 (2026-10-01)
+
+### Chores
+
+- **dev**: Resync launcher dev.sh and ports helper from the hub canonical
+  ([#127](https://github.com/DailybotHQ/cli/pull/127),
+  [`b8a6f74`](https://github.com/DailybotHQ/cli/commit/b8a6f744557a664805bbe30313386b45eea47700))
+
+- **dev**: Sync dev.sh and ports helper with the hub canonical
+  ([#127](https://github.com/DailybotHQ/cli/pull/127),
+  [`b8a6f74`](https://github.com/DailybotHQ/cli/commit/b8a6f744557a664805bbe30313386b45eea47700))
+
+- **dev**: Sync launcher dev.sh and ports helper from the hub canonical
+  ([#127](https://github.com/DailybotHQ/cli/pull/127),
+  [`b8a6f74`](https://github.com/DailybotHQ/cli/commit/b8a6f744557a664805bbe30313386b45eea47700))
+
+- **tooling**: Upgrade Deep Work Plan skill to v6.0.2
+  ([#127](https://github.com/DailybotHQ/cli/pull/127),
+  [`b8a6f74`](https://github.com/DailybotHQ/cli/commit/b8a6f744557a664805bbe30313386b45eea47700))
+
+### Features
+
+- Add workspace port inventory support ([#127](https://github.com/DailybotHQ/cli/pull/127),
+  [`b8a6f74`](https://github.com/DailybotHQ/cli/commit/b8a6f744557a664805bbe30313386b45eea47700))
+
+- **dev**: Add focus-aware workspace URLs ([#127](https://github.com/DailybotHQ/cli/pull/127),
+  [`b8a6f74`](https://github.com/DailybotHQ/cli/commit/b8a6f744557a664805bbe30313386b45eea47700))
+
+- **dev**: Add workspace port inventory command ([#127](https://github.com/DailybotHQ/cli/pull/127),
+  [`b8a6f74`](https://github.com/DailybotHQ/cli/commit/b8a6f744557a664805bbe30313386b45eea47700))
+
+
 ## v3.25.2 (2026-09-30)
 
 ### Chores
