@@ -94,21 +94,20 @@ def render_container(raw: str, workspace_id: str, state_root: str, hint: str) ->
     current_id = workspace_id or "primary"
     focused = current_id == focus_id
     live = listeners()
-    records: list[tuple[str, str, str, str, str]] = []
+    contract: list[tuple[str, ...]] = []
     for item in filter(None, raw.split(",")):
         parts = [part.strip() for part in item.split(":")]
-        if len(parts) != 4:
-            continue
-        service, internal, direct, focus = parts
-        listening = "yes" if to_int(internal, -1) in live else "no"
-        records.append((service, internal, direct, focus, listening))
-
-    if not records:
-        records = [
-            (service, internal, direct, focus,
-             "yes" if to_int(internal, -1) in live else "no")
-            for service, internal, direct, focus in DEFAULT_RECORDS.get(infer_repo(hint), ())
-        ]
+        if len(parts) == 4:
+            contract.append(tuple(parts))
+    if not contract:
+        contract = list(DEFAULT_RECORDS.get(infer_repo(hint), ()))
+    # The host kit emits an empty field for a port it has not allocated; render
+    # it as '-' like workspace mode does, so _render_urls skips it too.
+    records = [
+        (service, show(internal), show(direct), show(focus),
+         "yes" if to_int(internal, -1) in live else "no")
+        for service, internal, direct, focus in contract
+    ]
 
     if records:
         print("%-14s %-10s %-12s %-10s %s" %

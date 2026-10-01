@@ -478,18 +478,11 @@ ensure_external_networks() {
 # .env.example; missing compose external networks are created. Remaining gaps
 # (no example file at all) still fail with a clear path.
 fast_check() {
-  local missing="" f target perms
+  local missing="" f target
   ensure_env_from_examples
-  # Same SERVICE_PERMISSIONS stamp as cmd_setup — auto-created .env files ship
-  # SERVICE_PERMISSIONS= empty from the example; up/rebuild must not leave that.
-  perms="$(id -u):$(id -g)"
-  while IFS= read -r f; do
-    [ -n "$f" ] || continue
-    target="${f%.example}"
-    [ -f "$target" ] || continue
-    grep -q '^[[:space:]]*SERVICE_PERMISSIONS=' "$target" 2>/dev/null || continue
-    stamp_permissions "$target" "$perms" || die "could not update SERVICE_PERMISSIONS in $target"
-  done < <(env_examples)
+  # Auto-created .env files ship SERVICE_PERMISSIONS= empty from the example;
+  # up/rebuild must not leave that. Same stamp as setup, a no-op when current.
+  stamp_env_permissions
   while IFS= read -r f; do
     [ -n "$f" ] || continue
     target="${f%.example}"
@@ -531,20 +524,19 @@ except BaseException:
 ' "$1" "$2"
 }
 
-cmd_setup() {
-  local created=0 f target net
-  ensure_env_from_examples
-  created=$((created + _ensure_created))
-
-  # Match the repositories' own utils.sh: only files that already declare the
-  # key are stamped. Values are never printed.
-  local perms
+# Stamp SERVICE_PERMISSIONS=<uid>:<gid> into every .env that declares the key.
+# Matches the repositories' own utils.sh: files without the key are left alone,
+# and a file already carrying the current value is not rewritten (up/rebuild
+# call this on every run). Values are never printed.
+stamp_env_permissions() {
+  local f target perms
   perms="$(id -u):$(id -g)"
   while IFS= read -r f; do
     [ -n "$f" ] || continue
     target="${f%.example}"
     [ -f "$target" ] || continue
     grep -q '^[[:space:]]*SERVICE_PERMISSIONS=' "$target" 2>/dev/null || continue
+    grep -qx "[[:space:]]*SERVICE_PERMISSIONS=$perms" "$target" 2>/dev/null && continue
     # Rewritten through a temp file in the same directory, never with
     # `sed -i.bak`: that leaves a backup of a .env — real values and all — next
     # to it, and `.env.<suffix>` is covered by none of these repositories'
@@ -552,6 +544,14 @@ cmd_setup() {
     # trackable file.
     stamp_permissions "$target" "$perms" || die "could not update SERVICE_PERMISSIONS in $target"
   done < <(env_examples)
+}
+
+cmd_setup() {
+  local created=0
+  ensure_env_from_examples
+  created=$((created + _ensure_created))
+
+  stamp_env_permissions
 
   ensure_external_networks
   created=$((created + _ensure_created))
@@ -860,7 +860,9 @@ cmd_ports() {
     return $?
   fi
   note "context         host"
-  dc ps || true
+  # Scoped to this repository's services like `ps`: the compose project is
+  # shared, so an unscoped `compose ps` would list every repository.
+  cmd_ps
 }
 
 cmd_ls() {
@@ -1487,8 +1489,11 @@ _hl_pane_split() {
 
 # True when workspace $1 already has a tab whose label is exactly $2.
 _hl_tab_has_label() {
-  local wid="$1" want="$2"
-  herdr tab list --workspace "$wid" 2>/dev/null | python3 -c '
+  local wid="$1" want="$2" raw
+  # Captured first: with pipefail, a non-zero herdr exit would otherwise mask
+  # the parser's verdict (0 = present) as 1 = absent and duplicate the tab.
+  raw="$(herdr tab list --workspace "$wid" 2>/dev/null)" || true
+  printf '%s' "$raw" | python3 -c '
 import json,sys
 raw=sys.stdin.read(); s=raw.find("{"); e=raw.rfind("}")
 # Exit 2 = unreadable output (unknown), 1 = readable and label absent.
@@ -1506,31 +1511,38 @@ raise SystemExit(1)
 ' "$want" 2>/dev/null
 }
 
-# Print pane_id of the first pane in workspace $1 whose label is $2, else empty.
-_hl_pane_id_by_label() {
-  local wid="$1" want="$2"
-  herdr pane list --workspace "$wid" 2>/dev/null | python3 -c '
+# Number of panes in workspace $1; prints 0 when the list is unreadable.
+# Herdr `pane list` carries no label field (pane rename is not reflected in
+# it), so a layout is judged by pane count, never by pane label.
+_hl_pane_count() {
+  local wid="$1" raw
+  raw="$(herdr pane list --workspace "$wid" 2>/dev/null)" || true
+  printf '%s' "$raw" | python3 -c '
 import json,sys
 raw=sys.stdin.read(); s=raw.find("{"); e=raw.rfind("}")
-if s<0: raise SystemExit(0)
-d=json.loads(raw[s:e+1])
+if s<0:
+    print(0); raise SystemExit(0)
+try:
+    d=json.loads(raw[s:e+1])
+except ValueError:
+    print(0); raise SystemExit(0)
 panes=(d.get("result") or {}).get("panes") or d.get("panes") or []
-want=sys.argv[1]
-for p in panes:
-    if (p.get("label") or "")==want:
-        print(p.get("pane_id") or "")
-        break
-' "$want" 2>/dev/null || true
+print(len(panes))
+' 2>/dev/null || printf '0'
 }
 
-# First pane_id in workspace $1 (any label), else empty.
+# First pane_id in workspace $1, else empty.
 _hl_first_pane() {
-  local wid="$1"
-  herdr pane list --workspace "$wid" 2>/dev/null | python3 -c '
+  local wid="$1" raw
+  raw="$(herdr pane list --workspace "$wid" 2>/dev/null)" || true
+  printf '%s' "$raw" | python3 -c '
 import json,sys
 raw=sys.stdin.read(); s=raw.find("{"); e=raw.rfind("}")
 if s<0: raise SystemExit(0)
-d=json.loads(raw[s:e+1])
+try:
+    d=json.loads(raw[s:e+1])
+except ValueError:
+    raise SystemExit(0)
 panes=(d.get("result") or {}).get("panes") or d.get("panes") or []
 if panes:
     print(panes[0].get("pane_id") or "")
@@ -1546,7 +1558,14 @@ _hl_close_label() {
     return 1
   fi
   # Confirm it is gone; a failed or async close must not look like success.
-  left="$(_hl_ws_id "$mid" "$lab")"
+  # Herdr may finish the close shortly after the call returns, so poll briefly
+  # instead of failing the whole --reset on the first look.
+
+  for _ in 1 2 3 4 5 6 7 8 9 10; do
+    left="$(_hl_ws_id "$mid" "$lab")"
+    [ -n "$left" ] || break
+    sleep 0.2
+  done
   if [ -n "$left" ]; then
     note "herdr-layout: $lab still present after close ($left)"
     return 1
@@ -1680,10 +1699,11 @@ H
     fi
   else
     note "herdr-layout: Development already present"
-    # Keep mode: fill a missing tests split without recreating the workspace.
-    if [ -z "$(_hl_pane_id_by_label "$dev_ws" tests)" ]; then
-      pane="$(_hl_pane_id_by_label "$dev_ws" server)"
-      [ -n "$pane" ] || pane="$(_hl_first_pane "$dev_ws")"
+    # Keep mode: a single pane means the tests split is missing; add it.
+    # A count of 0 means the list was unreadable — never split on unknown,
+    # and 2+ panes already carry the split (whatever they are labelled).
+    if [ "$(_hl_pane_count "$dev_ws")" -eq 1 ]; then
+      pane="$(_hl_first_pane "$dev_ws")"
       if [ -n "$pane" ]; then
         tests_pane="$(_hl_pane_split "$mid" "$pane" "$cwd" right)"
         if [ -n "$tests_pane" ]; then
