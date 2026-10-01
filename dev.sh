@@ -1491,8 +1491,12 @@ _hl_tab_has_label() {
   herdr tab list --workspace "$wid" 2>/dev/null | python3 -c '
 import json,sys
 raw=sys.stdin.read(); s=raw.find("{"); e=raw.rfind("}")
-if s<0: raise SystemExit(1)
-d=json.loads(raw[s:e+1])
+# Exit 2 = unreadable output (unknown), 1 = readable and label absent.
+if s<0: raise SystemExit(2)
+try:
+    d=json.loads(raw[s:e+1])
+except ValueError:
+    raise SystemExit(2)
 tabs=(d.get("result") or {}).get("tabs") or d.get("tabs") or []
 want=sys.argv[1]
 for t in tabs:
@@ -1632,7 +1636,7 @@ H
     fi
   fi
 
-  local home_ws editor_ws dev_ws agents_ws line pane tab_id tests_pane n
+  local home_ws editor_ws dev_ws agents_ws line pane tab_id tests_pane n rc
 
   home_ws="$(_hl_ws_id "$mid" Home)"
   if [ -z "$home_ws" ]; then
@@ -1710,7 +1714,10 @@ H
     note "herdr-layout: Agents already present"
     # Keep mode: create only the missing Agent N tabs (1..4).
     for n in 1 2 3 4; do
-      if _hl_tab_has_label "$agents_ws" "Agent ${n}"; then
+      # rc 0 = present, 1 = absent, other = unreadable: never duplicate on unknown.
+      rc=0; _hl_tab_has_label "$agents_ws" "Agent ${n}" || rc=$?
+      if [ "$rc" -ne 1 ]; then
+        [ "$rc" -eq 0 ] || note "herdr-layout: could not read tabs; skipping Agent $n"
         continue
       fi
       line="$(_hl_tab_create "$mid" "$agents_ws" "$cwd" "Agent ${n}")"

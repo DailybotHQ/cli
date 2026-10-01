@@ -24,6 +24,11 @@ def to_int(value, default: int = 0) -> int:
         return default
 
 
+def show(value) -> str:
+    """Display form of a recorded port: missing, null or empty becomes '-'."""
+    return "-" if value is None or str(value).strip() == "" else str(value)
+
+
 def listeners() -> set[int]:
     ports: set[int] = set()
     for path in ("/proc/net/tcp", "/proc/net/tcp6"):
@@ -136,13 +141,12 @@ def render_workspace(state_path: str, repo: str) -> int:
         with socket.socket() as sock:
             sock.settimeout(0.2)
             state = "open" if direct and sock.connect_ex(("127.0.0.1", direct)) == 0 else "closed"
-        rows.append((name, str(service.get("internal_port", "-")), str(direct or "-"),
-                     str(service.get("focus_port", "-")), state, direct,
-                     service.get("focus_port")))
-        print("%-14s %-10s %-12s %-10s %s" % rows[-1][:5])
+        rows.append((name, show(service.get("internal_port")), str(direct or "-"),
+                     show(service.get("focus_port")), state))
+        print("%-14s %-10s %-12s %-10s %s" % rows[-1])
     if not rows:
         print("No services recorded for repository '%s' in this workspace." % repo)
-    _render_urls([(row[0], row[1], row[2], row[3], row[4]) for row in rows], focus_id, focused)
+    _render_urls(rows, focus_id, focused)
     return 0
 
 
