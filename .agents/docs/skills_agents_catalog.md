@@ -42,7 +42,7 @@ The full pack lives under [`.agents/skills/dailybot/`](../skills/dailybot/) (rou
 
 ### Deep Work Plan skill pack (vendored from [`DailybotHQ/deepworkplan-skill`](https://github.com/DailybotHQ/deepworkplan-skill))
 
-The full pack lives under [`.agents/skills/deepworkplan/`](../skills/deepworkplan/) (router + 9 sub-skills + addons). Vendored at **v6.0.1** (DWP standard **6.0.0**). The router auto-routes by intent — read [`skills/deepworkplan/SKILL.md`](../skills/deepworkplan/SKILL.md) and let it pick the right sub-skill. Each sub-skill is independently invocable, and each has a short `dwp-*` alias in [`.agents/commands/`](../commands/) for ergonomic typing.
+The full pack lives under [`.agents/skills/deepworkplan/`](../skills/deepworkplan/) (router + 9 sub-skills + addons). Vendored at **v6.0.2** (DWP standard **6.0.0**). The router auto-routes by intent — read [`skills/deepworkplan/SKILL.md`](../skills/deepworkplan/SKILL.md) and let it pick the right sub-skill. Each sub-skill is independently invocable, and each has a short `dwp-*` alias in [`.agents/commands/`](../commands/) for ergonomic typing.
 
 | Slug | Procedure | Use when |
 |------|-----------|----------|
