@@ -52,8 +52,11 @@ SERVICE_REPOS = {
     "vuevscode": "web-app",
     "vuevscodesatellite": "web-app",
     "functions_vscode": "chatbot-functions",
+    "functions_vscodesatellite": "chatbot-functions",
     "dailybotcomvscode": "dailybot.com",
+    "dailybotcomvscodesatellite": "dailybot.com",
     "discordgateway": "discord-gateway",
+    "discordgatewaysatellite": "discord-gateway",
 }
 
 
@@ -66,19 +69,22 @@ def infer_repo(hint: str) -> str:
         return "web-app"
     if hint.endswith("/home/node/app"):
         return "chatbot-functions"
-    if hint.endswith("/api-services") or hint.endswith("/app"):
+    # A bare "/app" is ambiguous (api-services, dailybot.com and discord-gateway all use
+    # it), so only the explicit repository folder or a known service name is trusted.
+    if hint.endswith("/api-services"):
         return "api-services"
     return ""
 
 
 def render_container(raw: str, workspace_id: str, state_root: str, hint: str) -> int:
     focus_id = read_json(Path(state_root) / "_focus.json").get("workspace_id") or "primary"
+    focus_id = str(focus_id)
     current_id = workspace_id or "primary"
     focused = current_id == focus_id
     live = listeners()
     records: list[tuple[str, str, str, str, str]] = []
     for item in filter(None, raw.split(",")):
-        parts = item.split(":")
+        parts = [part.strip() for part in item.split(":")]
         if len(parts) != 4:
             continue
         service, internal, direct, focus = parts

@@ -835,6 +835,7 @@ cmd_ports() {
   note "repository      $REPO_ROOT"
   note "compose project $PROJECT"
   local helper="$REPO_ROOT/scripts/workspace_ports_display.py"
+  [ -f "$helper" ] || die "ports helper missing: $helper (run bash scripts/dev-stack-sync.sh from the hub)"
   if [ -f /.dockerenv ] || [ -n "${DAILYBOT_EXPOSED_PORTS:-}" ]; then
     note "context         container"
     python3 "$helper" container "${DAILYBOT_EXPOSED_PORTS:-}" "${DAILYBOT_WORKSPACE_ID:-}" "${DAILYBOT_WORKSPACES_ROOT:-/run/dailybot/workspaces}" "${DAILYBOT_PORT_REPO:-${DC_SERVICE:-}}"
