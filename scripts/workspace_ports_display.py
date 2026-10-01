@@ -44,9 +44,24 @@ DEFAULT_RECORDS = {
 }
 
 
+# Main compose service of each repository's devcontainer (what dev.sh resolves as
+# DC_SERVICE), including the stable satellite variants.
+SERVICE_REPOS = {
+    "djangovscode": "api-services",
+    "djangovscodesatellite": "api-services",
+    "vuevscode": "web-app",
+    "vuevscodesatellite": "web-app",
+    "functions_vscode": "chatbot-functions",
+    "dailybotcomvscode": "dailybot.com",
+    "discordgateway": "discord-gateway",
+}
+
+
 def infer_repo(hint: str) -> str:
     if hint in DEFAULT_RECORDS:
         return hint
+    if hint in SERVICE_REPOS:
+        return SERVICE_REPOS[hint]
     if hint.endswith("/code/js"):
         return "web-app"
     if hint.endswith("/home/node/app"):
@@ -85,9 +100,9 @@ def render_container(raw: str, workspace_id: str, state_root: str, hint: str) ->
               ("SERVICE", "INTERNAL", "HOST DIRECT", "FOCUS", "LISTENING"))
         for row in records:
             print("%-14s %-10s %-12s %-10s %s" % row)
+        _render_urls(records, focus_id, focused)
     else:
         print("No workspace port metadata is attached to this container.")
-    _render_urls(records, focus_id, focused)
     unmapped = sorted(port for port in live if not any(str(port) == row[1] for row in records))
     if unmapped:
         print("Live internal listeners: " + ", ".join(map(str, unmapped)))
