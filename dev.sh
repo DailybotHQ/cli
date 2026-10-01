@@ -478,8 +478,18 @@ ensure_external_networks() {
 # .env.example; missing compose external networks are created. Remaining gaps
 # (no example file at all) still fail with a clear path.
 fast_check() {
-  local missing="" f target
+  local missing="" f target perms
   ensure_env_from_examples
+  # Same SERVICE_PERMISSIONS stamp as cmd_setup — auto-created .env files ship
+  # SERVICE_PERMISSIONS= empty from the example; up/rebuild must not leave that.
+  perms="$(id -u):$(id -g)"
+  while IFS= read -r f; do
+    [ -n "$f" ] || continue
+    target="${f%.example}"
+    [ -f "$target" ] || continue
+    grep -q '^[[:space:]]*SERVICE_PERMISSIONS=' "$target" 2>/dev/null || continue
+    stamp_permissions "$target" "$perms" || die "could not update SERVICE_PERMISSIONS in $target"
+  done < <(env_examples)
   while IFS= read -r f; do
     [ -n "$f" ] || continue
     target="${f%.example}"
@@ -836,7 +846,9 @@ cmd_ports() {
   note "compose project $PROJECT"
   local helper="$REPO_ROOT/scripts/workspace_ports_display.py"
   [ -f "$helper" ] || die "ports helper missing: $helper (run bash scripts/dev-stack-sync.sh from the hub)"
-  if [ -f /.dockerenv ] || [ -n "${DAILYBOT_EXPOSED_PORTS:-}" ]; then
+  # Every devcontainer (VS Code, Cursor, Herdr) has /.dockerenv; a stray
+  # DAILYBOT_EXPOSED_PORTS in a host shell must not select this branch.
+  if [ -f /.dockerenv ]; then
     note "context         container"
     python3 "$helper" container "${DAILYBOT_EXPOSED_PORTS:-}" "${DAILYBOT_WORKSPACE_ID:-}" "${DAILYBOT_WORKSPACES_ROOT:-/run/dailybot/workspaces}" "${DAILYBOT_PORT_REPO:-${DC_SERVICE:-}}"
     return $?
@@ -1408,7 +1420,10 @@ start = raw.find("{")
 end = raw.rfind("}")
 if start < 0 or end < start:
     raise SystemExit(0)
-d = json.loads(raw[start:end + 1])
+try:
+    d = json.loads(raw[start:end + 1])
+except ValueError:
+    raise SystemExit(0)
 cur = d
 for part in sys.argv[1].split("."):
     if not isinstance(cur, dict):
@@ -1418,7 +1433,7 @@ for part in sys.argv[1].split("."):
 if cur is None or isinstance(cur, (dict, list)):
     cur = ""
 print(cur)
-' "$1"
+' "$1" 2>/dev/null || true
 }
 
 _hl_ws_id() {
@@ -1549,7 +1564,9 @@ herdr-layout — create the standard Herdr sidebar on this machine.
   bash dev.sh herdr-layout           with a TTY: ask whether to reset (default N = keep);
                                      non-TTY: keep existing, create what is missing
   bash dev.sh herdr-layout --keep    keep existing; create only missing panes/tabs
-  bash dev.sh herdr-layout --reset   close Home/Editor/Development/Agents, then recreate
+  bash dev.sh herdr-layout --reset   close the standard workspaces (Home, legacy "Home (~)",
+                                     Editor, Development, Agents), then recreate; aborts if
+                                     any of them cannot be closed. Other workspaces are untouched.
 
 Layout: Home · Editor · Development (server | tests) · Agents (Agent 1..4)
 
@@ -1741,7 +1758,8 @@ Verbs
                         ask <id> <pane> "..." is the same, using the table columns
   herdr-layout          create Home · Editor · Development · Agents on this
                         machine. --keep leaves current panes and fills gaps;
-                        --reset closes those four then recreates them.
+                        --reset closes those four (and legacy "Home (~)"), then
+                        recreates them; it aborts if one cannot be closed.
                         Bare with a TTY asks whether to reset (default N).
   help                  this text
 

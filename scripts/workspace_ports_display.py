@@ -17,6 +17,13 @@ def read_json(path: Path) -> dict:
     return value if isinstance(value, dict) else {}
 
 
+def to_int(value, default: int = 0) -> int:
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return default
+
+
 def listeners() -> set[int]:
     ports: set[int] = set()
     for path in ("/proc/net/tcp", "/proc/net/tcp6"):
@@ -88,16 +95,13 @@ def render_container(raw: str, workspace_id: str, state_root: str, hint: str) ->
         if len(parts) != 4:
             continue
         service, internal, direct, focus = parts
-        try:
-            listening = "yes" if int(internal) in live else "no"
-        except ValueError:
-            listening = "?"
+        listening = "yes" if to_int(internal, -1) in live else "no"
         records.append((service, internal, direct, focus, listening))
 
     if not records:
         records = [
             (service, internal, direct, focus,
-             "yes" if internal.isdigit() and int(internal) in live else "no")
+             "yes" if to_int(internal, -1) in live else "no")
             for service, internal, direct, focus in DEFAULT_RECORDS.get(infer_repo(hint), ())
         ]
 
@@ -119,16 +123,16 @@ def render_workspace(state_path: str, repo: str) -> int:
     path = Path(state_path)
     data = read_json(path)
     workspace = str(data.get("id") or path.parent.name)
-    focus_id = read_json(path.parent.parent / "_focus.json").get("workspace_id") or "primary"
+    focus_id = str(read_json(path.parent.parent / "_focus.json").get("workspace_id") or "primary")
     focused = workspace == focus_id
     print("workspace       %s%s" % (workspace, " (focus)" if focused else ""))
     print("%-14s %-10s %-12s %-10s %s" %
-          ("SERVICE", "INTERNAL", "HOST DIRECT", "FOCUS", "HOST PORT"))
+          ("SERVICE", "INTERNAL", "HOST DIRECT", "FOCUS", "STATE"))
     rows = []
     for name, service in sorted((data.get("services") or {}).items()):
         if not isinstance(service, dict) or service.get("repo") != repo:
             continue
-        direct = int(service.get("external_port") or 0)
+        direct = to_int(service.get("external_port"))
         with socket.socket() as sock:
             sock.settimeout(0.2)
             state = "open" if direct and sock.connect_ex(("127.0.0.1", direct)) == 0 else "closed"
@@ -136,6 +140,8 @@ def render_workspace(state_path: str, repo: str) -> int:
                      str(service.get("focus_port", "-")), state, direct,
                      service.get("focus_port")))
         print("%-14s %-10s %-12s %-10s %s" % rows[-1][:5])
+    if not rows:
+        print("No services recorded for repository '%s' in this workspace." % repo)
     _render_urls([(row[0], row[1], row[2], row[3], row[4]) for row in rows], focus_id, focused)
     return 0
 
@@ -149,14 +155,21 @@ def _render_urls(records, focus_id: str, focused: bool) -> None:
             print(f"{service}: http://localhost:{port} ({'focus' if focused else 'direct'})")
 
 
-def main() -> int:
-    if len(sys.argv) < 2:
-        return 2
-    if sys.argv[1] == "container" and len(sys.argv) == 6:
-        return render_container(sys.argv[2], sys.argv[3], sys.argv[4], sys.argv[5])
-    if sys.argv[1] == "workspace" and len(sys.argv) == 4:
-        return render_workspace(sys.argv[2], sys.argv[3])
+USAGE = (
+    "usage: workspace_ports_display.py container <ports> <workspace_id> <state_root> <repo_hint>\n"
+    "       workspace_ports_display.py workspace <workspace.json> <repo>"
+)
+
+
+def main(argv: list[str] | None = None) -> int:
+    argv = sys.argv if argv is None else argv
+    if len(argv) >= 2 and argv[1] == "container" and len(argv) == 6:
+        return render_container(argv[2], argv[3], argv[4], argv[5])
+    if len(argv) >= 2 and argv[1] == "workspace" and len(argv) == 4:
+        return render_workspace(argv[2], argv[3])
+    print(USAGE, file=sys.stderr)
     return 2
 
 
-raise SystemExit(main())
+if __name__ == "__main__":
+    raise SystemExit(main())
