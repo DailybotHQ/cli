@@ -852,6 +852,18 @@ PY
   dc ps || true
 }
 
+cmd_ports() {
+  note "repository      $REPO_ROOT"
+  local helper="$REPO_ROOT/scripts/workspace_ports_display.py"
+  if [ -f /.dockerenv ] || [ -n "${DAILYBOT_EXPOSED_PORTS:-}" ]; then
+    note "context         container"
+    python3 "$helper" container "${DAILYBOT_EXPOSED_PORTS:-}" "${DAILYBOT_WORKSPACE_ID:-}" "${DAILYBOT_WORKSPACES_ROOT:-/run/dailybot/workspaces}" "cli"
+    return $?
+  fi
+  note "context         host"
+  dc ps || true
+}
+
 cmd_ls() {
   local repos name root
   repos="$(child_repos)"
