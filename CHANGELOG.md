@@ -9,6 +9,15 @@ Do not edit it by hand — your edits will be overwritten on the next release.
 
 <!-- version list -->
 
+## v3.26.1 (2026-10-01)
+
+### Chores
+
+- **deps**: Upgrade Dailybot agent-skill to 3.23.2 and CLI pin to >=3.25.2
+  ([#126](https://github.com/DailybotHQ/cli/pull/126),
+  [`11585a5`](https://github.com/DailybotHQ/cli/commit/11585a5af196e7d3ee4baf72dfba15da37669048))
+
+
 ## v3.26.0 (2026-10-01)
 
 ### Chores
