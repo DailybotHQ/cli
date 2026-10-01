@@ -32,7 +32,7 @@ while [ -L "$_self" ]; do
 done
 SELF_DIR="$(cd -P "$(dirname "$_self")" && pwd)"
 
-VERBS=" setup up down stop start restart ps logs shell exec build rebuild ls config doctor agents ask herdr-layout help "
+VERBS=" setup up down stop start restart ps logs shell exec build rebuild ls config doctor ports agents ask herdr-layout help "
 
 # --------------------------------------------------------------------------
 # Argument parsing
@@ -824,6 +824,32 @@ cmd_doctor() {
       note "  ${key}: $([ -n "$val" ] && echo set || echo unset)"
     done < "$target"
   done < <(env_examples)
+}
+
+cmd_ports() {
+  note "repository      $REPO_ROOT"
+  if [ -f /.dockerenv ] || [ -n "${DAILYBOT_EXPOSED_PORTS:-}" ]; then
+    note "context         container"
+    python3 - "${DAILYBOT_EXPOSED_PORTS:-}" <<'PY'
+import sys
+live=set()
+for path in ("/proc/net/tcp","/proc/net/tcp6"):
+    try: rows=open(path).read().splitlines()[1:]
+    except OSError: continue
+    for row in rows:
+        f=row.split()
+        if len(f)>=4 and f[3]=="0A":
+            try: live.add(int(f[1].rsplit(":",1)[1],16))
+            except (IndexError,ValueError): pass
+print("SERVICE INTERNAL HOST_DIRECT FOCUS LISTENING")
+for raw in filter(None,sys.argv[1].split(",")):
+    p=raw.split(":")
+    if len(p)==4: print("%s %s %s %s %s"%(p[0],p[1],p[2],p[3],"yes" if int(p[1]) in live else "no"))
+PY
+    return 0
+  fi
+  note "context         host"
+  dc ps || true
 }
 
 cmd_ls() {
@@ -1708,6 +1734,7 @@ Verbs
   ls                    repositories this launcher can address, and their state
   config                resolved configuration; writes nothing
   doctor                environment diagnosis; writes nothing
+  ports                 host bindings, workspace ports, and live listeners
   agents                live machines and agents, refreshed from the Mac catalog
                         same as: dbdev agents
   ask <#> "..."         send agent # a prompt plus your reply address
@@ -1753,6 +1780,7 @@ run_one() {
     rebuild) cmd_rebuild ;;
     config)  cmd_config ;;
     doctor)  cmd_doctor ;;
+    ports)   cmd_ports ;;
     agents) cmd_herdr_agents ;;
     ask)    cmd_herdr_ask "${ARGS[@]+"${ARGS[@]}"}" ;;
     herdr-layout) cmd_herdr_layout ;;
