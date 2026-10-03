@@ -202,6 +202,8 @@ Your workspace is the isolated space where you and the other agents on the same 
 
 **Who to talk to:** when asked to talk to other agents, talk ONLY to agents in your own workspace (rows of `dbdev agents` whose machine target is `dailybot-ws-<name>-*` / label `WS <name>`, for your own name), using `dbdev ask <#> "Prompt..."`. Never contact agents of another workspace (or of the primary stack from a workspace, or vice versa) unless the human explicitly names that agent or workspace. Contract: `docs/technical/AGENT_WORKSPACES.md` in the Core Hub.
 
+**Rebuild from inside:** a container cannot run Docker, so `dbdev <repo> rebuild` (for example `dbdev api rebuild`) asks the Mac to rebuild that repo in your own workspace, and `dbdev <repo> rebuild --status` shows how it went. Rebuilding a sibling keeps your session; `dbdev rebuild --yes` rebuilds your own container and ends your session, so only do it when asked. Another workspace needs `--allow-other-workspace`, and only when the human named it. Contract: `docs/technical/AGENT_WORKSPACES.md` §5b in the Core Hub.
+
 The listing prints one filled-in example under the table. `no agents` means the machine answered and nobody is running. `unreachable` means SSH did not answer. Procedure: [`docs/HERDR_SSH_SETUP.md`](docs/HERDR_SSH_SETUP.md). This stays in contributor docs. Do not add machine ids, ports, or this command to the public README, `--help`, or any string the CLI prints for users.
 
 Verify your environment before working:
