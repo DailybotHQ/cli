@@ -1774,6 +1774,9 @@ H
 # rebuilding a container ends the session that asked for it.
 # --------------------------------------------------------------------------
 
+# Tested in the Core Hub, not in each repository (this file is identical in all of
+# them): bash scripts/test_dev_rebuild_request.sh — DAILYBOT_ASSUME_CONTAINER=1 plus
+# a fake ssh through DAILYBOT_HOST_SSH.
 in_container() { [ -f /.dockerenv ] || [ "${DAILYBOT_ASSUME_CONTAINER:-}" = 1 ]; }
 
 # Short alias (api web chatbot discord site cli) for a repository name; empty
