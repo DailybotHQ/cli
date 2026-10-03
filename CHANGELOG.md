@@ -9,6 +9,49 @@ Do not edit it by hand — your edits will be overwritten on the next release.
 
 <!-- version list -->
 
+## v3.26.2 (2026-10-03)
+
+### Bug Fixes
+
+- **docker**: Pass DAILYBOT_WORKSPACE_ID into the cli container
+  ([#128](https://github.com/DailybotHQ/cli/pull/128),
+  [`1916164`](https://github.com/DailybotHQ/cli/commit/19161640f696d164d910eedaf71e6ce45a4f52f0))
+
+- **docker**: Pass workspace id to the cli container
+  ([#128](https://github.com/DailybotHQ/cli/pull/128),
+  [`1916164`](https://github.com/DailybotHQ/cli/commit/19161640f696d164d910eedaf71e6ce45a4f52f0))
+
+- **docker**: Sync dev.sh — harden the in-container rebuild request
+  ([#128](https://github.com/DailybotHQ/cli/pull/128),
+  [`1916164`](https://github.com/DailybotHQ/cli/commit/19161640f696d164d910eedaf71e6ce45a4f52f0))
+
+### Chores
+
+- **docker**: Sync dev.sh — note where the rebuild request is tested
+  ([#128](https://github.com/DailybotHQ/cli/pull/128),
+  [`1916164`](https://github.com/DailybotHQ/cli/commit/19161640f696d164d910eedaf71e6ce45a4f52f0))
+
+- **docker**: Sync dev.sh — rebuild from inside a container
+  ([#128](https://github.com/DailybotHQ/cli/pull/128),
+  [`1916164`](https://github.com/DailybotHQ/cli/commit/19161640f696d164d910eedaf71e6ce45a4f52f0))
+
+### Documentation
+
+- **cli**: List the three workspace start forms ([#128](https://github.com/DailybotHQ/cli/pull/128),
+  [`1916164`](https://github.com/DailybotHQ/cli/commit/19161640f696d164d910eedaf71e6ce45a4f52f0))
+
+- **cli**: Note rebuild from inside a container ([#128](https://github.com/DailybotHQ/cli/pull/128),
+  [`1916164`](https://github.com/DailybotHQ/cli/commit/19161640f696d164d910eedaf71e6ce45a4f52f0))
+
+- **cli**: Note workspace name vs branch and same-workspace agents
+  ([#128](https://github.com/DailybotHQ/cli/pull/128),
+  [`1916164`](https://github.com/DailybotHQ/cli/commit/19161640f696d164d910eedaf71e6ce45a4f52f0))
+
+- **cli**: Primary-stack peers and where the contract lives
+  ([#128](https://github.com/DailybotHQ/cli/pull/128),
+  [`1916164`](https://github.com/DailybotHQ/cli/commit/19161640f696d164d910eedaf71e6ce45a4f52f0))
+
+
 ## v3.26.1 (2026-10-01)
 
 ### Chores
