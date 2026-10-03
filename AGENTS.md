@@ -196,6 +196,12 @@ dbdev ask <#> "Prompt..."
 
 The prompt carries a reply address for the session that sent it. The receiver is allowed to answer, and sends that answer itself without asking a person for permission. A reply keeps the `[dailybot-mesh]` stamp, so the next hop is marked as a reply and is not answered. That is what stops two agents from looping. The answer arrives as a prompt in the sender's pane. A reply uses the stamped machine id and pane, not `#`, because the number is only valid for the list that printed it. A container can answer an agent on the Mac after `dbdev onboard herdr` has published this Mac as the machine `0 - Mac`. From the Core Hub, `bash scripts/host-kit-menu.sh doctor` lists what is already connected.
 
+### Workspace name vs branch, and who to talk to
+
+Your workspace is the isolated space where you and the other agents on the same task work, across repos. Its **name** is its id (directory, ports, SSH/Herdr aliases `dailybot-ws-<name>-<repo>`, Herdr label `WS <name>`). The git **branch** is independent of the name: `dbdev workspace start feature__x` uses `feature__x` for both, `dbdev workspace start patricia --branch feature__x` is workspace `patricia` on branch `feature__x`, and `dbdev workspace start --branch feature/x` derives the name `feature__x`. Agents may switch branches inside a workspace; the branch is not the identity. `dbdev workspace rename` changes only the name, and `dbdev workspace ls` shows each workspace's live branch. Read your workspace name with `echo $DAILYBOT_WORKSPACE_ID` (empty in a primary stack container).
+
+**Who to talk to:** when asked to talk to other agents, talk ONLY to agents in your own workspace (rows of `dbdev agents` whose machine target is `dailybot-ws-<name>-*` / label `WS <name>`, for your own name), using `dbdev ask <#> "Prompt..."`. Never contact agents of another workspace (or of the primary stack from a workspace, or vice versa) unless the human explicitly names that agent or workspace. Contract: `docs/technical/AGENT_WORKSPACES.md` in the Core Hub.
+
 The listing prints one filled-in example under the table. `no agents` means the machine answered and nobody is running. `unreachable` means SSH did not answer. Procedure: [`docs/HERDR_SSH_SETUP.md`](docs/HERDR_SSH_SETUP.md). This stays in contributor docs. Do not add machine ids, ports, or this command to the public README, `--help`, or any string the CLI prints for users.
 
 Verify your environment before working:
