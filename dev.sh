@@ -1809,12 +1809,23 @@ self_repo_alias() {
 host_request() {
   local verb="$1"; shift
   local from="${DAILYBOT_WORKSPACE_ID:-primary}"
-  local mac_cmd="\"\$HOME/.local/share/coding-agent-kit/bin/dailybot-dev\" request $verb --from-workspace $from"
-  local arg
-  for arg in "$@"; do mac_cmd="$mac_cmd $arg"; done
+  safe_name "$from" || die "invalid DAILYBOT_WORKSPACE_ID '$from'"
+  safe_name "$verb" || die "invalid request '$verb'"
+  # Every token is shell-quoted (printf %q), so a value can only ever be data on
+  # the Mac, never extra commands. Only $HOME is left to expand there.
+  local mac_cmd
+  mac_cmd="\"\$HOME/.local/share/coding-agent-kit/bin/dailybot-dev\"$(printf ' %q' request "$verb" --from-workspace "$from" "$@")"
+  local out rc=0
   # shellcheck disable=SC2086
-  ${DAILYBOT_HOST_SSH:-ssh -o BatchMode=yes -o ConnectTimeout=10} "${DAILYBOT_HOST_ALIAS:-dailybot-mac}" "$mac_cmd" \
-    || die "could not reach the Mac (alias ${DAILYBOT_HOST_ALIAS:-dailybot-mac}). Run as the container's remoteUser, and make sure the Mac side is set up: bash scripts/host-kit-menu.sh organize"
+  if out="$(${DAILYBOT_HOST_SSH:-ssh -o BatchMode=yes -o ConnectTimeout=10} "${DAILYBOT_HOST_ALIAS:-dailybot-mac}" "$mac_cmd" 2>&1)"; then rc=0; else rc=$?; fi
+  [ -z "$out" ] || printf '%s\n' "$out"
+  # ssh exits 255 when it cannot connect; any other status is the Mac's own
+  # answer to the request, which is printed above.
+  if [ "$rc" -eq 255 ]; then
+    die "could not reach the Mac (alias ${DAILYBOT_HOST_ALIAS:-dailybot-mac}). Run as the container's remoteUser, and make sure the Mac side is set up: bash scripts/host-kit-menu.sh organize"
+  elif [ "$rc" -ne 0 ]; then
+    die "the Mac refused the request (exit $rc) — its message is above"
+  fi
 }
 
 # A name is safe to put on the Mac command line only when it has no shell
@@ -1828,9 +1839,16 @@ safe_name() {
 
 remote_rebuild() {
   local from ws self target args=()
+  [ "$ALL" -eq 0 ] || die "--all only works on the Mac. Inside a container name one repository: dbdev <repo> rebuild"
+  [ "${#ARGS[@]}" -eq 0 ] || die "unexpected argument '${ARGS[0]}'. Inside a container the form is: dbdev <repo> rebuild (for example: dbdev api rebuild)"
   from="${DAILYBOT_WORKSPACE_ID:-primary}"
+  safe_name "$from" || die "invalid DAILYBOT_WORKSPACE_ID '$from'"
   ws="${REQ_WORKSPACE:-$from}"
   safe_name "$ws" || die "invalid workspace name '$ws'"
+  # This gate stops mistakes, not abuse: DAILYBOT_WORKSPACE_ID is a claim any
+  # process in the container can change. The Mac side (dailybot-dev request) is
+  # the one that must validate and authorise; never treat this die as the
+  # trust boundary.
   if [ "$ws" != "$from" ] && [ "$ALLOW_OTHER_WS" -ne 1 ]; then
     die "this container belongs to workspace '$from'. Acting on '$ws' needs --allow-other-workspace — only when the human asked for that workspace by name."
   fi
@@ -1875,10 +1893,13 @@ Verbs
   build [service]       build images
   rebuild [service]     rebuild images and recreate containers (cache on by
                         default; same idea as VS Code "Rebuild and Reopen")
-                        Inside a container it is a request to the Mac, for a
-                        repo in THIS container's workspace (primary when it has
-                        none): dbdev <repo> rebuild, dbdev rebuild --yes (this
-                        container), dbdev <repo> rebuild --status.
+                        INSIDE A CONTAINER the form is different — a request to
+                        the Mac for a repo of THIS container's workspace
+                        (primary when it has none):
+                          dbdev <repo> rebuild           e.g. dbdev api rebuild
+                          dbdev rebuild --yes            this very container
+                          dbdev <repo> rebuild --status  how the last one went
+                        There, "rebuild <service>" and --all do not apply.
   ls                    repositories this launcher can address, and their state
   config                resolved configuration; writes nothing
   doctor                environment diagnosis; writes nothing
@@ -1905,8 +1926,11 @@ Flags
   --yes                 inside a container, confirm rebuilding this very
                         container (it ends the session that asked)
   --status              inside a container, show the last rebuild requests
-  --workspace <name>    inside a container, target another workspace; refused
-                        without --allow-other-workspace (human-named only)
+  --workspace <name>    inside a container, target another workspace; needs
+                        --allow-other-workspace
+  --allow-other-workspace
+                        inside a container, permit --workspace <other>; only
+                        when the human named that workspace
   --volumes             with down, report named volumes for manual removal
 
 The devcontainer.json "runServices" list is the single source of truth for
@@ -1952,6 +1976,11 @@ esac
 if [ "$VERB" = "rebuild" ] && in_container; then
   remote_rebuild
   exit 0
+fi
+# These flags only mean something for that in-container request. On the Mac they
+# would be silently ignored, and `rebuild --status` would then run a real rebuild.
+if [ "$SHOW_STATUS" -eq 1 ] || [ -n "$REQ_WORKSPACE" ] || [ "$ALLOW_OTHER_WS" -eq 1 ] || [ "$ASSUME_YES" -eq 1 ]; then
+  die "--status, --workspace, --allow-other-workspace and --yes only apply to 'rebuild' inside a container"
 fi
 
 if [ "$ALL" -eq 1 ]; then
