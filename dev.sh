@@ -44,6 +44,10 @@ ALL=0
 WITH_VOLUMES=0
 RECREATE=0
 NO_CACHE=0
+ASSUME_YES=0
+SHOW_STATUS=0
+REQ_WORKSPACE=""
+ALLOW_OTHER_WS=0
 PROJECT_OVERRIDE=""
 ARGS=()
 
@@ -53,6 +57,10 @@ while [ $# -gt 0 ]; do
     --volumes) WITH_VOLUMES=1; shift ;;
     --recreate) RECREATE=1; shift ;;
     --no-cache) NO_CACHE=1; shift ;;
+    --yes|-y) ASSUME_YES=1; shift ;;
+    --status) SHOW_STATUS=1; shift ;;
+    --workspace) [ $# -ge 2 ] || die "--workspace needs a workspace name"; REQ_WORKSPACE="$2"; shift 2 ;;
+    --allow-other-workspace) ALLOW_OTHER_WS=1; shift ;;
     --repo) [ $# -ge 2 ] || die "--repo needs a repository name"; TARGET_REPO="$2"; shift 2 ;;
     --project) [ $# -ge 2 ] || die "--project needs a name"; PROJECT_OVERRIDE="$2"; shift 2 ;;
     -h|--help) VERB="help"; shift ;;
@@ -1755,6 +1763,99 @@ H
   note "herdr-layout: ready — Home · Editor · Development · Agents"
 }
 
+# --------------------------------------------------------------------------
+# rebuild from inside a container
+#
+# A container cannot run Docker, so `rebuild` here is a request to the Mac. The
+# grammar is the one used outside: `dbdev <repo> rebuild` acts on <repo> in the
+# CURRENT workspace — the one this container belongs to (DAILYBOT_WORKSPACE_ID),
+# or `primary` for a primary-stack container. `dbdev rebuild` alone means this
+# very container. The Mac validates the request and runs it detached, because
+# rebuilding a container ends the session that asked for it.
+# --------------------------------------------------------------------------
+
+in_container() { [ -f /.dockerenv ] || [ "${DAILYBOT_ASSUME_CONTAINER:-}" = 1 ]; }
+
+# Short alias (api web chatbot discord site cli) for a repository name; empty
+# when the name is not a Dailybot repository.
+repo_alias() {
+  case "$1" in
+    api|api-services) printf 'api' ;;
+    web|web-app) printf 'web' ;;
+    chatbot|cf|chatbot-functions) printf 'chatbot' ;;
+    discord|discord-gateway) printf 'discord' ;;
+    site|www|dailybot.com|dailybot-com) printf 'site' ;;
+    cli) printf 'cli' ;;
+  esac
+}
+
+# The repository this container runs: the workspace metadata when present,
+# otherwise the git remote name, otherwise the checkout directory name.
+self_repo_alias() {
+  local cand a
+  for cand in \
+    "${DAILYBOT_PORT_REPO:-}" \
+    "$(git -C "$SELF_DIR" remote get-url origin 2>/dev/null | sed 's#.*/##; s#\.git$##')" \
+    "$(basename "$SELF_DIR")"; do
+    [ -n "$cand" ] || continue
+    a="$(repo_alias "$cand")"
+    if [ -n "$a" ]; then printf '%s' "$a"; return 0; fi
+  done
+  return 1
+}
+
+# One request to the Mac. DAILYBOT_HOST_SSH is a test hook; the real command is
+# ssh to the `dailybot-mac` alias the host kit publishes for containers.
+host_request() {
+  local verb="$1"; shift
+  local from="${DAILYBOT_WORKSPACE_ID:-primary}"
+  local mac_cmd="\"\$HOME/.local/share/coding-agent-kit/bin/dailybot-dev\" request $verb --from-workspace $from"
+  local arg
+  for arg in "$@"; do mac_cmd="$mac_cmd $arg"; done
+  # shellcheck disable=SC2086
+  ${DAILYBOT_HOST_SSH:-ssh -o BatchMode=yes -o ConnectTimeout=10} "${DAILYBOT_HOST_ALIAS:-dailybot-mac}" "$mac_cmd" \
+    || die "could not reach the Mac (alias ${DAILYBOT_HOST_ALIAS:-dailybot-mac}). Run as the container's remoteUser, and make sure the Mac side is set up: bash scripts/host-kit-menu.sh organize"
+}
+
+# A name is safe to put on the Mac command line only when it has no shell
+# metacharacters and cannot be read as a flag.
+safe_name() {
+  case "$1" in
+    ''|-*|*[!A-Za-z0-9._-]*) return 1 ;;
+  esac
+  return 0
+}
+
+remote_rebuild() {
+  local from ws self target args=()
+  from="${DAILYBOT_WORKSPACE_ID:-primary}"
+  ws="${REQ_WORKSPACE:-$from}"
+  safe_name "$ws" || die "invalid workspace name '$ws'"
+  if [ "$ws" != "$from" ] && [ "$ALLOW_OTHER_WS" -ne 1 ]; then
+    die "this container belongs to workspace '$from'. Acting on '$ws' needs --allow-other-workspace — only when the human asked for that workspace by name."
+  fi
+  self="$(self_repo_alias || true)"
+  if [ -n "$TARGET_REPO" ]; then
+    target="$(repo_alias "$TARGET_REPO")"
+    [ -n "$target" ] || die "unknown repository '$TARGET_REPO' (use api, web, chatbot, discord, site, cli)"
+  else
+    target="$self"
+    [ -n "$target" ] || die "cannot tell which repository this container runs; name one: dbdev <repo> rebuild"
+  fi
+  args=(--workspace "$ws" --repo "$target")
+  [ "$ws" = "$from" ] || args+=(--allow-other-workspace)
+  if [ "$SHOW_STATUS" -eq 1 ]; then
+    host_request status "${args[@]}"
+    return
+  fi
+  if [ "$target" = "$self" ] && [ "$ws" = "$from" ] && [ "$ASSUME_YES" -ne 1 ]; then
+    die "rebuilding $target in '$ws' recreates THIS container and ends your session. Re-run with --yes, or rebuild a sibling (dbdev <other repo> rebuild)."
+  fi
+  [ "$NO_CACHE" -eq 1 ] && args+=(--no-cache)
+  host_request rebuild "${args[@]}"
+  note "Follow it with: dbdev $target rebuild --status"
+}
+
 cmd_help() {
   cat <<'USAGE'
 dev.sh — start this repository's dev containers without VS Code.
@@ -1774,6 +1875,10 @@ Verbs
   build [service]       build images
   rebuild [service]     rebuild images and recreate containers (cache on by
                         default; same idea as VS Code "Rebuild and Reopen")
+                        Inside a container it is a request to the Mac, for a
+                        repo in THIS container's workspace (primary when it has
+                        none): dbdev <repo> rebuild, dbdev rebuild --yes (this
+                        container), dbdev <repo> rebuild --status.
   ls                    repositories this launcher can address, and their state
   config                resolved configuration; writes nothing
   doctor                environment diagnosis; writes nothing
@@ -1797,6 +1902,11 @@ Flags
   --recreate            with up, recreate containers to apply compose changes
   --no-cache            with rebuild (or build), ignore Docker layer cache and
                         pull base images — full wipe, much slower
+  --yes                 inside a container, confirm rebuilding this very
+                        container (it ends the session that asked)
+  --status              inside a container, show the last rebuild requests
+  --workspace <name>    inside a container, target another workspace; refused
+                        without --allow-other-workspace (human-named only)
   --volumes             with down, report named volumes for manual removal
 
 The devcontainer.json "runServices" list is the single source of truth for
@@ -1837,6 +1947,12 @@ case "$VERB" in
   help) cmd_help; exit 0 ;;
   ls)   SELF_DIR="$SELF_DIR"; cmd_ls; exit 0 ;;
 esac
+
+# Inside a container there is no Docker: rebuild becomes a request to the Mac.
+if [ "$VERB" = "rebuild" ] && in_container; then
+  remote_rebuild
+  exit 0
+fi
 
 if [ "$ALL" -eq 1 ]; then
   targets=("$SELF_DIR")
