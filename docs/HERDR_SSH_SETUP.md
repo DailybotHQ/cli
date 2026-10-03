@@ -159,6 +159,20 @@ dbdev ask <#> "Prompt..."
 
 The prompt carries a reply address for the session that sent it. The receiver is allowed to answer, and sends that answer itself without asking a person for permission. A reply keeps the `[dailybot-mesh]` stamp, so the next hop is marked as a reply and is not answered. That is what stops two agents from looping. The answer arrives as a prompt in the sender's pane. A reply uses the stamped machine id and pane, not `#`, because the number is only valid for the list that printed it. A container can answer an agent on the Mac after `dbdev onboard herdr` has published this Mac as the machine `0 - Mac`. From the Core Hub, `bash scripts/host-kit-menu.sh doctor` lists what is already connected.
 
+#### Workspace name vs branch, and who to talk to
+
+Your workspace is the isolated space where you and the other agents on the same task work, across repos. Its **name** is its id (directory, ports, SSH/Herdr aliases `dailybot-ws-<name>-<repo>`, Herdr label `WS <name>`); the git **branch** is independent of it:
+
+- `dbdev workspace start feature__x`: name and branch are both `feature__x`.
+- `dbdev workspace start patricia --branch feature__x`: workspace `patricia` on branch `feature__x`.
+- `dbdev workspace start --branch feature/x`: the name is derived (`feature__x`), the branch is `feature/x`.
+- Agents may switch branches inside a workspace; the branch is not the identity. `dbdev workspace rename` changes only the name, and `dbdev workspace ls` shows the live branch.
+- Read your workspace with `echo $DAILYBOT_WORKSPACE_ID` (empty in a primary stack container).
+
+**Who to talk to:** when asked to talk to other agents, talk ONLY to agents in your own workspace (rows of `dbdev agents` whose machine target is `dailybot-ws-<name>-*` / label `WS <name>`, for your own name), using `dbdev ask <#> "Prompt..."`. Never contact agents of another workspace (or of the primary stack from a workspace, or vice versa) unless the human explicitly names that agent or workspace. In a primary-stack container (`$DAILYBOT_WORKSPACE_ID` is empty) your own peers are the primary machines (labels `0 · PRIMARY …`, targets without `dailybot-ws-`); you still never contact a `WS <name>` agent unless the human names it. Contract: `docs/technical/AGENT_WORKSPACES.md` (in the Core Hub repository, not in this one).
+
+**Rebuild from inside:** a container cannot run Docker, so `dbdev <repo> rebuild` (for example `dbdev api rebuild`) asks the Mac to rebuild that repo in your own workspace, and `dbdev <repo> rebuild --status` shows how it went. Rebuilding a sibling keeps your session; `dbdev rebuild --yes` rebuilds your own container and ends your session, so only do it when asked. Another workspace needs `--allow-other-workspace`, and only when the human named it. Contract: `docs/technical/AGENT_WORKSPACES.md` §5b (in the Core Hub repository, not in this one).
+
 The listing prints one filled-in example under the table. `no agents` means the machine answered and nobody is running. `unreachable` means SSH did not answer. Contributor tooling only — keep machine ids and ports out of the public README and CLI help.
 
 Phone / Tailscale / Moshi should SSH to the **Mac**, not to `22031`. Herdr
