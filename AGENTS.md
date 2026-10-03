@@ -198,7 +198,13 @@ The prompt carries a reply address for the session that sent it. The receiver is
 
 ### Workspace name vs branch, and who to talk to
 
-Your workspace is the isolated space where you and the other agents on the same task work, across repos. Its **name** is its id (directory, ports, SSH/Herdr aliases `dailybot-ws-<name>-<repo>`, Herdr label `WS <name>`). The git **branch** is independent of the name: `dbdev workspace start feature__x` uses `feature__x` for both, `dbdev workspace start patricia --branch feature__x` is workspace `patricia` on branch `feature__x`, and `dbdev workspace start --branch feature/x` derives the name `feature__x`. Agents may switch branches inside a workspace; the branch is not the identity. `dbdev workspace rename` changes only the name, and `dbdev workspace ls` shows each workspace's live branch. Read your workspace name with `echo $DAILYBOT_WORKSPACE_ID` (empty in a primary stack container).
+Your workspace is the isolated space where you and the other agents on the same task work, across repos. Its **name** is its id (directory, ports, SSH/Herdr aliases `dailybot-ws-<name>-<repo>`, Herdr label `WS <name>`); the git **branch** is independent of it:
+
+- `dbdev workspace start feature__x`: name and branch are both `feature__x`.
+- `dbdev workspace start patricia --branch feature__x`: workspace `patricia` on branch `feature__x`.
+- `dbdev workspace start --branch feature/x`: the name is derived (`feature__x`), the branch is `feature/x`.
+- Agents may switch branches inside a workspace; the branch is not the identity. `dbdev workspace rename` changes only the name, and `dbdev workspace ls` shows the live branch.
+- Read your workspace with `echo $DAILYBOT_WORKSPACE_ID` (empty in a primary stack container).
 
 **Who to talk to:** when asked to talk to other agents, talk ONLY to agents in your own workspace (rows of `dbdev agents` whose machine target is `dailybot-ws-<name>-*` / label `WS <name>`, for your own name), using `dbdev ask <#> "Prompt..."`. Never contact agents of another workspace (or of the primary stack from a workspace, or vice versa) unless the human explicitly names that agent or workspace. In a primary-stack container (`$DAILYBOT_WORKSPACE_ID` is empty) your own peers are the primary machines (labels `0 · PRIMARY …`, targets without `dailybot-ws-`); you still never contact a `WS <name>` agent unless the human names it. Contract: `docs/technical/AGENT_WORKSPACES.md` (in the Core Hub repository, not in this one).
 
