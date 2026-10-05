@@ -9,6 +9,36 @@ Do not edit it by hand — your edits will be overwritten on the next release.
 
 <!-- version list -->
 
+## v3.27.0 (2026-10-05)
+
+### Bug Fixes
+
+- **plan**: Pass fields to print_tasks_detail_panel on T5 leaves
+  ([#129](https://github.com/DailybotHQ/cli/pull/129),
+  [`edcf7e3`](https://github.com/DailybotHQ/cli/commit/edcf7e3e843a7507d4881a5c09d922860c5f7120))
+
+### Code Style
+
+- **plan**: Ruff format T5 leaf files for CI ([#129](https://github.com/DailybotHQ/cli/pull/129),
+  [`edcf7e3`](https://github.com/DailybotHQ/cli/commit/edcf7e3e843a7507d4881a5c09d922860c5f7120))
+
+### Documentation
+
+- **skills**: Sync dailybot-tasks T5 loop-review polish
+  ([#129](https://github.com/DailybotHQ/cli/pull/129),
+  [`edcf7e3`](https://github.com/DailybotHQ/cli/commit/edcf7e3e843a7507d4881a5c09d922860c5f7120))
+
+### Features
+
+- **plan**: Add T5 agent-first x-cli-command leaves
+  ([#129](https://github.com/DailybotHQ/cli/pull/129),
+  [`edcf7e3`](https://github.com/DailybotHQ/cli/commit/edcf7e3e843a7507d4881a5c09d922860c5f7120))
+
+- **plan**: Agent-first T5 leaves + parity (CLI_HANDOFF)
+  ([#129](https://github.com/DailybotHQ/cli/pull/129),
+  [`edcf7e3`](https://github.com/DailybotHQ/cli/commit/edcf7e3e843a7507d4881a5c09d922860c5f7120))
+
+
 ## v3.26.2 (2026-10-03)
 
 ### Bug Fixes
