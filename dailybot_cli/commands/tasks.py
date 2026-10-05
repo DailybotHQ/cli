@@ -122,6 +122,11 @@ _BAND_COLUMNS: dict[str, tuple[str, list[tuple[str, str, bool]]]] = {
     ),
 }
 
+_TASKS_BOARD_FIELDS: list[tuple[str, str]] = [
+    ("Total", "total"),
+    ("Group by", "group_by"),
+    ("Sub group by", "sub_group_by"),
+]
 _PULSE_FIELDS: list[tuple[str, str]] = [
     ("Open", "open"),
     ("Overdue", "overdue"),
@@ -429,7 +434,7 @@ def tasks_board(
         return
     from dailybot_cli.display import print_tasks_detail_panel
 
-    print_tasks_detail_panel("Tasks board", data)
+    print_tasks_detail_panel("Tasks board", data, _TASKS_BOARD_FIELDS)
 
 
 @tasks.command("search")

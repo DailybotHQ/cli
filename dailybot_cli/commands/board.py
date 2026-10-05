@@ -214,6 +214,19 @@ _MEMBER_COLUMNS: list[tuple[str, str, bool]] = [
     ("Role", "role", True),
     ("User UUID", "user.uuid", True),
 ]
+_MEMBER_DETAIL_FIELDS: list[tuple[str, str]] = [
+    ("UUID", "uuid"),
+    ("User UUID", "user_uuid"),
+    ("Team UUID", "team_uuid"),
+    ("Role", "role"),
+]
+_MOVE_PREVIEW_FIELDS: list[tuple[str, str]] = [
+    ("From project", "from_project_uuid"),
+    ("To project", "to_project_uuid"),
+    ("Tasks", "tasks_count"),
+    ("Foreign milestones", "tasks_with_foreign_milestone"),
+    ("Goals affected", "goals_affected"),
+]
 _LABEL_COLUMNS: list[tuple[str, str, bool]] = [
     ("Name", "name", False),
     ("Color", "color", True),
@@ -814,7 +827,7 @@ def board_member_update(board_uuid: str, user_uuid: str, json_mode: bool) -> Non
     if json_mode:
         emit_json(data)
         return
-    print_tasks_detail_panel("Board member", data)
+    print_tasks_detail_panel("Board member", data, _MEMBER_DETAIL_FIELDS)
 
 
 # ---------------------------------------------------------------------------
@@ -1207,7 +1220,7 @@ def board_move_preview(board_uuid: str, project: str, json_mode: bool) -> None:
     if json_mode:
         emit_json(data)
         return
-    print_tasks_detail_panel("Board move preview", data)
+    print_tasks_detail_panel("Board move preview", data, _MOVE_PREVIEW_FIELDS)
 
 
 @board.command("snapshot")

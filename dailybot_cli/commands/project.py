@@ -58,6 +58,14 @@ from dailybot_cli.display import (
 PROJECT_INCLUDE_VALUES: tuple[str, ...] = ("progress",)
 PROJECT_HEALTH: tuple[str, ...] = ("not_set", "on_track", "at_risk", "off_track")
 PROJECT_VISIBILITIES: tuple[str, ...] = ("org", "members")
+
+_MEMBER_DETAIL_FIELDS: list[tuple[str, str]] = [
+    ("UUID", "uuid"),
+    ("User UUID", "user_uuid"),
+    ("Team UUID", "team_uuid"),
+    ("Role", "role"),
+]
+
 PROJECT_DATE_FORMAT: str = "%Y-%m-%d"
 _PROJECT_DATE: click.DateTime = click.DateTime(formats=[PROJECT_DATE_FORMAT])
 GOAL_INCLUDE_VALUES: tuple[str, ...] = ("progress", "projects")
@@ -787,7 +795,7 @@ def project_member_update(project_uuid: str, user_uuid: str, json_mode: bool) ->
     if json_mode:
         emit_json(data)
         return
-    print_tasks_detail_panel("Project member", data)
+    print_tasks_detail_panel("Project member", data, _MEMBER_DETAIL_FIELDS)
 
 
 @project.command("views")
