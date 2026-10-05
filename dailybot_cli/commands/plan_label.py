@@ -118,7 +118,12 @@ def label_list(
         _LABEL_COLUMNS,
         empty="No labels.",
     )
-    print_pagination_footer(len(result.results), result.count, has_more=bool(result.next), more_hint=PAGING_ONLY_MORE_HINT)
+    print_pagination_footer(
+        len(result.results),
+        result.count,
+        has_more=bool(result.next),
+        more_hint=PAGING_ONLY_MORE_HINT,
+    )
 
 
 @label.command("create")

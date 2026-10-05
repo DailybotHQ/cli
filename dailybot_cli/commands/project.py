@@ -478,8 +478,14 @@ def project_create(
 
 @project.command("reorder")
 @click.argument("project_uuid", metavar="PROJECT")
-@click.option("--before", default=None, help="Place this project immediately before this sibling project uuid.")
-@click.option("--after", default=None, help="Place this project immediately after this sibling project uuid.")
+@click.option(
+    "--before",
+    default=None,
+    help="Place this project immediately before this sibling project uuid.",
+)
+@click.option(
+    "--after", default=None, help="Place this project immediately after this sibling project uuid."
+)
 @click.option("--json", "json_mode", is_flag=True, help="Emit machine-readable JSON to stdout.")
 def project_reorder(
     project_uuid: str, before: str | None, after: str | None, json_mode: bool
@@ -500,9 +506,7 @@ def project_reorder(
     client = require_auth()
     try:
         with console.status("Reordering the project..."):
-            data: dict[str, Any] = client.reorder_project(
-                project_uuid, before=before, after=after
-            )
+            data: dict[str, Any] = client.reorder_project(project_uuid, before=before, after=after)
     except APIError as exc:
         exit_for_tasks_error(exc, json_mode)
     if json_mode:

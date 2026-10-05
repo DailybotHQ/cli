@@ -298,13 +298,23 @@ def tasks_entitlements(json_mode: bool) -> None:
     )
 
 
-
 @tasks.command("board")
-@click.option("-b", "--board", "boards", multiple=True, help="Only tasks on these boards (uuid, repeatable).")
-@click.option("--project", "projects", multiple=True, help="Only tasks in these projects (uuid, repeatable).")
-@click.option("--milestone", "milestones", multiple=True, help="Only tasks in these milestones (uuid, repeatable).")
+@click.option(
+    "-b", "--board", "boards", multiple=True, help="Only tasks on these boards (uuid, repeatable)."
+)
+@click.option(
+    "--project", "projects", multiple=True, help="Only tasks in these projects (uuid, repeatable)."
+)
+@click.option(
+    "--milestone",
+    "milestones",
+    multiple=True,
+    help="Only tasks in these milestones (uuid, repeatable).",
+)
 @click.option("--state", "states", multiple=True, help="Only these workflow states.")
-@click.option("--owner", "owners", multiple=True, help="Owner filter (uuid, me, unowned; repeatable).")
+@click.option(
+    "--owner", "owners", multiple=True, help="Owner filter (uuid, me, unowned; repeatable)."
+)
 @click.option("--label", "labels", multiple=True, help="Label filter (uuid or name; repeatable).")
 @click.option("--priority", "priorities", multiple=True, help="Priority filter (repeatable).")
 @click.option("--sort", default=None, help="Sort expression for cards inside each cell.")
@@ -334,7 +344,9 @@ def tasks_entitlements(json_mode: bool) -> None:
 )
 @click.option("--offset", default=None, type=int, help="Window start inside each returned cell.")
 @click.option("--group", "group_key", default=None, help="Return only this column key.")
-@click.option("--lane", "lane_key", default=None, help="Return only this lane key (needs --sub-group-by).")
+@click.option(
+    "--lane", "lane_key", default=None, help="Return only this lane key (needs --sub-group-by)."
+)
 @click.option("-q", "--search", default=None, help="Full-text search over the slice.")
 @click.option("--json", "json_mode", is_flag=True, help="Emit machine-readable JSON to stdout.")
 def tasks_board(

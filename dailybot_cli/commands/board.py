@@ -1136,11 +1136,14 @@ def board_view_save(
     print_tasks_rows("Views", rows_of(data), _VIEW_COLUMNS, empty="No saved views.")
 
 
-
 @board.command("reorder")
 @click.argument("board_uuid", metavar="BOARD")
-@click.option("--before", default=None, help="Place this board immediately before this sibling board uuid.")
-@click.option("--after", default=None, help="Place this board immediately after this sibling board uuid.")
+@click.option(
+    "--before", default=None, help="Place this board immediately before this sibling board uuid."
+)
+@click.option(
+    "--after", default=None, help="Place this board immediately after this sibling board uuid."
+)
 @click.option(
     "--project",
     default=None,

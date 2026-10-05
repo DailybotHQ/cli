@@ -27,7 +27,9 @@ def _client() -> DailyBotClient:
     return DailyBotClient(api_url=API, api_key="test-key")
 
 
-def _ok(payload: Any = None, *, status: int = 200, headers: dict[str, str] | None = None) -> httpx.Response:
+def _ok(
+    payload: Any = None, *, status: int = 200, headers: dict[str, str] | None = None
+) -> httpx.Response:
     return httpx.Response(
         status,
         json=payload if payload is not None else {},
@@ -186,12 +188,12 @@ class TestCommandWiring:
         self, runner: CliRunner, auth_client: MagicMock
     ) -> None:
         auth_client.reorder_project.return_value = {"uuid": PROJECT}
-        r1 = runner.invoke(cli, ["plan", "project", "reorder", PROJECT, "--before", SIBLING, "--json"])
+        r1 = runner.invoke(
+            cli, ["plan", "project", "reorder", PROJECT, "--before", SIBLING, "--json"]
+        )
         assert r1.exit_code == 0, r1.output
         auth_client.update_project_member.return_value = {"user_uuid": USER}
-        r2 = runner.invoke(
-            cli, ["plan", "project", "member", "update", PROJECT, USER, "--json"]
-        )
+        r2 = runner.invoke(cli, ["plan", "project", "member", "update", PROJECT, USER, "--json"])
         assert r2.exit_code == 0, r2.output
 
     def test_project_view_create(self, runner: CliRunner, auth_client: MagicMock) -> None:
@@ -214,7 +216,17 @@ class TestCommandWiring:
                 fh.write('[{"name": "A", "filters": {}}]')
             r2 = runner.invoke(
                 cli,
-                ["plan", "views", "workspace", "save", "-f", "v.json", "--if-match", '"e1"', "--json"],
+                [
+                    "plan",
+                    "views",
+                    "workspace",
+                    "save",
+                    "-f",
+                    "v.json",
+                    "--if-match",
+                    '"e1"',
+                    "--json",
+                ],
             )
         assert r2.exit_code == 0, r2.output
         auth_client.save_workspace_views.assert_called_once()
