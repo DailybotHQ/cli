@@ -214,6 +214,19 @@ _MEMBER_COLUMNS: list[tuple[str, str, bool]] = [
     ("Role", "role", True),
     ("User UUID", "user.uuid", True),
 ]
+_MEMBER_DETAIL_FIELDS: list[tuple[str, str]] = [
+    ("UUID", "uuid"),
+    ("User UUID", "user_uuid"),
+    ("Team UUID", "team_uuid"),
+    ("Role", "role"),
+]
+_MOVE_PREVIEW_FIELDS: list[tuple[str, str]] = [
+    ("From project", "from_project_uuid"),
+    ("To project", "to_project_uuid"),
+    ("Tasks", "tasks_count"),
+    ("Foreign milestones", "tasks_with_foreign_milestone"),
+    ("Goals affected", "goals_affected"),
+]
 _LABEL_COLUMNS: list[tuple[str, str, bool]] = [
     ("Name", "name", False),
     ("Color", "color", True),
@@ -789,6 +802,34 @@ def board_member_remove(
     print_success("Member removed.")
 
 
+@board_member.command("update")
+@click.argument("board_uuid", metavar="BOARD")
+@click.argument("user_uuid", metavar="USER")
+@click.option("--json", "json_mode", is_flag=True, help="Emit machine-readable JSON to stdout.")
+def board_member_update(board_uuid: str, user_uuid: str, json_mode: bool) -> None:
+    """Inspect a board membership grant. Role is read-only (sending one is refused).
+
+    \b
+    An empty PATCH returns the current grant row. Board membership has no role
+    column — org roles plus board visibility are the access model.
+
+    \b
+    Examples:
+      dailybot plan board member update <board-uuid> <user-uuid>
+      dailybot plan board member update <board-uuid> <user-uuid> --json
+    """
+    client = require_auth()
+    try:
+        with console.status("Reading the membership..."):
+            data: dict[str, Any] = client.update_board_member(board_uuid, user_uuid)
+    except APIError as exc:
+        exit_for_tasks_error(exc, json_mode)
+    if json_mode:
+        emit_json(data)
+        return
+    print_tasks_detail_panel("Board member", data, _MEMBER_DETAIL_FIELDS)
+
+
 # ---------------------------------------------------------------------------
 # Labels and saved views — person-only writes
 # ---------------------------------------------------------------------------
@@ -935,6 +976,94 @@ def board_view() -> None:
     """
 
 
+@board_view.command("create")
+@click.argument("board_uuid", metavar="BOARD")
+@click.option("-n", "--name", required=True, help="View name (max 64).")
+@click.option(
+    "--view-mode",
+    default=None,
+    type=click.Choice(["list", "board", "kanban", "timeline", "calendar"], case_sensitive=False),
+    help="How the filtered set is drawn. `kanban` is accepted as an alias for `board`.",
+)
+@click.option("--group-by", default=None, help="Column dimension (state, owner, priority, …).")
+@click.option("--sub-group-by", default=None, help="Swimlane dimension, or `none`.")
+@click.option("--sort", default=None, help="Sort expression as the web app saves it.")
+@click.option(
+    "--visibility",
+    default=None,
+    type=click.Choice(["personal", "shared", "board_default"], case_sensitive=False),
+    help="Default personal. shared/board_default need tasks:admin.",
+)
+@click.option(
+    "-f",
+    "--filters-file",
+    type=click.File("r"),
+    default=None,
+    help="JSON object of filters (`-` reads stdin). Default empty object.",
+)
+@click.option("--idempotency-key", default=None, help="Reuse a key to make a retry safe.")
+@click.option("--json", "json_mode", is_flag=True, help="Emit machine-readable JSON to stdout.")
+def board_view_create(
+    board_uuid: str,
+    name: str,
+    view_mode: str | None,
+    group_by: str | None,
+    sub_group_by: str | None,
+    sort: str | None,
+    visibility: str | None,
+    filters_file: Any,
+    idempotency_key: str | None,
+    json_mode: bool,
+) -> None:
+    """Create one saved view on a board without replacing the whole list.
+
+    \b
+    No If-Match is required (unlike `view save`). Send --idempotency-key so a
+    retry cannot create a second view.
+
+    \b
+    Examples:
+      dailybot plan board view create <board-uuid> -n "My backlog" --view-mode board
+      dailybot plan board view create <board-uuid> -n Blocked -f filters.json --json
+    """
+    filters: dict[str, Any] = {}
+    if filters_file is not None:
+        try:
+            loaded: Any = load_json_input(filters_file)
+        except ValueError as exc:
+            raise click.BadParameter(f"not valid JSON: {exc}", param_hint="--filters-file") from exc
+        if not isinstance(loaded, dict):
+            raise click.BadParameter("must be a JSON object.", param_hint="--filters-file")
+        filters = loaded
+    fields: dict[str, Any] = {
+        k: v
+        for k, v in (
+            ("view_mode", view_mode),
+            ("group_by", group_by),
+            ("sub_group_by", sub_group_by),
+            ("sort", sort),
+            ("visibility", visibility),
+        )
+        if v is not None
+    }
+    client = require_auth()
+    try:
+        with console.status("Creating the view..."):
+            data: dict[str, Any] = client.create_board_view(
+                board_uuid,
+                name=name,
+                filters=filters,
+                idempotency_key=idempotency_key,
+                **fields,
+            )
+    except APIError as exc:
+        exit_for_tasks_error(exc, json_mode)
+    if json_mode:
+        emit_json(data)
+        return
+    report_write(data, f"Created view {named(data, name)}")
+
+
 @board_view.command("save")
 @click.argument("board_uuid", metavar="BOARD")
 @click.option(
@@ -1018,6 +1147,80 @@ def board_view_save(
         emit_json(data)
         return
     print_tasks_rows("Views", rows_of(data), _VIEW_COLUMNS, empty="No saved views.")
+
+
+@board.command("reorder")
+@click.argument("board_uuid", metavar="BOARD")
+@click.option(
+    "--before", default=None, help="Place this board immediately before this sibling board uuid."
+)
+@click.option(
+    "--after", default=None, help="Place this board immediately after this sibling board uuid."
+)
+@click.option(
+    "--project",
+    default=None,
+    help="Target project uuid. When different from the current one, the board is MOVED there.",
+)
+@click.option("--json", "json_mode", is_flag=True, help="Emit machine-readable JSON to stdout.")
+def board_reorder(
+    board_uuid: str,
+    before: str | None,
+    after: str | None,
+    project: str | None,
+    json_mode: bool,
+) -> None:
+    """Move a board among siblings, or into another project. Org admin / tasks:admin.
+
+    \b
+    Pass exactly one of --before or --after (or neither to move last). Both is
+    refused (`reorder_anchor_invalid`). Moving to another project clears milestones
+    on tasks that belonged only to the old project; the board key never changes.
+    Preview first with `board move-preview`.
+
+    \b
+    Examples:
+      dailybot plan board reorder <board-uuid> --after <other-board-uuid>
+      dailybot plan board reorder <board-uuid> --project <project-uuid> --before <board-uuid>
+    """
+    if before is not None and after is not None:
+        raise click.UsageError("Pass at most one of --before or --after.")
+    client = require_auth()
+    try:
+        with console.status("Reordering the board..."):
+            data: dict[str, Any] = client.reorder_board(
+                board_uuid, before=before, after=after, project=project
+            )
+    except APIError as exc:
+        exit_for_tasks_error(exc, json_mode)
+    if json_mode:
+        emit_json(data)
+        return
+    report_write(data, f"Reordered board {named(data, board_uuid)}")
+
+
+@board.command("move-preview")
+@click.argument("board_uuid", metavar="BOARD")
+@click.option("--project", required=True, help="Target project uuid to preview a move into.")
+@click.option("--json", "json_mode", is_flag=True, help="Emit machine-readable JSON to stdout.")
+def board_move_preview(board_uuid: str, project: str, json_mode: bool) -> None:
+    """Show what moving this board into another project would change. Writes nothing.
+
+    \b
+    Examples:
+      dailybot plan board move-preview <board-uuid> --project <project-uuid>
+      dailybot plan board move-preview <board-uuid> --project <project-uuid> --json
+    """
+    client = require_auth()
+    try:
+        with console.status("Building the move preview..."):
+            data: dict[str, Any] = client.board_move_preview(board_uuid, project=project)
+    except APIError as exc:
+        exit_for_tasks_error(exc, json_mode)
+    if json_mode:
+        emit_json(data)
+        return
+    print_tasks_detail_panel("Board move preview", data, _MOVE_PREVIEW_FIELDS)
 
 
 @board.command("snapshot")

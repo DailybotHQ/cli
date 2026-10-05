@@ -122,6 +122,11 @@ _BAND_COLUMNS: dict[str, tuple[str, list[tuple[str, str, bool]]]] = {
     ),
 }
 
+_TASKS_BOARD_FIELDS: list[tuple[str, str]] = [
+    ("Total", "total"),
+    ("Group by", "group_by"),
+    ("Sub group by", "sub_group_by"),
+]
 _PULSE_FIELDS: list[tuple[str, str]] = [
     ("Open", "open"),
     ("Overdue", "overdue"),
@@ -296,6 +301,140 @@ def tasks_entitlements(json_mode: bool) -> None:
         rows,
         [("Enabled", "enabled"), ("Boards", "boards"), ("Labels", "labels"), ("Reason", "reason")],
     )
+
+
+@tasks.command("board")
+@click.option(
+    "-b", "--board", "boards", multiple=True, help="Only tasks on these boards (uuid, repeatable)."
+)
+@click.option(
+    "--project", "projects", multiple=True, help="Only tasks in these projects (uuid, repeatable)."
+)
+@click.option(
+    "--milestone",
+    "milestones",
+    multiple=True,
+    help="Only tasks in these milestones (uuid, repeatable).",
+)
+@click.option("--state", "states", multiple=True, help="Only these workflow states.")
+@click.option(
+    "--owner", "owners", multiple=True, help="Owner filter (uuid, me, unowned; repeatable)."
+)
+@click.option("--label", "labels", multiple=True, help="Label filter (uuid or name; repeatable).")
+@click.option("--priority", "priorities", multiple=True, help="Priority filter (repeatable).")
+@click.option("--sort", default=None, help="Sort expression for cards inside each cell.")
+@click.option(
+    "--group-by",
+    default=None,
+    type=click.Choice(
+        ["category", "owner", "priority", "project", "board", "milestone", "state", "label"],
+        case_sensitive=False,
+    ),
+    help="Column dimension (default category on the server).",
+)
+@click.option(
+    "--sub-group-by",
+    default=None,
+    type=click.Choice(
+        ["none", "owner", "priority", "label", "milestone", "project", "board", "category"],
+        case_sensitive=False,
+    ),
+    help="Swimlane dimension (default none).",
+)
+@click.option(
+    "--tasks-per-group",
+    default=None,
+    type=int,
+    help="Window size per cell (1-50; server default 50).",
+)
+@click.option("--offset", default=None, type=int, help="Window start inside each returned cell.")
+@click.option("--group", "group_key", default=None, help="Return only this column key.")
+@click.option(
+    "--lane", "lane_key", default=None, help="Return only this lane key (needs --sub-group-by)."
+)
+@click.option("-q", "--search", default=None, help="Full-text search over the slice.")
+@click.option("--json", "json_mode", is_flag=True, help="Emit machine-readable JSON to stdout.")
+def tasks_board(
+    boards: tuple[str, ...],
+    projects: tuple[str, ...],
+    milestones: tuple[str, ...],
+    states: tuple[str, ...],
+    owners: tuple[str, ...],
+    labels: tuple[str, ...],
+    priorities: tuple[str, ...],
+    sort: str | None,
+    group_by: str | None,
+    sub_group_by: str | None,
+    tasks_per_group: int | None,
+    offset: int | None,
+    group_key: str | None,
+    lane_key: str | None,
+    search: str | None,
+    json_mode: bool,
+) -> None:
+    """Grouped (and optionally swimlaned) snapshot over any slice of tasks.
+
+    \b
+    Workspace-wide board population: flat-list filters apply; cards are grouped
+    into columns (`--group-by`) and optional lanes (`--sub-group-by`). Each cell
+    carries a window of cards; use the cell's `next_offset` with `--offset`,
+    `--group` and `--lane` to page deeper. Prefer `board snapshot` when you
+    already know one board uuid.
+
+    \b
+    Examples:
+      dailybot plan tasks board --project <project-uuid> --group-by state
+      dailybot plan tasks board --owner me --group-by priority --json
+    """
+    filters: dict[str, Any] = {}
+    if boards:
+        filters["board"] = list(boards)
+    if projects:
+        filters["project"] = list(projects)
+    if milestones:
+        filters["milestone"] = list(milestones)
+    if states:
+        filters["state"] = list(states)
+    if owners:
+        filters["owner"] = list(owners)
+    if labels:
+        filters["label"] = list(labels)
+    if priorities:
+        filters["priority"] = list(priorities)
+    if sort:
+        filters["sort"] = sort
+    if group_by:
+        filters["group_by"] = group_by
+    if sub_group_by:
+        filters["sub_group_by"] = sub_group_by
+    if tasks_per_group is not None:
+        filters["tasks_per_group"] = tasks_per_group
+    if offset is not None:
+        filters["offset"] = offset
+    if group_key:
+        filters["group"] = group_key
+    if lane_key:
+        filters["lane"] = lane_key
+    if search:
+        filters["search"] = search
+    client = require_auth()
+    try:
+        with console.status("Reading the grouped board..."):
+            data: dict[str, Any] = client.get_tasks_board(filters=filters or None)
+    except APIError as exc:
+        exit_for_tasks_error(exc, json_mode)
+    if json_mode:
+        emit_json(data)
+        return
+    # Reuse board snapshot renderer when shape matches; otherwise detail panel.
+    if isinstance(data, dict) and (data.get("groups") is not None or data.get("board") is not None):
+        from dailybot_cli.display import print_board_snapshot
+
+        print_board_snapshot(data)
+        return
+    from dailybot_cli.display import print_tasks_detail_panel
+
+    print_tasks_detail_panel("Tasks board", data, _TASKS_BOARD_FIELDS)
 
 
 @tasks.command("search")

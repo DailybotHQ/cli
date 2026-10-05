@@ -58,6 +58,14 @@ from dailybot_cli.display import (
 PROJECT_INCLUDE_VALUES: tuple[str, ...] = ("progress",)
 PROJECT_HEALTH: tuple[str, ...] = ("not_set", "on_track", "at_risk", "off_track")
 PROJECT_VISIBILITIES: tuple[str, ...] = ("org", "members")
+
+_MEMBER_DETAIL_FIELDS: list[tuple[str, str]] = [
+    ("UUID", "uuid"),
+    ("User UUID", "user_uuid"),
+    ("Team UUID", "team_uuid"),
+    ("Role", "role"),
+]
+
 PROJECT_DATE_FORMAT: str = "%Y-%m-%d"
 _PROJECT_DATE: click.DateTime = click.DateTime(formats=[PROJECT_DATE_FORMAT])
 GOAL_INCLUDE_VALUES: tuple[str, ...] = ("progress", "projects")
@@ -476,6 +484,45 @@ def project_create(
     report_write(data, f"Created project {named(data, name)}")
 
 
+@project.command("reorder")
+@click.argument("project_uuid", metavar="PROJECT")
+@click.option(
+    "--before",
+    default=None,
+    help="Place this project immediately before this sibling project uuid.",
+)
+@click.option(
+    "--after", default=None, help="Place this project immediately after this sibling project uuid."
+)
+@click.option("--json", "json_mode", is_flag=True, help="Emit machine-readable JSON to stdout.")
+def project_reorder(
+    project_uuid: str, before: str | None, after: str | None, json_mode: bool
+) -> None:
+    """Move a project in the shared workspace order. Org admin / tasks:admin.
+
+    \b
+    Pass at most one of --before or --after (neither moves last). Both is refused
+    (`reorder_anchor_invalid`).
+
+    \b
+    Examples:
+      dailybot plan project reorder <project-uuid> --after <other-project-uuid>
+      dailybot plan project reorder <project-uuid> --before <other-project-uuid> --json
+    """
+    if before is not None and after is not None:
+        raise click.UsageError("Pass at most one of --before or --after.")
+    client = require_auth()
+    try:
+        with console.status("Reordering the project..."):
+            data: dict[str, Any] = client.reorder_project(project_uuid, before=before, after=after)
+    except APIError as exc:
+        exit_for_tasks_error(exc, json_mode)
+    if json_mode:
+        emit_json(data)
+        return
+    report_write(data, f"Reordered project {named(data, project_uuid)}")
+
+
 @project.command("archive")
 @click.argument("project_uuid", metavar="PROJECT")
 @click.option("--dry-run", is_flag=True, help="Show the consequence and exit without acting.")
@@ -724,6 +771,33 @@ def project_member_remove(
     print_success("Member removed.")
 
 
+@project_member.command("update")
+@click.argument("project_uuid", metavar="PROJECT")
+@click.argument("user_uuid", metavar="USER")
+@click.option("--json", "json_mode", is_flag=True, help="Emit machine-readable JSON to stdout.")
+def project_member_update(project_uuid: str, user_uuid: str, json_mode: bool) -> None:
+    """Inspect a project membership grant. Role is read-only (sending one is refused).
+
+    \b
+    Project membership has no role column — org roles plus project visibility are
+    the access model. An empty PATCH returns the current grant row.
+
+    \b
+    Examples:
+      dailybot plan project member update <project-uuid> <user-uuid> --json
+    """
+    client = require_auth()
+    try:
+        with console.status("Reading the membership..."):
+            data: dict[str, Any] = client.update_project_member(project_uuid, user_uuid)
+    except APIError as exc:
+        exit_for_tasks_error(exc, json_mode)
+    if json_mode:
+        emit_json(data)
+        return
+    print_tasks_detail_panel("Project member", data, _MEMBER_DETAIL_FIELDS)
+
+
 @project.command("views")
 @click.argument("project_uuid", metavar="PROJECT")
 @click.option(
@@ -766,6 +840,90 @@ def project_view() -> None:
     Examples:
       dailybot plan project view save <project-uuid> -f views.json --if-match '"3"'
     """
+
+
+@project_view.command("create")
+@click.argument("project_uuid", metavar="PROJECT")
+@click.option("-n", "--name", required=True, help="View name (max 64).")
+@click.option(
+    "--view-mode",
+    default=None,
+    type=click.Choice(["list", "board", "kanban", "timeline", "calendar"], case_sensitive=False),
+    help="How the filtered set is drawn. `kanban` is accepted as an alias for `board`.",
+)
+@click.option("--group-by", default=None, help="Column dimension.")
+@click.option("--sub-group-by", default=None, help="Swimlane dimension, or `none`.")
+@click.option("--sort", default=None, help="Sort expression as the web app saves it.")
+@click.option(
+    "--visibility",
+    default=None,
+    type=click.Choice(["personal", "shared"], case_sensitive=False),
+    help="Default personal. shared needs tasks:admin.",
+)
+@click.option(
+    "-f",
+    "--filters-file",
+    type=click.File("r"),
+    default=None,
+    help="JSON object of filters (`-` reads stdin). Default empty object.",
+)
+@click.option("--idempotency-key", default=None, help="Reuse a key to make a retry safe.")
+@click.option("--json", "json_mode", is_flag=True, help="Emit machine-readable JSON to stdout.")
+def project_view_create(
+    project_uuid: str,
+    name: str,
+    view_mode: str | None,
+    group_by: str | None,
+    sub_group_by: str | None,
+    sort: str | None,
+    visibility: str | None,
+    filters_file: Any,
+    idempotency_key: str | None,
+    json_mode: bool,
+) -> None:
+    """Create one saved view on a project without replacing the whole list.
+
+    \b
+    Examples:
+      dailybot plan project view create <project-uuid> -n "Sprint focus" --view-mode list
+      dailybot plan project view create <project-uuid> -n Blocked -f filters.json --json
+    """
+    filters: dict[str, Any] = {}
+    if filters_file is not None:
+        try:
+            loaded: Any = load_json_input(filters_file)
+        except ValueError as exc:
+            raise click.BadParameter(f"not valid JSON: {exc}", param_hint="--filters-file") from exc
+        if not isinstance(loaded, dict):
+            raise click.BadParameter("must be a JSON object.", param_hint="--filters-file")
+        filters = loaded
+    fields: dict[str, Any] = {
+        k: v
+        for k, v in (
+            ("view_mode", view_mode),
+            ("group_by", group_by),
+            ("sub_group_by", sub_group_by),
+            ("sort", sort),
+            ("visibility", visibility),
+        )
+        if v is not None
+    }
+    client = require_auth()
+    try:
+        with console.status("Creating the view..."):
+            data: dict[str, Any] = client.create_project_view(
+                project_uuid,
+                name=name,
+                filters=filters,
+                idempotency_key=idempotency_key,
+                **fields,
+            )
+    except APIError as exc:
+        exit_for_tasks_error(exc, json_mode)
+    if json_mode:
+        emit_json(data)
+        return
+    report_write(data, f"Created view {named(data, name)}")
 
 
 @project_view.command("save")

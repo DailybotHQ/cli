@@ -2565,6 +2565,26 @@ class DailyBotClient:
         """DELETE /v1/plan/views/<uuid>/ — permanent."""
         return self._tasks_write("DELETE", f"views/{_path_segment(view_uuid)}/")
 
+    def list_workspace_views(self) -> Any:
+        """GET /v1/plan/views/workspace/ — personal + shared workspace views (person-only)."""
+        return self._tasks_read("views/workspace/")
+
+    def list_workspace_views_with_etag(self) -> tuple[Any, str | None]:
+        """GET /v1/plan/views/workspace/ plus the ETag a save must send back."""
+        return self._tasks_read_with_etag("views/workspace/")
+
+    def save_workspace_views(self, views: list[Any], *, if_match: str) -> Any:
+        """PUT /v1/plan/views/workspace/ — replaces the caller's WHOLE workspace view array.
+
+        Person-only. `If-Match` is required (412 stale, 428 absent).
+        """
+        return self._tasks_write(
+            "PUT",
+            "views/workspace/",
+            json=views,
+            headers={"If-Match": self._checked_if_match(if_match)},
+        )
+
     def list_board_mentionables(self, board_uuid: str) -> Any:
         """GET /v1/plan/boards/<uuid>/mentionables/ — who this viewer may @mention."""
         return self._tasks_read(f"boards/{_path_segment(board_uuid)}/mentionables/")
@@ -2981,6 +3001,78 @@ class DailyBotClient:
             "POST", f"boards/{_path_segment(board_uuid)}/states/reorder/", json={"order": order}
         )
 
+    def reorder_board(
+        self,
+        board_uuid: str,
+        *,
+        before: str | None = None,
+        after: str | None = None,
+        project: str | None = None,
+    ) -> Any:
+        """POST /v1/plan/boards/<uuid>/reorder/ — move among siblings or into another project.
+
+        Name ONE neighbour (`before` / `after`); both is `400 reorder_anchor_invalid`.
+        Neither moves the board last. `project` different from the current one MOVES
+        the board (milestones of tasks that belong to the old project are cleared).
+        """
+        payload: dict[str, Any] = {}
+        if before is not None:
+            payload["before"] = before
+        if after is not None:
+            payload["after"] = after
+        if project is not None:
+            payload["project"] = project
+        return self._tasks_write(
+            "POST", f"boards/{_path_segment(board_uuid)}/reorder/", json=payload
+        )
+
+    def board_move_preview(self, board_uuid: str, *, project: str) -> dict[str, Any]:
+        """GET /v1/plan/boards/<uuid>/move-preview/?project= — what a move would change.
+
+        Writes nothing. `project` is required.
+        """
+        return self._tasks_read(
+            f"boards/{_path_segment(board_uuid)}/move-preview/",
+            params={"project": project},
+        )
+
+    def update_board_member(self, board_uuid: str, user_uuid: str) -> Any:
+        """PATCH …/members/<user>/ — inspect the grant row (role is read-only).
+
+        An empty body returns the current membership. Sending `role` is `400`.
+        """
+        return self._tasks_write(
+            "PATCH",
+            f"boards/{_path_segment(board_uuid)}/members/{_path_segment(user_uuid)}/",
+            json={},
+        )
+
+    def create_board_view(
+        self,
+        board_uuid: str,
+        *,
+        name: str,
+        filters: dict[str, Any] | None = None,
+        idempotency_key: str | None = None,
+        **fields: Any,
+    ) -> Any:
+        """POST /v1/plan/boards/<uuid>/views/ — create one saved view (no If-Match).
+
+        Accepts an Idempotency-Key. Default visibility is personal.
+        """
+        payload: dict[str, Any] = {
+            "name": name,
+            "filters": filters if filters is not None else {},
+            **{k: v for k, v in fields.items() if v is not None},
+        }
+        return self._tasks_write(
+            "POST",
+            f"boards/{_path_segment(board_uuid)}/views/",
+            json=payload,
+            idempotent=True,
+            idempotency_key=idempotency_key,
+        )
+
     def add_board_member(
         self,
         board_uuid: str,
@@ -3020,6 +3112,29 @@ class DailyBotClient:
         return self._tasks_write(
             "POST", f"boards/{_path_segment(board_uuid)}/labels/", json=payload
         )
+
+    def list_plan_labels(
+        self,
+        *,
+        search: str | None = None,
+        include_archived: bool = False,
+        **page: Any,
+    ) -> PaginatedResult:
+        """GET /v1/plan/labels/ — organization labels under the Plan taxonomy."""
+        params: dict[str, Any] = {}
+        if search:
+            params["search"] = search
+        if include_archived:
+            params["include_archived"] = "true"
+        return self._tasks_list("labels/", params=params or None, **page)
+
+    def create_plan_label(self, *, name: str, **fields: Any) -> Any:
+        """POST /v1/plan/labels/ — create an organization label (Plan surface)."""
+        payload: dict[str, Any] = {
+            "name": name,
+            **{k: v for k, v in fields.items() if v is not None},
+        }
+        return self._tasks_write("POST", "labels/", json=payload)
 
     def update_tasks_label(self, label_uuid: str, **fields: Any) -> dict[str, Any]:
         """PATCH /v1/plan/labels/<uuid>/ — name, color, description, is_archived."""
@@ -3131,6 +3246,14 @@ class DailyBotClient:
     def list_tasks(self, *, filters: dict[str, Any] | None = None, **page: Any) -> PaginatedResult:
         """GET /v1/plan/tasks/ — strict about parameters; only declared ones."""
         return self._tasks_list("tasks/", params=filters, **page)
+
+    def get_tasks_board(self, *, filters: dict[str, Any] | None = None) -> dict[str, Any]:
+        """GET /v1/plan/tasks/board/ — grouped (optionally swimlaned) snapshot over a slice.
+
+        Flat-list filters apply; `group_by` / `sub_group_by` / `tasks_per_group` /
+        `offset` / `group` / `lane` control the grid. Not a paginated envelope.
+        """
+        return self._tasks_read("tasks/board/", params=filters)
 
     def get_task(self, task_uuid: str) -> dict[str, Any]:
         """GET /v1/plan/tasks/<uuid>/ — the most frequent call of all."""
@@ -4221,6 +4344,61 @@ class DailyBotClient:
         """DELETE …/members/<user>/ — person-only."""
         return self._tasks_write(
             "DELETE", f"projects/{_path_segment(project_uuid)}/members/{_path_segment(user_uuid)}/"
+        )
+
+    def update_project_member(self, project_uuid: str, user_uuid: str) -> Any:
+        """PATCH …/members/<user>/ — inspect the grant row (role is read-only).
+
+        An empty body returns the current membership. Sending `role` is `400`.
+        """
+        return self._tasks_write(
+            "PATCH",
+            f"projects/{_path_segment(project_uuid)}/members/{_path_segment(user_uuid)}/",
+            json={},
+        )
+
+    def create_project_view(
+        self,
+        project_uuid: str,
+        *,
+        name: str,
+        filters: dict[str, Any] | None = None,
+        idempotency_key: str | None = None,
+        **fields: Any,
+    ) -> Any:
+        """POST /v1/plan/projects/<uuid>/views/ — create one saved view (no If-Match)."""
+        payload: dict[str, Any] = {
+            "name": name,
+            "filters": filters if filters is not None else {},
+            **{k: v for k, v in fields.items() if v is not None},
+        }
+        return self._tasks_write(
+            "POST",
+            f"projects/{_path_segment(project_uuid)}/views/",
+            json=payload,
+            idempotent=True,
+            idempotency_key=idempotency_key,
+        )
+
+    def reorder_project(
+        self,
+        project_uuid: str,
+        *,
+        before: str | None = None,
+        after: str | None = None,
+    ) -> Any:
+        """POST /v1/plan/projects/<uuid>/reorder/ — move in the shared workspace order.
+
+        Name ONE neighbour; both is `400 reorder_anchor_invalid`. Neither moves last.
+        Org-admin scope (`tasks:admin`).
+        """
+        payload: dict[str, Any] = {}
+        if before is not None:
+            payload["before"] = before
+        if after is not None:
+            payload["after"] = after
+        return self._tasks_write(
+            "POST", f"projects/{_path_segment(project_uuid)}/reorder/", json=payload
         )
 
     def list_project_views_with_etag(self, project_uuid: str) -> tuple[Any, str | None]:
