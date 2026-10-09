@@ -14,9 +14,10 @@ SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 
 # One apt layer for this image. Later RUN steps must not call apt-get update.
 # python:slim has no curl, so this RUN cannot fetch a keyring first.
-# deepworkplan-vim's install.lua may still update if a package is missing;
-# listing its known packages here makes that update a no-op.
-# Do not install the neovim apt package: remoteUser gets the official tarball.
+# The DeepWorkPlan Vim installer runs with --skip-packages and installs no
+# system package, so everything the editor needs is listed here.
+# Do not install the neovim apt package: the installer's --nvim gives
+# remoteUser the official tarball.
 # gh is the official release tarball below. Debian trixie's sqv rejects the
 # GitHub CLI apt repo key.
 RUN apt-get update && apt-get install --no-install-recommends -y \
@@ -24,8 +25,8 @@ RUN apt-get update && apt-get install --no-install-recommends -y \
     sudo git bash-completion nano ssh openssh-server curl gnupg ca-certificates \
     # Build tools (for native npm packages)
     build-essential \
-    # deepworkplan-vim / editor helpers (lua5.4 runs install.lua; rg and fd are required)
-    lua5.4 ripgrep fd-find \
+    # DeepWorkPlan Vim / editor helpers (lua5.4 runs install.lua; rg and fd are required)
+    lua5.4 ripgrep fd-find fontconfig \
     python3-neovim luarocks \
     unzip tar xz-utils \
     # Clean up
@@ -229,50 +230,21 @@ USER root
 RUN ln -sfn /home/dev-user/.local/bin/herdr /usr/local/bin/herdr
 USER dev-user
 
-# Official Neovim 0.12.5 into ~/.local, ahead of any apt nvim the installer
-# may add. ~/.local/bin is already first on PATH.
+# Neovim + DeepWorkPlan Vim for dev-user, installed by the hosted installer and
+# pinned to a published release. --nvim puts the official Neovim tarball
+# (sha256-verified) in ~/.local/opt and links it as ~/.local/bin/nvim, which is
+# already first on PATH. --skip-packages: the apt layer above provides what the
+# editor needs. --strict fails the build when the headless plugin install fails
+# or leaves a required plugin missing or as an empty clone. SHELL pipefail (top
+# of this file) fails the layer if the download fails; the tag check confirms
+# the pinned release landed.
+ARG DWP_VIM_VERSION=0.5.0
 ARG NVIM_VERSION=0.12.5
-RUN ARCH="$(uname -m)" \
-    && case "$ARCH" in \
-         x86_64) NVIM_ARCH=x86_64 ;; \
-         aarch64|arm64) NVIM_ARCH=arm64 ;; \
-         *) echo "unsupported arch for neovim: ${ARCH}" >&2; exit 1 ;; \
-       esac \
-    && curl -fsSL \
-         "https://github.com/neovim/neovim/releases/download/v${NVIM_VERSION}/nvim-linux-${NVIM_ARCH}.tar.gz" \
-         -o /tmp/nvim.tar.gz \
-    && mkdir -p /home/dev-user/.local/bin \
-    && tar -xzf /tmp/nvim.tar.gz -C /home/dev-user/.local \
-    && ln -sfn "/home/dev-user/.local/nvim-linux-${NVIM_ARCH}/bin/nvim" /home/dev-user/.local/bin/nvim \
-    && rm -f /tmp/nvim.tar.gz \
+RUN curl -fsSL https://vim.deepworkplan.com/install.sh \
+      | bash -s -- --version "${DWP_VIM_VERSION}" --nvim "${NVIM_VERSION}" --skip-packages --strict \
+    && test "$(git -C /home/dev-user/.config/nvim describe --tags --exact-match)" = "v${DWP_VIM_VERSION}" \
     && test "$(command -v nvim)" = /home/dev-user/.local/bin/nvim \
-    && nvim --version | head -n 1 | grep -q "${NVIM_VERSION}"
-
-# Pin deepworkplan-vim to a published release tag. The exact-match check
-# fails the build if DWP_VIM_REF is a floating branch tip, so every rebuild
-# gets the same editor config instead of whatever main is today.
-ARG DWP_VIM_REF=v0.2.0
-# Full deepworkplan-vim. install.lua prompts: custom directory No, extras blank
-# (keeps the checked defaults). Drive those answers on stdin. Passwordless sudo
-# is already in place so the script's sudo -v succeeds. Plugin sync must finish
-# inside the image: +Pckr sync exits before clones land.
-RUN GIT_CONFIG_GLOBAL=/dev/null GIT_CONFIG_SYSTEM=/dev/null \
-    git clone https://github.com/DailybotHQ/deepworkplan-vim.git /home/dev-user/.config/nvim \
-    && cd /home/dev-user/.config/nvim \
-    && git checkout --detach "${DWP_VIM_REF}" \
-    && git describe --tags --exact-match | grep -qx "${DWP_VIM_REF}" \
-    && printf 'n\n\n' | lua install.lua \
-    && test -f /home/dev-user/.config/nvim/init.lua \
-    && { test -f /home/dev-user/.local/share/nvim/deepworkplan-vim-installed || test -f /home/dev-user/.local/share/nvim/mu-vim-installed; } \
-    && test -d /home/dev-user/.local/share/nvim/pckr/pckr.nvim \
-    && GIT_CONFIG_GLOBAL=/dev/null GIT_CONFIG_SYSTEM=/dev/null \
-       nvim --headless "+lua require('pckr.actions').sync()" "+sleep 120" "+qa!" \
-    && python3 -c 'import os,sys; pack=os.path.expanduser("~/.local/share/nvim/site/pack/pckr/opt"); required=("alpha-nvim","nvim-cmp","mason.nvim"); missing=[]; \
-assert os.path.isdir(pack), "pckr opt dir missing: "+pack; \
-[(missing.append(name) if not [e for e in os.listdir(os.path.join(pack,name)) if e!=".git"] else None) for name in sorted(os.listdir(pack)) if os.path.isdir(os.path.join(pack,name))]; \
-[missing.append(name+" (absent)") for name in required if not os.path.isdir(os.path.join(pack,name))]; \
-sys.exit("plugin sync left empty clones: "+", ".join(missing)) if missing else print("plugin sync complete")' \
-    && test "$(command -v nvim)" = /home/dev-user/.local/bin/nvim
+    && nvim --version | head -n 1 | grep -q "v${NVIM_VERSION}"
 USER root
 
 ENTRYPOINT ["/entrypoint.sh"]

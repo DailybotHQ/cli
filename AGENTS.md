@@ -179,8 +179,8 @@ it from the repository root with `bash dev.sh setup` then `bash dev.sh up`, and
 open a shell with `bash dev.sh shell`. It reads the service list from
 `.devcontainer/devcontainer.json`, so that one file is the only place it is
 declared. Coding CLIs install only when their `INSTALL_*_CLI` flag is `true`
-(default `false`). `nvim` is deepworkplan-vim (pinned release tag) from
-`lua install.lua`. Optional Herdr sidebar layout: `bash dev.sh herdr-layout`
+(default `false`). `nvim` is DeepWorkPlan Vim (pinned release) from
+its hosted installer. Optional Herdr sidebar layout: `bash dev.sh herdr-layout`
 (Home · Editor · Development · Agents; `--keep` / `--reset`). This is
 contributor tooling only: it ships nothing to users of the CLI, and every
 command above still runs on the host without it. See

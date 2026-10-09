@@ -178,10 +178,13 @@ then rebuild.
 | `INSTALL_GROK_CLI` | Grok |
 
 `nvim` for `dev-user` is the full [deepworkplan-vim](https://github.com/DailybotHQ/deepworkplan-vim)
-config (pinned to a published release tag via `DWP_VIM_REF`, not a floating
-branch). The image clones that repo into `~/.config/nvim` and runs
-`lua install.lua`, then a headless plugin sync. The binary is the Neovim
-0.12.5 tarball in `~/.local`, ahead of any apt package the installer adds.
+config, pinned to a published release via `DWP_VIM_VERSION` (not a floating
+branch). The image runs the hosted installer
+(`https://vim.deepworkplan.com/install.sh --version 0.5.0 --nvim 0.12.5
+--skip-packages --strict`), which clones the release into `~/.config/nvim`
+and links the sha256-verified Neovim 0.12.5 as `~/.local/bin/nvim`, first on
+PATH. `--strict` fails the build when the headless plugin install fails or
+leaves a required plugin missing or as an empty clone.
 `EDITOR`, `VISUAL`, and `GIT_EDITOR` are `nvim`.
 
 ---
