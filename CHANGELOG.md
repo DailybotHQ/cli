@@ -9,6 +9,15 @@ Do not edit it by hand — your edits will be overwritten on the next release.
 
 <!-- version list -->
 
+## v3.27.1 (2026-10-09)
+
+### Chores
+
+- **dev**: Install DeepWorkPlan Vim with the hosted installer
+  ([#130](https://github.com/DailybotHQ/cli/pull/130),
+  [`71b2a15`](https://github.com/DailybotHQ/cli/commit/71b2a15f6aaf162107614530e2080d895fb1f47e))
+
+
 ## v3.27.0 (2026-10-05)
 
 ### Bug Fixes
