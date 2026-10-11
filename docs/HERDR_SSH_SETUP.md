@@ -19,16 +19,22 @@ attach to it from the Mac. Day-to-day container commands are in
 ## How it works
 
 The container runs `sshd` and publishes it on the host as
-`127.0.0.1:22031` — loopback only, never every interface. Authentication is
-**public key only**: on start the entrypoint appends every `*.pub` it finds in
-the read-only mount of your `~/.ssh` to the container's `authorized_keys`. No
-password is ever accepted, and no private key is read for this purpose.
+`127.0.0.1:22031` — loopback only, never every interface (`ssh_port` in
+[`.devcontainer/dck.toml`](../.devcontainer/dck.toml)). The container is
+devcontainer-kit's ([`LOCAL_ENVIRONMENT.md`](LOCAL_ENVIRONMENT.md) §4.1).
+Authentication is **public key only**: `dck up` authorizes devcontainer-kit's
+dedicated key (`~/.config/dck/ssh/id_ed25519`) plus the public keys listed in
+your host profile's `[ssh] authorized_extra`. No password is ever accepted, the
+host's `~/.ssh` is never mounted, and host keys are generated at runtime, never
+baked into the image. `dck up` also registers the container as a Herdr machine
+(`[herdr] machine = true`) and creates the standard sidebar.
 
 | Piece | Where |
 |---|---|
-| `openssh-server`, generated host keys, sshd drop-in | `docker/local/cli/Dockerfile` |
-| Importing your public keys and starting sshd | `docker/local/cli/entrypoint.sh` |
-| The published host port, bound to loopback | `docker/local/docker-compose.yaml` |
+| `openssh-server`, sshd drop-in, runtime host keys | dck's base block in `docker/local/clivscode/Dockerfile` (`dck/install.sh`, `dck/sshd_config.conf`) |
+| Authorizing keys and starting sshd | dck's entrypoint library (`dck/entrypoint.sh`) |
+| The published host port, bound to loopback | dck's service block in `docker/local/docker-compose.yaml` |
+| The Herdr machine, layout and mesh | `dck up` / `dck herdr add|layout|mesh` |
 
 If you would rather not use SSH at all, `bash dev.sh shell` from the repository
 root opens a shell through Docker and needs none of this.
@@ -40,41 +46,22 @@ and steals `localhost` connections before they reach Docker.
 
 ```bash
 # From the Mac host, at this repository's root
-bash dev.sh setup        # first time only
-bash dev.sh build
-bash dev.sh up
-
-# One-time SSH alias (~/.ssh/config)
-# Prefer 127.0.0.1 over localhost to avoid ::1 hitting Cursor.
-# Do not set UserKnownHostsFile /dev/null — Herdr multi-machine uses strict checks.
+dck setup                # first time only: .env files, the dck SSH key
+dck up                   # build if needed, start, register the Herdr machine
+dck herdr status         # the machine and its SSH alias
+herdr --remote <alias>   # the alias dck herdr status prints
 ```
 
-```sshconfig
-Host dailybot-cli
-  HostName 127.0.0.1
-  Port 22031
-  User dev-user
-  StrictHostKeyChecking accept-new
-```
+`bash dev.sh up` starts the same container; `dck up` is the path that also
+authorizes the dck key and registers the Herdr machine. Change the port in
+`.devcontainer/dck.toml` (`ssh_port`), then `dck init` and `dck up --recreate`;
+satellites take their own port from `HERDR_SSH_HOST_PORT` (`docker.sh`).
 
-```bash
-ssh-keyscan -p 22031 127.0.0.1 >> ~/.ssh/known_hosts
-ssh -o BatchMode=yes dailybot-cli 'echo OK && herdr --version && herdr status server --json'
-```
-
-Override the host port if 22031 is already taken on your machine:
-
-```bash
-# docker/local/cli/.env (compose interpolation)
-HERDR_SSH_HOST_PORT=<a free port on your Mac>
-```
-
-Then point the SSH `Port` at the same value.
-
-On start, the entrypoint prepends `Include ~/.ssh_host/config.d/dailybot-peers`
-to the copied SSH config when that peers file is present, and copies the host
-Herdr catalog from the read-only `~/.herdr_client_host` mount. It does not
-rewrite `HostName`. The Mac config must not Include `dailybot-peers`.
+Peers: dck's mesh (`[herdr] mesh = true`) writes the peer aliases inside the
+container and mirrors the host's Herdr catalog. The Dailybot mesh's
+`~/.ssh_host/config.d/dailybot-peers` is not available inside (the host's
+`~/.ssh` is not mounted); `dbdev agents` still lists every machine inside, and
+peers are reached through dck's aliases.
 
 ## Saved machine (unified sidebar)
 
@@ -196,7 +183,8 @@ docker exec -u dev-user dailybot-cli herdr status
 
 | File | Change |
 |------|--------|
-| `docker/local/docker-compose.yaml` | publishes `127.0.0.1:22031 -> 22` (override with `HERDR_SSH_HOST_PORT` in `docker/local/cli/.env`) |
+| `.devcontainer/dck.toml` | `ssh_port = 22031`, `[herdr] machine`, `layout`, `mesh` |
+| `docker/local/docker-compose.yaml` | publishes `127.0.0.1:22031 -> 22` (dck's service block) |
 
 Host-only (not in git): `~/.ssh/config`, `~/.ssh/known_hosts`,
 `~/.config/herdr/config.toml`, `~/.local/state/herdr/client/endpoints.json`.
@@ -242,7 +230,7 @@ Implementation lives in the **Core Hub** coding-agent host kit:
 
 ## Starting the container
 
-For the standard Herdr sidebar layout (Home · Editor · Development · Agents), start with `dbdev cli up` (or `dbdev workspace start` on a satellite) instead of bare `dev.sh up` + manual attach — see **Standard Herdr layout** above.
+For the standard Herdr sidebar layout, `dck up` creates devcontainer-kit's App · Editor · Development · Agents sidebar in `/workspace`; `dbdev cli up` (or `dbdev workspace start` on a satellite) creates the Dailybot host kit's layout described above.
 
 
 Nothing here requires Cursor. From the repository root:

@@ -1261,10 +1261,44 @@ Run `dailybot --help` or `dailybot <command> --help` for full details on any com
 
 ## Development
 
+The CLI needs only Python (3.10+) on the host:
+
 ```bash
 pip install -e ".[dev]"
-pytest
+ruff check . && mypy dailybot_cli && pytest
 ```
+
+### Dev container (optional)
+
+Contributors can also work in a dev container rendered by
+[devcontainer-kit](https://github.com/DailybotHQ/devcontainer-kit) (`dck` v0.3.0)
+from [`.devcontainer/dck.toml`](.devcontainer/dck.toml): Python 3.14, the
+[DeepWorkPlan Vim](https://github.com/DailybotHQ/deepworkplan-vim) editor,
+[coding-agents-kit](https://github.com/DailybotHQ/coding-agents-kit) with Claude
+Code and Codex, the released Dailybot CLI for progress reports, and an optional
+Herdr machine.
+
+```bash
+dck setup && dck up       # build if needed and start
+dck shell                 # dev-user in /workspace
+dck doctor                # health, layers, shared accounts
+```
+
+With `host_profiles = true` in your own `~/.config/dck/profile.toml`, the agents
+inside use your host's `ak` accounts, with no login in the container. Details,
+the start hook and the known limits:
+[`docs/LOCAL_ENVIRONMENT.md`](docs/LOCAL_ENVIRONMENT.md).
+
+### Working with AI agents (DeepWorkPlan)
+
+The repository is onboarded to [DeepWorkPlan](https://deepworkplan.com) 7.6.0:
+[`AGENTS.md`](AGENTS.md) is the entry point for any coding agent, multi-step work
+runs as a Deep Work Plan (`/dwp-create`, `/dwp-execute`), and the addons this
+repository uses are recorded in [`.dwp/config.json`](.dwp/config.json) — the AI
+Diff Reviewer (local review and the `Ready`-label CI review), Dailybot reports,
+dependency upgrades (`/lib-upgrade`), the `cli-output` design system
+([`docs/DESIGN.md`](docs/DESIGN.md)), the dev container, coding-agents-kit, Herdr
+peers and DeepWorkPlan Vim.
 
 ## License
 

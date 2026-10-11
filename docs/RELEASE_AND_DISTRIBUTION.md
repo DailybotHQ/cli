@@ -244,21 +244,21 @@ Pick **one** of the three options below. They all produce a working `~/.pypirc` 
 
 | Option | Best for | Secret lives in |
 |---|---|---|
-| [Devcontainer env vars](#devcontainer-env-vars-recommended) | Anyone using the VS Code devcontainer / `docker-compose` setup in this repo | `docker/local/cli/.env` (git-ignored) |
+| [Devcontainer env vars](#devcontainer-env-vars-recommended) | Anyone using the VS Code devcontainer / `docker-compose` setup in this repo | `docker/local/clivscode/.env` (git-ignored) |
 | [Repo-local `./.pypirc`](#repo-local-pypirc) | Bare-metal dev not using the devcontainer, who wants per-project tokens | `./.pypirc` (git-ignored) |
 | [Standard `~/.pypirc`](#alternative-pypirc) | Bare-metal dev who already has a global PyPI config | `~/.pypirc` |
 
 #### Devcontainer env vars (recommended)
 
-If you're working inside the devcontainer (`docker/local/docker-compose.yaml`), keep your tokens in `docker/local/cli/.env` and let the entrypoint generate `~/.pypirc` for you on container start.
+If you're working inside the devcontainer (`docker/local/docker-compose.yaml`), keep your tokens in `docker/local/clivscode/.env` and let the start hook generate `~/.pypirc` for you on container start.
 
 1. Copy the template once:
 
    ```bash
-   cp docker/local/cli/.env.example docker/local/cli/.env
+   cp docker/local/clivscode/.env.example docker/local/clivscode/.env
    ```
 
-2. Edit `docker/local/cli/.env` and set either or both:
+2. Edit `docker/local/clivscode/.env` and set either or both:
 
    ```env
    PYPI_API_TOKEN=pypi-AgEI...
@@ -271,7 +271,7 @@ If you're working inside the devcontainer (`docker/local/docker-compose.yaml`), 
    docker compose -f docker/local/docker-compose.yaml up -d --force-recreate clivscode
    ```
 
-   On startup, `docker/local/cli/entrypoint.sh::setup_pypirc_from_env_for_user` writes `/home/dev-user/.pypirc` with `chmod 600`. If neither token is set, no file is written.
+   On startup, the start hook `docker/local/dev-setup-hook.sh` writes `/home/dev-user/.pypirc` with `chmod 600`. If neither token is set, no file is written.
 
 4. Verify inside the container:
 
@@ -345,7 +345,7 @@ git status -s                    # working tree clean
 git rev-parse --abbrev-ref HEAD  # on main
 pytest -x                        # green
 # Confirm a .pypirc exists (one of the three options above) and is 0600.
-# Devcontainer: ~/.pypirc is auto-generated from docker/local/cli/.env on startup.
+# Devcontainer: ~/.pypirc is auto-generated from docker/local/clivscode/.env on startup.
 ls -la ~/.pypirc 2>/dev/null || ls -la ./.pypirc 2>/dev/null
 ```
 
@@ -753,7 +753,7 @@ Common patterns:
 ### Manual flow
 - [ ] Working tree clean, on `main`
 - [ ] `pyproject.toml::project.version` bumped in its own "Version bump" commit
-- [ ] Tokens available via one of: `docker/local/cli/.env` (devcontainer), `./.pypirc` (repo-local), or `~/.pypirc`
+- [ ] Tokens available via one of: `docker/local/clivscode/.env` (devcontainer), `./.pypirc` (repo-local), or `~/.pypirc`
 - [ ] If using a `.pypirc` file, it is `chmod 600`
 - [ ] If using a `.pypirc` file, it is in `.gitignore` (already there for the repo-local case)
 - [ ] `python -m build` succeeded; `twine check dist/*` passed
