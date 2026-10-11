@@ -229,10 +229,24 @@ a local state volume.
 **Known limits.** The container joins `dailybot-project-network` only when the
 host profile sets `network = "dailybot-project-network"` (dck decides networks per
 host, not per repository); without it, `clitest --env local` cannot reach
-`djangovscode:8000` — use `clitest --api-url` or set that profile key. dck's
+`djangovscode:8000`. Set that profile key, use `clitest --api-url`, or attach the
+running container by hand (lost on recreate):
+`docker network connect dailybot-project-network <project>-clivscode-1`. The
+container is named by compose (`dck ps`), not `dailybot-cli` any more. On a Linux
+host, `bash dev.sh up` needs `DCK_HOST_SSH_AUTH_SOCK` in `docker/local/.env` (see
+its example); `dck up` sets it. dck's
 volume names (`state`, `agentkit`, `claude`, `codex`) are generic inside the shared
 project: a second repository adopting dck in the same project needs its own
 project or distinct names.
+
+**Coming from the old image.** Its volumes (`<project>_claude_data`,
+`_codex_data`, `_cursor_data`, `_cline_data`, `_opencode_data`, `_pi_data`,
+`_grok_data`, `_cli_herdr_data`, `_dailybot_data`, `_gh_data`) are not used or
+removed. Logins come from the host profiles (or one login inside, kept on the new
+volumes); `gh auth login` and the Dailybot CLI login are needed once on the new
+state volume. Copy anything you still need from an old volume, then remove it
+by hand (`docker volume rm <name>`): in the shared project, check first that no
+other repository's container mounts it.
 
 ---
 

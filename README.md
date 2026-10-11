@@ -1265,7 +1265,7 @@ The CLI needs only Python (3.10+) on the host:
 
 ```bash
 pip install -e ".[dev]"
-ruff check . && mypy dailybot_cli && pytest
+ruff check dailybot_cli tests && ruff format --check dailybot_cli tests && mypy dailybot_cli && pytest
 ```
 
 ### Dev container (optional)

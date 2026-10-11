@@ -11,10 +11,10 @@ attach to it from the Mac. Day-to-day container commands are in
 
 | This repository | Value |
 |---|---|
-| Container | `dailybot-cli` |
+| Container | `<project>-clivscode-1` (`dailybotplatformlocal-clivscode-1` in the shared project; `dck ps` shows it) |
 | Host SSH port | `22031` |
 | Container user | `dev-user` |
-| SSH alias / Herdr machine | `dailybot-cli` |
+| SSH alias / Herdr machine | `dck-cli` (written by `dck up` into `~/.ssh/config.d/dck`; Herdr label `cli`) |
 
 ## How it works
 
@@ -65,49 +65,19 @@ peers are reached through dck's aliases.
 
 ## Saved machine (unified sidebar)
 
+`dck up` saves the machine (`dck herdr add`): it writes the `dck-cli` alias,
+authorizes the dck key inside, waits for sshd and registers the machine. Check
+or fix it with:
+
 ```bash
-herdr machine add dailybot-cli --label "Dailybot CLI"
+dck herdr status
+dck herdr repair     # a client stuck on "reconnecting"
 herdr machine list
 ```
 
-If `machine add` fails with `server closed connection; machine was not saved`
-(Herdr 0.9.0 Docker-SSH setup race), write the catalog by hand:
-
-```bash
-mkdir -p ~/.local/state/herdr/client
-
-python3 - <<'PY'
-import json, secrets
-from pathlib import Path
-
-path = Path.home() / ".local/state/herdr/client" / "endpoints.json"
-catalog = {"version": 1, "ssh": []}
-if path.exists():
-    catalog = json.loads(path.read_text())
-catalog.setdefault("version", 1)
-catalog.setdefault("ssh", [])
-catalog["ssh"].append({
-    "id": secrets.token_hex(16),
-    "label": "Dailybot CLI",
-    "target": "dailybot-cli",
-    "session": "default",
-    "enabled": True,
-})
-path.write_text(json.dumps(catalog, indent=2) + "\n")
-path.chmod(0o600)
-print(path.read_text())
-PY
-
-herdr machine list
-```
-
-Restart the **local** Herdr client. If status is `! attention`:
-
-```bash
-herdr --remote dailybot-cli --session default
-# detach: ctrl+b q
-herdr
-```
+After the container's state volume is removed on purpose, its host key is new:
+forget the pinned one first with
+`ssh-keygen -R dck-cli -f ~/.config/dck/ssh/known_hosts`, then `dck herdr repair`.
 
 ## Host Herdr config (recommended, one-time)
 
@@ -121,15 +91,14 @@ allow_nested = true
 manage_ssh_config = false
 ```
 
-`allow_nested` is also seeded in the container (image + entrypoint patch on
-existing `herdr_data` volumes).
+`allow_nested` is also seeded in the container by devcontainer-kit.
 
 ## Day-to-day
 
 | Path | When to use |
 |------|-------------|
-| `herdr` then sidebar → **Dailybot CLI** | Local + remote agents in one UI |
-| `herdr --remote dailybot-cli` | Full-screen remote only |
+| `herdr` then sidebar → **cli** | Local + remote agents in one UI |
+| `herdr --remote dck-cli` | Full-screen remote only |
 | `bash dev.sh agents` | From inside this container: live machines and the agents on them right now |
 | `dbdev agents` | The same list from the Mac |
 | Nest `--remote` inside a local Herdr pane | Avoid — two sidebars |
@@ -171,12 +140,13 @@ on the Mac reaches this container.
 lsof -nP -iTCP:22031 -sTCP:LISTEN
 lsof -nP -iTCP:2222 -sTCP:LISTEN
 
-ssh -vvv -p 22031 dev-user@127.0.0.1 true
-ssh -o BatchMode=yes dailybot-cli 'herdr status server --json'
+ssh -vvv dck-cli true
+ssh -o BatchMode=yes dck-cli 'herdr status server --json'
 # need: surface_interest, health_check (typically detached_server_daemon)
 
-docker exec dailybot-cli sh -c 'ps aux | grep sshd; ls -la /etc/ssh/ssh_host_*; ls -la /home/dev-user/.ssh'
-docker exec -u dev-user dailybot-cli herdr status
+dck exec clivscode sh -c 'ps aux | grep sshd; ls -la /home/dev-user/.ssh'
+dck shell -c 'herdr status'
+dck doctor
 ```
 
 ## Files in this repo
@@ -238,7 +208,7 @@ Nothing here requires Cursor. From the repository root:
 ```bash
 bash dev.sh up          # starts this repo's services
 bash dev.sh ps          # confirm the SSH port is published
-herdr --remote dailybot-cli   # after `bash dev.sh up`
+herdr --remote dck-cli   # after `dck up`
 ```
 
 If Herdr shows `reconnecting`, the container is almost always stopped rather

@@ -2,12 +2,20 @@
 # devcontainer-kit start hook for the Dailybot CLI (dck_repo_hook).
 #
 # The dck entrypoint runs this file at every container start, as dev-user, from
-# /workspace. A failing step is reported and the container keeps running. It
+# /workspace (DCK_USER is set by the compose service). A failing step is reported and the container keeps running. It
 # carries the CLI-specific start-up the old hand-written entrypoint did; the
 # rest (persistence, sshd, Herdr, agents, git identity) is dck's.
 set -u
 
 log() { printf 'dev-setup-hook: %s\n' "$*"; }
+
+# Container only. The Dailybot hub launcher (`bash dev.sh setup`) also runs a
+# docker/local/dev-setup-hook.sh, on the host; there is nothing to do there.
+if [ -z "${DCK_USER:-}" ] || [ ! -f /.dockerenv ]; then
+  log "container start hook; nothing to do on the host"
+  exit 0
+fi
+
 rc=0
 
 # 1. /app -> /workspace. The Dailybot tooling contract is /workspace; tools that
