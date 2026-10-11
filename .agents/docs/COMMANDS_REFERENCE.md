@@ -23,10 +23,11 @@ The full plan-execute-verify loop, delegating to the vendored `deepworkplan` ski
 | `/skill-create` | `../skills/deepworkplan/author/SKILL.md` | Create a new skill in `.agents/skills/<slug>/`. | "Create a skill for the cherry-pick release workflow" |
 | `/agent-create` | `../skills/deepworkplan/author/SKILL.md` | Create a new agent persona in `.agents/agents/<slug>.md`. | "Create an agent persona for the CI investigator role" |
 | `/design-system` | `../skills/deepworkplan/addons/design-system/SKILL.md` | Refresh `docs/DESIGN.md` from the real design source (`display.py` + `DISPLAY_OUTPUT_BEST_PRACTICES.md`) via the DWP design-system addon. | "Re-sync DESIGN.md after refactoring `display.py`" |
+| `/lib-upgrade` | `../skills/deepworkplan/addons/dependency-upgrade/SKILL.md` | Upgrade the pip-tools-locked dependencies in safe, gated, revertible batches via the DWP dependency-upgrade addon. | "Bring the dependencies up to date" |
 
 ## AI Diff Reviewer (Flow B)
 
-Vendored skill at [`../skills/ai-diff-reviewer/`](../skills/ai-diff-reviewer/) (**v3.2.2**). CI gate: apply the **`Ready`** label on a PR to `main` (see [`.github/workflows/pr-review.yml`](../../.github/workflows/pr-review.yml); provider **`grok`** / `grok-4.5`; requires `XAI_API_KEY`). Extension: [`.review/extension.md`](../../.review/extension.md).
+Vendored skill at [`../skills/ai-diff-reviewer/`](../skills/ai-diff-reviewer/) (**v3.3.9**). CI gate: apply the **`Ready`** label on a PR to `main` (see [`.github/workflows/pr-review.yml`](../../.github/workflows/pr-review.yml); provider **`grok`** / `grok-4.5`; requires `XAI_API_KEY`). Extension: [`.review/extension.md`](../../.review/extension.md).
 
 | Command / phrase | Routes to | What it does | Example trigger |
 |------------------|-----------|--------------|-----------------|

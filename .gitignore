@@ -55,7 +55,10 @@ pip-delete-this-directory.txt
 
 # Project
 .vscode
-.devcontainer
+# The dev container: devcontainer.json is rendered per checkout by `dck init`;
+# dck.toml (devcontainer-kit's config) is the tracked source of truth.
+.devcontainer/*
+!.devcontainer/dck.toml
 
 # Dailybot repo profile — broad-ignore the folder, but the per-repo
 # `profile.json` itself MUST be tracked (it pins the agent identity for
@@ -73,9 +76,19 @@ pip-delete-this-directory.txt
 tmp/*
 !tmp/.gitkeep
 
-# Deep Work Plan output area — fully gitignored per the DWP spec
+# Deep Work Plan output area — gitignored per the DWP spec
 # (`.agents/skills/deepworkplan/shared/dwp-paths.md`). Plans are runtime
 # artifacts, not source: the create-flow re-creates `.dwp/` on demand.
+# The one tracked file is the addon registry (`.dwp/config.json`).
 # See also `AGENTS.md` "Working with Deep Work Plans".
-.dwp/
+.dwp/*
+!.dwp/config.json
 
+
+# >>> dck:gitignore >>>
+# devcontainer-kit: runtime env files hold secrets; backups from `dck init`.
+docker/local/**/.env
+docker/local/**/.env.*
+!docker/local/**/.env.example
+*.dck-bak-*
+# <<< dck:gitignore <<<

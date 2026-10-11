@@ -1,0 +1,22 @@
+{
+  "addons": {
+    "ai-diff-reviewer": {
+      "enabled": true,
+      "version": "v3.3.9"
+    },
+    "dailybot": {
+      "enabled": true,
+      "version": "v3.23.12"
+    },
+    "dependency-upgrade": {
+      "enabled": true
+    },
+    "design-system": {
+      "enabled": true,
+      "note": "back-filled on upgrade: already installed (detected present)"
+    }
+  },
+  "host": {
+    "subagents": true
+  }
+}
