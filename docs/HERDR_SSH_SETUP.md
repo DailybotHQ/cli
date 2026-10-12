@@ -75,8 +75,10 @@ dck herdr repair     # a client stuck on "reconnecting"
 herdr machine list
 ```
 
-After the container's state volume is removed on purpose, its host key is new:
-forget the pinned one first with
+After the container's state volume is removed on purpose, its host key is new.
+`dck up`, `dck ssh` and `dck herdr add` re-pin it from the container itself
+(through `docker exec`) and print a note; nothing to do by hand. Only with an image
+older than devcontainer-kit v0.3.1 does dck name the manual fix instead:
 `ssh-keygen -R dck-cli -f ~/.config/dck/ssh/known_hosts`, then `dck herdr repair`.
 
 ## Host Herdr config (recommended, one-time)

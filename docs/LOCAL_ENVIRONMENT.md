@@ -161,7 +161,7 @@ recreate, no build required.
 ## 4.1 The container is devcontainer-kit's
 
 The image and the compose service are rendered by
-[devcontainer-kit](https://github.com/DailybotHQ/devcontainer-kit) (`dck`, v0.3.0)
+[devcontainer-kit](https://github.com/DailybotHQ/devcontainer-kit) (`dck`, v0.3.1)
 from the tracked [`.devcontainer/dck.toml`](../.devcontainer/dck.toml). `dck init`
 reconciles only the blocks it owns; everything else is this repository's.
 
@@ -203,6 +203,9 @@ itself is installed editable on demand with `dev_install`, as before.
 profiles need `CLAUDE_CODE_OAUTH_TOKEN[_<SUFFIX>]` in the host's `ak` env file;
 Codex shares its auth file (one active writer per account). Without it, log in
 once inside; the logins persist on the `agentkit`, `claude` and `codex` volumes.
+`dck up` rewrites the shared token file on every start and binds it through its
+per-project directory, so a running container sees fresh tokens without
+`--recreate`.
 `ak profiles`, `ak claude @<profile>`, `ak codex @<profile>` and `ak usage` work
 inside. The `classic` wrapper names (`claudex`, `codexx`) and the repository's own
 provider wrappers in `docker/ai_wrappers.sh` (`-azure`, `-xai`) are both loaded;
@@ -217,8 +220,7 @@ mirrors the host's Herdr catalog and writes the peer SSH aliases, so `dbdev agen
 and `herdr-peers list` both show every machine. The Dailybot mesh's `~/.ssh_host`
 peers file is not mounted (dck never mounts the host's `~/.ssh`), so reaching a
 peer from inside goes through dck's aliases. With `herdr-peers`, address a peer by
-the full machine id (`herdr machine list`); `ask` does not expand the short id
-`list` prints.
+the full machine id that `list` prints (herdr-peers v0.2.2, pinned by dck v0.3.1).
 
 **Satellites.** `docker/local/docker.sh satellite.*` still runs agent-workspace
 satellites from the `clivscodesatellite` service (profile `satellite`, so `up`

@@ -1271,7 +1271,7 @@ ruff check dailybot_cli tests && ruff format --check dailybot_cli tests && mypy 
 ### Dev container (optional)
 
 Contributors can also work in a dev container rendered by
-[devcontainer-kit](https://github.com/DailybotHQ/devcontainer-kit) (`dck` v0.3.0)
+[devcontainer-kit](https://github.com/DailybotHQ/devcontainer-kit) (`dck` v0.3.1)
 from [`.devcontainer/dck.toml`](.devcontainer/dck.toml): Python 3.14, the
 [DeepWorkPlan Vim](https://github.com/DailybotHQ/deepworkplan-vim) editor,
 [coding-agents-kit](https://github.com/DailybotHQ/coding-agents-kit) with Claude
@@ -1291,7 +1291,7 @@ the start hook and the known limits:
 
 ### Working with AI agents (DeepWorkPlan)
 
-The repository is onboarded to [DeepWorkPlan](https://deepworkplan.com) 7.6.0:
+The repository is onboarded to [DeepWorkPlan](https://deepworkplan.com) 7.6.1:
 [`AGENTS.md`](AGENTS.md) is the entry point for any coding agent, multi-step work
 runs as a Deep Work Plan (`/dwp-create`, `/dwp-execute`), and the addons this
 repository uses are recorded in [`.dwp/config.json`](.dwp/config.json) — the AI
