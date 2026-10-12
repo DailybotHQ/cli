@@ -9,6 +9,37 @@ Do not edit it by hand — your edits will be overwritten on the next release.
 
 <!-- version list -->
 
+## v3.27.2 (2026-10-12)
+
+### Bug Fixes
+
+- **devcontainer**: Address the review of the devcontainer-kit migration
+  ([#131](https://github.com/DailybotHQ/cli/pull/131),
+  [`d4bdf7c`](https://github.com/DailybotHQ/cli/commit/d4bdf7c7ed5b92d93bd5cf1ca4fba58164913bb9))
+
+### Build System
+
+- **devcontainer**: Render the dev container with devcontainer-kit v0.3.0
+  ([#131](https://github.com/DailybotHQ/cli/pull/131),
+  [`d4bdf7c`](https://github.com/DailybotHQ/cli/commit/d4bdf7c7ed5b92d93bd5cf1ca4fba58164913bb9))
+
+### Chores
+
+- DeepWorkPlan 7.6.0 full stack and a devcontainer-kit dev container
+  ([#131](https://github.com/DailybotHQ/cli/pull/131),
+  [`d4bdf7c`](https://github.com/DailybotHQ/cli/commit/d4bdf7c7ed5b92d93bd5cf1ca4fba58164913bb9))
+
+- **skill**: Upgrade DeepWorkPlan to 7.6.0 with its addon registry
+  ([#131](https://github.com/DailybotHQ/cli/pull/131),
+  [`d4bdf7c`](https://github.com/DailybotHQ/cli/commit/d4bdf7c7ed5b92d93bd5cf1ca4fba58164913bb9))
+
+### Documentation
+
+- Document the devcontainer-kit container and the DeepWorkPlan setup
+  ([#131](https://github.com/DailybotHQ/cli/pull/131),
+  [`d4bdf7c`](https://github.com/DailybotHQ/cli/commit/d4bdf7c7ed5b92d93bd5cf1ca4fba58164913bb9))
+
+
 ## v3.27.1 (2026-10-09)
 
 ### Chores
