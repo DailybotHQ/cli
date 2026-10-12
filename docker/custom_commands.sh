@@ -285,7 +285,7 @@ function dev_install() {
 #   clitest-local [--port N]                          Shortcut for --env local.
 #
 # Defaults: live API (https://api.dailybot.com). Local uses djangovscode:8000 in the
-# devcontainer; override host/port via flags or CLITEST_LOCAL_* in cli/.env.
+# devcontainer; override host/port via flags or CLITEST_LOCAL_* in clivscode/.env.
 # Private URLs (dev/staging) → pass --api-url explicitly (never hardcoded here).
 # ============================================================================
 
@@ -293,8 +293,8 @@ CLITEST_BASE_DIR="${CLITEST_BASE_DIR:-/tmp}"
 CLITEST_PREFIX="clitest"
 CLITEST_LATEST_LINK="${CLITEST_BASE_DIR}/${CLITEST_PREFIX}.latest"
 CLITEST_LIVE_API_URL="${CLITEST_LIVE_API_URL:-https://api.dailybot.com}"
-# Persistent credential stores (under the dailybot_data volume in the devcontainer).
-# Live clitest uses the CLI default (~/.config/dailybot → ~/.dailybot_data/config_dailybot).
+# Persistent credential stores (~/.dailybot_data, on the dck state volume in the devcontainer).
+# Live clitest uses the CLI default (~/.config/dailybot, on the dck state volume).
 CLITEST_LOCAL_CONFIG_DIR="${CLITEST_LOCAL_CONFIG_DIR:-${HOME}/.dailybot_data/config_local}"
 CLITEST_CUSTOM_CONFIG_BASE="${CLITEST_CUSTOM_CONFIG_BASE:-${HOME}/.dailybot_data/config_custom}"
 CLITEST_API_URL=""
@@ -433,7 +433,7 @@ function _clitest_resolve_config_dir() {
 
     case "$env_name" in
         live)
-            # CLI default: ~/.config/dailybot (persistent via dailybot_data volume).
+            # CLI default: ~/.config/dailybot (persistent on the dck state volume).
             echo ""
             ;;
         local)
@@ -527,10 +527,10 @@ function _clitest_env_list() {
     echo "Local overrides:"
     echo "  --port / -p PORT           default port: ${CLITEST_LOCAL_PORT:-8000}"
     echo "  --local-host HOST          default host: ${CLITEST_LOCAL_HOST:-djangovscode}"
-    echo "  CLITEST_LOCAL_PORT / CLITEST_LOCAL_HOST in docker/local/cli/.env"
+    echo "  CLITEST_LOCAL_PORT / CLITEST_LOCAL_HOST in docker/local/clivscode/.env"
     echo ""
     echo "Credential storage (persists across clitest re-runs):"
-    echo "  live         ~/.config/dailybot  (dailybot_data volume)"
+    echo "  live         ~/.config/dailybot  (dck state volume)"
     echo "  local        ${CLITEST_LOCAL_CONFIG_DIR}"
     echo "  custom URL   ${CLITEST_CUSTOM_CONFIG_BASE}/<api-slug>"
     echo ""
@@ -1238,7 +1238,7 @@ function show_welcome() {
     echo "  • agent / cursorx        - Cursor CLI agent"
     echo "      cursorx -l, --list / -r, --resume"
     echo ""
-    echo "  Provider keys go in docker/local/cli/.env (git-ignored). The wrappers"
+    echo "  Provider keys go in docker/local/clivscode/.env (git-ignored). The wrappers"
     echo "  write an env REFERENCE into each CLI's config rather than a key value."
     echo "  Cline is the exception: its CLI takes the key as an argument, so for"
     echo "  cline-azure / cline-xai the value does reach argv and Cline's own store."

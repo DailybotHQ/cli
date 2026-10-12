@@ -1,0 +1,5 @@
+# The build context is this directory: keep the runtime env file (secrets)
+# out of what is sent to the Docker daemon. Nothing in the Dockerfile copies it.
+.env
+.env.*
+!.env.example

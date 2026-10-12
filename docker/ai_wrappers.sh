@@ -8,7 +8,7 @@
 # with an ENV REFERENCE — never a key value — and then launching it.
 #
 # Every key is read from the environment. Put the names you use in
-# docker/local/cli/.env, which is git-ignored; docker/local/cli/.env.example
+# docker/local/clivscode/.env, which is git-ignored; docker/local/clivscode/.env.example
 # lists the names with no values. GLM wrappers are intentionally not provided.
 
 _ai_require() {
@@ -17,7 +17,7 @@ _ai_require() {
 
 _ai_require_env() {
     local name="$1"
-    [[ -n "${!name:-}" ]] || { print.error "$name is not set. Add it to docker/local/cli/.env."; return 1; }
+    [[ -n "${!name:-}" ]] || { print.error "$name is not set. Add it to docker/local/clivscode/.env."; return 1; }
 }
 
 _azure_base_url() {

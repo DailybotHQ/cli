@@ -72,4 +72,4 @@ docs/**/*.jpg
 node_modules
 
 # Local devcontainer envs
-docker/local/cli/.env
+docker/local/clivscode/.env

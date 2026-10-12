@@ -1,0 +1,56 @@
+# devcontainer-kit config for this repository (interface 2).
+# Reference: https://github.com/DailybotHQ/devcontainer-kit/blob/v0.3.0/docs/config.md
+# Edit this file, then run `dck init` to reconcile the generated files.
+# The Dailybot hub launcher (`bash dev.sh`) and dck (`dck up`) drive the same
+# compose file and project; see docs/LOCAL_ENVIRONMENT.md.
+interface = 2
+
+# Compose service the tools attach to, its user and workspace folder. The
+# Dailybot tooling contract is dev-user + /workspace; the start hook links /app
+# to /workspace for tools that expect the dck default.
+service = "clivscode"
+user = "dev-user"
+workspace = "/workspace"
+
+# Runtime: the python-3.13 flavour's build steps on the official Python 3.14
+# image (the version the CLI's lock files are compiled with), pinned by digest.
+flavour = "python-3.13"
+base_image = "python:3.14.4-slim-trixie@sha256:2ca02f32b4d9d893863367ce07ec1972819f476dd38d8612f2a9cb6a41cbb727"
+
+# Share the host's SSH agent with the container (git over SSH; keys never enter it).
+ssh_agent = true
+# Your host SSH config aliases for git hosts inside (github.com-work, …): `dck up`
+# copies the Host blocks and PUBLIC keys only (never a key file or a mount), and
+# offers to ssh-add a missing key. Other hosts: [ssh] host_extra in your host profile.
+ssh_host_config = true
+
+# Loopback-only host port for the container's sshd (Herdr, `dck ssh`); 0 = no sshd.
+# 22031 is this repository's primary port in the Dailybot port map.
+ssh_port = 22031
+
+# Named ports, each published as 127.0.0.1:<port>:<port>. The CLI serves none.
+ports = {  }
+
+[layers]
+# coding-agents-kit (ak) at its pinned tag; see [agents].
+agents = true
+# The released Dailybot CLI (pinned wheel) for progress reports; the checkout
+# under development is installed editable by the start hook.
+dailybot = true
+# nvim + deepworkplan-vim as the default editor.
+editor = true
+
+[agents]
+# Kinds passed to `ak install` when layers.agents is true.
+clis = ["claude", "codex"]
+
+[herdr]
+# Register the container as a Herdr machine on `dck up` (needs ssh_port).
+machine = true
+label = "{repo}"
+# The sidebar `dck up` creates inside the container: "standard" (App · Editor ·
+# Development · Agents) or "none".
+layout = "standard"
+# `dck up` makes the other dck containers (and the host, with host_machine)
+# reachable from inside (Docker Desktop only; see docs/SECURITY.md).
+mesh = true

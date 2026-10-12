@@ -1,7 +1,7 @@
 ---
 name: deepworkplan
 description: DeepWorkPlan — turn any repo AI-first and run Deep Work Plans. Routes to create, execute, refine, resume, status, verify, upgrade, and repo-onboarding sub-skills based on intent. Use when the developer wants to plan, execute, manage, or verify structured multi-task work, or make a repository AI-agent-ready.
-version: "6.0.2"
+version: "7.6.0"
 documentation_url: https://deepworkplan.com
 user-invocable: true
 allowed-tools: Bash, Read, Grep, Glob, Edit, Write
@@ -160,7 +160,8 @@ developer which they mean before routing.
   or mutate files — regardless of how they are invoked.
 - **Plan generation is detected, never assumed.** A plan folder carrying a
   `manifest.json` contract pointer, a `contract.json`, or a `contracts/`
-  revision chain is **v6** — create and execute route it through their
+  revision chain is **v6** (contract generation v6 or v7,
+  `spec/V7_CONTRACT.md`) — create and execute route it through their
   `v6.md` loops (contract, journal, scheduler, verified closure). Anything
   else keeps the recorded v5 lifecycle, is never migrated silently, and a
   v5-only runner that meets a v6 plan reports it as unsupported rather
@@ -193,11 +194,12 @@ rendered version lives at https://deepworkplan.com/spec.
   something is already wrong**: discovery failure, stale installation, missing
   test command, unsupported host capability, inconsistent state.
 
-### Addons — one required local review, four opt-in
+### Addons — one required local review, seven opt-in
 
-The [`addons/`](addons/README.md) area holds the capabilities the `onboard`
-flow layers onto a repo. The **AI Diff Reviewer local review** is part of the
-baseline since standard 2.3.0 (installed by `onboard` Phase 7a, run by every
-Final Review; its CI surface stays optional). The other four addons are
-**opt-in** and never part of the AI-first baseline — a repo is fully conformant
-with zero optional addons. The first optional addon is devcontainer support.
+The [`addons/`](addons/README.md) area holds what `onboard` layers onto a
+repo. Every repo gets the pack and the **AI Diff Reviewer local review**
+(baseline since 2.3.0: installed in Phase 7a, run by every Final Review).
+The other seven are **opt-in** — a repo is fully conformant with zero
+optional addons. Asked to set up or update them, or on a harness upgrade,
+onboarding detects every addon, upgrades the ones in use and offers the ones
+that fit.

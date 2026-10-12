@@ -158,34 +158,95 @@ recreate, no build required.
 
 ---
 
-## 4.1 Coding CLIs and the editor
+## 4.1 The container is devcontainer-kit's
 
-A default image build does not download Claude, Cursor, Codex, Pi, OpenCode,
-Cline, or Grok. Each one installs only when its flag is the exact string
-`true`. Compose interpolates those flags from `docker/local/.env` (next to
-the compose file; stubs in `docker/local/.env.example` are `false`). The Dev
-Containers plugin and `bash dev.sh rebuild` both read that file. Set a flag,
-then rebuild.
+The image and the compose service are rendered by
+[devcontainer-kit](https://github.com/DailybotHQ/devcontainer-kit) (`dck`, v0.3.0)
+from the tracked [`.devcontainer/dck.toml`](../.devcontainer/dck.toml). `dck init`
+reconciles only the blocks it owns; everything else is this repository's.
 
-| Flag | CLI |
+| File | Owner |
 |---|---|
-| `INSTALL_CLAUDE_CLI` | Claude Code |
-| `INSTALL_CURSOR_CLI` | Cursor CLI |
-| `INSTALL_CODEX_CLI` | Codex |
-| `INSTALL_PI_CLI` | Pi |
-| `INSTALL_OPENCODE_CLI` | OpenCode |
-| `INSTALL_CLINE_CLI` | Cline |
-| `INSTALL_GROK_CLI` | Grok |
+| `.devcontainer/dck.toml` | this repository: the source of truth (service `clivscode`, user `dev-user`, workspace `/workspace`, Python 3.14 pinned by digest, sshd on `127.0.0.1:22031`, layers, CLIs, Herdr) |
+| `docker/local/docker-compose.yaml` | dck owns the `project`, `service` and `volumes` blocks; the `clivscodesatellite` service below them is ours |
+| `docker/local/clivscode/Dockerfile` | dck owns the `base` and `layers` blocks; the CLI's project layers (python-semantic-release in its own virtualenv, the dev commands in `.bashrc`, git defaults) follow them |
+| `docker/local/clivscode/dck/` | dck: the build scripts it vendors, byte copies of its release |
+| `docker/local/dev-setup-hook.sh` | this repository: the start hook dck runs at every start as `dev-user` |
+| `docker/local/clivscode/.env` | yours (gitignored, 0600): runtime values; the example lists the names |
+| `.devcontainer/devcontainer.json` | rendered per checkout (gitignored); dck owns six keys, the tracked `.devcontainer_example/` carries the rest |
 
-`nvim` for `dev-user` is the full [deepworkplan-vim](https://github.com/DailybotHQ/deepworkplan-vim)
-config, pinned to a published release via `DWP_VIM_VERSION` (not a floating
-branch). The image runs the hosted installer
-(`https://vim.deepworkplan.com/install.sh --version 0.5.0 --nvim 0.12.5
---skip-packages --strict`), which clones the release into `~/.config/nvim`
-and links the sha256-verified Neovim 0.12.5 as `~/.local/bin/nvim`, first on
-PATH. `--strict` fails the build when the headless plugin install fails or
-leaves a required plugin missing or as an empty clone.
-`EDITOR`, `VISUAL`, and `GIT_EDITOR` are `nvim`.
+Both launchers drive the same compose file and project: `bash dev.sh up` (the
+Dailybot hub launcher, unchanged) and `dck up`, `dck shell`, `dck doctor`. The
+project name is `COMPOSE_PROJECT_NAME` from `docker/local/.env`
+(`dailybotplatformlocal`, the Dailybot platform's shared project), which wins over
+the `name:` dck renders; dck says so with a note.
+
+**What the image has.** dck's base (Python 3.14 from `base_image`, gh, Herdr,
+hardened sshd with runtime host keys, herdr-peers), the `editor` layer
+([deepworkplan-vim](https://github.com/DailybotHQ/deepworkplan-vim) at dck's pin,
+`EDITOR=nvim`), the `agents` layer
+([coding-agents-kit](https://github.com/DailybotHQ/coding-agents-kit), `ak`) with
+the CLIs in `[agents] clis` (Claude Code and Codex), and the `dailybot` layer (the
+released Dailybot CLI, a pinned wheel, for progress reports). To add a CLI, edit
+`clis`, run `dck init`, then `dck rebuild`.
+
+**What the start hook does** ([`docker/local/dev-setup-hook.sh`](../docker/local/dev-setup-hook.sh)):
+links `/app` to `/workspace`, links `dbdev` to `dev.sh`, keeps `~/.dailybot_data`
+(clitest's credential stores) on the state volume, writes `~/.pypirc` (0600) from
+`PYPI_API_TOKEN` / `TESTPYPI_API_TOKEN` when set, and installs
+`requirements/dev.txt` into the user site when the lock changes (in the background, so a first start is not held back; log `~/.local/share/dailybot-cli-dev/install.log`). The checkout
+itself is installed editable on demand with `dev_install`, as before.
+
+**Agent accounts.** With `host_profiles = true` in **your** host profile
+(`~/.config/dck/profile.toml`, never this repository), `dck up` shares your host's
+`ak` profiles of the repository's CLIs with the container: no login inside. Claude
+profiles need `CLAUDE_CODE_OAUTH_TOKEN[_<SUFFIX>]` in the host's `ak` env file;
+Codex shares its auth file (one active writer per account). Without it, log in
+once inside; the logins persist on the `agentkit`, `claude` and `codex` volumes.
+`ak profiles`, `ak claude @<profile>`, `ak codex @<profile>` and `ak usage` work
+inside. The `classic` wrapper names (`claudex`, `codexx`) and the repository's own
+provider wrappers in `docker/ai_wrappers.sh` (`-azure`, `-xai`) are both loaded;
+the repository's definitions are sourced last and win.
+
+**Peers.** Two protocols live side by side and never answer each other (different
+stamps): `[dailybot-mesh]` (`dbdev agents`, `dbdev ask`, the Dailybot hub launcher)
+and `[herdr-peers]` (`herdr-peers list|ask|reply`, `dck agents`, `dck ask`; the
+DeepWorkPlan transport with a reply grant, depth 1 and a delegation log). Use the
+one the receiving agent speaks. Inside this container, dck's mesh (`[herdr] mesh`)
+mirrors the host's Herdr catalog and writes the peer SSH aliases, so `dbdev agents`
+and `herdr-peers list` both show every machine. The Dailybot mesh's `~/.ssh_host`
+peers file is not mounted (dck never mounts the host's `~/.ssh`), so reaching a
+peer from inside goes through dck's aliases. With `herdr-peers`, address a peer by
+the full machine id (`herdr machine list`); `ask` does not expand the short id
+`list` prints.
+
+**Satellites.** `docker/local/docker.sh satellite.*` still runs agent-workspace
+satellites from the `clivscodesatellite` service (profile `satellite`, so `up`
+never starts it) with `docker-compose.satellite-stable.yaml`: its own SSH port,
+the primary's agent volumes (`<PRIMARY_COMPOSE_PROJECT>_agentkit|claude|codex`),
+a local state volume.
+
+**Known limits.** The container joins `dailybot-project-network` only when the
+host profile sets `network = "dailybot-project-network"` (dck decides networks per
+host, not per repository); without it, `clitest --env local` cannot reach
+`djangovscode:8000`. Set that profile key, use `clitest --api-url`, or attach the
+running container by hand (lost on recreate):
+`docker network connect dailybot-project-network <project>-clivscode-1`. The
+container is named by compose (`dck ps`), not `dailybot-cli` any more. On a Linux
+host, `bash dev.sh up` needs `DCK_HOST_SSH_AUTH_SOCK` in `docker/local/.env` (see
+its example); `dck up` sets it. dck's
+volume names (`state`, `agentkit`, `claude`, `codex`) are generic inside the shared
+project: a second repository adopting dck in the same project needs its own
+project or distinct names.
+
+**Coming from the old image.** Its volumes (`<project>_claude_data`,
+`_codex_data`, `_cursor_data`, `_cline_data`, `_opencode_data`, `_pi_data`,
+`_grok_data`, `_cli_herdr_data`, `_dailybot_data`, `_gh_data`) are not used or
+removed. Logins come from the host profiles (or one login inside, kept on the new
+volumes); `gh auth login` and the Dailybot CLI login are needed once on the new
+state volume. Copy anything you still need from an old volume, then remove it
+by hand (`docker volume rm <name>`): in the shared project, check first that no
+other repository's container mounts it.
 
 ---
 

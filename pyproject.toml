@@ -79,6 +79,9 @@ extend-exclude = [
     ".venv",
     "venv",
     "tmp",
+    # Vendored agent skills (DeepWorkPlan, Dailybot, AI Diff Reviewer): upstream
+    # code pinned in skills-lock.json, never hand-edited.
+    ".agents/skills",
 ]
 
 [tool.ruff.lint]

@@ -175,15 +175,20 @@ pytest.ini                     # `python_files = *_test.py`, testpaths = tests
 **This project does NOT require Docker.** It is a plain Python package. All commands run on the host.
 
 Contributors who prefer working inside the project's optional container can start
-it from the repository root with `bash dev.sh setup` then `bash dev.sh up`, and
-open a shell with `bash dev.sh shell`. It reads the service list from
-`.devcontainer/devcontainer.json`, so that one file is the only place it is
-declared. Coding CLIs install only when their `INSTALL_*_CLI` flag is `true`
-(default `false`). `nvim` is DeepWorkPlan Vim (pinned release) from
-its hosted installer. Optional Herdr sidebar layout: `bash dev.sh herdr-layout`
-(Home · Editor · Development · Agents; `--keep` / `--reset`). This is
-contributor tooling only: it ships nothing to users of the CLI, and every
-command above still runs on the host without it. See
+it from the repository root with `dck setup` then `dck up` (devcontainer-kit), or
+`bash dev.sh setup` then `bash dev.sh up` (the Dailybot hub launcher; both drive
+the same compose file and project), and open a shell with `dck shell` or
+`bash dev.sh shell`. The container is rendered by devcontainer-kit from
+`.devcontainer/dck.toml` (the source of truth: service, user, workspace, Python
+3.14 base image, layers, coding CLIs, Herdr); run `dck init` after editing it.
+Coding CLIs are the ones in `[agents] clis` (Claude Code and Codex), installed and
+launched through coding-agents-kit (`ak`); with `host_profiles` on in the
+developer's host profile they use the host's accounts. `nvim` is DeepWorkPlan Vim
+at devcontainer-kit's pin. CLI-specific start-up lives in
+`docker/local/dev-setup-hook.sh`. Herdr sidebar: `dck up` creates App · Editor ·
+Development · Agents (`dck herdr layout`); `bash dev.sh herdr-layout` creates the
+Dailybot host kit's. This is contributor tooling only: it ships nothing to users
+of the CLI, and every command above still runs on the host without it. See
 [`docs/LOCAL_ENVIRONMENT.md`](docs/LOCAL_ENVIRONMENT.md).
 
 **Discover other Herdr agents** only from that contributor container, with `dbdev agents`. `bash dev.sh agents` is the same list. On the Mac, `dbdev agents` prints the same table. The table is live: rerun it, do not rebuild to refresh it. One row is one agent. **ID** is the machine id (hex). **PANE** (`w5:p2`) is that conversation. Five agents on one machine are five rows. The row marked `<- you` is the session that printed the list, and the footer says `you are #N`. Talk to one with:
@@ -195,6 +200,8 @@ dbdev ask <#> "Prompt..."
 `#` is the short number in the first column of the list you just printed. The row marked `<- you` is this session. It changes when agents appear or disappear, so use it only with that list. **PANE** (`w5:p2`) is the stable address. **ID** is the machine. The same prompt with those two columns is `dbdev ask <machine id> <pane> "Prompt..."`. Inside a container, `bash dev.sh ask` is the same command. On the Mac, `dbdev ask` is the same command.
 
 The prompt carries a reply address for the session that sent it. The receiver is allowed to answer, and sends that answer itself without asking a person for permission. A reply keeps the `[dailybot-mesh]` stamp, so the next hop is marked as a reply and is not answered. That is what stops two agents from looping. The answer arrives as a prompt in the sender's pane. A reply uses the stamped machine id and pane, not `#`, because the number is only valid for the list that printed it. A container can answer an agent on the Mac after `dbdev onboard herdr` has published this Mac as the machine `0 - Mac`. From the Core Hub, `bash scripts/host-kit-menu.sh doctor` lists what is already connected.
+
+**Two peer protocols, side by side.** `[dailybot-mesh]` (above) is the Dailybot platform's. `[herdr-peers]` is the DeepWorkPlan transport that devcontainer-kit ships in this container (`herdr-peers list`, `herdr-peers ask <machine>:<pane> "…"`, `herdr-peers reply`; `dck agents` / `dck ask` on the host): an explicit reply grant, depth 1 and a delegation log. The stamps differ, so neither protocol answers the other. Answer a message in the protocol it arrived in, and ask a peer in the one it speaks; inside the container, `dbdev agents` and `herdr-peers list` both work (dck's mesh mirrors the Herdr catalog and writes the peer aliases; the Dailybot mesh's peer file is not mounted), and `herdr-peers ask` takes the full machine id from `herdr machine list`. Details: [`docs/LOCAL_ENVIRONMENT.md`](docs/LOCAL_ENVIRONMENT.md) §4.1.
 
 ### Workspace name vs branch, and who to talk to
 
@@ -638,7 +645,7 @@ dailybot agent update --name "Claude Code" --milestone \
   --metadata '{"model":"claude-opus-4-7","plan":"PLAN_agent_profiles","repo":"cli"}'
 ```
 
-Full philosophy, what to report, and what to skip: [.agents/skills/dailybot/report/SKILL.md](.agents/skills/dailybot/report/SKILL.md) (part of the vendored Dailybot agent skill pack at `.agents/skills/dailybot/`, **v3.23.2**, which also ships the `chat` (incl. `--send-as-user`/`--send-as-me`, interactive buttons with approval flows / workflow triggers / modals / callbacks), the `conversation` sub-skill (open/reuse a Slack group DM with the bot and post a report, `conversation open`), `kudos` (give + browse: `list`/`org`/`wall-of-fame`), `teams` (+ account context `me`/`org`/`user get`), `channels`, the `workflow` surface (`list`/`get`/`trigger`, plus `--filter api_trigger`), the full `forms` (org-scoped `list` + `--mine`) / `checkin` **authoring** sub-skills, the `labels` sub-skill (org Labels CRUD + assign/batch), the `featured` sub-skill (private Featured stars), the `env` sub-skill (per-repo API keys via the opt-in, gitignored `.dailybot/env.json`), and the `tasks` sub-skill (Dailybot Plan: boards, backlog, sprint/kanban columns, projects, goals, milestones, project updates, notifications, routes, scheduled reports and the briefing — `dailybot plan tasks` for the workspace and `dailybot plan task` for one task, plus `board`/`project`/`goal`; open-org structure for any non-guest member) — plus the shared list pagination/search/date filters, the untrusted-content boundary, idempotent retries, the delta-cursor lifecycle, destructive previews, and the machine-readable error-code reference. The pack baseline is `dailybot-cli >= 3.9.0`; `dailybot-tasks` needs `>= 3.25.0`). Key rules:
+Full philosophy, what to report, and what to skip: [.agents/skills/dailybot/report/SKILL.md](.agents/skills/dailybot/report/SKILL.md) (part of the vendored Dailybot agent skill pack at `.agents/skills/dailybot/`, **v3.23.12**, which also ships the `chat` (incl. `--send-as-user`/`--send-as-me`, interactive buttons with approval flows / workflow triggers / modals / callbacks), the `conversation` sub-skill (open/reuse a Slack group DM with the bot and post a report, `conversation open`), `kudos` (give + browse: `list`/`org`/`wall-of-fame`), `teams` (+ account context `me`/`org`/`user get`), `channels`, the `workflow` surface (`list`/`get`/`trigger`, plus `--filter api_trigger`), the full `forms` (org-scoped `list` + `--mine`) / `checkin` **authoring** sub-skills, the `labels` sub-skill (org Labels CRUD + assign/batch), the `featured` sub-skill (private Featured stars), the `env` sub-skill (per-repo API keys via the opt-in, gitignored `.dailybot/env.json`), and the `tasks` sub-skill (Dailybot Plan: boards, backlog, sprint/kanban columns, projects, goals, milestones, project updates, notifications, routes, scheduled reports and the briefing — `dailybot plan tasks` for the workspace and `dailybot plan task` for one task, plus `board`/`project`/`goal`; open-org structure for any non-guest member) — plus the shared list pagination/search/date filters, the untrusted-content boundary, idempotent retries, the delta-cursor lifecycle, destructive previews, and the machine-readable error-code reference. The pack baseline is `dailybot-cli >= 3.9.0`; `dailybot-tasks` needs `>= 3.25.0`). Key rules:
 
 - 1–3 sentences, **always in English**
 - Focus on WHAT + WHY, never "Agent completed…"
@@ -688,7 +695,7 @@ When invoked: look up in `.agents/docs/skills_agents_catalog.md`, READ the proce
 
 ## Working with Deep Work Plans (DWP)
 
-For any non-trivial change (more than ~3 files, more than one logical step, anything spanning auth + API client + commands + docs, anything you'd otherwise want a TodoList for), **drive the work through a Deep Work Plan** instead of free-form coding. The repo ships the [DWP skill pack](.agents/skills/deepworkplan/) (vendored at **v6.0.2**, standard **6.0.0**) and the matching `dwp-*` slash commands. New plans are **v6** by default (identity manifest + versioned contract + append-only journal; `state.json` is a snapshot). A plan is either **Lite** (task records inline in the plan's `README.md`, the default for most work) or **Full** (one file per task, for long-horizon work) — both carry the same contract: stable task ids, a Touched Surface, acceptance criteria, validation gates, completion evidence, and one Final Review. Existing v1/v2/v5 plans keep their recorded lifecycle and are never rewritten by an upgrade; moving a v5 plan to v6 is an explicit `refine migrate` only.
+For any non-trivial change (more than ~3 files, more than one logical step, anything spanning auth + API client + commands + docs, anything you'd otherwise want a TodoList for), **drive the work through a Deep Work Plan** instead of free-form coding. The repo ships the [DWP skill pack](.agents/skills/deepworkplan/) (vendored at **v7.6.0**, standard **7.0.0**) and the matching `dwp-*` slash commands. New plans use the **v7** contract generation by default (the v6 identity manifest + versioned contract + append-only journal, plus `parallel_safe` tasks and delegation events; `state.json` is a snapshot). A plan is either **Lite** (task records inline in the plan's `README.md`, the default for most work) or **Full** (one file per task, for long-horizon work) — both carry the same contract: stable task ids, a Touched Surface, acceptance criteria, validation gates, completion evidence, and one Final Review. Existing v1/v2/v5 plans keep their recorded lifecycle and are never rewritten by an upgrade; v6 plans stay v6; moving a plan to a newer generation is an explicit `refine migrate` only.
 
 ### The loop
 
@@ -722,10 +729,10 @@ Hosts without slash commands invoke the same flows by name (`#deepworkplan-creat
 
 ```
 .dwp/
-└── plans/        # PLAN_001_<slug>/ (v6 numbered) or legacy PLAN_<slug>/ — Lite or Full
+└── plans/        # PLAN_001_<slug>/ (numbered, v6+) or legacy PLAN_<slug>/ — Lite or Full
 ```
 
-The entire `.dwp/` tree is **fully gitignored** — plans are runtime artifacts, not source. There is no separate draft artifact and no `.dwp/drafts/` directory: the Lite plan **is** the reviewable artifact (removed in DWP 2.4.0; a leftover `.dwp/drafts/` from an older install is inert). New v6 plans receive monotonically increasing numeric IDs with at least three digits (`PLAN_001_…`); existing unnumbered `PLAN_<slug>/` folders remain readable and are never renamed. The skill recreates `.dwp/` on demand the first time `/dwp-create` or `/dwp-execute` runs in a fresh clone. Do not commit a plan unless the user explicitly asks. (Contrast with `tmp/` which is for *unstructured* scratch and has a tracked `.gitkeep`; `.dwp/` is the *structured* plan output area governed by the spec — see [`.agents/skills/deepworkplan/shared/dwp-paths.md`](.agents/skills/deepworkplan/shared/dwp-paths.md).)
+The entire `.dwp/` tree is **fully gitignored** — plans are runtime artifacts, not source. There is no separate draft artifact and no `.dwp/drafts/` directory: the Lite plan **is** the reviewable artifact (removed in DWP 2.4.0; a leftover `.dwp/drafts/` from an older install is inert). New plans (v6 and later) receive monotonically increasing numeric IDs with at least three digits (`PLAN_001_…`); existing unnumbered `PLAN_<slug>/` folders remain readable and are never renamed. The skill recreates `.dwp/` on demand the first time `/dwp-create` or `/dwp-execute` runs in a fresh clone. Do not commit a plan unless the user explicitly asks. (Contrast with `tmp/` which is for *unstructured* scratch and has a tracked `.gitkeep`; `.dwp/` is the *structured* plan output area governed by the spec — see [`.agents/skills/deepworkplan/shared/dwp-paths.md`](.agents/skills/deepworkplan/shared/dwp-paths.md).)
 
 ### Mandatory plan tail
 
@@ -735,7 +742,7 @@ You do not need to author the Final Review manually; `/dwp-create` adds it to ev
 
 ### AI Diff Reviewer (Flow B — dual-surface)
 
-This repo opts into the DWP **AI Diff Reviewer** addon ([`DailybotHQ/ai-diff-reviewer`](https://github.com/DailybotHQ/ai-diff-reviewer) **v3**, pinned to `v3.2.2` for both the vendored skill and the Action):
+This repo opts into the DWP **AI Diff Reviewer** addon ([`DailybotHQ/ai-diff-reviewer`](https://github.com/DailybotHQ/ai-diff-reviewer) **v3**, pinned to `v3.3.9` for both the vendored skill and the Action):
 
 | Surface | What | How |
 |---------|------|-----|
@@ -758,7 +765,7 @@ How to read review comments without acting on stale feedback: [`docs/PR_REVIEW_W
 
 There are two independent things to keep current: the **skill package** (the code under `.agents/skills/deepworkplan/`) and the **harness content** it generated (`AGENTS.md`, `docs/`, `.agents/`). Use `/dwp-upgrade` to check for and install a newer skill package (read-only check; installs only with explicit consent). Use `/deepworkplan-onboard` to reconcile the harness content against the currently-installed skill's standard (non-destructive; a no-op if already current — see the `DWP standard:` line below). To author a new repo-specific skill/agent: `/skill-create` or `/agent-create` (both delegate to the DWP `author` sub-skill, which keeps `.agents/docs/skills_agents_catalog.md` and `COMMANDS_REFERENCE.md` in sync).
 
-### v6 host capabilities and authority (this repository)
+### Host capabilities and authority (this repository)
 
 Host capability declaration (abilities not listed are `false` — never inferred):
 
@@ -773,7 +780,7 @@ Host capability declaration (abilities not listed are `false` — never inferred
 
 **Authority boundaries (from this repo's Mandatory Rules):** plan authorship is by the working agent; approval is `pre_authorization` only when the developer explicitly requests unattended continuation (`trust`/`auto`) or approves a plan up front. Always stop and ask before: push to remote, merge to `main`, force-push, publishing a release, sending external messages (email/chat) with guessed recipients, reading or writing secrets, replacing existing hand-written harness content, or applying `[skip release]` outside its two allowed use cases. Outcome checks for plan gates come from [docs/TESTING_GUIDE.md](docs/TESTING_GUIDE.md) and the Quick Commands block (`pytest`, `ruff`, `mypy`) — never invent a gate command.
 
-DWP standard: 6.0.0 (onboarded 2026-06-12; upgraded 2026-10-01; skill 6.0.2)
+DWP standard: 7.0.0 (onboarded 2026-06-12; upgraded 2026-10-01 and 2026-10-11; skill 7.6.0, vendored 2026-10-11)
 
 ## Documentation Maintenance
 

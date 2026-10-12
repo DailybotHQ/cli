@@ -1,43 +1,24 @@
 # Stable SSH host port for a CLI workspace satellite (no HTTP preview).
 # HERDR_SSH_HOST_PORT must be set (unique per sid, default 22900+N).
-# Agent/CLI volumes use PRIMARY_COMPOSE_PROJECT from docker/local/.env.
+# The agent volumes (ak profiles and the claude/codex homes) are the primary
+# project's, named after PRIMARY_COMPOSE_PROJECT from docker/local/.env; the
+# state volume (Herdr session, Dailybot CLI config) stays satellite-local:
+# sharing it puts both containers on one herdr.sock, and whichever starts last
+# owns every pane.
 services:
   clivscodesatellite:
     ports: !override
       - '127.0.0.1:${HERDR_SSH_HOST_PORT}:22'
     environment:
       DAILYBOT_WORKSPACE_ID: ${DAILYBOT_WORKSPACE_ID:-}
-      GIT_CONFIG_COUNT: "1"
-      GIT_CONFIG_KEY_0: safe.directory
-      GIT_CONFIG_VALUE_0: "*"
 
 volumes:
-  claude_data:
-    name: ${PRIMARY_COMPOSE_PROJECT:-dailybotplatformlocal}_claude_data
+  agentkit:
+    name: ${PRIMARY_COMPOSE_PROJECT:-dailybotplatformlocal}_agentkit
     external: true
-  codex_data:
-    name: ${PRIMARY_COMPOSE_PROJECT:-dailybotplatformlocal}_codex_data
+  claude:
+    name: ${PRIMARY_COMPOSE_PROJECT:-dailybotplatformlocal}_claude
     external: true
-  cursor_data:
-    name: ${PRIMARY_COMPOSE_PROJECT:-dailybotplatformlocal}_cursor_data
-    external: true
-  cline_data:
-    name: ${PRIMARY_COMPOSE_PROJECT:-dailybotplatformlocal}_cline_data
-    external: true
-  opencode_data:
-    name: ${PRIMARY_COMPOSE_PROJECT:-dailybotplatformlocal}_opencode_data
-    external: true
-  pi_data:
-    name: ${PRIMARY_COMPOSE_PROJECT:-dailybotplatformlocal}_pi_data
-    external: true
-  grok_data:
-    name: ${PRIMARY_COMPOSE_PROJECT:-dailybotplatformlocal}_grok_data
-    external: true
-  # Herdr session stays satellite-local. Sharing the primary volume puts both
-  # containers on one herdr.sock, and whichever starts last owns every pane.
-  dailybot_data:
-    name: ${PRIMARY_COMPOSE_PROJECT:-dailybotplatformlocal}_dailybot_data
-    external: true
-  gh_data:
-    name: ${PRIMARY_COMPOSE_PROJECT:-dailybotplatformlocal}_gh_data
+  codex:
+    name: ${PRIMARY_COMPOSE_PROJECT:-dailybotplatformlocal}_codex
     external: true

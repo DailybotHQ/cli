@@ -33,6 +33,7 @@ Team agents allow multiple Claude Code instances to work on plan tasks **in para
 | **Subagents** | Claude Code | Spawn helper agents within same session for focused sub-tasks |
 | **Team Agents** | Claude Code only | Multiple Claude instances work parallel tasks with shared coordination |
 | **Orchestrator** | All agents | Parent plan creates child DWPs in sub-repos |
+| **Lanes** | Any agent in Herdr panes | A lead runs one agent per repository or workstream, across accounts and vendors — [`orchestration-at-scale.md`](orchestration-at-scale.md) §16 |
 
 ### 14.2. Parallel Task Groups
 
@@ -163,7 +164,7 @@ Team agents can be used WITHIN orchestrator plans at two levels:
 
 These are independent — orchestrator parallelism and child DWP parallelism don't interfere with each other.
 
-**Example:** An orchestrator plan creates child DWPs for api-services and web-app. The `create_child_dwp` tasks can run in parallel (team agents). Then each child DWP, when executed, may use team agents internally for its own parallel task groups.
+**Example:** An orchestrator plan creates child DWPs for api and web-app. The `create_child_dwp` tasks can run in parallel (team agents). Then each child DWP, when executed, may use team agents internally for its own parallel task groups.
 
 ### 14.7. Quality Gate Hooks for Team Agents
 
