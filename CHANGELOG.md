@@ -9,6 +9,24 @@ Do not edit it by hand — your edits will be overwritten on the next release.
 
 <!-- version list -->
 
+## v3.27.3 (2026-10-12)
+
+### Build System
+
+- **devcontainer**: Re-render with devcontainer-kit v0.3.1
+  ([#132](https://github.com/DailybotHQ/cli/pull/132),
+  [`1ee8791`](https://github.com/DailybotHQ/cli/commit/1ee879160f62683417b999e63b916ac4a16c9bc4))
+
+### Chores
+
+- DeepWorkPlan 7.6.1 and devcontainer-kit v0.3.1
+  ([#132](https://github.com/DailybotHQ/cli/pull/132),
+  [`1ee8791`](https://github.com/DailybotHQ/cli/commit/1ee879160f62683417b999e63b916ac4a16c9bc4))
+
+- **skill**: Vendor DeepWorkPlan 7.6.1 ([#132](https://github.com/DailybotHQ/cli/pull/132),
+  [`1ee8791`](https://github.com/DailybotHQ/cli/commit/1ee879160f62683417b999e63b916ac4a16c9bc4))
+
+
 ## v3.27.2 (2026-10-12)
 
 ### Bug Fixes
