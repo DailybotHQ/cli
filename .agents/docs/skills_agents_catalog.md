@@ -18,7 +18,7 @@ Slash commands. Invoked as `/<name>` (Claude Code) or `#<name>` (Codex/Cursor/Ge
 
 ### Dailybot agent skill pack (vendored from [`DailybotHQ/agent-skill`](https://github.com/DailybotHQ/agent-skill))
 
-The full pack lives under [`.agents/skills/dailybot/`](../skills/dailybot/) (router + seventeen sub-skills; vendored at **v3.23.12**). Every sub-skill requires `dailybot-cli >= 3.9.0` — the pack baseline; `dailybot-tasks` (Dailybot Plan) is the one that needs more (`>= 3.25.0`). The router auto-routes by intent — read [`skills/dailybot/SKILL.md`](../skills/dailybot/SKILL.md) and let it pick the right sub-skill. Direct sub-skill entry points:
+The full pack lives under [`.agents/skills/dailybot/`](../skills/dailybot/) (router + seventeen sub-skills; vendored at **v3.23.14**). Every sub-skill requires `dailybot-cli >= 3.9.0` — the pack baseline; `dailybot-tasks` (Dailybot Plan) is the one that needs more (`>= 3.25.0`). The router auto-routes by intent — read [`skills/dailybot/SKILL.md`](../skills/dailybot/SKILL.md) and let it pick the right sub-skill. Direct sub-skill entry points:
 
 | Slug | Procedure | Use when |
 |------|-----------|----------|
@@ -62,7 +62,7 @@ The full pack lives under [`.agents/skills/deepworkplan/`](../skills/deepworkpla
 
 ### AI Diff Reviewer (vendored from [`DailybotHQ/ai-diff-reviewer`](https://github.com/DailybotHQ/ai-diff-reviewer))
 
-Vendored at **v3.3.9** under [`.agents/skills/ai-diff-reviewer/`](../skills/ai-diff-reviewer/). Flow B is enabled: local Security Review augmentation + CI gate via [`.github/workflows/pr-review.yml`](../../.github/workflows/pr-review.yml) (trigger label **`Ready`**; secret `XAI_API_KEY`; provider **`grok`** / `grok-4.5`; extension [`.review/extension.md`](../../.review/extension.md)).
+Vendored at **v3.3.11** under [`.agents/skills/ai-diff-reviewer/`](../skills/ai-diff-reviewer/). Flow B is enabled: local Security Review augmentation + CI gate via [`.github/workflows/pr-review.yml`](../../.github/workflows/pr-review.yml) (trigger label **`Ready`**; secret `XAI_API_KEY`; provider **`grok`** / `grok-4.5`; extension [`.review/extension.md`](../../.review/extension.md)).
 
 | Slug | Procedure | Use when |
 |------|-----------|----------|
