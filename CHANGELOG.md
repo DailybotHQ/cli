@@ -9,6 +9,20 @@ Do not edit it by hand — your edits will be overwritten on the next release.
 
 <!-- version list -->
 
+## v3.27.4 (2026-10-12)
+
+### Chores
+
+- **skill**: Dogfood DeepWorkPlan 7.6.3 and dck 0.3.5
+  ([#133](https://github.com/DailybotHQ/cli/pull/133),
+  [`96bfbb1`](https://github.com/DailybotHQ/cli/commit/96bfbb1cd127adcda5f58822acc13ebf823b4abb))
+
+### Documentation
+
+- Align harness references with dogfood pins ([#133](https://github.com/DailybotHQ/cli/pull/133),
+  [`96bfbb1`](https://github.com/DailybotHQ/cli/commit/96bfbb1cd127adcda5f58822acc13ebf823b4abb))
+
+
 ## v3.27.3 (2026-10-12)
 
 ### Build System
