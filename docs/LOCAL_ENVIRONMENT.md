@@ -161,7 +161,7 @@ recreate, no build required.
 ## 4.1 The container is devcontainer-kit's
 
 The image and the compose service are rendered by
-[devcontainer-kit](https://github.com/DailybotHQ/devcontainer-kit) (`dck`, v0.3.1)
+[devcontainer-kit](https://github.com/DailybotHQ/devcontainer-kit) (`dck`, v0.3.5)
 from the tracked [`.devcontainer/dck.toml`](../.devcontainer/dck.toml). `dck init`
 reconciles only the blocks it owns; everything else is this repository's.
 
@@ -220,7 +220,7 @@ mirrors the host's Herdr catalog and writes the peer SSH aliases, so `dbdev agen
 and `herdr-peers list` both show every machine. The Dailybot mesh's `~/.ssh_host`
 peers file is not mounted (dck never mounts the host's `~/.ssh`), so reaching a
 peer from inside goes through dck's aliases. With `herdr-peers`, address a peer by
-the full machine id that `list` prints (herdr-peers v0.2.2, pinned by dck v0.3.1).
+the full machine id that `list` prints (herdr-peers v0.2.3, pinned by dck v0.3.5).
 
 **Satellites.** `docker/local/docker.sh satellite.*` still runs agent-workspace
 satellites from the `clivscodesatellite` service (profile `satellite`, so `up`
