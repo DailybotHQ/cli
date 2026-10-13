@@ -51,7 +51,7 @@ clis = []
 [herdr]
 # Register the container as a Herdr machine on `dck up` (needs ssh_port).
 machine = true
-label = "{repo}"
+label = "0 - CLI"
 # The sidebar `dck up` creates inside the container: "standard" (App · Editor ·
 # Development · Agents) or "none".
 layout = "standard"

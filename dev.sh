@@ -32,7 +32,7 @@ while [ -L "$_self" ]; do
 done
 SELF_DIR="$(cd -P "$(dirname "$_self")" && pwd)"
 
-VERBS=" setup up down stop start restart ps logs shell exec build rebuild satellite ls config doctor ports agents ask herdr-layout help "
+VERBS=" setup up down stop start restart ps logs shell exec build rebuild satellite ls config doctor ports agents ask reply check wait notify cancel lanes lead peers herdr-layout help "
 
 # --------------------------------------------------------------------------
 # Argument parsing
@@ -1273,410 +1273,290 @@ herdr_prepare_mesh() {
   herdr_trust_peer_keys
 }
 
-# Copy the read-only Mac catalog over the local Herdr file, then ask every
-# enabled machine for its agents. The mount updates when the Mac catalog
-# changes; Herdr itself only reads the copy, because it also writes that path.
-cmd_herdr_agents() {
+# --------------------------------------------------------------------------
+# Agent mesh — herdr-peers (the DeepWorkPlan herdr addon) over the Dailybot
+# Herdr catalog.
+#
+# `agents`, `ask` and the verbs beside them are thin: herdr-peers owns the
+# stamp, the one-reply grant, the loop guard, the depth and fan-out limits,
+# the scope check, the delegation log and the lead record. dev.sh adds what
+# is Dailybot's: the Mac catalog copy inside a container (herdr_prepare_mesh),
+# the `#` shortcuts of the list, the workspace rule — an agent talks to the
+# agents of its own workspace unless the human names another one — and a
+# reply address that survives a pane older than its machine id. The same
+# verbs exist on the Mac as `dbdev <verb>`.
+#
+# A received message that carries `[herdr-peers]` is handled with
+# `bash dev.sh check -` (never answered by hand); the reply goes through
+# `bash dev.sh reply <from> <id> "..."`, exactly once.
+# --------------------------------------------------------------------------
+
+mesh_require() {
   command -v herdr >/dev/null 2>&1 || die "herdr is not on PATH"
-  command -v python3 >/dev/null 2>&1 || die "python3 is required to read the catalog"
+  command -v python3 >/dev/null 2>&1 || die "python3 is required"
+  command -v herdr-peers >/dev/null 2>&1 || die "herdr-peers is not on PATH — devcontainer-kit images (v1.0.0+) and the host kit ship it; otherwise: npx --yes skills add https://github.com/DailybotHQ/herdr-peers/tree/v1.0.0 --skill herdr-peers -g -y"
+}
+
+# HERDR_PEERS_SELF names this machine as the Mac catalog knows it (dck pushes
+# it at up). A pane opened before that push, or a state volume reused from an
+# earlier workspace on the same SID, can still carry a machine that no longer
+# exists, and a reply to that address goes nowhere. Keep the variable only
+# when the catalog lists it; otherwise herdr-peers finds this server by its
+# terminal id.
+mesh_check_self() {
+  local id="${HERDR_PEERS_SELF:-}"
+  [ -n "$id" ] || return 0
+  id="${id%%:*}"
+  if herdr machine list --json 2>/dev/null | grep -q "\"${id}\""; then
+    return 0
+  fi
+  note "mesh: HERDR_PEERS_SELF=${id} is not a machine of this catalog (a pane older than its machine id?); this session's address is taken from its pane instead" >&2
+  unset HERDR_PEERS_SELF
+}
+
+# The workspace rule as a herdr-peers scope. Inside a workspace satellite the
+# allow-list is that workspace's machines plus the Mac; inside a primary it is
+# the primaries plus the Mac; on the Mac, the human's console, everything.
+# A scope the caller set (HERDR_PEERS_SCOPE), or --any-workspace, wins.
+mesh_default_scope() {
+  in_container || return 0
+  herdr machine list --json 2>/dev/null | python3 -c '
+import json, sys
+ws = sys.argv[1]
+try:
+    machines = json.load(sys.stdin)
+except Exception:
+    machines = []
+keep = ["local"]
+for m in machines if isinstance(machines, list) else []:
+    if not isinstance(m, dict) or not m.get("enabled") or not m.get("id"):
+        continue
+    label = str(m.get("label") or "")
+    target = str(m.get("target") or "")
+    if target == "dailybot-mac":
+        keep.append(str(m["id"]))
+    elif ws:
+        if label.endswith(" WS " + ws):
+            keep.append(str(m["id"]))
+    elif " WS " not in label:
+        keep.append(str(m["id"]))
+print(",".join(keep))
+' "${DAILYBOT_WORKSPACE_ID:-}"
+}
+
+# The fleet as herdr-peers lists it, never narrowed by a scope, so the `#`
+# of `agents` and the `#` that `ask` resolves come from the same numbering.
+mesh_list_json() {
+  env -u HERDR_PEERS_SCOPE herdr-peers list --json
+}
+
+# Live machines and the agents on them, one row per agent. The row marked
+# `<- you` is this session. `#` is a shortcut for this listing only; ADDRESS
+# (<machine>:<pane>) is the stable address.
+cmd_herdr_agents() {
+  mesh_require
   herdr_prepare_mesh
-  python3 - <<'PY'
-import json, os, subprocess, sys
+  mesh_check_self
+  local listing scope
+  listing="$(mesh_list_json)" || die "herdr-peers list failed"
+  scope="$(mesh_default_scope)"
+  MESH_LISTING="$listing" MESH_SCOPE="$scope" MESH_WS="${DAILYBOT_WORKSPACE_ID:-}" python3 - <<'PY'
+import json, os, sys
 
-def machines():
-    try:
-        raw = subprocess.run(
-            ["herdr", "machine", "list", "--json"],
-            capture_output=True, text=True, timeout=12,
-        )
-    except subprocess.TimeoutExpired:
-        sys.stderr.write("herdr machine list timed out\n")
-        sys.exit(1)
-    if raw.returncode != 0:
-        sys.stderr.write(raw.stderr or "herdr machine list failed\n")
-        sys.exit(raw.returncode or 1)
-    try:
-        data = json.loads(raw.stdout or "[]")
-    except json.JSONDecodeError:
-        sys.stderr.write("herdr machine list did not return JSON\n")
-        sys.exit(1)
-    if not isinstance(data, list):
-        sys.stderr.write("herdr machine list JSON was not a list\n")
-        sys.exit(1)
-    return [m for m in data if isinstance(m, dict)]
-
-def agents_for(machine_id):
-    try:
-        raw = subprocess.run(
-            ["herdr", "--machine", machine_id, "agent", "list"],
-            capture_output=True, text=True, timeout=12,
-        )
-    except subprocess.TimeoutExpired:
-        return None, ["timed out"]
-    if raw.returncode != 0 or not raw.stdout.strip():
-        return None, (raw.stderr or "no answer").strip().splitlines()[-1:] or ["no answer"]
-    try:
-        payload = json.loads(raw.stdout)
-    except json.JSONDecodeError:
-        return None, ["agent list was not JSON"]
-    result = payload.get("result") if isinstance(payload, dict) else None
-    found = result.get("agents") if isinstance(result, dict) else None
-    if not isinstance(found, list):
-        return None, ["agent list had no agents array"]
-    return found, None
-
-def current_pane():
-    # pane current is this process's own pane. The table loop matches it
-    # against the agents it already fetched, so each machine is asked once.
-    try:
-        raw = subprocess.run(
-            ["herdr", "pane", "current"],
-            capture_output=True, text=True, timeout=8,
-        )
-    except subprocess.TimeoutExpired:
-        return "", ""
-    if raw.returncode != 0 or not raw.stdout.strip():
-        return "", ""
-    try:
-        pane = ((json.loads(raw.stdout).get("result") or {}).get("pane") or {})
-    except json.JSONDecodeError:
-        return "", ""
-    return str(pane.get("pane_id") or ""), str(pane.get("terminal_id") or "")
-
-self_pane, self_terminal = current_pane()
-self_machine = ""
-
-rows = []
-for machine in machines():
-    if not machine.get("enabled"):
-        continue
-    label = str(machine.get("label") or "").replace("\t", " ")
-    mid = str(machine.get("id") or "")
-    if not mid:
-        continue
-    found, err = agents_for(mid)
-    if err is not None:
-        rows.append((label, mid, "-", "-", "unreachable", "", ""))
-        continue
-    if not found:
-        rows.append((label, mid, "-", "-", "no agents", "", ""))
-        continue
-    for agent in found:
-        if not isinstance(agent, dict):
-            continue
-        pane_id = str(agent.get("pane_id") or "-")
-        terminal_id = str(agent.get("terminal_id") or "")
-        if (
-            not self_machine
-            and self_pane
-            and pane_id == self_pane
-            and (not self_terminal or terminal_id == self_terminal)
-        ):
-            self_machine = mid
-        rows.append((
-            label,
-            mid,
-            str(agent.get("agent") or "-"),
-            pane_id,
-            str(agent.get("agent_status") or "-"),
-            str(agent.get("terminal_title_stripped") or "").replace("\n", " "),
-            terminal_id,
-        ))
-
-def clean(label):
-    text = label.strip()
-    if len(text) > 3 and text[0].isdigit() and " - " in text[:6]:
-        text = text.split(" - ", 1)[1]
-    return text
+data = json.loads(os.environ["MESH_LISTING"] or "{}")
+rows = data.get("rows") if isinstance(data, dict) else None
+rows = rows if isinstance(rows, list) else []
+scope = [s for s in (os.environ.get("MESH_SCOPE") or "").split(",") if s]
+ws = os.environ.get("MESH_WS") or ""
 
 def paint(code, text):
     if not sys.stdout.isatty() or os.environ.get("NO_COLOR"):
         return text
     return "\033[%sm%s\033[0m" % (code, text)
 
-state_color = {
-    "idle": "32",
-    "working": "33",
-    "blocked": "31",
-    "done": "36",
-    "unreachable": "90",
-    "no agents": "90",
-}
-shown = []
-number = 0
+state_color = {"idle": "32", "working": "33", "blocked": "31", "done": "36",
+               "unreachable": "90", "no agents": "90", "no_agent": "90"}
+
 you = None
-for label, mid, name, pane, state, title, _terminal in rows:
-    if pane != "-":
-        number += 1
-        short = str(number)
-    else:
-        short = "-"
-    mine = bool(self_machine) and mid == self_machine and pane == self_pane
+shown = []
+for row in rows:
+    if not isinstance(row, dict):
+        continue
+    n = row.get("n")
+    short = str(n) if n else "-"
+    machine = str(row.get("machine") or "")
+    label = str(row.get("label") or machine)
+    if machine == "local":
+        label = "this machine" if label == "local" else label
+    addr = str(row.get("address") or "-")
+    mine = bool(row.get("you"))
     if mine:
         you = short
-    shown.append((short, clean(label), mid, name, pane, state, title[:36], mine))
+    inside = (not scope) or machine in scope
+    shown.append((short, label, addr, str(row.get("agent") or "-"),
+                  str(row.get("state") or "-"),
+                  str(row.get("title") or "").replace("\n", " ")[:36], mine, inside))
 
-headers = ("#", "MACHINE", "ID", "AGENT", "PANE", "STATE", "TITLE")
+headers = ("#", "MACHINE", "ADDRESS", "AGENT", "STATE", "TITLE")
 widths = [len(h) for h in headers]
 for row in shown:
-    for i, cell in enumerate(row[:7]):
-        if i == 6:
-            continue
-        widths[i] = max(widths[i], len(cell))
+    for i, cell in enumerate(row[:6]):
+        if i != 5:
+            widths[i] = max(widths[i], len(cell))
 
-def line(cells, color_state=None, mine=False):
+def line(cells, state=None, mine=False, inside=True):
     parts = []
     for i, cell in enumerate(cells):
-        text = cell.ljust(widths[i]) if i < 6 else cell
-        if i == 5 and color_state:
-            text = paint(state_color.get(color_state, "0"), text)
+        text = cell.ljust(widths[i]) if i < 5 else cell
+        if i == 4 and state:
+            text = paint(state_color.get(state, "0"), text)
         parts.append(text)
     body = "  " + "  ".join(parts).rstrip()
     if mine:
         body = paint("1;32", body) + "  <- you"
+    elif not inside:
+        body = paint("90", body) + "  (outside your workspace)"
     return body
 
 if you:
     print(paint("1;32", "  you are #%s. That row is this session." % you))
 else:
-    print("  this session is not a row in the list.")
+    print("  this session is not a row in the list (not an agent pane).")
 print()
 print(paint("1", line(headers)))
 print("  " + "  ".join("-" * w for w in widths))
 if not shown:
     print("  (no enabled machines)")
-else:
-    for row in shown:
-        print(line(row[:7], row[5], row[7]))
+for row in shown:
+    print(line(row[:6], row[4], row[6], row[7]))
 
-example = next((row for row in shown if row[0] != "-" and not row[7]), None)
+example = next((r for r in shown if r[0] != "-" and not r[6] and r[7]), None)
 print()
-print("  # is the short id from this list. PANE is the stable address.")
-print("  bash dev.sh ask <#> \"Prompt...\"")
-print("  bash dev.sh ask <machine id> <pane> \"Prompt...\"")
+print("  # is the short id from this listing; ADDRESS is the stable one.")
+print("  bash dev.sh ask <#> \"Prompt...\"      (dbdev ask <#> \"Prompt...\" on the Mac)")
 if example:
-    print("  bash dev.sh ask %s \"Prompt...\"" % example[0])
+    print("  bash dev.sh ask %s \"Prompt...\"      -> %s" % (example[0], example[2]))
+if ws:
+    print("  workspace %s: ask stays inside it; add --any-workspace only when the human named another agent." % ws)
+elif scope:
+    print("  primary: ask stays with the primaries and the Mac; add --any-workspace only when the human named another agent.")
+print("  Protocol: herdr-peers. A received [herdr-peers] message: bash dev.sh check -   then reply once: bash dev.sh reply <from> <id> \"...\"")
 PY
 }
 
-# Send one prompt and stamp where the reply should go.
-#
-# The stamp is permission and a return address. The receiver sends the answer
-# itself, and keeps the stamp in that command so the answer is marked as a
-# reply. A reply carries a stamp that says not to answer it. That is what
-# stops two agents from looping.
-#
-# A reply lands on the Herdr machine that sent the prompt. On the Mac that
-# machine is dailybot-mac (127.0.0.1:22032). Inside a container it is that
-# container's own pane. Pass --from <machine-id> <pane> only when this session
-# has no pane of its own.
+# `#` from the current listing -> <machine>:<pane>.
+mesh_resolve_number() {
+  mesh_list_json 2>/dev/null | MESH_WANT="$1" python3 -c '
+import json, os, sys
+want = int(os.environ["MESH_WANT"])
+try:
+    rows = (json.load(sys.stdin) or {}).get("rows") or []
+except Exception:
+    rows = []
+for row in rows:
+    if isinstance(row, dict) and row.get("n") == want and row.get("address"):
+        print(row["address"]); sys.exit(0)
+sys.exit(1)
+'
+}
+
+# Send one prompt through herdr-peers. Targets: <#> from the listing,
+# <machine-id>:<pane>, the older <machine-id> <pane> pair, or `lead`
+# (--plan). The reply arrives in this pane as a [herdr-peers] message.
 cmd_herdr_ask() {
-  local from_machine="" from_pane=""
+  mesh_require
+  herdr_prepare_mesh
+  mesh_check_self
+  local any=0 target="" number="" text="" rc
+  local pass=()
   while [ $# -gt 0 ]; do
     case "$1" in
+      --any-workspace) any=1; shift ;;
       --from)
-        [ $# -ge 3 ] || die "ask --from needs <machine-id> <pane>"
-        from_machine="$2"
-        from_pane="$3"
-        shift 3
+        [ $# -ge 2 ] || die "ask --from needs <machine-id>:<pane> (or <machine-id> <pane>)"
+        if [ $# -ge 3 ] && [[ "$2" != *:* ]] && [[ "$3" == w*:p* ]]; then
+          pass+=(--from "$2:$3"); shift 3
+        else
+          pass+=(--from "$2"); shift 2
+        fi
         ;;
-      --)
-        shift
-        break
-        ;;
-      -*)
-        die "unknown ask flag '$1'"
-        ;;
-      *)
-        break
-        ;;
+      --scope|--fanout|--reason|--task|--plan|--profile|--vendor|--worktree|--pane)
+        [ $# -ge 2 ] || die "ask $1 needs a value"
+        pass+=("$1" "$2"); shift 2 ;;
+      --) shift; break ;;
+      -) break ;;
+      -*) die "unknown ask flag '$1' (bash dev.sh ask [--any-workspace] [--from <machine>:<pane>] [--scope|--fanout|--reason|--task|--plan|--profile|--vendor|--worktree|--pane <v>] <#>|<machine>:<pane>|<machine> <pane>|lead \"prompt\")" ;;
+      *) break ;;
     esac
   done
-  local machine="" pane="" number=""
-  if [[ "${1:-}" =~ ^[0-9]+$ ]]; then
-    number="$1"
-    shift
+  [ $# -ge 1 ] || die 'ask needs a target: <#> from `bash dev.sh agents`, <machine-id>:<pane>, <machine-id> <pane>, or lead'
+  if [[ "$1" =~ ^[0-9]+$ ]]; then
+    number="$1"; shift
+    target="$(mesh_resolve_number "$number")" || die "no agent #${number} in the current listing; run: bash dev.sh agents"
+  elif [ "$1" = lead ]; then
+    target=lead; shift
+  elif [[ "$1" == *:* ]]; then
+    target="$1"; shift
   else
-    [ $# -ge 3 ] || die "ask needs <#> \"prompt\", or <machine-id> <pane> \"prompt\""
-    machine="$1"
-    pane="$2"
-    shift 2
+    case "$1" in
+      *[!0-9a-fA-F]*) die "target must be <#>, <machine-id>:<pane>, <machine-id> <pane> or lead (machine ids are hex: bash dev.sh agents)" ;;
+    esac
+    [ $# -ge 2 ] || die "ask <machine-id> needs its <pane> (w5:p2) and a prompt"
+    case "$2" in
+      w*:p*) ;;
+      *) die "pane must look like w5:p2 (the ADDRESS column from: bash dev.sh agents)" ;;
+    esac
+    target="$1:$2"; shift 2
   fi
-  [ $# -ge 1 ] || die "ask needs a prompt"
-  local text="$*"
+  [ $# -ge 1 ] || die "ask needs a prompt (or - to read it from stdin)"
+  if [ $# -eq 1 ] && [ "$1" = - ]; then
+    text=-
+  else
+    text="$*"
+  fi
   [ -n "$text" ] || die "ask needs a prompt"
-  herdr_prepare_mesh
-  if [ -n "$number" ]; then
-    local resolved
-    resolved="$(HERDR_ASK_NUMBER="$number" python3 - <<'PY'
-import json, os, subprocess, sys
-want = int(os.environ["HERDR_ASK_NUMBER"])
-raw = subprocess.run(["herdr", "machine", "list", "--json"], capture_output=True, text=True, timeout=12)
-if raw.returncode != 0:
-    sys.stderr.write(raw.stderr or "herdr machine list failed\n")
-    sys.exit(1)
-machines = json.loads(raw.stdout or "[]")
-n = 0
-for machine in machines if isinstance(machines, list) else []:
-    if not isinstance(machine, dict) or not machine.get("enabled") or not machine.get("id"):
-        continue
-    listed = subprocess.run(["herdr", "--machine", str(machine["id"]), "agent", "list"], capture_output=True, text=True, timeout=12)
-    if listed.returncode != 0 or not listed.stdout.strip():
-        continue
-    try:
-        payload = json.loads(listed.stdout)
-    except json.JSONDecodeError:
-        continue
-    agents = ((payload.get("result") or {}).get("agents") if isinstance(payload, dict) else None) or []
-    if not isinstance(agents, list):
-        continue
-    for agent in agents:
-        if not isinstance(agent, dict) or not agent.get("pane_id"):
-            continue
-        n += 1
-        if n == want:
-            print("%s %s" % (machine["id"], agent["pane_id"]))
-            sys.exit(0)
-sys.stderr.write("no agent #%s in the current list; run: bash dev.sh agents\n" % want)
-sys.exit(1)
-PY
-)" || die "could not resolve agent #$number"
-    machine="${resolved%% *}"
-    pane="${resolved##* }"
+  if [ "$any" -eq 1 ]; then
+    export HERDR_PEERS_SCOPE='*'
+  elif [ -z "${HERDR_PEERS_SCOPE:-}" ]; then
+    local scope
+    scope="$(mesh_default_scope)"
+    [ -z "$scope" ] || export HERDR_PEERS_SCOPE="$scope"
   fi
-  case "$machine" in
-    ""|*[!0-9a-fA-F]*) die "machine id must be the hex id from: bash dev.sh agents" ;;
+  local errf id
+  errf="$(mktemp "${TMPDIR:-/tmp}/devsh-ask.XXXXXX")"
+  if id="$(herdr-peers ask ${pass[@]+"${pass[@]}"} "$target" "$text" 2>"$errf")"; then
+    rc=0
+  else
+    rc=$?
+  fi
+  [ -s "$errf" ] && cat "$errf" >&2
+  if [ $rc -ne 0 ]; then
+    if grep -q 'out of scope' "$errf" 2>/dev/null; then
+      note "mesh: ${target} is outside your workspace; an agent talks to its own workspace unless the human named that agent — then: bash dev.sh ask --any-workspace ..." >&2
+    fi
+    rm -f "$errf"
+    exit $rc
+  fi
+  rm -f "$errf"
+  [ -z "$id" ] || printf '%s\n' "$id"
+  note "asked ${target}${number:+ (#${number})}"
+  note "the reply lands in this pane as a [herdr-peers] message: run  bash dev.sh check -  on it before using it; or block for it: bash dev.sh wait ${id:-<id>}"
+}
+
+# The rest of the protocol, unchanged: reply, check, wait, notify, cancel,
+# lanes, lead — and `peers <verb> ...` for anything else herdr-peers has.
+cmd_herdr_peers() {
+  local verb="$1"; shift
+  mesh_require
+  case "$verb" in
+    peers) [ $# -ge 1 ] || die "peers needs a herdr-peers verb: bash dev.sh peers --help"; verb="$1"; shift ;;
   esac
-  case "$pane" in
-    w*:p*) ;;
-    *) die "pane must look like w5:p2 (the PANE column from: bash dev.sh agents)" ;;
+  case "$verb" in
+    check|cancel|log|--help|-h) ;;
+    *) herdr_prepare_mesh ;;
   esac
-  case "$from_pane" in
-    ""|w*:p*) ;;
-    *) die "--from pane must look like w5:p2" ;;
-  esac
-  case "$from_machine" in
-    ""|*[!0-9a-fA-F]*)
-      [ -z "$from_machine" ] || die "--from machine id must be hex"
-      ;;
-  esac
-
-  command -v herdr >/dev/null 2>&1 || die "herdr is not on PATH"
-  command -v python3 >/dev/null 2>&1 || die "python3 is required"
-
-  HERDR_ASK_MACHINE="$machine" \
-  HERDR_ASK_PANE="$pane" \
-  HERDR_ASK_TEXT="$text" \
-  HERDR_ASK_FROM_MACHINE="$from_machine" \
-  HERDR_ASK_FROM_PANE="$from_pane" \
-  python3 - <<'PY'
-import json, os, subprocess, sys
-
-machine = os.environ["HERDR_ASK_MACHINE"]
-pane = os.environ["HERDR_ASK_PANE"]
-text = os.environ["HERDR_ASK_TEXT"]
-from_machine = os.environ.get("HERDR_ASK_FROM_MACHINE") or ""
-from_pane = os.environ.get("HERDR_ASK_FROM_PANE") or ""
-
-def run(args, timeout):
-    try:
-        return subprocess.run(args, capture_output=True, text=True, timeout=timeout)
-    except subprocess.TimeoutExpired:
-        sys.stderr.write("herdr timed out: %s\n" % " ".join(args[:4]))
-        sys.exit(1)
-
-def pane_here(pane_id):
-    raw = run(["herdr", "pane", "get", pane_id], 8)
-    if raw.returncode != 0:
-        return False
-    try:
-        payload = json.loads(raw.stdout or "{}")
-    except json.JSONDecodeError:
-        return False
-    found = ((payload.get("result") or {}).get("pane") or {}).get("pane_id")
-    return found == pane_id
-
-def enabled_ids():
-    raw = run(["herdr", "machine", "list", "--json"], 12)
-    if raw.returncode != 0:
-        sys.stderr.write(raw.stderr or "herdr machine list failed\n")
-        sys.exit(raw.returncode or 1)
-    try:
-        data = json.loads(raw.stdout or "[]")
-    except json.JSONDecodeError:
-        sys.stderr.write("herdr machine list did not return JSON\n")
-        sys.exit(1)
-    ids = []
-    for item in data if isinstance(data, list) else []:
-        if isinstance(item, dict) and item.get("enabled") and item.get("id"):
-            ids.append(str(item["id"]))
-    return ids
-
-if not from_machine or not from_pane:
-    current = run(["herdr", "pane", "current"], 8)
-    if current.returncode != 0:
-        sys.stderr.write("could not read the current pane; pass --from <machine-id> <pane>\n")
-        sys.exit(1)
-    try:
-        from_pane = str(((json.loads(current.stdout).get("result") or {}).get("pane") or {}).get("pane_id") or "")
-    except json.JSONDecodeError:
-        from_pane = ""
-    if not from_pane:
-        sys.stderr.write("this session has no pane id; pass --from <machine-id> <pane>\n")
-        sys.exit(1)
-    for candidate in enabled_ids():
-        probe = run(["herdr", "--machine", candidate, "pane", "get", from_pane], 8)
-        if probe.returncode != 0:
-            continue
-        try:
-            found = ((json.loads(probe.stdout or "{}").get("result") or {}).get("pane") or {}).get("pane_id")
-        except json.JSONDecodeError:
-            continue
-        if found == from_pane:
-            from_machine = candidate
-            break
-    if not from_machine:
-        sys.stderr.write(
-            "this session is not on a reachable Herdr machine, so a reply cannot come back here.\n"
-            "Run ask from inside a container, or pass --from <machine-id> <pane>\n"
-            "of a pane that bash dev.sh agents lists.\n"
-        )
-        sys.exit(1)
-
-if from_machine == machine and from_pane == pane:
-    sys.stderr.write("refusing to ask a pane to reply to itself\n")
-    sys.exit(1)
-
-if not pane_here(pane) and machine not in enabled_ids():
-    sys.stderr.write("machine %s is not an enabled Herdr machine\n" % machine)
-    sys.exit(1)
-
-# A body that already has the stamp is a reply. Mark it as a reply so the
-# sender sees the answer, and does not get a second order to answer.
-if "[dailybot-mesh]" in text:
-    stamp = (
-        "[dailybot-mesh] This is the reply. Do not answer it.\n"
-        "The conversation stops here."
-    )
-else:
-    stamp = (
-        "[dailybot-mesh] You are allowed to answer this, and you must answer it now. "
-        "Send the reply yourself with the command below. Do not ask a person for permission, "
-        "do not draft the answer and wait, and do not stop after writing it in this pane. "
-        "Keep the dailybot-mesh stamp in that command, so your answer is marked as a reply and the conversation stops.\n"
-        "Reply with: bash dev.sh ask %s %s \"[dailybot-mesh] your answer\"\n"
-        "Or: dbdev ask %s %s \"[dailybot-mesh] your answer\""
-    ) % (from_machine, from_pane, from_machine, from_pane)
-body = text.rstrip() + "\n\n" + stamp
-
-sent = run(["herdr", "--machine", machine, "agent", "prompt", pane, body], 20)
-sys.stdout.write(sent.stdout or "")
-sys.stderr.write(sent.stderr or "")
-if sent.returncode != 0:
-    sys.exit(sent.returncode)
-print("asked %s %s" % (machine, pane))
-print("reply address: bash dev.sh ask %s %s \"...\"" % (from_machine, from_pane))
-PY
+  mesh_check_self
+  exec herdr-peers "$verb" "$@"
 }
 
 # Standard Herdr sidebar: Home · Editor · Development · Agents.
@@ -2209,10 +2089,21 @@ Verbs
   doctor                environment diagnosis; writes nothing
   ports                 host bindings, or workspace ports and live listeners
                         when run inside the container
-  agents                live machines and agents, refreshed from the Mac catalog
-                        same as: dbdev agents
-  ask <#> "..."         send agent # a prompt plus your reply address
-                        ask <id> <pane> "..." is the same, using the table columns
+  agents                live machines and agents (herdr-peers list over the
+                        Mac catalog); same as: dbdev agents
+  ask <#> "..."         ask agent # through herdr-peers: one stamped prompt,
+                        one authorized reply back to this pane. Also
+                        ask <machine>:<pane> "...", ask <machine> <pane> "..."
+                        and ask lead "..." (--plan). Stays inside your
+                        workspace unless --any-workspace; --from, --scope,
+                        --fanout/--reason, --task, --plan pass through
+  check -               classify a received [herdr-peers] message (stdin)
+  reply <from> <id> "…" answer an ask exactly once (the command check prints)
+  wait <id>             block until the reply to your ask arrives here
+  notify <addr> "..."   one-way notice, never answered
+  cancel <id>           close an open ask (yours, or one you decline)
+  lanes · lead …        a lead's view of its lanes; the plan's lead record
+  peers <verb> …        any other herdr-peers verb (log, status, --help)
   herdr-layout          create Home · Editor · Development · Agents on this
                         machine. --keep leaves current panes and fills gaps;
                         --reset closes those four (and legacy "Home (~)"), then
@@ -2271,6 +2162,8 @@ run_one() {
     ports)   cmd_ports ;;
     agents) cmd_herdr_agents ;;
     ask)    cmd_herdr_ask "${ARGS[@]+"${ARGS[@]}"}" ;;
+    reply|check|wait|notify|cancel|lanes|lead|peers)
+            cmd_herdr_peers "$VERB" "${ARGS[@]+"${ARGS[@]}"}" ;;
     herdr-layout) cmd_herdr_layout ;;
     *)       die "unknown verb '$VERB' — run: bash dev.sh help" ;;
   esac
