@@ -123,4 +123,4 @@ Persona definitions. Use these as the system prompt / role when spawning a sub-a
 
 ## Dogfood reconciliation — 2026-10-12
 
-DeepWorkPlan v7.7.1, AI Diff Reviewer v3.3.12 and Dailybot skill v3.23.15 are pinned in `skills-lock.json`. The existing addon set still fits. The container is rendered with dck v0.3.5, coding-agents-kit v0.5.3 and herdr-peers v0.2.3; DeepWorkPlan Vim v0.7.0 remains a container editor layer. Repository hooks, review rules, design documentation and historical plans are preserved.
+DeepWorkPlan v7.7.1, AI Diff Reviewer v3.3.12 and Dailybot skill v3.23.15 are pinned in `skills-lock.json`. The existing addon set still fits. The container is rendered with dck v0.3.5, coding-agents-kit v0.5.3 and herdr-peers v0.2.3; DeepWorkPlan Vim v0.7.0 remains a container editor layer. The addon registry records the host-detected coding-agents-kit v0.7.1 and herdr-peers v0.3.2; these versions do not describe the unre-rendered container embeds listed above. Repository hooks, review rules, design documentation and historical plans are preserved.
