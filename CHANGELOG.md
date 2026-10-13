@@ -9,6 +9,19 @@ Do not edit it by hand — your edits will be overwritten on the next release.
 
 <!-- version list -->
 
+## v3.27.8 (2026-10-13)
+
+### Bug Fixes
+
+- **cli**: Share every CLI home with satellites, document the CLI choice
+  ([`1fd25e9`](https://github.com/DailybotHQ/cli/commit/1fd25e9a4e13e11352ebb1ea2144eb1457f99d6c))
+
+### Chores
+
+- **cli**: Devcontainer-kit 1.0.0, every coding CLI wired
+  ([`d0332c7`](https://github.com/DailybotHQ/cli/commit/d0332c780abe383404d68fd0ea3b1d58560cba65))
+
+
 ## v3.27.7 (2026-10-13)
 
 ### Chores
