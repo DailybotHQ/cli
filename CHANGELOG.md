@@ -9,6 +9,22 @@ Do not edit it by hand — your edits will be overwritten on the next release.
 
 <!-- version list -->
 
+## v3.27.5 (2026-10-13)
+
+### Chores
+
+- **skill**: Dogfood deepworkplan pack 7.7.1
+  ([`1ef7988`](https://github.com/DailybotHQ/cli/commit/1ef79882111d4f4ba5a60f9ddd8044a7975245ea))
+
+### Documentation
+
+- Distinguish host addon pins from container embeds
+  ([`e608b43`](https://github.com/DailybotHQ/cli/commit/e608b43266149d798c2e203bbf04983ff5724afb))
+
+- Reconcile vendored reviewer provenance
+  ([`78a3640`](https://github.com/DailybotHQ/cli/commit/78a3640cc903cbcc783f729afaf30a9c7cf1d487))
+
+
 ## v3.27.4 (2026-10-12)
 
 ### Chores
