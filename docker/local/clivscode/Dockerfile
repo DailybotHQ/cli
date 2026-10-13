@@ -2,9 +2,9 @@
 # The blocks between the dck markers are reconciled by `dck init`; add your
 # project's own layers BELOW them — they are never touched. The scripts the
 # base block copies live next to this file in dck/ (vendored by `dck init`,
-# devcontainer-kit v0.3.5); no shared base image is involved.
+# devcontainer-kit v1.0.0); no shared base image is involved.
 # >>> dck:base >>>
-# dck:managed v0.3.5 base
+# dck:managed v1.0.0 base
 # Both ARGs come before any FROM, so they are global (an ARG after a FROM is
 # scoped to that stage).
 ARG BASE_IMAGE=python:3.14.4-slim-trixie@sha256:2ca02f32b4d9d893863367ce07ec1972819f476dd38d8612f2a9cb6a41cbb727
@@ -48,7 +48,7 @@ ENV LANG=en_US.UTF-8 \
     VISUAL=nvim \
     GIT_EDITOR=nvim \
     DCK_IMAGE_FLAVOUR=python-3.13 \
-    DCK_IMAGE_VERSION=0.3.5
+    DCK_IMAGE_VERSION=1.0.0
 
 # dck.toml asks for user "dev-user": rename the uid-1000 user. Before WORKDIR: a
 # workspace under /home/dev-user would otherwise create that home first, and
@@ -66,8 +66,12 @@ CMD ["sleep", "infinity"]
 # Agents layer (layers.agents = true): coding-agents-kit (ak) from its verified
 # release, the pinned Node when the flavour lacks a current one, `ak install`
 # (pinned, verified) and the classic + providers presets. Autonomy is ak's default.
+# The CLIs installed: DCK_AGENT_CLIS plus each INSTALL_<CLI>_CLI=true (compose
+# passes both from the developer's environment or docker/local/.env).
 ARG DCK_AGENT_CLIS="claude codex"
-RUN DCK_USER=dev-user dck-layer agents ${DCK_AGENT_CLIS}
+ARG INSTALL_CLAUDE_CLI=false
+ARG INSTALL_CODEX_CLI=false
+RUN DCK_USER=dev-user DCK_AGENT_SUPPORTED="claude codex" dck-layer agents ${DCK_AGENT_CLIS}
 # Dailybot layer (layers.dailybot = true): requested by the dailybot addon.
 RUN DCK_USER=dev-user dck-layer dailybot
 # <<< dck:layers <<<
