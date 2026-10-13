@@ -82,9 +82,13 @@ usage() {
   cat <<'EOF'
 Usage: bash docker.sh <verb> [id]
 
-  satellite.up {id}       Start clivscodesatellite (SSH only)
+  satellite.up {id}       Start clivscodesatellite (SSH only). Always runs
+                          dev.sh satellite up (dck up when installed): a
+                          no-op on a healthy satellite, and it re-registers
+                          the Herdr machine and dck key on one that lacks them
   satellite.down {id}     Stop and remove the satellite (dck down)
-  satellite.focus {id}    Ensure satellite up (no HTTP preview)
+  satellite.focus {id}    Ensure satellite up, same path as satellite.up
+                          (no HTTP preview)
   satellite.unfocus {id}  Clear focus marker
   primary.backend         No-op for CLI (no HTTP port to free)
   primary.restore         No-op for CLI
@@ -122,11 +126,10 @@ cmd_satellite_focus() {
   local id
   id="$(sat_id "${1:-}")"
   satellite_env "$id"
-  if docker ps --format '{{.Names}}' | grep -qx "dailybot_clivscodesatellite_${id}"; then
-    say "CLI satellite ${id} already up (no recreate)"
-  else
-    satellite_dev "$id" up --seed-state --label "$(satellite_label "$id")"
-  fi
+  # Same path as satellite.up: dck up is idempotent on a healthy satellite and
+  # heals one left by the old plain-compose path (authorized dck key, Herdr
+  # machine, SSH alias) instead of skipping it because the container runs.
+  satellite_dev "$id" up --seed-state --label "$(satellite_label "$id")"
   mkdir -p "$(db_ws_root)"
   printf '%s\n' "$id" >"$(db_ws_root)/_cli_focus_id"
   say "CLI satellite ready SSH :${HERDR_SSH_HOST_PORT} (no HTTP preview)"
