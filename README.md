@@ -1,3 +1,11 @@
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/DailybotHQ/cli/main/assets/logo-dark.svg">
+    <source media="(prefers-color-scheme: light)" srcset="https://raw.githubusercontent.com/DailybotHQ/cli/main/assets/logo-light.svg">
+    <img alt="Dailybot" src="https://raw.githubusercontent.com/DailybotHQ/cli/main/assets/logo-light.svg" width="440">
+  </picture>
+</p>
+
 # Dailybot CLI
 
 The command-line bridge between **humans** and **agents**. [Dailybot](https://www.dailybot.com) connects your team — whether they work in Slack, Google Chat, Discord, Microsoft Teams, or the web — with AI agents and automated workflows. The CLI brings that power to your terminal: progress reports, observability, health checks, messaging, and workflow automation for modern teams.
