@@ -42,8 +42,11 @@ dailybot = true
 editor = true
 
 [agents]
-# Kinds passed to `ak install` when layers.agents is true.
-clis = ["claude", "codex"]
+# Every coding CLI is wired (volumes, host profiles); none is installed by
+# default. Each developer chooses: the dck host profile's [agents] clis is the
+# primary knob, INSTALL_<CLI>_CLI=true in docker/local/.env the per-repo one.
+supported = "all"
+clis = []
 
 [herdr]
 # Register the container as a Herdr machine on `dck up` (needs ssh_port).

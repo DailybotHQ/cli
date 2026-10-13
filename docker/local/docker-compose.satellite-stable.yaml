@@ -1,6 +1,6 @@
 # Stable SSH host port for a CLI workspace satellite (no HTTP preview).
 # HERDR_SSH_HOST_PORT must be set (unique per sid, default 22900+N).
-# The agent volumes (ak profiles and the claude/codex homes) are the primary
+# The agent volumes (ak profiles and every coding CLI's home) are the primary
 # project's, named after PRIMARY_COMPOSE_PROJECT from docker/local/.env; the
 # state volume (Herdr session, Dailybot CLI config) stays satellite-local:
 # sharing it puts both containers on one herdr.sock, and whichever starts last
@@ -21,4 +21,22 @@ volumes:
     external: true
   codex:
     name: ${PRIMARY_COMPOSE_PROJECT:-dailybotplatformlocal}_codex
+    external: true
+  cursor:
+    name: ${PRIMARY_COMPOSE_PROJECT:-dailybotplatformlocal}_cursor
+    external: true
+  opencode:
+    name: ${PRIMARY_COMPOSE_PROJECT:-dailybotplatformlocal}_opencode
+    external: true
+  pi:
+    name: ${PRIMARY_COMPOSE_PROJECT:-dailybotplatformlocal}_pi
+    external: true
+  cline:
+    name: ${PRIMARY_COMPOSE_PROJECT:-dailybotplatformlocal}_cline
+    external: true
+  grok:
+    name: ${PRIMARY_COMPOSE_PROJECT:-dailybotplatformlocal}_grok
+    external: true
+  antigravity:
+    name: ${PRIMARY_COMPOSE_PROJECT:-dailybotplatformlocal}_antigravity
     external: true

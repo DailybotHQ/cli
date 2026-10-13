@@ -186,9 +186,13 @@ hardened sshd with runtime host keys, herdr-peers), the `editor` layer
 ([deepworkplan-vim](https://github.com/DailybotHQ/deepworkplan-vim) at dck's pin,
 `EDITOR=nvim`), the `agents` layer
 ([coding-agents-kit](https://github.com/DailybotHQ/coding-agents-kit), `ak`) with
-the CLIs in `[agents] clis` (Claude Code and Codex), and the `dailybot` layer (the
-released Dailybot CLI, a pinned wheel, for progress reports). To add a CLI, edit
-`clis`, run `dck init`, then `dck rebuild`.
+every coding CLI wired (`[agents] supported = "all"`: volumes and host profiles for
+each) and none installed by default (`clis = []`), and the `dailybot` layer (the
+released Dailybot CLI, a pinned wheel, for progress reports). Each developer
+chooses which CLIs install: the primary knob is `[agents] clis` in **your** dck
+host profile (applied by `dck up`); the per-repo alternative is
+`INSTALL_<CLI>_CLI=true` (for example `INSTALL_CLAUDE_CLI=true`) in the gitignored
+`docker/local/.env`. Then `dck rebuild`.
 
 **What the start hook does** ([`docker/local/dev-setup-hook.sh`](../docker/local/dev-setup-hook.sh)):
 links `/app` to `/workspace`, links `dbdev` to `dev.sh`, keeps `~/.dailybot_data`

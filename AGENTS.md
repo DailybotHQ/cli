@@ -181,8 +181,10 @@ the same compose file and project), and open a shell with `dck shell` or
 `bash dev.sh shell`. The container is rendered by devcontainer-kit from
 `.devcontainer/dck.toml` (the source of truth: service, user, workspace, Python
 3.14 base image, layers, coding CLIs, Herdr); run `dck init` after editing it.
-Coding CLIs are the ones in `[agents] clis` (Claude Code and Codex), installed and
-launched through coding-agents-kit (`ak`); with `host_profiles` on in the
+Every coding CLI is wired (`[agents] supported = "all"`) and none is installed by
+default (`clis = []`): each developer picks theirs in their dck host profile's
+`[agents] clis` (or `INSTALL_<CLI>_CLI=true` in the gitignored `docker/local/.env`),
+installed and launched through coding-agents-kit (`ak`); with `host_profiles` on in the
 developer's host profile they use the host's accounts. `nvim` is DeepWorkPlan Vim
 at devcontainer-kit's pin. CLI-specific start-up lives in
 `docker/local/dev-setup-hook.sh`. Herdr sidebar: `dck up` creates App · Editor ·

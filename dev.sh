@@ -32,7 +32,7 @@ while [ -L "$_self" ]; do
 done
 SELF_DIR="$(cd -P "$(dirname "$_self")" && pwd)"
 
-VERBS=" setup up down stop start restart ps logs shell exec build rebuild ls config doctor ports agents ask herdr-layout help "
+VERBS=" setup up down stop start restart ps logs shell exec build rebuild satellite ls config doctor ports agents ask herdr-layout help "
 
 # --------------------------------------------------------------------------
 # Argument parsing
@@ -258,10 +258,42 @@ load_context() {
 # Compose project name
 # --------------------------------------------------------------------------
 
+# `project` in the [compose] table of .devcontainer/dck.toml, or empty. awk, not
+# tomllib: the Mac's system python3 may predate it. A comment after the value is
+# fine; a value that is not a quoted string is ignored.
+dck_toml_project() {
+  local toml="$1/.devcontainer/dck.toml"
+  [ -f "$toml" ] || return 0
+  awk '
+    /^[[:space:]]*\[/ { in_compose = ($0 ~ /^[[:space:]]*\[compose\][[:space:]]*(#.*)?$/); next }
+    in_compose && /^[[:space:]]*project[[:space:]]*=/ {
+      v = $0; sub(/^[^=]*=[[:space:]]*/, "", v)
+      if (match(v, /^"[^"]*"/) || match(v, /^\047[^\047]*\047/)) {
+        print substr(v, 2, RLENGTH - 2); exit
+      }
+    }
+  ' "$toml"
+}
+
+# Precedence: --project, DEVSH_PROJECT, dck.toml [compose] project (dck itself
+# runs with that project, so compose must match it for every verb), then
+# COMPOSE_PROJECT_NAME from the environment or docker/local/.env, then the
+# compose file's top-level name:.
 resolve_project() {
   PROJECT=""; PROJECT_FROM=""
   if [ -n "$PROJECT_OVERRIDE" ]; then
     PROJECT="$PROJECT_OVERRIDE"; PROJECT_FROM="--project flag"; return 0
+  fi
+  if [ -n "${DEVSH_PROJECT:-}" ]; then
+    PROJECT="$DEVSH_PROJECT"; PROJECT_FROM="DEVSH_PROJECT in the environment"; return 0
+  fi
+  local t
+  t="$(dck_toml_project "$REPO_ROOT")"
+  if [ -n "$t" ]; then
+    case "$t" in
+      *[!a-z0-9_-]*|[_-]*) die "invalid [compose] project '$t' in .devcontainer/dck.toml (lowercase letters, digits, _ and -)" ;;
+    esac
+    PROJECT="$t"; PROJECT_FROM="[compose] project in .devcontainer/dck.toml"; return 0
   fi
   if [ -n "${COMPOSE_PROJECT_NAME:-}" ]; then
     PROJECT="$COMPOSE_PROJECT_NAME"; PROJECT_FROM="COMPOSE_PROJECT_NAME in the environment"; return 0
@@ -564,10 +596,13 @@ cmd_setup() {
   ensure_external_networks
   created=$((created + _ensure_created))
 
-  if [ ! -d "$REPO_ROOT/.devcontainer" ] && [ -d "$REPO_ROOT/.devcontainer_example" ]; then
+  # The folder can exist with only devcontainer-kit's tracked dck.toml in it, so
+  # the test is the active file, not the folder. cp never replaces dck.toml:
+  # the example folder does not carry one.
+  if [ ! -f "$REPO_ROOT/.devcontainer/devcontainer.json" ] && [ -d "$REPO_ROOT/.devcontainer_example" ]; then
     mkdir -p "$REPO_ROOT/.devcontainer"
     cp -R "$REPO_ROOT/.devcontainer_example/." "$REPO_ROOT/.devcontainer/"
-    note "created .devcontainer/ from .devcontainer_example/"
+    note "created .devcontainer/devcontainer.json from .devcontainer_example/"
     created=$((created + 1))
   fi
   if [ ! -d "$REPO_ROOT/.vscode" ] && [ -d "$REPO_ROOT/.vscode_example" ]; then
@@ -652,6 +687,42 @@ print('set "shutdownAction": "none" in .devcontainer/devcontainer.json')
 PY
 }
 
+# --------------------------------------------------------------------------
+# devcontainer-kit repositories
+# --------------------------------------------------------------------------
+
+# A repository whose container is rendered by devcontainer-kit carries
+# .devcontainer/dck.toml. Its `up` and `rebuild` go through `dck`, which adds what
+# plain compose cannot: the runtime overlay that shares the host's coding-agent
+# accounts (ak), the host SSH agent socket, the dedicated key sshd authorizes,
+# and the Herdr machine and mesh. Every other verb stays on compose, on the same
+# project. DEVSH_DCK=0 forces compose; without dck installed, compose is used
+# and the gap is said once.
+DCK_BIN=""
+use_dck() {
+  [ "${DEVSH_DCK:-1}" != 0 ] || return 1
+  [ -f "$REPO_ROOT/.devcontainer/dck.toml" ] || return 1
+  if [ -z "$DCK_BIN" ]; then
+    if command -v dck >/dev/null 2>&1; then
+      DCK_BIN="$(command -v dck)"
+    elif [ -x "${DCK_INSTALL_DIR:-$HOME/.local/share/dck}/bin/dck" ]; then
+      DCK_BIN="${DCK_INSTALL_DIR:-$HOME/.local/share/dck}/bin/dck"
+    else
+      note "devcontainer-kit (dck) is not installed: using plain compose. The host's agent accounts and the Herdr machine need it — see the Dailybot hub's docs/technical/LOCAL_ENVIRONMENT.md."
+      DEVSH_DCK=0
+      return 1
+    fi
+  fi
+  return 0
+}
+
+# dck on this repository and project. --project keeps the project dev.sh
+# resolved (dck.toml [compose] project first, see resolve_project) even when
+# docker/local/.env is missing or disagrees.
+dck_run() {
+  "$DCK_BIN" --repo "$REPO_ROOT" --project "$PROJECT" "$@"
+}
+
 services_or_default() {
   if [ "${#ARGS[@]}" -gt 0 ]; then
     printf '%s\n' "${ARGS[@]}"
@@ -666,6 +737,18 @@ cmd_up() {
   local svc=()
   while IFS= read -r s; do [ -n "$s" ] && svc+=("$s"); done < <(services_or_default)
   [ "${#svc[@]}" -gt 0 ] || die "no services to start — $DC_FILE declares neither runServices nor service"
+  if use_dck; then
+    note "starting ${svc[*]} (project $PROJECT) through devcontainer-kit"
+    local -a up_args=()
+    [ "$RECREATE" -eq 1 ] && up_args+=(--recreate)
+    # Only the services named on the command line; dck itself starts runServices.
+    if [ "${#ARGS[@]}" -gt 0 ]; then
+      dck_run up ${up_args[@]+"${up_args[@]}"} "${ARGS[@]}"
+    else
+      dck_run up ${up_args[@]+"${up_args[@]}"}
+    fi
+    return
+  fi
   note "starting ${svc[*]} (project $PROJECT)"
   # --no-recreate by default. A container created by the Dev Containers plugin
   # carries generated overlay compose files, so its config differs from this
@@ -772,6 +855,13 @@ cmd_rebuild() {
   local svc=() build_args=()
   while IFS= read -r s; do [ -n "$s" ] && svc+=("$s"); done < <(services_or_default)
   [ "${#svc[@]}" -gt 0 ] || die "no services to rebuild — $DC_FILE declares neither runServices nor service"
+  if use_dck; then
+    local -a rb_args=()
+    [ "$NO_CACHE" -eq 1 ] && rb_args+=(--no-cache)
+    note "rebuilding ${svc[*]} (project $PROJECT) through devcontainer-kit"
+    dck_run rebuild ${rb_args[@]+"${rb_args[@]}"} "${svc[@]}"
+    return
+  fi
   if [ "$NO_CACHE" -eq 1 ]; then
     build_args=(--no-cache --pull)
     note "rebuilding ${svc[*]} (project $PROJECT, --no-cache --pull)"
@@ -788,6 +878,175 @@ cmd_rebuild() {
   dc build ${build_args[@]+"${build_args[@]}"} "${svc[@]}"
   note "starting rebuilt containers"
   dc up -d --force-recreate "${svc[@]}"
+}
+
+# --------------------------------------------------------------------------
+# Workspace satellites
+# --------------------------------------------------------------------------
+
+# A satellite is a second instance of a dev service (<svc>satellite) in its own
+# compose project, with its own files and ports, started for a Dailybot
+# workspace by the repository's docker.sh satellite.*. In a repository with
+# .devcontainer/dck.toml it goes through dck (v0.3.5+), which gives it every
+# host step the main service gets: the authorized dck key (Herdr can attach),
+# copied keys, host-profile accounts, git identity, HERDR_PEERS_SELF, its own
+# Herdr machine and, with --seed-state, the gh / Dailybot login of the primary.
+# Plain compose is the fallback only when the repository has no dck.toml or dck
+# is not installed. The main service and its project are never touched.
+#
+#   bash dev.sh satellite <up|down|stop|ps|logs|shell|rebuild>
+#     --project P --service S [--compose-file F]... [--seed-state |
+#     --seed-state-from VOLUME] [--label TEXT] [--recreate] [--no-cache]
+#
+# Without --label, up and rebuild name the Herdr machine from
+# DAILYBOT_WS_HERDR_LABEL (exported by `dbdev workspace`), else dck's default.
+# Compose files are relative to the caller's directory (docker.sh runs from
+# docker/local). --project here names the satellite's project; the primary's
+# project is resolved as for every other verb.
+SAT_PROJECT=""
+
+# The state volume key in [compose] of .devcontainer/dck.toml ("state" when
+# unset), same parsing rules as dck_toml_project.
+dck_toml_state_volume() {
+  local toml="$1/.devcontainer/dck.toml" v=""
+  if [ -f "$toml" ]; then
+    v="$(awk '
+      /^[[:space:]]*\[/ { in_compose = ($0 ~ /^[[:space:]]*\[compose\][[:space:]]*(#.*)?$/); next }
+      in_compose && /^[[:space:]]*state_volume[[:space:]]*=/ {
+        v = $0; sub(/^[^=]*=[[:space:]]*/, "", v)
+        if (match(v, /^"[^"]*"/) || match(v, /^\047[^\047]*\047/)) {
+          print substr(v, 2, RLENGTH - 2); exit
+        }
+      }
+    ' "$toml")"
+  fi
+  printf '%s' "${v:-state}"
+}
+
+cmd_satellite() {
+  local action="${ARGS[0]:-}" service="" seed="" seed_primary=0 label=""
+  local files=() rest=() f abs
+  case "$action" in
+    up|down|stop|ps|logs|shell|rebuild) ;;
+    "") die "satellite needs an action: up, down, stop, ps, logs, shell or rebuild" ;;
+    *) die "unknown satellite action '$action' (up, down, stop, ps, logs, shell, rebuild)" ;;
+  esac
+  set -- ${ARGS[@]+"${ARGS[@]:1}"}
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      --service) [ $# -ge 2 ] || die "--service needs a name"; service="$2"; shift 2 ;;
+      --compose-file) [ $# -ge 2 ] || die "--compose-file needs a file"; files+=("$1" "$2"); shift 2 ;;
+      --seed-state) seed_primary=1; shift ;;
+      --seed-state-from) [ $# -ge 2 ] || die "--seed-state-from needs a volume name"; seed="$2"; shift 2 ;;
+      --label) [ $# -ge 2 ] || die "--label needs a text"; label="$2"; shift 2 ;;
+      *) rest+=("$1"); shift ;;
+    esac
+  done
+  [ -n "$SAT_PROJECT" ] || die "satellite needs --project (a satellite runs in its own compose project, never $PROJECT)"
+  [ "$SAT_PROJECT" != "$PROJECT" ] || die "satellite --project must differ from the primary project '$PROJECT'"
+  case "$SAT_PROJECT" in
+    *[!a-z0-9_-]*|[_-]*) die "invalid satellite project '$SAT_PROJECT' (lowercase letters, digits, _ and -)" ;;
+  esac
+  [ -n "$service" ] || die "satellite needs --service (the one service to act on, e.g. djangovscodesatellite)"
+  safe_name "$service" || die "invalid satellite service '$service'"
+  [ -z "$seed" ] || safe_name "$seed" || die "invalid --seed-state-from '$seed'"
+  if [ "$action" != up ] && [ "$action" != rebuild ]; then
+    [ -z "$seed$label" ] && [ "$seed_primary" -eq 0 ] || die "--seed-state, --seed-state-from and --label only apply to satellite up and rebuild"
+  fi
+  [ "${#rest[@]}" -eq 0 ] || [ "$action" = logs ] || die "unexpected argument '${rest[0]}' for satellite $action"
+  # Compose files resolve against the caller's directory; absolute from here on.
+  local file_args=() i
+  for ((i = 0; i < ${#files[@]}; i += 2)); do
+    f="${files[i+1]}"
+    [ -f "$f" ] || die "satellite compose file not found: $f"
+    abs="$(cd -P "$(dirname "$f")" && pwd)/$(basename "$f")"
+    file_args+=(--compose-file "$abs")
+  done
+
+  if use_dck; then
+    local -a base=("$DCK_BIN" --repo "$REPO_ROOT" --project "$SAT_PROJECT")
+    base+=(${file_args[@]+"${file_args[@]}"} --service "$service")
+    local -a up_args=()
+    if [ "$seed_primary" -eq 1 ] && [ -z "$seed" ]; then
+      seed="${PROJECT}_$(dck_toml_state_volume "$REPO_ROOT")"
+      if ! docker volume inspect "$seed" >/dev/null 2>&1; then
+        note "satellite: no primary state volume $seed yet; starting without a seeded login"
+        seed=""
+      fi
+    fi
+    [ -n "$seed" ] && up_args+=(--seed-state-from "$seed")
+    # The Herdr label: --label, else the one `dbdev workspace` exports
+    # ("<id> - API · WS <name>"), else dck's own (DCK_SATELLITE_LABEL, then
+    # "<project> · <service>").
+    if [ -z "$label" ] && { [ "$action" = up ] || [ "$action" = rebuild ]; }; then
+      label="${DAILYBOT_WS_HERDR_LABEL:-}"
+    fi
+    [ -n "$label" ] && up_args+=(--label "$label")
+    case "$action" in
+      up)
+        [ "$RECREATE" -eq 1 ] && up_args+=(--recreate)
+        note "satellite $service (project $SAT_PROJECT) through devcontainer-kit"
+        "${base[@]}" up ${up_args[@]+"${up_args[@]}"} ;;
+      rebuild)
+        # dck builds only the main service; the satellite's image is built with
+        # compose on the same project and files, then dck recreates it.
+        local -a build_args=()
+        [ "$NO_CACHE" -eq 1 ] && build_args=(--no-cache --pull)
+        note "satellite $service (project $SAT_PROJECT): building, then recreating through devcontainer-kit"
+        sat_dc "$service" ${file_args[@]+"${file_args[@]}"} -- build ${build_args[@]+"${build_args[@]}"} "$service"
+        "${base[@]}" up --recreate ${up_args[@]+"${up_args[@]}"} ;;
+      down)  "${base[@]}" down ;;
+      stop)  "${base[@]}" stop ;;
+      ps)    "${base[@]}" ps ;;
+      logs)  "${base[@]}" logs ${rest[@]+"${rest[@]}"} ;;
+      shell) "${base[@]}" shell ;;
+    esac
+    return
+  fi
+
+  # Plain compose: no host steps (no authorized key, no accounts, empty state).
+  [ -z "$seed" ] && [ "$seed_primary" -eq 0 ] || note "satellite: the login seed needs devcontainer-kit; starting without it"
+  case "$action" in
+    up)
+      if [ "$RECREATE" -eq 1 ]; then
+        sat_dc "$service" ${file_args[@]+"${file_args[@]}"} -- up -d --force-recreate --no-deps "$service"
+      else
+        sat_dc "$service" ${file_args[@]+"${file_args[@]}"} -- up -d --no-recreate --no-deps "$service"
+      fi ;;
+    rebuild)
+      local -a build_args=()
+      [ "$NO_CACHE" -eq 1 ] && build_args=(--no-cache --pull)
+      sat_dc "$service" ${file_args[@]+"${file_args[@]}"} -- build ${build_args[@]+"${build_args[@]}"} "$service"
+      sat_dc "$service" ${file_args[@]+"${file_args[@]}"} -- up -d --force-recreate --no-deps "$service" ;;
+    down)  sat_dc "$service" ${file_args[@]+"${file_args[@]}"} -- rm -sf "$service" ;;
+    stop)  sat_dc "$service" ${file_args[@]+"${file_args[@]}"} -- stop "$service" ;;
+    ps)    sat_dc "$service" ${file_args[@]+"${file_args[@]}"} -- ps "$service" ;;
+    logs)  sat_dc "$service" ${file_args[@]+"${file_args[@]}"} -- logs ${rest[@]+"${rest[@]}"} "$service" ;;
+    shell)
+      local -a opts=(-it)
+      [ -n "$DC_USER" ] && opts+=(-u "$DC_USER")
+      [ -n "$DC_WORKSPACE" ] && opts+=(-w "$DC_WORKSPACE")
+      sat_dc "$service" ${file_args[@]+"${file_args[@]}"} -- exec "${opts[@]}" "$service" bash -l ;;
+  esac
+}
+
+# sat_dc <service> [--compose-file F]... -- <compose args...>: compose on the
+# satellite's project and files (the repository's compose file when none given).
+sat_dc() {
+  shift
+  local -a fargs=()
+  while [ $# -gt 0 ] && [ "$1" != "--" ]; do
+    [ "$1" = --compose-file ] && fargs+=(-f "$2")
+    shift 2
+  done
+  [ $# -gt 0 ] && shift
+  [ "${#fargs[@]}" -gt 0 ] || fargs=(-f "$DC_COMPOSE")
+  resolve_compose_bin
+  if [ -n "$COMPOSE_SUB" ]; then
+    "$COMPOSE_BIN" "$COMPOSE_SUB" -p "$SAT_PROJECT" "${fargs[@]}" "$@"
+  else
+    "$COMPOSE_BIN" -p "$SAT_PROJECT" "${fargs[@]}" "$@"
+  fi
 }
 
 cmd_config() {
@@ -888,6 +1147,7 @@ cmd_ls() {
     fi
     has_devcontainer "$root" || continue
     (
+      REPO_ROOT="$root"
       load_context "$root" 2>/dev/null || exit 0
       # Each repository resolves its own compose project; the filter below reads
       # PROJECT, which only the main dispatch sets, and set -u would abort here.
@@ -1777,9 +2037,17 @@ H
 # Tested in the Core Hub, not in each repository (this file is identical in all of
 # them): bash scripts/test_dev_rebuild_request.sh — DAILYBOT_ASSUME_CONTAINER=1 plus
 # a fake ssh through DAILYBOT_HOST_SSH.
-in_container() { [ -f /.dockerenv ] || [ "${DAILYBOT_ASSUME_CONTAINER:-}" = 1 ]; }
+# DAILYBOT_ASSUME_CONTAINER=1 forces container mode and =0 host mode, so the
+# tests of both paths run anywhere, including inside a container.
+in_container() {
+  case "${DAILYBOT_ASSUME_CONTAINER:-}" in
+    1) return 0 ;;
+    0) return 1 ;;
+  esac
+  [ -f /.dockerenv ]
+}
 
-# Short alias (api web chatbot discord site cli) for a repository name; empty
+# Short alias (api web chatbot discord site cli hub) for a repository name; empty
 # when the name is not a Dailybot repository.
 repo_alias() {
   case "$1" in
@@ -1789,6 +2057,7 @@ repo_alias() {
     discord|discord-gateway) printf 'discord' ;;
     site|www|dailybot.com|dailybot-com) printf 'site' ;;
     cli) printf 'cli' ;;
+    hub|core|core-hub|dailybot-core) printf 'hub' ;;
   esac
 }
 
@@ -1809,6 +2078,23 @@ self_repo_alias() {
 
 # One request to the Mac. DAILYBOT_HOST_SSH is a test hook; the real command is
 # ssh to the `dailybot-mac` alias the host kit publishes for containers.
+# The Mac's alias inside this container. The host kit publishes `dailybot-mac`
+# through the peers include; a devcontainer-kit container gets the host from
+# `dck herdr mesh` as `dck-host` instead (a profile whose host listener is the
+# host kit's). DAILYBOT_HOST_ALIAS wins over both.
+host_alias() {
+  if [ -n "${DAILYBOT_HOST_ALIAS:-}" ]; then printf '%s' "$DAILYBOT_HOST_ALIAS"; return 0; fi
+  local a
+  for a in dailybot-mac dck-host; do
+    # `ssh -G` resolves without connecting; an alias nobody declared keeps its
+    # own name as the host name.
+    if [ "$(ssh -G "$a" 2>/dev/null | awk '$1 == "hostname" { print $2; exit }')" != "$a" ]; then
+      printf '%s' "$a"; return 0
+    fi
+  done
+  printf 'dailybot-mac'
+}
+
 host_request() {
   local verb="$1"; shift
   local from="${DAILYBOT_WORKSPACE_ID:-primary}"
@@ -1818,14 +2104,15 @@ host_request() {
   # the Mac, never extra commands. Only $HOME is left to expand there.
   local mac_cmd
   mac_cmd="\"\$HOME/.local/share/coding-agent-kit/bin/dailybot-dev\"$(printf ' %q' request "$verb" --from-workspace "$from" "$@")"
-  local out rc=0
+  local out rc=0 mac_alias
+  mac_alias="$(host_alias)"
   # shellcheck disable=SC2086
-  if out="$(${DAILYBOT_HOST_SSH:-ssh -o BatchMode=yes -o ConnectTimeout=10} "${DAILYBOT_HOST_ALIAS:-dailybot-mac}" "$mac_cmd" 2>&1)"; then rc=0; else rc=$?; fi
+  if out="$(${DAILYBOT_HOST_SSH:-ssh -o BatchMode=yes -o ConnectTimeout=10} "$mac_alias" "$mac_cmd" 2>&1)"; then rc=0; else rc=$?; fi
   [ -z "$out" ] || printf '%s\n' "$out"
   # ssh exits 255 when it cannot connect; any other status is the Mac's own
   # answer to the request, which is printed above.
   if [ "$rc" -eq 255 ]; then
-    die "could not reach the Mac (alias ${DAILYBOT_HOST_ALIAS:-dailybot-mac}). Run as the container's remoteUser, and make sure the Mac side is set up: bash scripts/host-kit-menu.sh organize"
+    die "could not reach the Mac (alias $mac_alias). Run as the container's remoteUser, and make sure the Mac side is set up: bash scripts/host-kit-menu.sh organize, from the Dailybot hub on the Mac"
   elif [ "$rc" -ne 0 ]; then
     die "the Mac refused the request (exit $rc) — its message is above"
   fi
@@ -1858,10 +2145,15 @@ remote_rebuild() {
   self="$(self_repo_alias || true)"
   if [ -n "$TARGET_REPO" ]; then
     target="$(repo_alias "$TARGET_REPO")"
-    [ -n "$target" ] || die "unknown repository '$TARGET_REPO' (use api, web, chatbot, discord, site, cli)"
+    [ -n "$target" ] || die "unknown repository '$TARGET_REPO' (use api, web, chatbot, discord, site, cli, hub)"
   else
     target="$self"
     [ -n "$target" ] || die "cannot tell which repository this container runs; name one: dbdev <repo> rebuild"
+  fi
+  # The hub runs only on the primary stack: no workspace has a hub satellite,
+  # and the Mac refuses one. Say so here instead of sending the request.
+  if [ "$target" = hub ] && [ "$ws" != primary ]; then
+    die "the Core Hub has no container in workspace '$ws' (only the primary stack runs it). From a workspace, rebuild a product repository instead."
   fi
   args=(--workspace "$ws" --repo "$target")
   [ "$ws" = "$from" ] || args+=(--allow-other-workspace)
@@ -1903,7 +2195,16 @@ Verbs
                           dbdev rebuild --yes            this very container
                           dbdev <repo> rebuild --status  how the last one went
                         There, "rebuild <service>" and --all do not apply.
-  ls                    repositories this launcher can address, and their state
+  satellite <up|down|stop|ps|logs|shell|rebuild> --project P --service S
+            [--compose-file F]... [--seed-state | --seed-state-from VOL]
+            [--label TEXT]
+                        a workspace satellite (<svc>satellite in its own
+                        project P), for docker.sh satellite.*. Through dck when
+                        the repository has dck.toml (host keys, accounts, git
+                        identity, Herdr machine; --seed-state copies the
+                        primary's gh/Dailybot login once); plain compose only
+                        without dck. On the Mac; never the hub
+  ls                  repositories this launcher can address, and their state
   config                resolved configuration; writes nothing
   doctor                environment diagnosis; writes nothing
   ports                 host bindings, or workspace ports and live listeners
@@ -1922,7 +2223,9 @@ Verbs
 Flags
   --repo <name>         unambiguous repository target
   --all                 fan the verb out over every addressable repository
-  --project <name>      override the compose project name
+  --project <name>      override the compose project name (also DEVSH_PROJECT;
+                        otherwise [compose] project in .devcontainer/dck.toml,
+                        then COMPOSE_PROJECT_NAME)
   --recreate            with up, recreate containers to apply compose changes
   --no-cache            with rebuild (or build), ignore Docker layer cache and
                         pull base images — full wipe, much slower
@@ -1960,6 +2263,9 @@ run_one() {
     exec)    cmd_exec ;;
     build)   cmd_build ;;
     rebuild) cmd_rebuild ;;
+    satellite)
+      [ ! -f "$REPO_ROOT/repositories/README.md" ] || die "the Core Hub has no satellite (only the primary stack runs it); name a product repository: bash dev.sh api satellite …"
+      cmd_satellite ;;
     config)  cmd_config ;;
     doctor)  cmd_doctor ;;
     ports)   cmd_ports ;;
@@ -1997,6 +2303,14 @@ if [ "$ALL" -eq 1 ]; then
     run_one "$t"
   done
   exit 0
+fi
+
+# A satellite's --project names the satellite's own compose project; the
+# primary project still resolves as for every other verb (the login seed comes
+# from its state volume). Satellites run on the Mac, never in the Core Hub.
+if [ "$VERB" = "satellite" ]; then
+  in_container && die "satellites start on the Mac (dbdev workspace …); inside a container ask for one: dbdev <repo> rebuild --workspace <name>"
+  SAT_PROJECT="$PROJECT_OVERRIDE"; PROJECT_OVERRIDE=""
 fi
 
 # Resolved into a variable first, and the status checked. A failure inside
