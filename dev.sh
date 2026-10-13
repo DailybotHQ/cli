@@ -708,7 +708,7 @@ use_dck() {
     elif [ -x "${DCK_INSTALL_DIR:-$HOME/.local/share/dck}/bin/dck" ]; then
       DCK_BIN="${DCK_INSTALL_DIR:-$HOME/.local/share/dck}/bin/dck"
     else
-      note "devcontainer-kit (dck) is not installed: using plain compose. The host's agent accounts and the Herdr machine need it — see the Dailybot hub's docs/technical/LOCAL_ENVIRONMENT.md."
+      note "devcontainer-kit (dck) is not installed: using plain compose. The host's agent accounts and the Herdr machine need it — install it from https://github.com/DailybotHQ/devcontainer-kit (on a Dailybot Mac: /db-host-kit-onboard → update)."
       DEVSH_DCK=0
       return 1
     fi
@@ -1021,7 +1021,13 @@ cmd_satellite() {
     down)  sat_dc "$service" ${file_args[@]+"${file_args[@]}"} -- rm -sf "$service" ;;
     stop)  sat_dc "$service" ${file_args[@]+"${file_args[@]}"} -- stop "$service" ;;
     ps)    sat_dc "$service" ${file_args[@]+"${file_args[@]}"} -- ps "$service" ;;
-    logs)  sat_dc "$service" ${file_args[@]+"${file_args[@]}"} -- logs ${rest[@]+"${rest[@]}"} "$service" ;;
+    logs)
+      # Follow by default, like `dck … logs` (which takes only --no-follow).
+      local follow=(-f) log_args=() a
+      for a in ${rest[@]+"${rest[@]}"}; do
+        if [ "$a" = --no-follow ]; then follow=(); else log_args+=("$a"); fi
+      done
+      sat_dc "$service" ${file_args[@]+"${file_args[@]}"} -- logs ${follow[@]+"${follow[@]}"} ${log_args[@]+"${log_args[@]}"} "$service" ;;
     shell)
       local -a opts=(-it)
       [ -n "$DC_USER" ] && opts+=(-u "$DC_USER")
@@ -1307,7 +1313,15 @@ mesh_check_self() {
   local id="${HERDR_PEERS_SELF:-}"
   [ -n "$id" ] || return 0
   id="${id%%:*}"
-  if herdr machine list --json 2>/dev/null | grep -q "\"${id}\""; then
+  if herdr machine list --json 2>/dev/null | python3 -c '
+import json, sys
+try:
+    data = json.load(sys.stdin)
+except Exception:
+    sys.exit(1)
+ids = {str(m.get("id")) for m in data if isinstance(m, dict)} if isinstance(data, list) else set()
+sys.exit(0 if sys.argv[1] in ids else 1)
+' "$id"; then
     return 0
   fi
   note "mesh: HERDR_PEERS_SELF=${id} is not a machine of this catalog (a pane older than its machine id?); this session's address is taken from its pane instead" >&2
@@ -1327,13 +1341,22 @@ try:
     machines = json.load(sys.stdin)
 except Exception:
     machines = []
+machines = [m for m in machines if isinstance(m, dict)] if isinstance(machines, list) else []
+# A satellite without DAILYBOT_WORKSPACE_ID still names its workspace in its
+# own Herdr label ("<sid> - <Repo> · WS <name>").
+if not ws:
+    me = sys.argv[2].split(":", 1)[0] if len(sys.argv) > 2 else ""
+    for m in machines:
+        label = str(m.get("label") or "")
+        if me and str(m.get("id")) == me and " WS " in label:
+            ws = label.rsplit(" WS ", 1)[1].strip()
 keep = ["local"]
-for m in machines if isinstance(machines, list) else []:
-    if not isinstance(m, dict) or not m.get("enabled") or not m.get("id"):
+for m in machines:
+    if not m.get("enabled") or not m.get("id"):
         continue
     label = str(m.get("label") or "")
     target = str(m.get("target") or "")
-    if target == "dailybot-mac":
+    if target in ("dailybot-mac", "dck-host") or label.strip() == "0 - Mac":
         keep.append(str(m["id"]))
     elif ws:
         if label.endswith(" WS " + ws):
@@ -1341,7 +1364,7 @@ for m in machines if isinstance(machines, list) else []:
     elif " WS " not in label:
         keep.append(str(m["id"]))
 print(",".join(keep))
-' "${DAILYBOT_WORKSPACE_ID:-}"
+' "${DAILYBOT_WORKSPACE_ID:-}" "${HERDR_PEERS_SELF:-}"
 }
 
 # The fleet as herdr-peers lists it, never narrowed by a scope, so the `#`
@@ -1454,7 +1477,11 @@ try:
 except Exception:
     rows = []
 for row in rows:
-    if isinstance(row, dict) and row.get("n") == want and row.get("address"):
+    try:
+        n = int(row.get("n")) if isinstance(row, dict) and row.get("n") is not None else None
+    except (TypeError, ValueError):
+        n = None
+    if n == want and row.get("address"):
         print(row["address"]); sys.exit(0)
 sys.exit(1)
 '
@@ -1556,6 +1583,16 @@ cmd_herdr_peers() {
     *) herdr_prepare_mesh ;;
   esac
   mesh_check_self
+  # The workspace rule binds every outgoing message, not only `ask`.
+  case "$verb" in
+    ask|notify)
+      if [ -z "${HERDR_PEERS_SCOPE:-}" ]; then
+        local scope
+        scope="$(mesh_default_scope)"
+        [ -z "$scope" ] || export HERDR_PEERS_SCOPE="$scope"
+      fi
+      ;;
+  esac
   exec herdr-peers "$verb" "$@"
 }
 
