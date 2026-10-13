@@ -18,7 +18,7 @@ Slash commands. Invoked as `/<name>` (Claude Code) or `#<name>` (Codex/Cursor/Ge
 
 ### Dailybot agent skill pack (vendored from [`DailybotHQ/agent-skill`](https://github.com/DailybotHQ/agent-skill))
 
-The full pack lives under [`.agents/skills/dailybot/`](../skills/dailybot/) (router + seventeen sub-skills; vendored at **v3.23.15**). Every sub-skill requires `dailybot-cli >= 3.9.0` — the pack baseline; `dailybot-tasks` (Dailybot Plan) is the one that needs more (`>= 3.25.0`). The router auto-routes by intent — read [`skills/dailybot/SKILL.md`](../skills/dailybot/SKILL.md) and let it pick the right sub-skill. Direct sub-skill entry points:
+The full pack lives under [`.agents/skills/dailybot/`](../skills/dailybot/) (router + seventeen sub-skills; vendored at **v3.23.17**). Every sub-skill requires `dailybot-cli >= 3.9.0` — the pack baseline; `dailybot-tasks` (Dailybot Plan) is the one that needs more (`>= 3.25.0`). The router auto-routes by intent — read [`skills/dailybot/SKILL.md`](../skills/dailybot/SKILL.md) and let it pick the right sub-skill. Direct sub-skill entry points:
 
 | Slug | Procedure | Use when |
 |------|-----------|----------|
@@ -42,7 +42,7 @@ The full pack lives under [`.agents/skills/dailybot/`](../skills/dailybot/) (rou
 
 ### Deep Work Plan skill pack (vendored from [`DailybotHQ/deepworkplan-skill`](https://github.com/DailybotHQ/deepworkplan-skill))
 
-The full pack lives under [`.agents/skills/deepworkplan/`](../skills/deepworkplan/) (router + 9 sub-skills + addons). Vendored at **v7.7.1** (DWP standard **7.0.0**). The router auto-routes by intent — read [`skills/deepworkplan/SKILL.md`](../skills/deepworkplan/SKILL.md) and let it pick the right sub-skill. Each sub-skill is independently invocable, and each has a short `dwp-*` alias in [`.agents/commands/`](../commands/) for ergonomic typing.
+The full pack lives under [`.agents/skills/deepworkplan/`](../skills/deepworkplan/) (router + 9 sub-skills + addons). Vendored at **v7.8.0** (DWP standard **7.0.0**). The router auto-routes by intent — read [`skills/deepworkplan/SKILL.md`](../skills/deepworkplan/SKILL.md) and let it pick the right sub-skill. Each sub-skill is independently invocable, and each has a short `dwp-*` alias in [`.agents/commands/`](../commands/) for ergonomic typing.
 
 | Slug | Procedure | Use when |
 |------|-----------|----------|
@@ -62,7 +62,7 @@ The full pack lives under [`.agents/skills/deepworkplan/`](../skills/deepworkpla
 
 ### AI Diff Reviewer (vendored from [`DailybotHQ/ai-diff-reviewer`](https://github.com/DailybotHQ/ai-diff-reviewer))
 
-Vendored at **v3.3.12** under [`.agents/skills/ai-diff-reviewer/`](../skills/ai-diff-reviewer/). Flow B is enabled: local Security Review augmentation + CI gate via [`.github/workflows/pr-review.yml`](../../.github/workflows/pr-review.yml) (trigger label **`Ready`**; secret `XAI_API_KEY`; provider **`grok`** / `grok-4.5`; extension [`.review/extension.md`](../../.review/extension.md)).
+Vendored at **v3.3.14** under [`.agents/skills/ai-diff-reviewer/`](../skills/ai-diff-reviewer/). Flow B is enabled: local Security Review augmentation + CI gate via [`.github/workflows/pr-review.yml`](../../.github/workflows/pr-review.yml) (trigger label **`Ready`**; secret `XAI_API_KEY`; provider **`grok`** / `grok-4.5`; extension [`.review/extension.md`](../../.review/extension.md)).
 
 | Slug | Procedure | Use when |
 |------|-----------|----------|
@@ -121,6 +121,6 @@ Persona definitions. Use these as the system prompt / role when spawning a sub-a
 - Don't see a skill that matches? Don't invent one. Do the work directly and tell the user what you did.
 - Don't see a persona that matches? Default to `cli-developer`.
 
-## Dogfood reconciliation — 2026-10-12
+## Dogfood reconciliation — 2026-10-13
 
-DeepWorkPlan v7.7.1, AI Diff Reviewer v3.3.12 and Dailybot skill v3.23.15 are pinned in `skills-lock.json`. The existing addon set still fits. The container is rendered with dck v0.3.5, coding-agents-kit v0.5.3 and herdr-peers v0.2.3; DeepWorkPlan Vim v0.7.0 remains a container editor layer. The addon registry records the host-detected coding-agents-kit v0.7.1 and herdr-peers v0.3.2; these versions do not describe the unre-rendered container embeds listed above. Repository hooks, review rules, design documentation and historical plans are preserved.
+DeepWorkPlan v7.8.0, AI Diff Reviewer v3.3.14 and Dailybot skill v3.23.17 are pinned in `skills-lock.json`. The existing addon set still fits. The container is re-rendered with dck v1.0.0 (`dck init --yes`, `dck.toml` unchanged), which embeds coding-agents-kit v1.0.0 and herdr-peers v1.0.0; DeepWorkPlan Vim v1.0.0 remains a container editor layer. The addon registry records the same v1.0.0 set, so host tools and container embeds now agree. Repository hooks, review rules, design documentation and historical plans are preserved.

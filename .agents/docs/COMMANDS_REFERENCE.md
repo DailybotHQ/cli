@@ -27,7 +27,7 @@ The full plan-execute-verify loop, delegating to the vendored `deepworkplan` ski
 
 ## AI Diff Reviewer (Flow B)
 
-Vendored skill at [`../skills/ai-diff-reviewer/`](../skills/ai-diff-reviewer/) (**v3.3.12**). CI gate: apply the **`Ready`** label on a PR to `main` (see [`.github/workflows/pr-review.yml`](../../.github/workflows/pr-review.yml); provider **`grok`** / `grok-4.5`; requires `XAI_API_KEY`). Extension: [`.review/extension.md`](../../.review/extension.md).
+Vendored skill at [`../skills/ai-diff-reviewer/`](../skills/ai-diff-reviewer/) (**v3.3.14**). CI gate: apply the **`Ready`** label on a PR to `main` (see [`.github/workflows/pr-review.yml`](../../.github/workflows/pr-review.yml); provider **`grok`** / `grok-4.5`; requires `XAI_API_KEY`). Extension: [`.review/extension.md`](../../.review/extension.md).
 
 | Command / phrase | Routes to | What it does | Example trigger |
 |------------------|-----------|--------------|-----------------|
