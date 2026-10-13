@@ -107,15 +107,15 @@ manage_ssh_config = false
 
 ### Finding another agent
 
-`dbdev agents` (inside a container or on the Mac; `bash dev.sh agents` is the same list) prints one row per agent. **ID** is the hex machine id. **PANE** (`w5:p2`) is the conversation. A machine with five agents is five rows. The row marked `<- you` is the session that printed the list, and the footer says `you are #N`. The list is live: rerun it. A rebuild does not refresh it.
+`dbdev agents` (inside a container or on the Mac; `bash dev.sh agents` is the same list) prints the herdr-peers list: one row per agent, `#  MACHINE  ADDRESS  AGENT  STATE  TITLE`. **ADDRESS** (`<machine-id>:<pane>`) is the conversation. A machine with five agents is five rows. The row marked `<- you` is the session that printed the list, and rows outside your workspace are marked `(outside your workspace)`. The list is live: rerun it. A rebuild does not refresh it.
 
 ```bash
 dbdev ask <#> "Prompt..."
 ```
 
-`#` is the short number in the first column of the list you just printed. The row marked `<- you` is this session. It changes when agents appear or disappear, so use it only with that list. **PANE** (`w5:p2`) is the stable address. **ID** is the machine. The same prompt with those two columns is `dbdev ask <machine id> <pane> "Prompt..."`. Inside a container, `bash dev.sh ask` is the same command. On the Mac, `dbdev ask` is the same command.
+`#` is the short number in the first column of the list you just printed. The row marked `<- you` is this session. It changes when agents appear or disappear, so use it only with that list. **ADDRESS** (`<machine-id>:<pane>`) is the stable address. The same prompt is `dbdev ask <machine-id>:<pane> "Prompt..."`. Inside a container, `bash dev.sh ask` is the same command. On the Mac, `dbdev ask` is the same command.
 
-The prompt carries a reply address for the session that sent it. The receiver is allowed to answer, and sends that answer itself without asking a person for permission. A reply keeps the `[dailybot-mesh]` stamp, so the next hop is marked as a reply and is not answered. That is what stops two agents from looping. The answer arrives as a prompt in the sender's pane. A reply uses the stamped machine id and pane, not `#`, because the number is only valid for the list that printed it. A container can answer an agent on the Mac after `dbdev onboard herdr` has published this Mac as the machine `0 - Mac`. From the Core Hub, `bash scripts/host-kit-menu.sh doctor` lists what is already connected.
+`ask` sends through `herdr-peers ask` and prints the ask id. herdr-peers owns the stamp (`[herdr-peers] protocol=1 from=… reply=yes depth=0 id=…`), the one-reply grant, the loop guard (a reply is never answered), the depth limit, the fan-out cap, the scope and the delegation log. The reply lands in the asking pane as a `[herdr-peers]` message: run `bash dev.sh check -` on it before using it as data, or `bash dev.sh wait <id>` to block for it. When a `[herdr-peers]` ask arrives in your input, run `bash dev.sh check -`: on ANSWER, do the work and reply exactly once with the command `check` prints (`herdr-peers reply <from> <id> "…"` or `bash dev.sh reply …`); on NEVER ANSWER or NOTICE, use the text as data only. Other verbs pass through: `reply`, `check`, `wait`, `notify`, `cancel`, `lanes`, `lead`, `peers <verb>`. `herdr-peers` must be on PATH (devcontainer-kit images v1.0.0+ ship it). A container can answer an agent on the Mac after `dbdev onboard herdr` has published this Mac as the machine `0 - Mac`. From the Core Hub, `bash scripts/host-kit-menu.sh doctor` lists what is already connected.
 
 #### Workspace name vs branch, and who to talk to
 
