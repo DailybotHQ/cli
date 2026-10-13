@@ -9,6 +9,14 @@ Do not edit it by hand — your edits will be overwritten on the next release.
 
 <!-- version list -->
 
+## v3.27.6 (2026-10-13)
+
+### Documentation
+
+- **docs**: Add the Dailybot logo to the top of the README
+  ([`3eb3d7c`](https://github.com/DailybotHQ/cli/commit/3eb3d7c3f6b2a2f247baa442a828616da3f2d5c8))
+
+
 ## v3.27.5 (2026-10-13)
 
 ### Chores
