@@ -9,6 +9,14 @@ Do not edit it by hand — your edits will be overwritten on the next release.
 
 <!-- version list -->
 
+## v3.27.12 (2026-10-14)
+
+### Chores
+
+- DeepWorkPlan 7.8.1, AI Diff Reviewer 3.3.16, Dailybot skill 3.23.18
+  ([`9506cbd`](https://github.com/DailybotHQ/cli/commit/9506cbd1d9ef9c8404c85882aed7a07ba09cd5af))
+
+
 ## v3.27.11 (2026-10-14)
 
 ### Chores
