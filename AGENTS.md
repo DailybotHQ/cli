@@ -697,7 +697,7 @@ When invoked: look up in `.agents/docs/skills_agents_catalog.md`, READ the proce
 
 ## Working with Deep Work Plans (DWP)
 
-For any non-trivial change (more than ~3 files, more than one logical step, anything spanning auth + API client + commands + docs, anything you'd otherwise want a TodoList for), **drive the work through a Deep Work Plan** instead of free-form coding. The repo ships the [DWP skill pack](.agents/skills/deepworkplan/) (vendored at **v7.8.0**, standard **7.0.0**) and the matching `dwp-*` slash commands. New plans use the **v7** contract generation by default (the v6 identity manifest + versioned contract + append-only journal, plus `parallel_safe` tasks and delegation events; `state.json` is a snapshot). A plan is either **Lite** (task records inline in the plan's `README.md`, the default for most work) or **Full** (one file per task, for long-horizon work) — both carry the same contract: stable task ids, a Touched Surface, acceptance criteria, validation gates, completion evidence, and one Final Review. Existing v1/v2/v5 plans keep their recorded lifecycle and are never rewritten by an upgrade; v6 plans stay v6; moving a plan to a newer generation is an explicit `refine migrate` only.
+For any non-trivial change (more than ~3 files, more than one logical step, anything spanning auth + API client + commands + docs, anything you'd otherwise want a TodoList for), **drive the work through a Deep Work Plan** instead of free-form coding. The repo ships the [DWP skill pack](.agents/skills/deepworkplan/) (vendored at **v7.8.1**, standard **7.0.0**) and the matching `dwp-*` slash commands. New plans use the **v7** contract generation by default (the v6 identity manifest + versioned contract + append-only journal, plus `parallel_safe` tasks and delegation events; `state.json` is a snapshot). A plan is either **Lite** (task records inline in the plan's `README.md`, the default for most work) or **Full** (one file per task, for long-horizon work) — both carry the same contract: stable task ids, a Touched Surface, acceptance criteria, validation gates, completion evidence, and one Final Review. Existing v1/v2/v5 plans keep their recorded lifecycle and are never rewritten by an upgrade; v6 plans stay v6; moving a plan to a newer generation is an explicit `refine migrate` only.
 
 ### The loop
 
@@ -782,7 +782,7 @@ Host capability declaration (abilities not listed are `false` — never inferred
 
 **Authority boundaries (from this repo's Mandatory Rules):** plan authorship is by the working agent; approval is `pre_authorization` only when the developer explicitly requests unattended continuation (`trust`/`auto`) or approves a plan up front. Always stop and ask before: push to remote, merge to `main`, force-push, publishing a release, sending external messages (email/chat) with guessed recipients, reading or writing secrets, replacing existing hand-written harness content, or applying `[skip release]` outside its two allowed use cases. Outcome checks for plan gates come from [docs/TESTING_GUIDE.md](docs/TESTING_GUIDE.md) and the Quick Commands block (`pytest`, `ruff`, `mypy`) — never invent a gate command.
 
-DWP standard: 7.0.0 (onboarded 2026-06-12; upgraded 2026-10-01, 2026-10-11, 2026-10-12 and 2026-10-13; skill 7.8.0, vendored 2026-10-13)
+DWP standard: 7.0.0 (onboarded 2026-06-12; upgraded 2026-10-01, 2026-10-11, 2026-10-12, 2026-10-13 and 2026-10-14; skill 7.8.1, vendored 2026-10-14)
 
 ## Documentation Maintenance
 

@@ -1,5 +1,5 @@
 # devcontainer-kit config for this repository (interface 2).
-# Reference: https://github.com/DailybotHQ/devcontainer-kit/blob/v1.0.0/docs/config.md
+# Reference: https://github.com/DailybotHQ/devcontainer-kit/blob/v1.0.1/docs/config.md
 # Edit this file, then run `dck init` to reconcile the generated files.
 # The Dailybot hub launcher (`bash dev.sh`) and dck (`dck up`) drive the same
 # compose file and project; see docs/LOCAL_ENVIRONMENT.md.
