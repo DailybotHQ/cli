@@ -42,7 +42,7 @@ The full pack lives under [`.agents/skills/dailybot/`](../skills/dailybot/) (rou
 
 ### Deep Work Plan skill pack (vendored from [`DailybotHQ/deepworkplan-skill`](https://github.com/DailybotHQ/deepworkplan-skill))
 
-The full pack lives under [`.agents/skills/deepworkplan/`](../skills/deepworkplan/) (router + 9 sub-skills + addons). Vendored at **v7.8.0** (DWP standard **7.0.0**). The router auto-routes by intent — read [`skills/deepworkplan/SKILL.md`](../skills/deepworkplan/SKILL.md) and let it pick the right sub-skill. Each sub-skill is independently invocable, and each has a short `dwp-*` alias in [`.agents/commands/`](../commands/) for ergonomic typing.
+The full pack lives under [`.agents/skills/deepworkplan/`](../skills/deepworkplan/) (router + 9 sub-skills + addons). Vendored at **v7.8.1** (DWP standard **7.0.0**). The router auto-routes by intent — read [`skills/deepworkplan/SKILL.md`](../skills/deepworkplan/SKILL.md) and let it pick the right sub-skill. Each sub-skill is independently invocable, and each has a short `dwp-*` alias in [`.agents/commands/`](../commands/) for ergonomic typing.
 
 | Slug | Procedure | Use when |
 |------|-----------|----------|
@@ -123,4 +123,4 @@ Persona definitions. Use these as the system prompt / role when spawning a sub-a
 
 ## Dogfood reconciliation — 2026-10-13
 
-DeepWorkPlan v7.8.0, AI Diff Reviewer v3.3.14 and Dailybot skill v3.23.17 are pinned in `skills-lock.json`. The existing addon set still fits. The container is re-rendered with dck v1.0.0 (`dck init --yes`, `dck.toml` unchanged), which embeds coding-agents-kit v1.0.0 and herdr-peers v1.0.0; DeepWorkPlan Vim v1.0.0 remains a container editor layer. The addon registry records the same v1.0.0 set, so host tools and container embeds now agree. Repository hooks, review rules, design documentation and historical plans are preserved.
+DeepWorkPlan v7.8.1, AI Diff Reviewer v3.3.14 and Dailybot skill v3.23.17 are pinned in `skills-lock.json`. The existing addon set still fits. The container is re-rendered with dck v1.0.1 (`dck init --yes`, `dck.toml` unchanged), which embeds coding-agents-kit v1.0.1 and herdr-peers v1.0.0; DeepWorkPlan Vim v1.0.0 remains a container editor layer. The addon registry records agentkit/devcontainer at v1.0.1 and herdr/vim at v1.0.0, so host tools and container embeds now agree. Repository hooks, review rules, design documentation and historical plans are preserved.
