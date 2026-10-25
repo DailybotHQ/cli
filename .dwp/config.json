@@ -14,11 +14,11 @@
     },
     "dependency-upgrade": {
       "enabled": true,
-      "version": "v7.8.1"
+      "version": "v7.9.0"
     },
     "design-system": {
       "enabled": true,
-      "version": "v7.8.1"
+      "version": "v7.9.0"
     },
     "devcontainer": {
       "enabled": true,
@@ -26,7 +26,7 @@
     },
     "herdr": {
       "enabled": true,
-      "version": "v1.0.0"
+      "version": "v1.1.0"
     },
     "vim": {
       "enabled": true,
