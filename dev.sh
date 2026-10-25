@@ -1300,7 +1300,7 @@ herdr_prepare_mesh() {
 mesh_require() {
   command -v herdr >/dev/null 2>&1 || die "herdr is not on PATH"
   command -v python3 >/dev/null 2>&1 || die "python3 is required"
-  command -v herdr-peers >/dev/null 2>&1 || die "herdr-peers is not on PATH — devcontainer-kit images (v1.0.0+) and the host kit ship it; otherwise: npx --yes skills add https://github.com/DailybotHQ/herdr-peers/tree/v1.0.0 --skill herdr-peers -g -y"
+  command -v herdr-peers >/dev/null 2>&1 || die "herdr-peers is not on PATH — devcontainer-kit images (v1.0.0+) and the host kit ship it; otherwise: npx --yes skills add https://github.com/DailybotHQ/herdr-peers/tree/v1.1.0 --skill herdr-peers -g -y"
 }
 
 # HERDR_PEERS_SELF names this machine as the Mac catalog knows it (dck pushes
