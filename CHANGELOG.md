@@ -9,6 +9,14 @@ Do not edit it by hand — your edits will be overwritten on the next release.
 
 <!-- version list -->
 
+## v3.27.13 (2026-10-25)
+
+### Chores
+
+- **skill**: Dogfood deepworkplan pack 7.9.0
+  ([`7b0ccc9`](https://github.com/DailybotHQ/cli/commit/7b0ccc9084273302b31e9813a0131d7340d22ad2))
+
+
 ## v3.27.12 (2026-10-14)
 
 ### Chores
