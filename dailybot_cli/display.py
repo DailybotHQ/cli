@@ -6,6 +6,7 @@ tag, so every such message is escaped before interpolation.
 """
 
 import unicodedata
+from datetime import datetime, timezone
 from typing import Any
 
 import click
@@ -766,24 +767,60 @@ def print_env_profiles_table(
     console.print(table)
 
 
+CLAIM_EXPIRY_FALLBACK: str = "See the claim page for when it expires."
+
+
+def format_claim_expiry(value: Any) -> str:
+    """`claim_expires_at` (ISO 8601 UTC) as `YYYY-MM-DD HH:MM UTC`; odd values as sent."""
+    if not isinstance(value, str) or not value.strip():
+        return ""
+    try:
+        parsed: datetime = datetime.fromisoformat(value.strip().replace("Z", "+00:00"))
+    except ValueError:
+        return value.strip()
+    if parsed.tzinfo is not None:
+        parsed = parsed.astimezone(timezone.utc)
+    return parsed.strftime("%Y-%m-%d %H:%M UTC")
+
+
 def print_registration_result(data: dict[str, Any]) -> None:
-    """Display agent registration result."""
+    """Display an agent registration: the panel, then what to send the human owner.
+
+    The API key is saved to the profile by the caller and never shown here.
+    """
     table: Table = Table(show_header=False, box=None, padding=(0, 2))
     table.add_column(style="bold")
     table.add_column(no_wrap=True, overflow="fold")
-    table.add_row("Agent", data.get("agent_name", ""))
-    agent_email: str = data.get("agent_email", "")
+    table.add_row("Agent", escape(str(data.get("agent_name", ""))))
+    agent_email: str = str(data.get("agent_email") or "")
     if agent_email:
-        table.add_row("Email", f"[bold]{agent_email}[/bold]")
-    table.add_row("Org", data.get("org_name", ""))
+        table.add_row("Email", f"[bold]{escape(agent_email)}[/bold]")
+    table.add_row("Org", escape(str(data.get("org_name", ""))))
     if data.get("profile"):
-        table.add_row("Profile", data["profile"])
-    claim_url: str = data.get("claim_url", "")
+        table.add_row("Profile", escape(str(data["profile"])))
+    claim_url: str = str(data.get("claim_url") or "")
+    expiry: str = format_claim_expiry(data.get("claim_expires_at"))
     if claim_url:
-        table.add_row("Claim URL", f"[bold cyan]{claim_url}[/bold cyan]")
+        table.add_row("Claim URL", f"[bold cyan]{escape(claim_url)}[/bold cyan]")
+        if expiry:
+            table.add_row("Claim expires", escape(expiry))
     console.print(Panel(table, title="[bold]Agent Registered[/bold]", border_style="green"))
-    if claim_url:
-        console.print(f"\nClaim URL: {claim_url}")
+    if not claim_url:
+        return
+    expires_line: str = f"The link expires on {expiry}." if expiry else CLAIM_EXPIRY_FALLBACK
+    console.print(
+        "\n[bold]Send this to your human[/bold] (the person who will own this organization):\n"
+    )
+    console.print(f"Claim URL: [bold cyan]{escape(claim_url)}[/bold cyan]")
+    console.print(
+        "Open it while signed in to Dailybot on the web to become an admin of this "
+        "organization, then connect it to Slack, Microsoft Teams, Discord or Google Chat. "
+        f"{escape(expires_line)}"
+    )
+    console.print(
+        "[dim]Treat the link like a password: anyone who opens it signed in can claim "
+        "the organization.[/dim]"
+    )
 
 
 def print_update_result(data: dict[str, Any]) -> None:

@@ -241,3 +241,52 @@ class TestChallengeGetBackoff:
             )
         # Every attempt consumes the challenge: a blind re-POST could never succeed.
         assert post.call_count == 1
+
+
+class TestRegistrationOutput:
+    def test_the_claim_expiry_comes_from_the_server(self, runner: CliRunner) -> None:
+        result: Any = _register(runner, _client(register_agent=REGISTERED))
+        assert result.exit_code == 0, result.output
+        assert "Send this to your human" in result.output
+        assert "https://app.example.com/claim/abc" in result.output
+        assert "2026-11-25 12:00 UTC" in result.output
+        assert "30 days" not in result.output
+
+    def test_without_claim_expires_at_it_points_to_the_claim_page(self, runner: CliRunner) -> None:
+        legacy: dict[str, Any] = {k: v for k, v in REGISTERED.items() if k != "claim_expires_at"}
+        result: Any = _register(runner, _client(register_agent=legacy))
+        assert result.exit_code == 0, result.output
+        assert "see the claim page" in result.output.lower()
+        assert "30 days" not in result.output
+
+    def test_an_unparseable_expiry_is_shown_as_sent(self, runner: CliRunner) -> None:
+        odd: dict[str, Any] = {**REGISTERED, "claim_expires_at": "soon"}
+        result: Any = _register(runner, _client(register_agent=odd))
+        assert result.exit_code == 0, result.output
+        assert "soon" in result.output
+
+    def test_the_api_key_is_saved_but_never_printed(self, runner: CliRunner) -> None:
+        result: Any = _register(
+            runner, _client(register_agent={**REGISTERED, "api_key": "sk-live-abcdef123456"})
+        )
+        assert result.exit_code == 0, result.output
+        assert "sk-live-abcdef123456" not in result.output
+        assert result.save.call_args.kwargs["api_key"] == "sk-live-abcdef123456"
+
+    def test_server_text_cannot_inject_terminal_markup(self, runner: CliRunner) -> None:
+        injected: dict[str, Any] = {**REGISTERED, "org_name": "[red]Pwned[/red]"}
+        result: Any = _register(runner, _client(register_agent=injected))
+        assert result.exit_code == 0, result.output
+        assert "[red]Pwned[/red]" in result.output
+
+
+def test_no_hardcoded_claim_lifetime_remains_in_the_package() -> None:
+    from pathlib import Path
+
+    import dailybot_cli
+
+    root: Path = Path(dailybot_cli.__file__).parent
+    hits: list[str] = [
+        str(path) for path in root.rglob("*.py") if "30 days" in path.read_text(encoding="utf-8")
+    ]
+    assert hits == []

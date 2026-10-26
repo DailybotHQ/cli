@@ -1110,8 +1110,3 @@ def agent_register(
     # Display result
     result["profile"] = slug
     print_registration_result(result)
-    claim_url: str = result.get("claim_url", "")
-    if claim_url:
-        print_info(
-            "Share the claim URL with your team admin to connect this org to Slack or Google Chat. The URL expires in 30 days."
-        )
