@@ -1015,7 +1015,9 @@ def agent_error_message(exc: APIError) -> str:
     base: str | None = None
     if code:
         base = AGENT_CODE_MESSAGES.get(code) or ERROR_CODE_MESSAGES.get(code)
-    message: str = _augment_code_message(base, code, exc.extra or {}) if base and code else exc.detail
+    message: str = (
+        _augment_code_message(base, code, exc.extra or {}) if base and code else exc.detail
+    )
     return f"{message}{_throttle_hint(exc, _retry_after_seconds(exc))}"
 
 

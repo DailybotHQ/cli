@@ -329,7 +329,11 @@ class TestRev1ErrorCodes:
 
     @pytest.mark.parametrize(
         "code",
-        [c for c in REV1_REGISTRATION_CODES if c not in ("challenge_expired", "registration_rate_limited")],
+        [
+            c
+            for c in REV1_REGISTRATION_CODES
+            if c not in ("challenge_expired", "registration_rate_limited")
+        ],
     )
     def test_a_registration_400_shows_the_code_message_not_the_detail(
         self, runner: CliRunner, code: str
@@ -351,7 +355,9 @@ class TestRev1ErrorCodes:
         assert "Something new went wrong." in result.output
 
     def test_a_wrong_answer_suggests_upgrading(self, runner: CliRunner) -> None:
-        client: MagicMock = _client(register_agent=[APIError(400, "Wrong.", code="answer_incorrect")])
+        client: MagicMock = _client(
+            register_agent=[APIError(400, "Wrong.", code="answer_incorrect")]
+        )
         result: Any = _register(runner, client)
         assert "dailybot upgrade" in result.output
 
@@ -379,7 +385,16 @@ class TestAgentKeyScope:
         result: Any = _agent_cmd(
             runner,
             client,
-            ["email", "send", "--to", "me@example.com", "--subject", "s", "--body-html", "<p>b</p>"],
+            [
+                "email",
+                "send",
+                "--to",
+                "me@example.com",
+                "--subject",
+                "s",
+                "--body-html",
+                "<p>b</p>",
+            ],
         )
         assert result.exit_code == 1
         flat: str = " ".join(result.output.split())
@@ -434,7 +449,9 @@ class TestConfigureAcceptsAScopedKey:
 
     def test_an_invalid_key_is_still_refused(self, runner: CliRunner) -> None:
         client: MagicMock = MagicMock(spec=DailyBotClient)
-        client.get_agent_health.side_effect = APIError(403, "Invalid credentials.", code="invalid_credentials")
+        client.get_agent_health.side_effect = APIError(
+            403, "Invalid credentials.", code="invalid_credentials"
+        )
         with (
             patch("dailybot_cli.commands.agent.DailyBotClient", return_value=client),
             patch("dailybot_cli.commands.agent.save_agent_profile") as save,
