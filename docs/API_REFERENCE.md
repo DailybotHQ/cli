@@ -781,18 +781,21 @@ def _agent_headers():
 Both helpers accept **either** credential; they differ only in preference order
 (`_headers` is Bearer-first, `_agent_headers` is API-key-first). The
 `_agent_auth_mode` is used by `_handle_response` to produce a "Session expired"
-message on 401/403 only when the auth came from a Bearer token (not from an API
-key, where the wording would be misleading).
+message on a 401 only when the auth came from a Bearer token (not from an API
+key, where the wording would be misleading). A 403 is an authorization refusal,
+not a dead session: it keeps the server's `detail` and `code`.
 
 ## Error Translation
 
 | HTTP | Default behavior | Per-command override |
 |------|------------------|----------------------|
 | Any | `APIError(status_code, detail)` | All commands wrap calls in `try/except APIError` |
-| 401/403 (bearer) | `_handle_response` rewrites detail to "Session expired. Run 'dailybot login' to re-authenticate." | Multiple commands also catch and prefix with their own context |
-| 401/403 (api_key) | passes through with backend's detail | `agent configure` treats as invalid key |
+| 401 (bearer) | `_handle_response` rewrites detail to "Session expired. Run 'dailybot login' to re-authenticate." | Multiple commands also catch and prefix with their own context |
+| 401 (api_key) | passes through with the backend's `detail` and `code` | `agent configure` treats it as an invalid key |
+| 403 (either credential) | passes through with the backend's `detail` and `code` (never rewritten to "Session expired") | Commands dispatch on `code` via `ERROR_CODE_MESSAGES`; agent commands use `agent_error_message` (`plan_upgrade_required` explains the agent-key scope and appends `upgrade_url`; `invalid_credentials` mentions a deactivated agent). `agent configure` treats a 403 `plan_upgrade_required` as a valid key that is out of scope, and any other 401/403 as an invalid key |
+| 400 with a known `code` | passes through | Agent commands and `agent register` show the code's message; an unknown or absent code shows `detail` |
 | 400 with "ai processing failed" | — | `update.py` rewrites to a support-contact message |
-| 429 | passes through | `agent email send` adds "Hourly email limit exceeded"; `agent register` adds "Rate limited. Try again in a few minutes." |
+| 429 | passes through (`retry_after` from the `Retry-After` header) | A known `code` (`registration_rate_limited`, `free_plan_daily_limit_exceeded`) shows its message plus "Try again in Ns."; without a code, `agent email send` says "Hourly email limit exceeded" and `agent register` says "Rate limited." with the wait |
 | `httpx.TimeoutException` | propagates from httpx | `update.py` and `interactive.py` catch and emit a "may be processing your update" message |
 
 ## Plan — `/v1/plan/*`

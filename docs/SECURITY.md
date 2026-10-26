@@ -277,7 +277,7 @@ The `org_cache.json` is cleared after a successful verify.
 - Sent on every authenticated request as `Authorization: Bearer <token>`.
 - Used by human endpoints (`/v1/cli/*`) and user-scoped endpoints (`/v1/checkins/*`, `/v1/forms/*`, `/v1/users/`, `/v1/kudos/`).
 - Revoked by `dailybot logout` (best-effort `POST /v1/cli/auth/logout/` + local file removal).
-- Treated as expired/invalid on any 401/403 from a Bearer-mode call → `_handle_response` rewrites the error to "Session expired. Run 'dailybot login' to re-authenticate."
+- Treated as expired/invalid on a 401 from a Bearer-mode call → `_handle_response` rewrites the error to "Session expired. Run 'dailybot login' to re-authenticate." A 403 is an authorization refusal, not a dead session: it keeps the server's `detail` and `code`, and the command maps the code to a message.
 
 There is no automatic refresh. Tokens have a server-defined lifetime; the user is expected to re-run `dailybot login` when prompted.
 

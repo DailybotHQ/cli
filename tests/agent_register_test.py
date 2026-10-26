@@ -290,3 +290,143 @@ def test_no_hardcoded_claim_lifetime_remains_in_the_package() -> None:
         str(path) for path in root.rglob("*.py") if "30 days" in path.read_text(encoding="utf-8")
     ]
     assert hits == []
+
+
+REV1_REGISTRATION_CODES: list[str] = [
+    "missing_fields",
+    "invalid_answer",
+    "challenge_invalid",
+    "challenge_used",
+    "challenge_expired",
+    "answer_incorrect",
+    "reason_too_short",
+    "reason_echoes_instruction",
+    "registration_rate_limited",
+    "claim_token_unavailable",
+]
+
+
+class TestRev1ErrorCodes:
+    def test_every_rev1_code_has_a_message(self) -> None:
+        from dailybot_cli.commands.public_api_helpers import ERROR_CODE_MESSAGES
+
+        missing: list[str] = [c for c in REV1_REGISTRATION_CODES if c not in ERROR_CODE_MESSAGES]
+        assert missing == []
+
+    @pytest.mark.parametrize(
+        "code",
+        [c for c in REV1_REGISTRATION_CODES if c not in ("challenge_expired", "registration_rate_limited")],
+    )
+    def test_a_registration_400_shows_the_code_message_not_the_detail(
+        self, runner: CliRunner, code: str
+    ) -> None:
+        from dailybot_cli.commands.public_api_helpers import ERROR_CODE_MESSAGES
+
+        client: MagicMock = _client(register_agent=[APIError(400, "server prose", code=code)])
+        result: Any = _register(runner, client)
+        assert result.exit_code == 1
+        assert ERROR_CODE_MESSAGES[code].split(".")[0] in " ".join(result.output.split())
+        assert client.register_agent.call_count == 1
+
+    def test_an_unknown_code_falls_back_to_the_detail(self, runner: CliRunner) -> None:
+        client: MagicMock = _client(
+            register_agent=[APIError(400, "Something new went wrong.", code="brand_new_code")]
+        )
+        result: Any = _register(runner, client)
+        assert result.exit_code == 1
+        assert "Something new went wrong." in result.output
+
+    def test_a_wrong_answer_suggests_upgrading(self, runner: CliRunner) -> None:
+        client: MagicMock = _client(register_agent=[APIError(400, "Wrong.", code="answer_incorrect")])
+        result: Any = _register(runner, client)
+        assert "dailybot upgrade" in result.output
+
+
+def _agent_cmd(runner: CliRunner, client: MagicMock, args: list[str]) -> Any:
+    with (
+        patch("dailybot_cli.commands.agent.DailyBotClient", return_value=client),
+        patch("dailybot_cli.commands.agent.get_default_profile", return_value=None),
+        patch("dailybot_cli.commands.agent.get_agent_auth", return_value="api_key"),
+    ):
+        return runner.invoke(cli, ["agent", *args])
+
+
+class TestAgentKeyScope:
+    def test_a_registered_key_out_of_scope_explains_the_scope_and_the_upgrade(
+        self, runner: CliRunner
+    ) -> None:
+        client: MagicMock = MagicMock(spec=DailyBotClient)
+        client.send_agent_email.side_effect = APIError(
+            403,
+            "Upgrade required.",
+            code="plan_upgrade_required",
+            extra={"upgrade_url": "https://app.example.com/billing"},
+        )
+        result: Any = _agent_cmd(
+            runner,
+            client,
+            ["email", "send", "--to", "me@example.com", "--subject", "s", "--body-html", "<p>b</p>"],
+        )
+        assert result.exit_code == 1
+        flat: str = " ".join(result.output.split())
+        assert "agent reports" in flat
+        assert "https://app.example.com/billing" in flat
+
+    def test_a_free_plan_daily_cap_on_a_report_uses_the_code_message(
+        self, runner: CliRunner
+    ) -> None:
+        client: MagicMock = MagicMock(spec=DailyBotClient)
+        client.submit_agent_report.side_effect = APIError(
+            429, "Daily limit.", code="free_plan_daily_limit_exceeded"
+        )
+        result: Any = _agent_cmd(runner, client, ["update", "Shipped it"])
+        assert result.exit_code == 1
+        assert "free-plan limit" in " ".join(result.output.split())
+
+    def test_a_deactivated_agent_key_says_so(self, runner: CliRunner) -> None:
+        client: MagicMock = MagicMock(spec=DailyBotClient)
+        client.submit_agent_report.side_effect = APIError(
+            403, "Invalid credentials.", code="invalid_credentials"
+        )
+        result: Any = _agent_cmd(runner, client, ["update", "Shipped it"])
+        assert result.exit_code == 1
+        assert "deactivated" in " ".join(result.output.split())
+
+    def test_an_error_without_a_code_still_shows_the_detail(self, runner: CliRunner) -> None:
+        client: MagicMock = MagicMock(spec=DailyBotClient)
+        client.submit_agent_report.side_effect = APIError(400, "Content is required.")
+        result: Any = _agent_cmd(runner, client, ["update", "Shipped it"])
+        assert result.exit_code == 1
+        assert "Content is required." in result.output
+
+
+class TestConfigureAcceptsAScopedKey:
+    def test_plan_upgrade_required_means_the_key_is_valid(
+        self, runner: CliRunner, tmp_path: Any, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        client: MagicMock = MagicMock(spec=DailyBotClient)
+        client.get_agent_health.side_effect = APIError(
+            403, "Upgrade required.", code="plan_upgrade_required"
+        )
+        with (
+            patch("dailybot_cli.commands.agent.DailyBotClient", return_value=client),
+            patch("dailybot_cli.commands.agent.save_agent_profile") as save,
+        ):
+            result: Any = runner.invoke(
+                cli, ["agent", "configure", "--name", "Bot", "--key", "test-key"]
+            )
+        assert result.exit_code == 0, result.output
+        save.assert_called_once()
+
+    def test_an_invalid_key_is_still_refused(self, runner: CliRunner) -> None:
+        client: MagicMock = MagicMock(spec=DailyBotClient)
+        client.get_agent_health.side_effect = APIError(403, "Invalid credentials.", code="invalid_credentials")
+        with (
+            patch("dailybot_cli.commands.agent.DailyBotClient", return_value=client),
+            patch("dailybot_cli.commands.agent.save_agent_profile") as save,
+        ):
+            result: Any = runner.invoke(
+                cli, ["agent", "configure", "--name", "Bot", "--key", "test-key"]
+            )
+        assert result.exit_code == 1
+        save.assert_not_called()

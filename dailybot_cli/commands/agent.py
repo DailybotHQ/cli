@@ -9,6 +9,7 @@ import click
 
 from dailybot_cli import ledger
 from dailybot_cli.api_client import APIError, DailyBotClient
+from dailybot_cli.commands.public_api_helpers import agent_error_message
 from dailybot_cli.config import (
     RepoEnvError,
     RepoProfileError,
@@ -92,8 +93,18 @@ _CHALLENGE_UNREADABLE_MESSAGE: str = (
     "for it: run `dailybot upgrade`, then try again."
 )
 _CHALLENGE_EXPIRED_CODE: str = "challenge_expired"
+_SCOPE_REFUSAL_CODE: str = "plan_upgrade_required"
 _RATE_LIMITED_MESSAGE: str = "Rate limited."
 _RATE_LIMITED_DEFAULT_HINT: str = "Try again in a few minutes."
+
+
+def _key_is_refused(exc: APIError) -> bool:
+    """True when validating a key proves it is unusable.
+
+    A 403 ``plan_upgrade_required`` means the key authenticated but the call is out of
+    its scope (a self-registered key is least-privilege), so the key itself is valid.
+    """
+    return exc.status_code in (401, 403) and exc.code != _SCOPE_REFUSAL_CODE
 
 
 def _resolve_agent_context(
@@ -312,7 +323,7 @@ def agent_configure(
             with console.status("Validating API key..."):
                 client.get_agent_health(agent_name=name)
         except APIError as e:
-            if e.status_code in (401, 403):
+            if _key_is_refused(e):
                 print_error("API key is invalid or unauthorized.")
                 raise SystemExit(1)
             # Non-auth error means the key itself is valid
@@ -475,7 +486,7 @@ def _init_personal(questionary: Any) -> None:
             with console.status("Validating API key..."):
                 client.get_agent_health(agent_name=name)
         except APIError as exc:
-            if exc.status_code in (401, 403):
+            if _key_is_refused(exc):
                 print_error("API key is invalid or unauthorized. Nothing was saved.")
                 raise SystemExit(1)
             # Non-auth error → key is valid; the failure is unrelated.
@@ -671,7 +682,7 @@ def agent_update(
             print_pending_agent_messages(pending)
         _maybe_show_init_nudge(agent_name)
     except APIError as e:
-        print_error(e.detail)
+        print_error(agent_error_message(e))
         raise SystemExit(1)
 
 
@@ -726,7 +737,7 @@ def agent_health(
                 )
             print_agent_health(result)
     except APIError as e:
-        print_error(e.detail)
+        print_error(agent_error_message(e))
         raise SystemExit(1)
 
 
@@ -766,7 +777,7 @@ def webhook_register(
             )
         print_webhook_result(result)
     except APIError as e:
-        print_error(e.detail)
+        print_error(agent_error_message(e))
         raise SystemExit(1)
 
 
@@ -789,7 +800,7 @@ def webhook_unregister(ctx: click.Context, name: str | None, profile: str | None
             result: dict[str, Any] = client.unregister_agent_webhook(agent_name=agent_name)
         print_success(result.get("detail", "Webhook unregistered."))
     except APIError as e:
-        print_error(e.detail)
+        print_error(agent_error_message(e))
         raise SystemExit(1)
 
 
@@ -855,7 +866,7 @@ def message_send(
             )
         print_agent_message_sent(result)
     except APIError as e:
-        print_error(e.detail)
+        print_error(agent_error_message(e))
         raise SystemExit(1)
 
 
@@ -883,7 +894,7 @@ def message_list(ctx: click.Context, name: str | None, profile: str | None, pend
             )
         print_agent_messages(messages)
     except APIError as e:
-        print_error(e.detail)
+        print_error(agent_error_message(e))
         raise SystemExit(1)
 
 
@@ -909,7 +920,7 @@ def message_claim(ctx: click.Context, message_ids: tuple[str, ...], profile: str
         count: int = result.get("updated", 0)
         print_success(f"Marked {count} message(s) as read.")
     except APIError as e:
-        print_error(e.detail)
+        print_error(agent_error_message(e))
         raise SystemExit(1)
 
 
@@ -936,7 +947,7 @@ def message_claim_all(ctx: click.Context, name: str | None, profile: str | None)
             )
         print_success("All pending messages marked as delivered.")
     except APIError as e:
-        print_error(e.detail)
+        print_error(agent_error_message(e))
         raise SystemExit(1)
 
 
@@ -1004,11 +1015,11 @@ def email_send(
             )
         print_agent_email_sent(result)
     except APIError as e:
-        if e.status_code == 429:
+        if e.status_code == 429 and not e.code:
             print_error("Hourly email limit exceeded. Try again later.")
             print_info(e.detail)
         else:
-            print_error(e.detail)
+            print_error(agent_error_message(e))
         raise SystemExit(1)
 
 
@@ -1036,7 +1047,9 @@ def _is_challenge_expired(exc: APIError) -> bool:
 
 
 def _registration_error_message(exc: APIError) -> str:
-    """What a failed registration tells the user."""
+    """What a failed registration tells the user: the code's message, else the detail."""
+    if exc.code:
+        return agent_error_message(exc)
     if exc.status_code == 429:
         hint: str = (
             f"Try again in {int(exc.retry_after)}s."
