@@ -77,7 +77,9 @@ class TestMyNotifications:
         with patch("dailybot_cli.api_client.httpx.put", return_value=_response({})) as put:
             stamped.put_my_notifications(items=[{"kind": "tasks_assigned", "chat": False}])
         assert "agent_name" not in put.call_args.kwargs["json"]
-        assert not any("agent" in str(k).lower() for k in dict(put.call_args.kwargs["headers"]))
+        assert not any(
+            "agent-name" in str(k).lower() for k in dict(put.call_args.kwargs["headers"])
+        )
 
     def test_an_empty_put_is_refused_before_any_request(self, client: DailyBotClient) -> None:
         with patch("dailybot_cli.api_client.httpx.put") as put, pytest.raises(ValueError):

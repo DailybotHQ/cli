@@ -260,7 +260,9 @@ class TestViewUpdateHasNoAgentStamp:
         with patch("dailybot_cli.api_client.httpx.patch", return_value=_response({})) as patch_:
             stamped.update_view(VIEW, group_by="owner")
         assert patch_.call_args.kwargs["json"] == {"group_by": "owner"}
-        assert not any("agent" in str(k).lower() for k in dict(patch_.call_args.kwargs["headers"]))
+        assert not any(
+            "agent-name" in str(k).lower() for k in dict(patch_.call_args.kwargs["headers"])
+        )
 
     def test_other_doors_still_carry_the_stamp(self) -> None:
         stamped: DailyBotClient = DailyBotClient(
