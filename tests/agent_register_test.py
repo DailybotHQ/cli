@@ -165,6 +165,20 @@ class TestRegistrationRateLimit:
         assert "120s" in result.output
         assert client.register_agent.call_count == 1
 
+    def test_a_coded_429_without_retry_after_still_gives_a_wait_hint(
+        self, runner: CliRunner
+    ) -> None:
+        # The server's throttle can omit Retry-After in an edge case (no computable wait).
+        client: MagicMock = _client(
+            register_agent=[APIError(429, "Too many requests.", code="registration_rate_limited")]
+        )
+        result: Any = _register(runner, client)
+        assert result.exit_code == 1
+        flat: str = " ".join(result.output.split())
+        assert "Rate limited" in flat
+        assert "try again" in flat.lower()
+        assert "Nones" not in flat
+
     def test_without_retry_after_it_says_a_few_minutes(self, runner: CliRunner) -> None:
         client: MagicMock = _client(register_agent=[APIError(429, "Too many requests.")])
         result: Any = _register(runner, client)
