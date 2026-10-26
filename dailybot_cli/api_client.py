@@ -100,6 +100,9 @@ MAX_PAGE_SIZE: int = 100  # server clamps above this; the client clamps too
 
 MAX_RATE_LIMIT_RETRIES: int = 3  # attempts to retry a generic 429 before raising
 DEFAULT_RETRY_AFTER_SECS: float = 1.0  # backoff floor when a 429 omits Retry-After
+# The registration challenge GET waits out a short 429 on its own; a longer wait is
+# reported to the user instead of leaving the terminal asleep.
+REGISTRATION_MAX_AUTO_WAIT_SECS: float = 10.0
 # A free-plan daily throttle is NOT transient — retrying can never succeed today.
 FREE_PLAN_DAILY_LIMIT_CODE: str = "free_plan_daily_limit_exceeded"
 
@@ -845,14 +848,20 @@ class DailyBotClient:
                 f"The server returned an unreadable response: {_fallback_detail(response)}"
             ) from exc
 
-    def _send_with_retry(self, send: Callable[[], httpx.Response]) -> httpx.Response:
+    def _send_with_retry(
+        self,
+        send: Callable[[], httpx.Response],
+        *,
+        max_wait_secs: float | None = None,
+    ) -> httpx.Response:
         """Issue a request via ``send`` with bounded retry on a transient 429.
 
         Honors the ``Retry-After`` header and backs off exponentially from it, up
         to ``MAX_RATE_LIMIT_RETRIES`` retries. A ``free_plan_daily_limit_exceeded``
         429 is NOT transient — it is returned immediately (no retry) so the caller
         raises a clear error. Any non-429 response is returned as-is. ``time.sleep``
-        is referenced through the module so tests can patch it.
+        is referenced through the module so tests can patch it. With ``max_wait_secs``,
+        a wait longer than that is not slept: the 429 is returned for the caller to report.
         """
         attempt: int = 0
         while True:
@@ -876,7 +885,10 @@ class DailyBotClient:
                     retry_after = float(raw_retry)
                 except ValueError:
                     retry_after = DEFAULT_RETRY_AFTER_SECS
-            time.sleep(retry_after * (2**attempt))
+            wait: float = retry_after * (2**attempt)
+            if max_wait_secs is not None and wait > max_wait_secs:
+                return response
+            time.sleep(wait)
             attempt += 1
 
     def _paginated_get(
@@ -4863,14 +4875,21 @@ class DailyBotClient:
     # --- Agent registration endpoints ---
 
     def get_registration_challenge(self) -> dict[str, Any]:
-        """GET /v1/agent/register/challenge/ — no auth required."""
-        response: httpx.Response = self._guard_transport(
-            lambda: httpx.get(
-                f"{self.api_url}/v1/agent/register/challenge/",
-                headers=self._headers(authenticated=False),
-                timeout=self.timeout,
+        """GET /v1/agent/register/challenge/ — no auth required.
+
+        A read, so a short 429 is waited out (``Retry-After``). The POST that follows
+        is never retried this way: every attempt consumes its challenge.
+        """
+        response: httpx.Response = self._send_with_retry(
+            lambda: self._guard_transport(
+                lambda: httpx.get(
+                    f"{self.api_url}/v1/agent/register/challenge/",
+                    headers=self._headers(authenticated=False),
+                    timeout=self.timeout,
+                ),
+                method="GET",
             ),
-            method="GET",
+            max_wait_secs=REGISTRATION_MAX_AUTO_WAIT_SECS,
         )
         return self._handle_response(response)
 

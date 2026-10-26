@@ -80,9 +80,20 @@ def _reset_init_nudge() -> None:
     _NUDGE_SHOWN = False
 
 
-# Challenge constants (from backend registration_challenge_service.py)
-_CHALLENGE_WORD_COUNT: int = 52
+# Registration challenge (API contract rev 1). It is a compatibility speed bump, not a
+# security control: the answer is the session code times the number of words in the
+# instruction. The CLI counts the words so the server can change the wording; 52 is
+# today's count, kept only as the fallback for an instruction too short to be real.
+_CHALLENGE_LEGACY_WORD_COUNT: int = 52
+_CHALLENGE_MIN_WORDS: int = 5
 _CHALLENGE_NUMBER_RE: re.Pattern[str] = re.compile(r"session is (\d+)\.")
+_CHALLENGE_UNREADABLE_MESSAGE: str = (
+    "Could not read the registration challenge from the server. This CLI may be too old "
+    "for it: run `dailybot upgrade`, then try again."
+)
+_CHALLENGE_EXPIRED_CODE: str = "challenge_expired"
+_RATE_LIMITED_MESSAGE: str = "Rate limited."
+_RATE_LIMITED_DEFAULT_HINT: str = "Try again in a few minutes."
 
 
 def _resolve_agent_context(
@@ -1005,13 +1016,35 @@ def email_send(
 
 
 def _solve_challenge(instruction: str) -> int:
-    """Extract random_number from challenge instruction and compute the answer."""
+    """Answer the challenge: the session code times the instruction's word count."""
     match: re.Match[str] | None = _CHALLENGE_NUMBER_RE.search(instruction)
     if not match:
-        print_error("Could not parse challenge. Please report this issue.")
+        print_error(_CHALLENGE_UNREADABLE_MESSAGE)
         raise SystemExit(1)
     random_number: int = int(match.group(1))
-    return random_number * _CHALLENGE_WORD_COUNT
+    word_count: int = len(instruction.split())
+    if word_count < _CHALLENGE_MIN_WORDS:
+        word_count = _CHALLENGE_LEGACY_WORD_COUNT
+    return random_number * word_count
+
+
+def _is_challenge_expired(exc: APIError) -> bool:
+    """True for an expired challenge. A server older than contract rev 1 sends no code."""
+    if exc.code:
+        return exc.code == _CHALLENGE_EXPIRED_CODE
+    return "expired" in exc.detail.lower()
+
+
+def _registration_error_message(exc: APIError) -> str:
+    """What a failed registration tells the user."""
+    if exc.status_code == 429:
+        hint: str = (
+            f"Try again in {int(exc.retry_after)}s."
+            if exc.retry_after
+            else _RATE_LIMITED_DEFAULT_HINT
+        )
+        return f"{_RATE_LIMITED_MESSAGE} {hint}"
+    return exc.detail
 
 
 @agent.command(name="register")
@@ -1058,21 +1091,16 @@ def agent_register(
             )
 
     try:
-        result: dict[str, Any] = _attempt_register()
+        try:
+            result: dict[str, Any] = _attempt_register()
+        except APIError as e:
+            if not _is_challenge_expired(e):
+                raise
+            # Every attempt consumes its challenge: retry once with a fresh one.
+            result = _attempt_register()
     except APIError as e:
-        if "expired" in e.detail.lower():
-            # Auto-retry once with a fresh challenge
-            try:
-                result = _attempt_register()
-            except APIError as retry_e:
-                print_error(retry_e.detail)
-                raise SystemExit(1)
-        elif e.status_code == 429:
-            print_error("Rate limited. Try again in a few minutes.")
-            raise SystemExit(1)
-        else:
-            print_error(e.detail)
-            raise SystemExit(1)
+        print_error(_registration_error_message(e))
+        raise SystemExit(1)
 
     # Save profile
     api_key: str | None = result.get("api_key")

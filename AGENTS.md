@@ -378,7 +378,7 @@ LONG_TIMEOUT_SECS: float = 120.0   # for AI-processing endpoints
 response = httpx.post(url, timeout=120.0)  # what is 120 for?
 ```
 
-`api_client.py` already follows this for the read timeout vs. submit timeout split. The challenge constants in `commands/agent.py` (`_CHALLENGE_WORD_COUNT`) follow the same pattern.
+`api_client.py` already follows this for the read timeout vs. submit timeout split. The challenge constants in `commands/agent.py` (`_CHALLENGE_LEGACY_WORD_COUNT`) follow the same pattern.
 
 ### 13. Brand Name Spelling (MANDATORY)
 

@@ -14,7 +14,7 @@ All code, comments, docstrings, log messages, error messages, commit messages, a
 | Test | `<module>_test.py` (mirrors source) | `tests/api_client_test.py` |
 | Class | `PascalCase` | `DailyBotClient`, `APIError` |
 | Function/variable | `snake_case` | `submit_update`, `get_token` |
-| Constant | `SCREAMING_SNAKE_CASE` | `DEFAULT_API_URL`, `_CHALLENGE_WORD_COUNT` |
+| Constant | `SCREAMING_SNAKE_CASE` | `DEFAULT_API_URL`, `_CHALLENGE_LEGACY_WORD_COUNT` |
 | Internal/private | leading `_` | `_resolve_agent_context`, `_handle_response` |
 
 ## Import Order (Mandatory)
@@ -69,7 +69,7 @@ Prefer named constants over magic numbers and repeated strings:
 DEFAULT_TIMEOUT_SECS: float = 30.0
 LONG_TIMEOUT_SECS: float = 120.0          # AI-processing endpoints
 DEFAULT_API_URL: str = "https://api.dailybot.com"
-_CHALLENGE_WORD_COUNT: int = 52
+_CHALLENGE_LEGACY_WORD_COUNT: int = 52
 ```
 
 Use a leading underscore for module-private constants when the value is only meaningful inside the module.

@@ -314,14 +314,14 @@ python -c 'import secrets; print(secrets.token_urlsafe(32))'
 
 ## Standalone Registration
 
-`dailybot agent register` calls a no-auth endpoint protected by a math-puzzle challenge:
+`dailybot agent register` calls two anonymous endpoints (no auth header is sent) guarded by a challenge:
 
-1. `GET /v1/agent/register/challenge/` returns `{ challenge_id, instruction }`. The instruction is a sentence ending in `"... session is <random_number>."`.
-2. Compute `random_number * 52` (the constant `_CHALLENGE_WORD_COUNT`).
-3. `POST /v1/agent/register/` with `challenge_id`, `answer`, and the org/agent metadata.
-4. Server validates the answer + rate-limits.
+1. `GET /v1/agent/register/challenge/` returns `{ challenge_id, instruction, expires_in }`. The instruction contains `"... session is <code>."`.
+2. Compute `code * len(instruction.split())`, the number of words in the instruction (52 with today's wording). The CLI counts the words instead of hardcoding them; `_CHALLENGE_LEGACY_WORD_COUNT` is only a fallback for an implausibly short instruction. An instruction it cannot read stops with an upgrade hint.
+3. `POST /v1/agent/register/` with `challenge_id`, `answer`, `reason` (at least 20 characters), and the org/agent metadata. Every attempt consumes the challenge, so the CLI never re-POSTs blindly: it fetches a fresh challenge and retries once only on `challenge_expired`.
+4. The server validates the answer and rate-limits registration (`429` with code `registration_rate_limited` and a `Retry-After` in seconds).
 
-**This is a low-friction anti-bot measure, not a strong security control.** The backend additionally rate-limits by IP and applies abuse heuristics. If the challenge format ever needs to change, the CLI and the Dailybot API have to be updated together.
+**The challenge is a compatibility speed bump, not a security control.** Anyone with this open-source CLI can solve it. Abuse control belongs to the server (rate limits, the restricted scope of a registered key). The key a registration returns is least-privilege: agent reports, agent health, agent messages, its claim token, `/v1/me/`, `/v1/organization/`, `/v1/cli/status/` and `/v1/send-email/`; anything else is refused with `403 plan_upgrade_required`.
 
 ## CI / Headless Runners
 
