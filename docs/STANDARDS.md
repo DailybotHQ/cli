@@ -186,11 +186,14 @@ A short single-line message is acceptable for trivial commits (`Version bump`, `
 Any file created in `~/.config/dailybot/` that contains a secret MUST be set to `0o600`:
 
 ```python
-PATH.write_text(json.dumps(data, indent=2))
-os.chmod(PATH, 0o600)
+# _write_secret_file: 0o600 from the first byte (os.open), the descriptor tightened
+# before writing (a pre-existing file keeps its old mode through os.open).
+_write_secret_file(PATH, json.dumps(data, indent=2))
 ```
 
-This includes `credentials.json`, `config.json`, and `agents.json`. `org_cache.json` is non-secret and may skip the chmod.
+Never `write_text` then `chmod`: that leaves a umask-permission window while the file already holds the secret. The config directory is created `0o700`.
+
+This includes `credentials.json`, `config.json`, `agents.json`, and the org and plan caches (`org_cache.json`, `plan_cache.json`), which go through the same helper.
 
 ## Adding a New Dependency
 

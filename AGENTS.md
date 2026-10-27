@@ -346,12 +346,15 @@ List endpoints (`form list`, `kudos list`, `workflow list`, `user list`, and the
 
 ### 11. Credentials & Secrets — File Permissions
 
-Any file in `~/.config/dailybot/` that stores secrets (`credentials.json`, `config.json`, `agents.json`) MUST be written with mode `0o600` (owner read/write only). When adding a new on-disk store, copy the existing pattern in `dailybot_cli/config.py`:
+Any file in `~/.config/dailybot/` that stores secrets (`credentials.json`, `config.json`, `agents.json`) MUST be written with mode `0o600` (owner read/write only). When adding a new on-disk store, use the shared helper in `dailybot_cli/config.py`:
 
 ```python
-PATH.write_text(json.dumps(data, indent=2))
-os.chmod(PATH, 0o600)
+# _write_secret_file: 0o600 from the first byte (os.open), the descriptor tightened
+# before writing (a pre-existing file keeps its old mode through os.open).
+_write_secret_file(PATH, json.dumps(data, indent=2))
 ```
+
+Never `write_text` then `chmod`: that leaves a umask-permission window while the file already holds the secret. The config directory is created `0o700`.
 
 Never log full API keys or Bearer tokens. Use the `_mask` helper (or equivalent: first 4 chars + `****`).
 
@@ -550,7 +553,7 @@ See [docs/DEVELOPMENT_COMMANDS.md](docs/DEVELOPMENT_COMMANDS.md) for full refere
 9. Hardcode the version anywhere except `pyproject.toml`
 10. Hardcode timeouts, limits, or magic strings inline — extract to constants
 11. Log or print full API keys / Bearer tokens — always mask
-12. Write secret files without `os.chmod(path, 0o600)`
+12. Write secret files with `write_text` + `chmod` instead of `_write_secret_file` (0o600 from the first byte)
 13. Break the auth resolution order in `_resolve_agent_context`
 14. Use "DailyBot" (capital 'B') in new user-facing text — use "Dailybot"
 15. Add a new dependency without checking the Homebrew tap formula in `.github/workflows/release.yml` (every Python dep there is a `resource` block — adding one means updating the formula)
@@ -594,7 +597,7 @@ See [docs/DEVELOPMENT_COMMANDS.md](docs/DEVELOPMENT_COMMANDS.md) for full refere
 - [ ] Errors go to stderr, success/info goes to stdout
 - [ ] All `client.*` calls wrapped in `try/except APIError`
 - [ ] No hardcoded magic numbers or timeouts — use named constants
-- [ ] Any new file in `~/.config/dailybot/` has `os.chmod(path, 0o600)`
+- [ ] Any new file in `~/.config/dailybot/` is written through `_write_secret_file` (0o600 from the first byte)
 - [ ] Secrets are masked in all logs and console output
 - [ ] User-facing strings use "Dailybot" (not "DailyBot")
 - [ ] If a new dependency was added, the Homebrew formula in `.github/workflows/release.yml` is updated

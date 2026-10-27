@@ -18,12 +18,15 @@ We do **not** defend against:
 
 ## File Permissions
 
-Every file in `~/.config/dailybot/` that contains a secret is written with **mode `0o600`** (owner read/write, no group, no other). The pattern in `dailybot_cli/config.py`:
+Every file in `~/.config/dailybot/` that contains a secret is written with **mode `0o600`** (owner read/write, no group, no other). The helper in `dailybot_cli/config.py`:
 
 ```python
-PATH.write_text(json.dumps(data, indent=2))
-os.chmod(PATH, 0o600)
+# _write_secret_file: 0o600 from the first byte (os.open), the descriptor tightened
+# before writing (a pre-existing file keeps its old mode through os.open).
+_write_secret_file(PATH, json.dumps(data, indent=2))
 ```
+
+Never `write_text` then `chmod`: that leaves a umask-permission window while the file already holds the secret. The config directory is created `0o700`.
 
 Files with secrets:
 - `credentials.json` (login Bearer token)
