@@ -199,7 +199,7 @@ class TestRegisteredKeyOnTheWire:
         assert "free-plan limit" in " ".join(result.output.split())
         assert request.call_count == 1
 
-    def test_a_deactivated_agent(self) -> None:
+    def test_a_deleted_agent(self) -> None:
         request: MagicMock = MagicMock(
             return_value=_response(
                 403, {"detail": "API Key Not Valid", "code": "invalid_credentials"}
@@ -207,4 +207,4 @@ class TestRegisteredKeyOnTheWire:
         )
         result: Any = _run_update(request)
         assert result.exit_code == 1
-        assert "deactivated" in " ".join(result.output.split())
+        assert "deleted the agent" in " ".join(result.output.split())

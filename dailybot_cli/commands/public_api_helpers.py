@@ -995,7 +995,7 @@ REGISTRATION_CODE_MESSAGES: dict[str, str] = {
 
 # Agent commands run on agent keys, where these two codes mean something narrower than
 # on a person's session (API contract rev 1: a self-registered key is least-privilege
-# on every plan, and an org admin can deactivate the agent behind it).
+# on every plan, and an org admin can delete the agent behind it).
 _INVALID_CREDENTIALS_CODE: str = "invalid_credentials"
 _API_KEY_CREDENTIAL: str = "api_key"
 AGENT_CODE_MESSAGES: dict[str, str] = {
@@ -1005,7 +1005,7 @@ AGENT_CODE_MESSAGES: dict[str, str] = {
         "reports, health and messages; `agent email` and `agent webhook` are not included."
     ),
     "invalid_credentials": (
-        "This agent key was rejected. An org admin may have deactivated the agent, or the "
+        "This agent key was rejected. An org admin may have deleted the agent, or the "
         "key belongs to another server (`dailybot env show`). Rotate the key or run "
         "`dailybot login`."
     ),

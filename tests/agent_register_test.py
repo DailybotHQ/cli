@@ -422,14 +422,14 @@ class TestAgentKeyScope:
         assert result.exit_code == 1
         assert "free-plan limit" in " ".join(result.output.split())
 
-    def test_a_deactivated_agent_key_says_so(self, runner: CliRunner) -> None:
+    def test_a_deleted_agent_key_says_so(self, runner: CliRunner) -> None:
         client: MagicMock = MagicMock(spec=DailyBotClient)
         client.submit_agent_report.side_effect = APIError(
             403, "Invalid credentials.", code="invalid_credentials", credential="api_key"
         )
         result: Any = _agent_cmd(runner, client, ["update", "Shipped it"])
         assert result.exit_code == 1
-        assert "deactivated" in " ".join(result.output.split())
+        assert "deleted the agent" in " ".join(result.output.split())
 
     def test_a_login_session_refusal_never_blames_an_agent_key(self, runner: CliRunner) -> None:
         client: MagicMock = MagicMock(spec=DailyBotClient)
