@@ -378,6 +378,7 @@ class APIError(Exception):
         code: str | None = None,
         retry_after: float | None = None,
         extra: dict[str, Any] | None = None,
+        credential: str | None = None,
     ) -> None:
         self.status_code: int = status_code
         self.detail: str = detail
@@ -386,6 +387,9 @@ class APIError(Exception):
         # Extra machine-readable context from the error body (e.g. upgrade_url,
         # required_role / current_role). Never a mutable default arg.
         self.extra: dict[str, Any] = extra or {}
+        # Which credential the refused request carried ("api_key" / "bearer"), when
+        # known, so a message about an agent key is never shown to a login session.
+        self.credential: str | None = credential
         super().__init__(f"API error {status_code}: {detail}")
 
 
@@ -835,6 +839,7 @@ class DailyBotClient:
                 code=code,
                 retry_after=retry_after,
                 extra=extra,
+                credential=self._agent_auth_mode,
             )
         if response.status_code == 204:
             return {}

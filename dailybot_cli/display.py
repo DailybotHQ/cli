@@ -778,8 +778,12 @@ def format_claim_expiry(value: Any) -> str:
         parsed: datetime = datetime.fromisoformat(value.strip().replace("Z", "+00:00"))
     except ValueError:
         return value.strip()
-    if parsed.tzinfo is not None:
-        parsed = parsed.astimezone(timezone.utc)
+    # The contract sends UTC; a value without an offset is read as UTC, not local time.
+    parsed = (
+        parsed.replace(tzinfo=timezone.utc)
+        if parsed.tzinfo is None
+        else parsed.astimezone(timezone.utc)
+    )
     return parsed.strftime("%Y-%m-%d %H:%M UTC")
 
 

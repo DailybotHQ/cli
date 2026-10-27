@@ -154,13 +154,13 @@ class TestRegisterOnTheWire:
         ],
     )
     def test_a_coded_400_is_mapped(self, isolated: Path, code: str, detail: str) -> None:
-        from dailybot_cli.commands.public_api_helpers import ERROR_CODE_MESSAGES
+        from dailybot_cli.commands.public_api_helpers import REGISTRATION_CODE_MESSAGES
 
         get: MagicMock = MagicMock(return_value=_response(200, CHALLENGE_BODY))
         post: MagicMock = MagicMock(return_value=_response(400, {"detail": detail, "code": code}))
         result: Any = _run_register(get, post)
         assert result.exit_code == 1
-        assert ERROR_CODE_MESSAGES[code].split(".")[0] in " ".join(result.output.split())
+        assert REGISTRATION_CODE_MESSAGES[code].split(".")[0] in " ".join(result.output.split())
         assert post.call_count == 1
 
 

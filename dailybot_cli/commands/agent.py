@@ -1043,7 +1043,8 @@ def _is_challenge_expired(exc: APIError) -> bool:
     """True for an expired challenge. A server older than contract rev 1 sends no code."""
     if exc.code:
         return exc.code == _CHALLENGE_EXPIRED_CODE
-    return "expired" in exc.detail.lower()
+    detail: str = exc.detail.lower()
+    return "challenge" in detail and "expired" in detail
 
 
 def _registration_error_message(exc: APIError) -> str:

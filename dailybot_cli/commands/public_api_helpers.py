@@ -454,32 +454,6 @@ ERROR_CODE_MESSAGES: dict[str, str] = {
         "--user only accepts a user UUID, not an email or a name. "
         "Run 'dailybot user list' to find it."
     ),
-    # Agent self-registration and claim (API contract rev 1). `challenge_expired` is
-    # retried once by `agent register` before it ever reaches the user.
-    "missing_fields": "The registration request was missing required fields. Run `dailybot upgrade`, then try again.",
-    "invalid_answer": (
-        "The registration challenge answer was not a number. This CLI may be too old for "
-        "the server: run `dailybot upgrade`, then try again."
-    ),
-    "challenge_invalid": "The registration challenge was not recognized. Run the command again to get a new one.",
-    "challenge_used": (
-        "That registration challenge was already used (every attempt consumes it). Run the "
-        "command again to get a new one."
-    ),
-    "challenge_expired": "The registration challenge expired. Run the command again to get a new one.",
-    "answer_incorrect": (
-        "The registration challenge answer was rejected. This CLI may be too old for the "
-        "server: run `dailybot upgrade`, then try again."
-    ),
-    "reason_too_short": "The registration reason is too short (at least 20 characters).",
-    "reason_echoes_instruction": (
-        "The registration reason repeats the challenge instruction. Describe why the agent is registering."
-    ),
-    "registration_rate_limited": "Rate limited: too many registration attempts.",
-    "claim_token_unavailable": (
-        "No claim link is available: the organization was already claimed or the link "
-        "expired. A new link cannot be issued yet."
-    ),
     # Rate limiting (429)
     "free_plan_daily_limit_exceeded": (
         "You've reached today's free-plan limit for this action. Wait for it to reset "
@@ -987,9 +961,43 @@ def exit_for_tasks_error(
     raise SystemExit(code)
 
 
+# Agent self-registration and claim (API contract rev 1). Scoped to agent commands
+# (looked up only by `agent_error_message`), because generic names such as
+# `missing_fields` or `invalid_answer` could mean something else on another surface.
+# `challenge_expired` is retried once by `agent register` before it reaches the user.
+REGISTRATION_CODE_MESSAGES: dict[str, str] = {
+    "missing_fields": "The registration request was missing required fields. Run `dailybot upgrade`, then try again.",
+    "invalid_answer": (
+        "The registration challenge answer was not a number. This CLI may be too old for "
+        "the server: run `dailybot upgrade`, then try again."
+    ),
+    "challenge_invalid": "The registration challenge was not recognized. Run the command again to get a new one.",
+    "challenge_used": (
+        "That registration challenge was already used (every attempt consumes it). Run the "
+        "command again to get a new one."
+    ),
+    "challenge_expired": "The registration challenge expired. Run the command again to get a new one.",
+    "answer_incorrect": (
+        "The registration challenge answer was rejected. This CLI may be too old for the "
+        "server: run `dailybot upgrade`, then try again."
+    ),
+    "reason_too_short": "The registration reason is too short (at least 20 characters).",
+    "reason_echoes_instruction": (
+        "The registration reason repeats the challenge instruction. Describe why the agent is registering."
+    ),
+    "registration_rate_limited": "Rate limited: too many registration attempts.",
+    "claim_token_unavailable": (
+        "No claim link is available: the organization was already claimed or the link "
+        "expired. A new link cannot be issued yet."
+    ),
+}
+
+
 # Agent commands run on agent keys, where these two codes mean something narrower than
 # on a person's session (API contract rev 1: a self-registered key is least-privilege
 # on every plan, and an org admin can deactivate the agent behind it).
+_INVALID_CREDENTIALS_CODE: str = "invalid_credentials"
+_API_KEY_CREDENTIAL: str = "api_key"
 AGENT_CODE_MESSAGES: dict[str, str] = {
     "plan_upgrade_required": (
         "This credential is not allowed to do that. On the free plan, and with a "
@@ -1007,14 +1015,18 @@ AGENT_CODE_MESSAGES: dict[str, str] = {
 def agent_error_message(exc: APIError) -> str:
     """The user-facing message for an agent command's ``APIError``.
 
-    Dispatches on ``code`` (agent-specific copy first, then the shared map); an
-    unknown or absent code falls back to the server's ``detail``. A 429 gets the
-    wait hint.
+    Dispatches on ``code`` (agent-specific copy first, then registration, then the
+    shared map); an unknown or absent code falls back to the server's ``detail``. The
+    agent-key copy for ``invalid_credentials`` is used only when the refused request
+    carried an API key, never for a login session. A 429 gets the wait hint.
     """
     code: str | None = exc.code
     base: str | None = None
     if code:
-        base = AGENT_CODE_MESSAGES.get(code) or ERROR_CODE_MESSAGES.get(code)
+        agent_copy: str | None = AGENT_CODE_MESSAGES.get(code)
+        if code == _INVALID_CREDENTIALS_CODE and exc.credential != _API_KEY_CREDENTIAL:
+            agent_copy = None
+        base = agent_copy or REGISTRATION_CODE_MESSAGES.get(code) or ERROR_CODE_MESSAGES.get(code)
     message: str = (
         _augment_code_message(base, code, exc.extra or {}) if base and code else exc.detail
     )

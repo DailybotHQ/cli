@@ -139,6 +139,14 @@ class TestChallengeExpiry:
         assert result.exit_code == 1
         assert client.register_agent.call_count == 2
 
+    def test_an_old_server_detail_that_is_not_about_the_challenge_is_not_retried(
+        self, runner: CliRunner
+    ) -> None:
+        client: MagicMock = _client(register_agent=[APIError(400, "Your trial expired.")])
+        result: Any = _register(runner, client)
+        assert result.exit_code == 1
+        assert client.register_agent.call_count == 1
+
     def test_another_code_whose_detail_says_expired_is_not_retried(self, runner: CliRunner) -> None:
         client: MagicMock = _client(
             register_agent=[
@@ -322,9 +330,11 @@ REV1_REGISTRATION_CODES: list[str] = [
 
 class TestRev1ErrorCodes:
     def test_every_rev1_code_has_a_message(self) -> None:
-        from dailybot_cli.commands.public_api_helpers import ERROR_CODE_MESSAGES
+        from dailybot_cli.commands.public_api_helpers import REGISTRATION_CODE_MESSAGES
 
-        missing: list[str] = [c for c in REV1_REGISTRATION_CODES if c not in ERROR_CODE_MESSAGES]
+        missing: list[str] = [
+            c for c in REV1_REGISTRATION_CODES if c not in REGISTRATION_CODE_MESSAGES
+        ]
         assert missing == []
 
     @pytest.mark.parametrize(
@@ -338,12 +348,12 @@ class TestRev1ErrorCodes:
     def test_a_registration_400_shows_the_code_message_not_the_detail(
         self, runner: CliRunner, code: str
     ) -> None:
-        from dailybot_cli.commands.public_api_helpers import ERROR_CODE_MESSAGES
+        from dailybot_cli.commands.public_api_helpers import REGISTRATION_CODE_MESSAGES
 
         client: MagicMock = _client(register_agent=[APIError(400, "server prose", code=code)])
         result: Any = _register(runner, client)
         assert result.exit_code == 1
-        assert ERROR_CODE_MESSAGES[code].split(".")[0] in " ".join(result.output.split())
+        assert REGISTRATION_CODE_MESSAGES[code].split(".")[0] in " ".join(result.output.split())
         assert client.register_agent.call_count == 1
 
     def test_an_unknown_code_falls_back_to_the_detail(self, runner: CliRunner) -> None:
@@ -415,11 +425,28 @@ class TestAgentKeyScope:
     def test_a_deactivated_agent_key_says_so(self, runner: CliRunner) -> None:
         client: MagicMock = MagicMock(spec=DailyBotClient)
         client.submit_agent_report.side_effect = APIError(
-            403, "Invalid credentials.", code="invalid_credentials"
+            403, "Invalid credentials.", code="invalid_credentials", credential="api_key"
         )
         result: Any = _agent_cmd(runner, client, ["update", "Shipped it"])
         assert result.exit_code == 1
         assert "deactivated" in " ".join(result.output.split())
+
+    def test_a_login_session_refusal_never_blames_an_agent_key(self, runner: CliRunner) -> None:
+        client: MagicMock = MagicMock(spec=DailyBotClient)
+        client.submit_agent_report.side_effect = APIError(
+            403, "Invalid credentials.", code="invalid_credentials", credential="bearer"
+        )
+        result: Any = _agent_cmd(runner, client, ["update", "Shipped it"])
+        assert result.exit_code == 1
+        flat: str = " ".join(result.output.split())
+        assert "agent key" not in flat
+        assert "dailybot login" in flat
+
+    def test_registration_copy_stays_out_of_the_shared_map(self) -> None:
+        from dailybot_cli.commands.public_api_helpers import ERROR_CODE_MESSAGES
+
+        for code in ("missing_fields", "invalid_answer", "reason_too_short", "challenge_used"):
+            assert code not in ERROR_CODE_MESSAGES
 
     def test_an_error_without_a_code_still_shows_the_detail(self, runner: CliRunner) -> None:
         client: MagicMock = MagicMock(spec=DailyBotClient)
@@ -461,3 +488,10 @@ class TestConfigureAcceptsAScopedKey:
             )
         assert result.exit_code == 1
         save.assert_not_called()
+
+
+def test_a_claim_expiry_without_an_offset_is_read_as_utc() -> None:
+    from dailybot_cli.display import format_claim_expiry
+
+    assert format_claim_expiry("2026-11-25T12:00:00") == "2026-11-25 12:00 UTC"
+    assert format_claim_expiry("2026-11-25T07:00:00-05:00") == "2026-11-25 12:00 UTC"
