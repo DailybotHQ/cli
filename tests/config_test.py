@@ -274,3 +274,25 @@ class TestSecretFilesFromTheFirstByte:
             token="test-token", email="me@example.com", organization="O", organization_uuid="org-1"
         )
         assert self._mode(creds) == 0o600
+
+
+def test_a_loose_secret_file_is_tightened_before_the_secret_is_written(
+    tmp_config: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The mode is fixed on the descriptor, so no byte lands under the old 0o644."""
+    tmp_config.mkdir(parents=True)
+    creds: Path = tmp_config / "credentials.json"
+    creds.write_text("{}")
+    os.chmod(creds, 0o644)
+    modes_at_write: list[int] = []
+    real_fdopen: Any = os.fdopen
+
+    def _spy_fdopen(fd: int, *args: Any, **kwargs: Any) -> Any:
+        modes_at_write.append(os.fstat(fd).st_mode & 0o777)
+        return real_fdopen(fd, *args, **kwargs)
+
+    monkeypatch.setattr("dailybot_cli.config.os.fdopen", _spy_fdopen)
+    save_credentials(
+        token="test-token", email="me@example.com", organization="O", organization_uuid="org-1"
+    )
+    assert modes_at_write == [0o600]

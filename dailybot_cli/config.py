@@ -66,17 +66,29 @@ def get_config_dir() -> Path:
     return path
 
 
+def _tighten_before_write(fd: int) -> None:
+    """Set 0o600 on an open descriptor before any secret byte is written.
+
+    ``os.fchmod`` is POSIX-only (Windows gains it in Python 3.13); there the caller
+    falls back to ``os.chmod`` after the write, where POSIX modes are advisory anyway.
+    """
+    if hasattr(os, "fchmod"):
+        os.fchmod(fd, SECRET_FILE_MODE)
+
+
 def _write_secret_file(path: Path, text: str) -> None:
     """Write a secret store with mode 0o600 from the first byte.
 
     A write-then-chmod leaves a umask-permission window while the file already holds
-    a token or key. A pre-existing file keeps its old mode through os.open, so it is
-    tightened afterwards.
+    a token or key. A pre-existing file keeps its old mode through os.open, so the
+    descriptor is tightened before the first byte is written.
     """
     fd: int = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, SECRET_FILE_MODE)
+    _tighten_before_write(fd)
     with os.fdopen(fd, "w") as handle:
         handle.write(text)
-    os.chmod(path, SECRET_FILE_MODE)
+    if not hasattr(os, "fchmod"):
+        os.chmod(path, SECRET_FILE_MODE)
 
 
 def _credentials_path() -> Path:
@@ -1191,11 +1203,14 @@ def save_repo_env(payload: dict[str, Any], *, cwd: Path | None = None) -> Path:
     serialized: str = json.dumps(_normalize_env_payload(payload), indent=2) + "\n"
     # Create with 0o600 from the very first byte — a plain write-then-chmod
     # leaves a umask-permission window while the file already holds API keys.
-    fd: int = os.open(env_path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+    # A pre-existing file keeps its old mode through os.open — tighten the descriptor
+    # before writing.
+    fd: int = os.open(env_path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, SECRET_FILE_MODE)
+    _tighten_before_write(fd)
     with os.fdopen(fd, "w") as handle:
         handle.write(serialized)
-    # A pre-existing file keeps its old mode through os.open — tighten it.
-    os.chmod(env_path, 0o600)
+    if not hasattr(os, "fchmod"):
+        os.chmod(env_path, SECRET_FILE_MODE)
     return env_path
 
 
