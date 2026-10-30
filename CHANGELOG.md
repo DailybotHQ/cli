@@ -9,6 +9,58 @@ Do not edit it by hand — your edits will be overwritten on the next release.
 
 <!-- version list -->
 
+## v3.28.0 (2026-10-30)
+
+### Bug Fixes
+
+- **agent**: A registered key stops when the agent is deleted, and read is PATCH
+  ([`3b4546b`](https://github.com/DailybotHQ/cli/commit/3b4546bc246e20054892b5f79c2ffed9f904ab82))
+
+- **agent**: Scope registration copy, credential-aware key message, stricter expiry match
+  ([`db6b212`](https://github.com/DailybotHQ/cli/commit/db6b21231ee242b736d10fc22f39b96a59918b04))
+
+- **config**: Create secret stores 0o600 from the first byte, config dir 0o700
+  ([`98dbfd2`](https://github.com/DailybotHQ/cli/commit/98dbfd21194f73601f03dadf56fc9da9a1c9b10e))
+
+- **config**: Tighten a pre-existing secret file before writing the secret
+  ([`4b7d790`](https://github.com/DailybotHQ/cli/commit/4b7d790bb345cc07bad1ca81cfa51f4245293a95))
+
+### Code Style
+
+- Ruff format the registration error-code changes
+  ([`ebb328b`](https://github.com/DailybotHQ/cli/commit/ebb328bbe2508109159faa7d50ca32ffc2011fc3))
+
+### Documentation
+
+- Show the first-byte 0o600 secret-file pattern
+  ([`d9da1b8`](https://github.com/DailybotHQ/cli/commit/d9da1b833a5e9394ed1850212b75cb78434b7182))
+
+- **agent**: Align registration and claim facts with API contract rev 1
+  ([`fff45ef`](https://github.com/DailybotHQ/cli/commit/fff45efbf2c2bff2a502124e7b13095ddbb9ca11))
+
+### Features
+
+- **agent**: Map the registration and agent-key error codes from API contract rev 1
+  ([`ccd3d72`](https://github.com/DailybotHQ/cli/commit/ccd3d72f27ee886f007c8df718438fcbfa3bb490))
+
+- **agent**: Show the claim expiry from the server and a "Send this to your human" block
+  ([`8f6dcc6`](https://github.com/DailybotHQ/cli/commit/8f6dcc637bf907f97ef771b0fea4dd5b8b3d094f))
+
+- **agent**: Solve the registration challenge by word count, retry on challenge_expired
+  ([`3f76e5c`](https://github.com/DailybotHQ/cli/commit/3f76e5ccba7a8632dc1e62ff3dc4748e40f195b5))
+
+- **client**: Send a dailybot-cli User-Agent on every request
+  ([`792ac3d`](https://github.com/DailybotHQ/cli/commit/792ac3dfd1a3c2b44b2358c338f115a8b9234608))
+
+### Testing
+
+- **agent**: A coded 429 on register without Retry-After still gives a wait hint
+  ([`ba68d4a`](https://github.com/DailybotHQ/cli/commit/ba68d4abe6ba82bdbd60e98969953cc59b63d296))
+
+- **agent**: Exercise register and agent-key errors on the exact rev-1 wire shapes
+  ([`4902eef`](https://github.com/DailybotHQ/cli/commit/4902eef84312581d5730dac7037bb549bf7bf9cb))
+
+
 ## v3.27.13 (2026-10-25)
 
 ### Chores
