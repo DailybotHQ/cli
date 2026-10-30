@@ -1,5 +1,7 @@
 """HTTP client for Dailybot CLI API endpoints."""
 
+import functools
+import platform
 import re
 import time
 import unicodedata
@@ -12,6 +14,7 @@ from urllib.parse import quote, urljoin, urlsplit
 
 import httpx
 
+from dailybot_cli import __version__
 from dailybot_cli.config import (
     API_KEY_SOURCE_ENV_JSON,
     get_agent_name,
@@ -20,6 +23,7 @@ from dailybot_cli.config import (
     get_api_url,
     get_login_token_for,
 )
+from dailybot_cli.install_method import detect_install_method
 
 _MAX_LIST_PAGES: int = 50  # safety cap for paginated list endpoints
 LONG_TIMEOUT_SECS: float = 120.0  # AI-processing endpoints (ask, submit_update)
@@ -32,6 +36,33 @@ ATTACHMENT_TRANSFER_TIMEOUT_SECS: float = LONG_TIMEOUT_SECS
 # A read timeout is per read, so a storage host that drips one byte a minute is
 # never cut off by it. This is the wall-clock ceiling for the whole storage hop.
 ATTACHMENT_DOWNLOAD_DEADLINE_SECS: float = 300.0
+
+# Every request names the CLI build. The backend measures which CLI versions are
+# still in use from this header before it changes anything an old client relies on.
+USER_AGENT_PRODUCT: str = "dailybot-cli"
+USER_AGENT_UNKNOWN: str = "unknown"
+
+
+@functools.lru_cache(maxsize=1)
+def user_agent() -> str:
+    """`dailybot-cli/<ver> (python/<x.y>; <os>; <install_method>)`, computed once."""
+    try:
+        method: str = detect_install_method()
+    except Exception:
+        method = USER_AGENT_UNKNOWN
+    python: str = ".".join(platform.python_version_tuple()[:2])
+    os_name: str = platform.system().lower() or USER_AGENT_UNKNOWN
+    return f"{USER_AGENT_PRODUCT}/{__version__} (python/{python}; {os_name}; {method})"
+
+
+def _base_headers() -> dict[str, str]:
+    """The headers every Dailybot API request carries, before any credential."""
+    return {
+        "Content-Type": "application/json",
+        "Accept": "application/json",
+        "User-Agent": user_agent(),
+    }
+
 
 # HTTP status codes that trigger the alt-credential auth retry. 401 is the
 # standards-compliant "credentials rejected" answer; 403 is what many
@@ -69,6 +100,9 @@ MAX_PAGE_SIZE: int = 100  # server clamps above this; the client clamps too
 
 MAX_RATE_LIMIT_RETRIES: int = 3  # attempts to retry a generic 429 before raising
 DEFAULT_RETRY_AFTER_SECS: float = 1.0  # backoff floor when a 429 omits Retry-After
+# The registration challenge GET waits out a short 429 on its own; a longer wait is
+# reported to the user instead of leaving the terminal asleep.
+REGISTRATION_MAX_AUTO_WAIT_SECS: float = 10.0
 # A free-plan daily throttle is NOT transient — retrying can never succeed today.
 FREE_PLAN_DAILY_LIMIT_CODE: str = "free_plan_daily_limit_exceeded"
 
@@ -344,6 +378,7 @@ class APIError(Exception):
         code: str | None = None,
         retry_after: float | None = None,
         extra: dict[str, Any] | None = None,
+        credential: str | None = None,
     ) -> None:
         self.status_code: int = status_code
         self.detail: str = detail
@@ -352,6 +387,9 @@ class APIError(Exception):
         # Extra machine-readable context from the error body (e.g. upgrade_url,
         # required_role / current_role). Never a mutable default arg.
         self.extra: dict[str, Any] = extra or {}
+        # Which credential the refused request carried ("api_key" / "bearer"), when
+        # known, so a message about an agent key is never shown to a login session.
+        self.credential: str | None = credential
         super().__init__(f"API error {status_code}: {detail}")
 
 
@@ -476,10 +514,7 @@ class DailyBotClient:
         (``self._prefer_api_key``), the order inverts so the per-repo key
         wins on the first attempt; the 401/403 retry covers the reverse.
         """
-        headers: dict[str, str] = {
-            "Content-Type": "application/json",
-            "Accept": "application/json",
-        }
+        headers: dict[str, str] = _base_headers()
         if authenticated:
             if self.api_key and (self._prefer_api_key or not self.token):
                 headers["X-API-KEY"] = self.api_key
@@ -497,10 +532,7 @@ class DailyBotClient:
         that all endpoints behave consistently. The server accepts both on
         every ``/v1/agent*`` endpoint.
         """
-        headers: dict[str, str] = {
-            "Content-Type": "application/json",
-            "Accept": "application/json",
-        }
+        headers: dict[str, str] = _base_headers()
         if self.api_key and (self._prefer_api_key or not self.token):
             headers["X-API-KEY"] = self.api_key
             self._agent_auth_mode = "api_key"
@@ -517,10 +549,7 @@ class DailyBotClient:
         If the primary was Bearer, tries API key; if the primary was API key,
         tries Bearer. Returns ``None`` when no alternative is available.
         """
-        headers: dict[str, str] = {
-            "Content-Type": "application/json",
-            "Accept": "application/json",
-        }
+        headers: dict[str, str] = _base_headers()
         if self._agent_auth_mode == "bearer" and self.api_key:
             headers["X-API-KEY"] = self.api_key
             self._agent_auth_mode = "api_key"
@@ -810,6 +839,7 @@ class DailyBotClient:
                 code=code,
                 retry_after=retry_after,
                 extra=extra,
+                credential=self._agent_auth_mode,
             )
         if response.status_code == 204:
             return {}
@@ -823,14 +853,20 @@ class DailyBotClient:
                 f"The server returned an unreadable response: {_fallback_detail(response)}"
             ) from exc
 
-    def _send_with_retry(self, send: Callable[[], httpx.Response]) -> httpx.Response:
+    def _send_with_retry(
+        self,
+        send: Callable[[], httpx.Response],
+        *,
+        max_wait_secs: float | None = None,
+    ) -> httpx.Response:
         """Issue a request via ``send`` with bounded retry on a transient 429.
 
         Honors the ``Retry-After`` header and backs off exponentially from it, up
         to ``MAX_RATE_LIMIT_RETRIES`` retries. A ``free_plan_daily_limit_exceeded``
         429 is NOT transient — it is returned immediately (no retry) so the caller
         raises a clear error. Any non-429 response is returned as-is. ``time.sleep``
-        is referenced through the module so tests can patch it.
+        is referenced through the module so tests can patch it. With ``max_wait_secs``,
+        a wait longer than that is not slept: the 429 is returned for the caller to report.
         """
         attempt: int = 0
         while True:
@@ -854,7 +890,10 @@ class DailyBotClient:
                     retry_after = float(raw_retry)
                 except ValueError:
                     retry_after = DEFAULT_RETRY_AFTER_SECS
-            time.sleep(retry_after * (2**attempt))
+            wait: float = retry_after * (2**attempt)
+            if max_wait_secs is not None and wait > max_wait_secs:
+                return response
+            time.sleep(wait)
             attempt += 1
 
     def _paginated_get(
@@ -3624,7 +3663,9 @@ class DailyBotClient:
                 method,
                 url,
                 content=data,
-                headers=headers,
+                # Only the presign's own headers (they win: a signed upload may pin
+                # them) plus the User-Agent. Never a Dailybot credential.
+                headers={"User-Agent": user_agent(), **headers},
                 timeout=ATTACHMENT_TRANSFER_TIMEOUT_SECS,
                 follow_redirects=False,
             )
@@ -4145,7 +4186,7 @@ class DailyBotClient:
             with httpx.stream(
                 "GET",
                 location,
-                headers={"Accept-Encoding": "identity"},
+                headers={"Accept-Encoding": "identity", "User-Agent": user_agent()},
                 timeout=ATTACHMENT_TRANSFER_TIMEOUT_SECS,
                 follow_redirects=False,
             ) as response:
@@ -4839,14 +4880,21 @@ class DailyBotClient:
     # --- Agent registration endpoints ---
 
     def get_registration_challenge(self) -> dict[str, Any]:
-        """GET /v1/agent/register/challenge/ — no auth required."""
-        response: httpx.Response = self._guard_transport(
-            lambda: httpx.get(
-                f"{self.api_url}/v1/agent/register/challenge/",
-                headers=self._headers(authenticated=False),
-                timeout=self.timeout,
+        """GET /v1/agent/register/challenge/ — no auth required.
+
+        A read, so a short 429 is waited out (``Retry-After``). The POST that follows
+        is never retried this way: every attempt consumes its challenge.
+        """
+        response: httpx.Response = self._send_with_retry(
+            lambda: self._guard_transport(
+                lambda: httpx.get(
+                    f"{self.api_url}/v1/agent/register/challenge/",
+                    headers=self._headers(authenticated=False),
+                    timeout=self.timeout,
+                ),
+                method="GET",
             ),
-            method="GET",
+            max_wait_secs=REGISTRATION_MAX_AUTO_WAIT_SECS,
         )
         return self._handle_response(response)
 

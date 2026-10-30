@@ -219,3 +219,80 @@ def test_plan_cache_tolerates_malformed_file(tmp_config: Path) -> None:
 
     _plan_cache_path().write_text("{ not json")
     assert get_org_plan("org-any") is None
+
+
+class TestSecretFilesFromTheFirstByte:
+    """CLI-8: secret stores are created 0o600 by os.open, not tightened afterwards."""
+
+    @pytest.fixture
+    def no_chmod(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        # With chmod disabled and a permissive umask, only a 0o600 create passes.
+        monkeypatch.setattr("dailybot_cli.config.os.chmod", lambda *_a, **_k: None)
+        previous: int = os.umask(0)
+        yield
+        os.umask(previous)
+
+    def _mode(self, path: Path) -> int:
+        return path.stat().st_mode & 0o777
+
+    def test_credentials(self, tmp_config: Path, no_chmod: None) -> None:
+        save_credentials(
+            token="test-token", email="me@example.com", organization="O", organization_uuid="org-1"
+        )
+        assert self._mode(tmp_config / "credentials.json") == 0o600
+
+    def test_config(self, tmp_config: Path, no_chmod: None) -> None:
+        save_config({"api_key": "test-key"})
+        assert self._mode(tmp_config / "config.json") == 0o600
+
+    def test_agents(self, tmp_config: Path, no_chmod: None) -> None:
+        from dailybot_cli.config import save_agent_profile
+
+        save_agent_profile("bot", agent_name="Bot", api_key="test-key")
+        assert self._mode(tmp_config / "agents.json") == 0o600
+
+    def test_org_and_plan_caches(self, tmp_config: Path, no_chmod: None) -> None:
+        from dailybot_cli.config import save_org_cache, save_org_plan
+
+        save_org_cache("me@example.com", [{"uuid": "org-1", "name": "O"}])
+        save_org_plan("org-1", "free")
+        for path in tmp_config.iterdir():
+            assert self._mode(path) == 0o600, path.name
+
+    def test_a_new_config_dir_is_owner_only(self, tmp_config: Path, no_chmod: None) -> None:
+        save_credentials(
+            token="test-token", email="me@example.com", organization="O", organization_uuid="org-1"
+        )
+        assert self._mode(tmp_config) == 0o700
+
+    def test_an_existing_loose_file_is_tightened(self, tmp_config: Path) -> None:
+        tmp_config.mkdir(parents=True)
+        creds: Path = tmp_config / "credentials.json"
+        creds.write_text("{}")
+        os.chmod(creds, 0o644)
+        save_credentials(
+            token="test-token", email="me@example.com", organization="O", organization_uuid="org-1"
+        )
+        assert self._mode(creds) == 0o600
+
+
+def test_a_loose_secret_file_is_tightened_before_the_secret_is_written(
+    tmp_config: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The mode is fixed on the descriptor, so no byte lands under the old 0o644."""
+    tmp_config.mkdir(parents=True)
+    creds: Path = tmp_config / "credentials.json"
+    creds.write_text("{}")
+    os.chmod(creds, 0o644)
+    modes_at_write: list[int] = []
+    real_fdopen: Any = os.fdopen
+
+    def _spy_fdopen(fd: int, *args: Any, **kwargs: Any) -> Any:
+        modes_at_write.append(os.fstat(fd).st_mode & 0o777)
+        return real_fdopen(fd, *args, **kwargs)
+
+    monkeypatch.setattr("dailybot_cli.config.os.fdopen", _spy_fdopen)
+    save_credentials(
+        token="test-token", email="me@example.com", organization="O", organization_uuid="org-1"
+    )
+    assert modes_at_write == [0o600]

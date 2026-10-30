@@ -18,12 +18,15 @@ We do **not** defend against:
 
 ## File Permissions
 
-Every file in `~/.config/dailybot/` that contains a secret is written with **mode `0o600`** (owner read/write, no group, no other). The pattern in `dailybot_cli/config.py`:
+Every file in `~/.config/dailybot/` that contains a secret is written with **mode `0o600`** (owner read/write, no group, no other). The helper in `dailybot_cli/config.py`:
 
 ```python
-PATH.write_text(json.dumps(data, indent=2))
-os.chmod(PATH, 0o600)
+# _write_secret_file: 0o600 from the first byte (os.open), the descriptor tightened
+# before writing (a pre-existing file keeps its old mode through os.open).
+_write_secret_file(PATH, json.dumps(data, indent=2))
 ```
+
+Never `write_text` then `chmod`: that leaves a umask-permission window while the file already holds the secret. The config directory is created `0o700`.
 
 Files with secrets:
 - `credentials.json` (login Bearer token)
@@ -277,7 +280,7 @@ The `org_cache.json` is cleared after a successful verify.
 - Sent on every authenticated request as `Authorization: Bearer <token>`.
 - Used by human endpoints (`/v1/cli/*`) and user-scoped endpoints (`/v1/checkins/*`, `/v1/forms/*`, `/v1/users/`, `/v1/kudos/`).
 - Revoked by `dailybot logout` (best-effort `POST /v1/cli/auth/logout/` + local file removal).
-- Treated as expired/invalid on any 401/403 from a Bearer-mode call → `_handle_response` rewrites the error to "Session expired. Run 'dailybot login' to re-authenticate."
+- Treated as expired/invalid on a 401 from a Bearer-mode call → `_handle_response` rewrites the error to "Session expired. Run 'dailybot login' to re-authenticate." A 403 is an authorization refusal, not a dead session: it keeps the server's `detail` and `code`, and the command maps the code to a message.
 
 There is no automatic refresh. Tokens have a server-defined lifetime; the user is expected to re-run `dailybot login` when prompted.
 
@@ -314,14 +317,14 @@ python -c 'import secrets; print(secrets.token_urlsafe(32))'
 
 ## Standalone Registration
 
-`dailybot agent register` calls a no-auth endpoint protected by a math-puzzle challenge:
+`dailybot agent register` calls two anonymous endpoints (no auth header is sent) guarded by a challenge:
 
-1. `GET /v1/agent/register/challenge/` returns `{ challenge_id, instruction }`. The instruction is a sentence ending in `"... session is <random_number>."`.
-2. Compute `random_number * 52` (the constant `_CHALLENGE_WORD_COUNT`).
-3. `POST /v1/agent/register/` with `challenge_id`, `answer`, and the org/agent metadata.
-4. Server validates the answer + rate-limits.
+1. `GET /v1/agent/register/challenge/` returns `{ challenge_id, instruction, expires_in }`. The instruction contains `"... session is <code>."`.
+2. Compute `code * len(instruction.split())`, the number of words in the instruction (52 with today's wording). The CLI counts the words instead of hardcoding them; `_CHALLENGE_LEGACY_WORD_COUNT` is only a fallback for an implausibly short instruction. An instruction it cannot read stops with an upgrade hint.
+3. `POST /v1/agent/register/` with `challenge_id`, `answer`, `reason` (at least 20 characters), and the org/agent metadata. Every attempt consumes the challenge, so the CLI never re-POSTs blindly: it fetches a fresh challenge and retries once only on `challenge_expired`.
+4. The server validates the answer and rate-limits registration (`429` with code `registration_rate_limited` and a `Retry-After` in seconds).
 
-**This is a low-friction anti-bot measure, not a strong security control.** The backend additionally rate-limits by IP and applies abuse heuristics. If the challenge format ever needs to change, the CLI and the Dailybot API have to be updated together.
+**The challenge is a compatibility speed bump, not a security control.** Anyone with this open-source CLI can solve it. Abuse control belongs to the server (rate limits, the restricted scope of a registered key). The key a registration returns is least-privilege: agent reports, agent health, agent messages, its claim token, `/v1/me/`, `/v1/organization/`, `/v1/cli/status/` and `/v1/send-email/`; anything else is refused with `403 plan_upgrade_required`.
 
 ## CI / Headless Runners
 

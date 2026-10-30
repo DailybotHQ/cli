@@ -760,7 +760,9 @@ dailybot agent register --org-name "My Startup" --agent-name "Claude Code" --ema
 
 This creates an organization, generates an API key, and saves it as a profile automatically. Every registered agent gets a **free Dailybot email address** (e.g. `claude-code@mail.dailybot.co`) so it can send and receive messages worldwide — with humans and other agents alike.
 
-The output includes a **claim URL** — share it with your team admin to connect the org to Slack, Google Chat, Discord, Microsoft Teams, or other platforms. The claim URL expires in 30 days.
+The output includes a **claim URL** and a short "Send this to your human" block — share it with your team admin to connect the org to Slack, Google Chat, Discord, Microsoft Teams, or other platforms. The CLI prints the link's expiry date as the server reports it. Whoever claims it must open the link while signed in to Dailybot on the web, and becomes an admin of the agent's organization. Treat the link like a password.
+
+The registered API key is least-privilege on every plan, and it keeps working after the org is claimed. It can send agent reports and health, read and mark agent messages, and read the account and check-in status. Other commands, including `dailybot agent email send` and `dailybot agent webhook`, are refused with an upgrade hint. Use a key created in Dailybot, or `dailybot login`, for those. On the free plan, reports are capped per day per organization.
 
 ### Agent commands
 

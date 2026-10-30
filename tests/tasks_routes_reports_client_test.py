@@ -139,7 +139,7 @@ class TestRoutes:
         with patch("dailybot_cli.api_client.httpx.post", return_value=_response({}, 201)) as post:
             stamped.create_notification_route(name="n", channel=CHANNEL, kinds=["task.created"])
         assert "agent_name" not in post.call_args.kwargs["json"]
-        assert not any("agent" in k.lower() for k in _headers(post.call_args))
+        assert not any("agent-name" in k.lower() for k in _headers(post.call_args))
 
     def test_a_uuid_with_a_slash_is_refused_before_any_request(
         self, client: DailyBotClient

@@ -48,6 +48,8 @@ CREDENTIALS_FILE: Path = CONFIG_DIR / "credentials.json"
 CONFIG_FILE: Path = CONFIG_DIR / "config.json"
 ORG_CACHE_FILE: Path = CONFIG_DIR / "org_cache.json"
 AGENTS_FILE: Path = CONFIG_DIR / "agents.json"
+SECRET_FILE_MODE: int = 0o600
+CONFIG_DIR_MODE: int = 0o700
 
 
 def get_config_dir() -> Path:
@@ -58,8 +60,35 @@ def get_config_dir() -> Path:
     """
     env_override: str | None = os.environ.get("DAILYBOT_CONFIG_DIR")
     path: Path = Path(env_override) if env_override else CONFIG_DIR
-    path.mkdir(parents=True, exist_ok=True)
+    # The mode applies only when the directory is created: an existing one is never
+    # loosened (or tightened behind the user's back).
+    path.mkdir(mode=CONFIG_DIR_MODE, parents=True, exist_ok=True)
     return path
+
+
+def _tighten_before_write(fd: int) -> None:
+    """Set 0o600 on an open descriptor before any secret byte is written.
+
+    ``os.fchmod`` is POSIX-only (Windows gains it in Python 3.13); there the caller
+    falls back to ``os.chmod`` after the write, where POSIX modes are advisory anyway.
+    """
+    if hasattr(os, "fchmod"):
+        os.fchmod(fd, SECRET_FILE_MODE)
+
+
+def _write_secret_file(path: Path, text: str) -> None:
+    """Write a secret store with mode 0o600 from the first byte.
+
+    A write-then-chmod leaves a umask-permission window while the file already holds
+    a token or key. A pre-existing file keeps its old mode through os.open, so the
+    descriptor is tightened before the first byte is written.
+    """
+    fd: int = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, SECRET_FILE_MODE)
+    _tighten_before_write(fd)
+    with os.fdopen(fd, "w") as handle:
+        handle.write(text)
+    if not hasattr(os, "fchmod"):
+        os.chmod(path, SECRET_FILE_MODE)
 
 
 def _credentials_path() -> Path:
@@ -100,7 +129,8 @@ def save_credentials(
     """Save credentials to disk."""
     creds_path: Path = _credentials_path()
     get_config_dir()
-    creds_path.write_text(
+    _write_secret_file(
+        creds_path,
         json.dumps(
             {
                 "token": token,
@@ -110,10 +140,8 @@ def save_credentials(
                 "api_url": api_url,
             },
             indent=2,
-        )
+        ),
     )
-    # Restrict file permissions (owner read/write only)
-    os.chmod(creds_path, 0o600)
 
 
 def clear_credentials() -> None:
@@ -255,8 +283,7 @@ def save_config(data: dict[str, Any]) -> None:
             existing[key] = value
     get_config_dir()
     config_path: Path = _config_path()
-    config_path.write_text(json.dumps(existing, indent=2))
-    os.chmod(config_path, 0o600)
+    _write_secret_file(config_path, json.dumps(existing, indent=2))
 
 
 def get_api_key() -> str | None:
@@ -325,7 +352,7 @@ def save_org_cache(email: str, organizations: list[dict[str, Any]]) -> None:
     """Cache the org list from request_code for UUID resolution in step 2."""
     get_config_dir()
     data: dict[str, Any] = {"email": email, "organizations": organizations}
-    _org_cache_path().write_text(json.dumps(data))
+    _write_secret_file(_org_cache_path(), json.dumps(data))
 
 
 def load_org_cache(email: str) -> list[dict[str, Any]] | None:
@@ -375,8 +402,7 @@ def save_org_plan(organization_uuid: str, plan: str | None) -> None:
         data.pop(organization_uuid, None)
     else:
         data[organization_uuid] = plan
-    cache_path.write_text(json.dumps(data, indent=2))
-    os.chmod(cache_path, 0o600)
+    _write_secret_file(cache_path, json.dumps(data, indent=2))
 
 
 def get_org_plan(organization_uuid: str | None) -> str | None:
@@ -440,8 +466,7 @@ def _save_agents(data: dict[str, Any]) -> None:
     """Write agents.json with restricted permissions."""
     get_config_dir()
     agents_path: Path = _agents_path()
-    agents_path.write_text(json.dumps(data, indent=2))
-    os.chmod(agents_path, 0o600)
+    _write_secret_file(agents_path, json.dumps(data, indent=2))
 
 
 def save_agent_profile(
@@ -1178,11 +1203,14 @@ def save_repo_env(payload: dict[str, Any], *, cwd: Path | None = None) -> Path:
     serialized: str = json.dumps(_normalize_env_payload(payload), indent=2) + "\n"
     # Create with 0o600 from the very first byte — a plain write-then-chmod
     # leaves a umask-permission window while the file already holds API keys.
-    fd: int = os.open(env_path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+    # A pre-existing file keeps its old mode through os.open — tighten the descriptor
+    # before writing.
+    fd: int = os.open(env_path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, SECRET_FILE_MODE)
+    _tighten_before_write(fd)
     with os.fdopen(fd, "w") as handle:
         handle.write(serialized)
-    # A pre-existing file keeps its old mode through os.open — tighten it.
-    os.chmod(env_path, 0o600)
+    if not hasattr(os, "fchmod"):
+        os.chmod(env_path, SECRET_FILE_MODE)
     return env_path
 
 

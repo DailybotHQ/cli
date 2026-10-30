@@ -462,13 +462,15 @@ Lists all configured profiles with masked keys.
 
 Standalone registration. No auth required.
 
-Flow:
-1. `GET /v1/agent/register/challenge/` → returns `{ challenge_id, instruction }`. Instruction is a wordy paragraph containing `"session is <random_number>."`.
-2. Solve: `random_number * 52`. (52 is `_CHALLENGE_WORD_COUNT`, defined in `commands/agent.py`.)
-3. `POST /v1/agent/register/` with `challenge_id`, `answer`, `reason`, `org_name`, `agent_name`, `timezone`, optional `contact_email`.
-4. Saves the returned API key as a profile, prints the claim URL.
+Flow (no auth header is sent on any of these calls):
+1. `GET /v1/agent/register/challenge/` → returns `{ challenge_id, instruction, expires_in }`. The instruction is a wordy paragraph containing `"session is <random_number>."`. A 429 is retried through the shared `Retry-After` helper.
+2. Solve: `random_number * len(instruction.split())`. The word count is computed, never hardcoded; `_CHALLENGE_LEGACY_WORD_COUNT` (52, in `commands/agent.py`) is only the fallback for an implausibly short instruction. An instruction without the session code is a clear error with a `dailybot upgrade` hint. The challenge is a compatibility speed bump, not a security control.
+3. `POST /v1/agent/register/` with `challenge_id`, `answer`, `reason` (≥ 20 characters), `org_name`, `agent_name`, `timezone`, optional `contact_email`.
+4. Saves the returned API key as a profile, then prints the claim URL, its expiry (from `claim_expires_at`; without it, "see the claim page"), and a "Send this to your human" block. The key itself is never printed.
 
-Auto-retries once if the challenge has expired.
+Every attempt consumes its challenge. On `code: challenge_expired` (or, from a server without codes, a `detail` mentioning "expired"), the CLI fetches a new challenge and retries exactly once. Other `400` codes (`missing_fields`, `invalid_answer`, `challenge_invalid`, `challenge_used`, `answer_incorrect`, `reason_too_short`, `reason_echoes_instruction`) map to messages in `ERROR_CODE_MESSAGES`. A `429 registration_rate_limited` prints the `Retry-After` wait.
+
+**Registered key scope.** The key is sent as `X-API-KEY` (never as Bearer) and is least-privilege on every plan. It survives the claim with the same scope. Allowed: `POST /v1/agent-reports/`, `/v1/agent-health/`, `GET /v1/agent-messages/`, `PATCH /v1/agent-messages/read/`, `GET /v1/agent/claim-token/`, `GET /v1/me/`, `GET /v1/organization/`, `GET /v1/cli/status/`, `POST /v1/send-email/`. Anything else, including `/v1/agent-email/send/` and `/v1/agent-webhook/`, returns `403 plan_upgrade_required` with an `upgrade_url`. Free-plan daily caps return `429 free_plan_daily_limit_exceeded`. If an org admin deletes the agent from the dashboard, the key gets `403 invalid_credentials`.
 
 #### `dailybot agent update <content> [--name ...] [--profile ...] [--json-data JSON] [--metadata JSON] [--milestone] [--co-authors EMAIL]...`
 
@@ -748,8 +750,18 @@ key, so all of these commands work with `DAILYBOT_API_KEY` set even without
 
 | Method | Path | Request | Response | Notes |
 |--------|------|---------|----------|-------|
-| `GET` | `/v1/agent/register/challenge/` | — | `{ challenge_id, instruction }` | |
-| `POST` | `/v1/agent/register/` | `{ challenge_id, answer, reason, org_name, agent_name, timezone, contact_email? }` | `{ agent_name, agent_email, org_name, api_key, claim_url }` | 429 = rate-limited |
+| `GET` | `/v1/agent/register/challenge/` | — | `{ challenge_id, instruction, expires_in }` | Anonymous. `429 registration_rate_limited` (with `Retry-After`) |
+| `POST` | `/v1/agent/register/` | `{ challenge_id, answer, reason, org_name, agent_name, timezone?, contact_email? }` | `201 { api_key, agent_name, agent_email, agent_username, org_id, org_name, claim_url, claim_token, claim_expires_at }` | Anonymous. `400` codes: `missing_fields`, `invalid_answer`, `challenge_invalid`, `challenge_used`, `challenge_expired`, `answer_incorrect`, `reason_too_short`, `reason_echoes_instruction`. `429 registration_rate_limited` |
+| `GET` | `/v1/agent/claim/{token}/preview/` | — | `{ org_name, registration_reason, registration_reason_source, agent_workers, report_count, created_at, expires_at }` | Anonymous; used by the web claim page, not by the CLI. `400` codes: `claim_not_found`, `already_claimed`, `claim_expired` |
+| `POST` | `/v1/agent/claim/{token}/` | `{}` | `{ success, org_id, org_name }` | **Web session only** (`Authorization: JWT`), not the CLI: the signed-in user becomes an admin of the agent's org. `400` codes: `claim_not_found`, `already_claimed`, `claim_expired`, `claim_org_conflict` |
+
+### Agent Claim Link
+
+| Method | Path | Request | Response | Notes |
+|--------|------|---------|----------|-------|
+| `GET` | `/v1/agent/claim-token/` | — | `{ claim_url, expires_at }` | `X-API-KEY` (the registered key) or a CLI Bearer session. It returns the existing link and never mints a new one. `404 claim_token_unavailable` once the org is claimed or the link has expired. No CLI command calls it yet; the code is mapped in `ERROR_CODE_MESSAGES` |
+
+The claim URL is a bearer secret: the CLI prints it once for the human and never stores it.
 
 ## Auth Header Selection
 
@@ -781,18 +793,21 @@ def _agent_headers():
 Both helpers accept **either** credential; they differ only in preference order
 (`_headers` is Bearer-first, `_agent_headers` is API-key-first). The
 `_agent_auth_mode` is used by `_handle_response` to produce a "Session expired"
-message on 401/403 only when the auth came from a Bearer token (not from an API
-key, where the wording would be misleading).
+message on a 401 only when the auth came from a Bearer token (not from an API
+key, where the wording would be misleading). A 403 is an authorization refusal,
+not a dead session: it keeps the server's `detail` and `code`.
 
 ## Error Translation
 
 | HTTP | Default behavior | Per-command override |
 |------|------------------|----------------------|
 | Any | `APIError(status_code, detail)` | All commands wrap calls in `try/except APIError` |
-| 401/403 (bearer) | `_handle_response` rewrites detail to "Session expired. Run 'dailybot login' to re-authenticate." | Multiple commands also catch and prefix with their own context |
-| 401/403 (api_key) | passes through with backend's detail | `agent configure` treats as invalid key |
+| 401 (bearer) | `_handle_response` rewrites detail to "Session expired. Run 'dailybot login' to re-authenticate." | Multiple commands also catch and prefix with their own context |
+| 401 (api_key) | passes through with the backend's `detail` and `code` | `agent configure` treats it as an invalid key |
+| 403 (either credential) | passes through with the backend's `detail` and `code` (never rewritten to "Session expired") | Commands dispatch on `code` via `ERROR_CODE_MESSAGES`; agent commands use `agent_error_message` (`plan_upgrade_required` explains the agent-key scope and appends `upgrade_url`; `invalid_credentials` mentions a deleted agent). `agent configure` treats a 403 `plan_upgrade_required` as a valid key that is out of scope, and any other 401/403 as an invalid key |
+| 400 with a known `code` | passes through | Agent commands and `agent register` show the code's message; an unknown or absent code shows `detail` |
 | 400 with "ai processing failed" | — | `update.py` rewrites to a support-contact message |
-| 429 | passes through | `agent email send` adds "Hourly email limit exceeded"; `agent register` adds "Rate limited. Try again in a few minutes." |
+| 429 | passes through (`retry_after` from the `Retry-After` header) | A known `code` (`registration_rate_limited`, `free_plan_daily_limit_exceeded`) shows its message plus "Try again in Ns."; without a code, `agent email send` says "Hourly email limit exceeded" and `agent register` says "Rate limited." with the wait |
 | `httpx.TimeoutException` | propagates from httpx | `update.py` and `interactive.py` catch and emit a "may be processing your update" message |
 
 ## Plan — `/v1/plan/*`

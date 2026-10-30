@@ -14,7 +14,7 @@ All code, comments, docstrings, log messages, error messages, commit messages, a
 | Test | `<module>_test.py` (mirrors source) | `tests/api_client_test.py` |
 | Class | `PascalCase` | `DailyBotClient`, `APIError` |
 | Function/variable | `snake_case` | `submit_update`, `get_token` |
-| Constant | `SCREAMING_SNAKE_CASE` | `DEFAULT_API_URL`, `_CHALLENGE_WORD_COUNT` |
+| Constant | `SCREAMING_SNAKE_CASE` | `DEFAULT_API_URL`, `_CHALLENGE_LEGACY_WORD_COUNT` |
 | Internal/private | leading `_` | `_resolve_agent_context`, `_handle_response` |
 
 ## Import Order (Mandatory)
@@ -69,7 +69,7 @@ Prefer named constants over magic numbers and repeated strings:
 DEFAULT_TIMEOUT_SECS: float = 30.0
 LONG_TIMEOUT_SECS: float = 120.0          # AI-processing endpoints
 DEFAULT_API_URL: str = "https://api.dailybot.com"
-_CHALLENGE_WORD_COUNT: int = 52
+_CHALLENGE_LEGACY_WORD_COUNT: int = 52
 ```
 
 Use a leading underscore for module-private constants when the value is only meaningful inside the module.
@@ -186,11 +186,14 @@ A short single-line message is acceptable for trivial commits (`Version bump`, `
 Any file created in `~/.config/dailybot/` that contains a secret MUST be set to `0o600`:
 
 ```python
-PATH.write_text(json.dumps(data, indent=2))
-os.chmod(PATH, 0o600)
+# _write_secret_file: 0o600 from the first byte (os.open), the descriptor tightened
+# before writing (a pre-existing file keeps its old mode through os.open).
+_write_secret_file(PATH, json.dumps(data, indent=2))
 ```
 
-This includes `credentials.json`, `config.json`, and `agents.json`. `org_cache.json` is non-secret and may skip the chmod.
+Never `write_text` then `chmod`: that leaves a umask-permission window while the file already holds the secret. The config directory is created `0o700`.
+
+This includes `credentials.json`, `config.json`, `agents.json`, and the org and plan caches (`org_cache.json`, `plan_cache.json`), which go through the same helper.
 
 ## Adding a New Dependency
 

@@ -27,6 +27,7 @@ from dailybot_cli.api_client import (
     APIError,
     DailyBotClient,
     TransportError,
+    user_agent,
 )
 from dailybot_cli.commands.public_api_helpers import (
     ERROR_CODE_MESSAGES,
@@ -118,7 +119,7 @@ class TestUploadNeverLeaksCredentials:
         put.assert_not_called()
         call: Any = request.call_args
         assert call.args[:2] == ("PUT", STORAGE_URL)
-        assert call.kwargs["headers"] == {"Content-Type": "text/plain"}
+        assert call.kwargs["headers"] == {"Content-Type": "text/plain", "User-Agent": user_agent()}
         assert call.kwargs["content"] == b"hello"
         assert call.kwargs["follow_redirects"] is False
         sent: str = json.dumps(call.kwargs["headers"]).lower()
