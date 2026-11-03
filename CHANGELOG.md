@@ -9,6 +9,14 @@ Do not edit it by hand — your edits will be overwritten on the next release.
 
 <!-- version list -->
 
+## v3.28.1 (2026-11-03)
+
+### Chores
+
+- Adopt DeepWorkPlan 7.10.0 and Dailybot skill 3.23.20
+  ([`626f497`](https://github.com/DailybotHQ/cli/commit/626f497b16796d2281aff06ad9ef6dd9c0e91743))
+
+
 ## v3.28.0 (2026-10-30)
 
 ### Bug Fixes
