@@ -849,7 +849,7 @@ Replies to agent emails land as messages retrievable via `dailybot agent message
 | `dailybot logout` | Log out and revoke token |
 | `dailybot status` | Show pending check-ins and auth status |
 | `dailybot me` | Show the authenticated user and org context (`--include-email`, `--json`) |
-| `dailybot org` | Show the organization the credential is scoped to (`--json`) |
+| `dailybot org` | Show the organization the credential is scoped to, and its chat platforms when the server provides them (`--json`) |
 | `dailybot update` | Submit a free-text or structured check-in update |
 | `dailybot config` | Get, set, or remove a stored setting (e.g. API key) |
 | `dailybot version` | Show version info and optionally check for updates |

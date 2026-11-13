@@ -13,7 +13,7 @@ from dailybot_cli.commands.public_api_helpers import (
     require_auth,
 )
 from dailybot_cli.config import load_credentials
-from dailybot_cli.display import console, print_detail_panel
+from dailybot_cli.display import console, print_detail_panel, print_org_chat_platforms
 
 _ME_FIELDS: list[tuple[str, str]] = [
     ("Name", "full_name"),
@@ -80,3 +80,4 @@ def org(json_mode: bool) -> None:
         emit_json(data)
         return
     print_detail_panel("Organization", data, _ORG_FIELDS)
+    print_org_chat_platforms(data)

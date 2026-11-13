@@ -283,6 +283,49 @@ def print_detail_panel(title: str, data: dict[str, Any], fields: list[tuple[str,
     console.print(Panel(table, title=title, border_style="cyan", expand=False))
 
 
+CHAT_PLATFORM_NAMES: dict[str, str] = {
+    "dailybot": "Dailybot",
+    "slack": "Slack",
+    "msteams": "Microsoft Teams",
+    "discord": "Discord",
+    "hangouts": "Google Chat",
+}
+
+
+def print_org_chat_platforms(organization: dict[str, Any]) -> None:
+    """Render an organization's chat platforms (ChatPlatformSummary, L74), when served.
+
+    The keys are appended only when the server's gate is on. A missing key means
+    "unavailable", not "none", so nothing is printed and the output stays exactly
+    what it was before these fields existed. Names and ids are server text.
+    """
+    platforms: Any = organization.get("chat_platforms")
+    if not isinstance(platforms, list):
+        return
+    # One block per platform instead of a table: the id is what installation-qualified
+    # references use, so it is printed whole on its own line, never truncated or folded.
+    console.print("[bold cyan]Chat platforms[/bold cyan]")
+    for item in platforms:
+        if not isinstance(item, dict):
+            continue
+        platform: str = str(item.get("platform") or "")
+        label: str = CHAT_PLATFORM_NAMES.get(platform, platform)
+        primary: str = " [dim](primary)[/dim]" if item.get("is_primary") is True else ""
+        status: str = str(item.get("status") or "")
+        status_style: str = "green" if status == "connected" else "yellow"
+        status_text: str = (
+            f" · [{status_style}]{safe_text(status)}[/{status_style}]" if status else ""
+        )
+        name: str = safe_text(item.get("display_name") or "")
+        console.print(f"  [bold]{safe_text(label)}[/bold]{primary} · {name}{status_text}")
+        console.print(f"    [dim]id[/dim] {safe_text(item.get('id') or '')}", soft_wrap=True)
+    if organization.get("has_external_chat_platform") is False:
+        print_info(
+            "No external chat platform is connected (Slack, Microsoft Teams, Discord or "
+            "Google Chat). `dailybot chat send` needs one."
+        )
+
+
 def print_pagination_footer(
     shown: int,
     total: int | None = None,

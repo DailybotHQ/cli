@@ -125,6 +125,13 @@ Shows the authenticated user and the org context of the active credential. Calls
 
 Shows the organization the credential is scoped to. Calls `GET /v1/organization/`.
 
+When the server serves them (organizations with chat-platform management, and every standalone Dailybot organization), the payload carries three more keys, which `dailybot org` renders under **Chat platforms** and `--json` passes through unchanged:
+
+- `has_external_chat_platform` — `false` when only the Dailybot platform exists (then `dailybot chat send` has nowhere to deliver).
+- `primary_chat_platform` and `chat_platforms[]` — `ChatPlatformSummary` objects: `{ id, platform, display_name, organization_external_id, is_primary, status, capabilities: { directory, reporting, direct_messages } }`. `platform` is `dailybot`, `slack`, `msteams`, `discord` or `hangouts`; `status` is `connected`, `needs_reauth` or `disabled`; `id` is the value an installation-qualified channel reference uses (`<id>:<channel>`).
+
+Missing keys mean the information is unavailable, not that there are no platforms: the output is then exactly what it was before. The optional `plan { tier, effective_tier, is_trial }` object (served for standalone organizations) refreshes the cached plan tier.
+
 ---
 
 ### `dailybot checkin` (group) — user-scoped, Bearer or API key auth
@@ -719,7 +726,7 @@ key, so all of these commands work with `DAILYBOT_API_KEY` set even without
 | `GET` | `/v1/mood/track/` | `?date` | `{ ... }` | Read today's mood |
 | `POST` | `/v1/mood/track/` | `{ score, date? }` | `{ ... }` | `/mood` |
 | `GET` | `/v1/me/` | — | `{ user: { uuid, full_name, email }, organization: { uuid, name } }` | `dailybot me` |
-| `GET` | `/v1/organization/` | — | `{ uuid, name, ... }` | `dailybot org` |
+| `GET` | `/v1/organization/` | — | `{ uuid, name, platform, ..., has_external_chat_platform?, primary_chat_platform?, chat_platforms?, plan? }` | `dailybot org`; the optional keys are served only when gated on |
 | `GET` | `/v1/users/` | — | `{ results: [{ uuid, full_name }], next: url\|null }` | Paginated |
 | `GET` | `/v1/users/<uuid>/` | — | `{ uuid, full_name, email? }` | `dailybot user get` |
 | `GET` | `/v1/teams/` | — | `{ results: [{ uuid, name, active, members_count, is_default }], next? }` | Server-scoped: admins see all, members see own |
