@@ -9,6 +9,74 @@ Do not edit it by hand — your edits will be overwritten on the next release.
 
 <!-- version list -->
 
+## v3.29.0 (2026-11-13)
+
+### Bug Fixes
+
+- **auth**: Address AI review round 1 on the browser sign-in
+  ([`f2c0f20`](https://github.com/DailybotHQ/cli/commit/f2c0f20dc85a1dca36b0c121d698552fc89f75c0))
+
+- **client**: Refresh an expired browser session reached as the fallback credential
+  ([`2524a69`](https://github.com/DailybotHQ/cli/commit/2524a699088ed3e864f8ad95b2965909c02961cf))
+
+### Documentation
+
+- Describe browser sign-in, standalone orgs and qualified channels
+  ([`a92045b`](https://github.com/DailybotHQ/cli/commit/a92045bc49ec0822907ba81894ec878d2beaa950))
+
+### Features
+
+- **auth**: Add browser sign-in with `dailybot login --device`
+  ([`185c6f6`](https://github.com/DailybotHQ/cli/commit/185c6f6feedfe1d2d02b8de3a9ad8eb0367925de))
+
+- **auth**: Mark standalone Dailybot organizations in the login picker
+  ([`35439de`](https://github.com/DailybotHQ/cli/commit/35439dec1c58974a15d436fe11b7053eb0358f4a))
+
+- **auth**: Revoke the whole browser session on logout
+  ([`38d8342`](https://github.com/DailybotHQ/cli/commit/38d8342162eac1de23d8213caad372256ffd03b0))
+
+- **auth**: Show the cli_auth_deprecated notice on email-code sign-in
+  ([`c81ab9d`](https://github.com/DailybotHQ/cli/commit/c81ab9d144850f3f8ae1b381ea87a102bb9842ab))
+
+- **cli**: Accept qualified channel references
+  ([`cd8c135`](https://github.com/DailybotHQ/cli/commit/cd8c135918cefc29c7d6b02128992241fc85e01b))
+
+- **cli**: Add the session, sign-in and chat-platform error codes
+  ([`19fe578`](https://github.com/DailybotHQ/cli/commit/19fe5783506103af49efb427a8ac841458f4cc30))
+
+- **cli**: Refresh the cached plan tier from /v1/organization/
+  ([`1561879`](https://github.com/DailybotHQ/cli/commit/1561879e81c90c0ffc78b8ad94659d7a2f3ee874))
+
+- **cli**: Show the organization's chat platforms in `dailybot org`
+  ([`7d30fbc`](https://github.com/DailybotHQ/cli/commit/7d30fbcc2593d769fe6d226d23defe0dc5c4e3e0))
+
+- **client**: Add the device-flow and refresh doors to DailyBotClient
+  ([`f69f7d1`](https://github.com/DailybotHQ/cli/commit/f69f7d1169b0b0528b7bff73b497955cfe2990a2))
+
+- **client**: Refresh a browser session on 401 access_token_expired
+  ([`f903b5f`](https://github.com/DailybotHQ/cli/commit/f903b5f4380d4704f98a55f9fddb7bfdbeb73e0b))
+
+- **client**: Send the X-Dailybot-Client telemetry headers
+  ([`2dda267`](https://github.com/DailybotHQ/cli/commit/2dda26739eb8cb38a3f1f536d90dbf049ea95e3f))
+
+- **client**: Treat 503 auth_backend_unavailable as transient
+  ([`58cb937`](https://github.com/DailybotHQ/cli/commit/58cb93748f92fa593b07ce22ec2e70b2a30d330c))
+
+- **config**: Store the device-flow token pair additively in credentials.json
+  ([`7f5cbe5`](https://github.com/DailybotHQ/cli/commit/7f5cbe58b953adc2e07e3c18d2b19afaf1f87486))
+
+### Testing
+
+- **tests**: Make the device-login deadline test cheap
+  ([`c8c3cbd`](https://github.com/DailybotHQ/cli/commit/c8c3cbd1e4070c734a628e99108ac46f9ae832e5))
+
+- **tests**: Pin platform_not_connected for chat send on Dailybot orgs
+  ([`9379320`](https://github.com/DailybotHQ/cli/commit/9379320f24660337a945b9c476c71c2c398727b1))
+
+- **tests**: Record the device-flow and standalone wire fixtures
+  ([`43520d7`](https://github.com/DailybotHQ/cli/commit/43520d794346d06cb13600d2b7c29af758818182))
+
+
 ## v3.28.1 (2026-11-03)
 
 ### Chores
