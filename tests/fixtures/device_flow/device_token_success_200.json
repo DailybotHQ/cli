@@ -1,0 +1,28 @@
+{
+  "door": "POST /v1/cli/auth/device/token/",
+  "status": 200,
+  "headers": {},
+  "body": {
+    "token_type": "Bearer",
+    "access": "dbc_at_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "expires_at": "2030-01-01T01:00:00Z",
+    "refresh": "dbc_rt_rrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrr",
+    "refresh_expires_at": "2030-04-01T00:00:00Z",
+    "user": {
+      "uuid": "00000000-0000-4000-8000-000000000010",
+      "email": "me@example.com",
+      "full_name": "Jane Doe"
+    },
+    "organization": {
+      "id": 202,
+      "uuid": "00000000-0000-4000-8000-000000000002",
+      "name": "My Team",
+      "platform": "dailybot",
+      "plan": {
+        "tier": "free",
+        "effective_tier": "startup",
+        "is_trial": true
+      }
+    }
+  }
+}

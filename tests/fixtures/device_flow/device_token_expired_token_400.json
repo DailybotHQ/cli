@@ -1,0 +1,10 @@
+{
+  "door": "POST /v1/cli/auth/device/token/",
+  "status": 400,
+  "headers": {},
+  "body": {
+    "error": "expired_token",
+    "code": "expired_token",
+    "detail": "Example detail for expired_token."
+  }
+}

@@ -1,0 +1,8 @@
+{
+  "door": "POST /v1/cli/auth/logout/",
+  "status": 200,
+  "headers": {},
+  "body": {
+    "detail": "Successfully logged out."
+  }
+}

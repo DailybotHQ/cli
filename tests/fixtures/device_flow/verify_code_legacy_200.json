@@ -1,0 +1,13 @@
+{
+  "door": "POST /v1/cli/auth/verify-code/",
+  "status": 200,
+  "headers": {},
+  "body": {
+    "token": "legacy-test-token",
+    "organization": {
+      "id": 101,
+      "name": "My Team",
+      "uuid": "00000000-0000-4000-8000-000000000001"
+    }
+  }
+}

@@ -1,0 +1,9 @@
+{
+  "door": "POST /v1/cli/auth/refresh/",
+  "status": 401,
+  "headers": {},
+  "body": {
+    "detail": "Example detail for refresh_token_expired.",
+    "code": "refresh_token_expired"
+  }
+}

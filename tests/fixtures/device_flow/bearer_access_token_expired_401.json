@@ -1,0 +1,9 @@
+{
+  "door": "ANY /v1/* with Bearer dbc_at_",
+  "status": 401,
+  "headers": {},
+  "body": {
+    "detail": "Example detail for access_token_expired.",
+    "code": "access_token_expired"
+  }
+}

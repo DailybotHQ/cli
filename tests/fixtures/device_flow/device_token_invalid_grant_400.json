@@ -1,0 +1,10 @@
+{
+  "door": "POST /v1/cli/auth/device/token/",
+  "status": 400,
+  "headers": {},
+  "body": {
+    "error": "invalid_grant",
+    "code": "invalid_grant",
+    "detail": "Example detail for invalid_grant."
+  }
+}

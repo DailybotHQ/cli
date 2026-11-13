@@ -1,0 +1,11 @@
+{
+  "door": "POST /v1/cli/auth/device/token/",
+  "status": 400,
+  "headers": {},
+  "body": {
+    "error": "slow_down",
+    "code": "slow_down",
+    "detail": "Example detail for slow_down.",
+    "interval": 10
+  }
+}

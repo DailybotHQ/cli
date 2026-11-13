@@ -1,0 +1,9 @@
+{
+  "door": "POST /v1/send-message/",
+  "status": 400,
+  "headers": {},
+  "body": {
+    "detail": "Connect a chat platform first.",
+    "code": "platform_not_connected"
+  }
+}

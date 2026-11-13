@@ -1,0 +1,44 @@
+{
+  "door": "GET /v1/organization/",
+  "status": 200,
+  "headers": {},
+  "body": {
+    "uuid": "00000000-0000-4000-8000-000000000001",
+    "name": "My Team",
+    "timezone": "UTC",
+    "image": null,
+    "platform": "slack",
+    "chat_platform_data": {},
+    "supported_domains": [],
+    "has_email_password_enabled": false,
+    "has_external_chat_platform": true,
+    "primary_chat_platform": {
+      "id": "00000000-0000-4000-8000-000000000021",
+      "platform": "slack",
+      "display_name": "My Team Slack",
+      "organization_external_id": "T00000000",
+      "is_primary": true,
+      "status": "connected",
+      "capabilities": {
+        "directory": true,
+        "reporting": true,
+        "direct_messages": true
+      }
+    },
+    "chat_platforms": [
+      {
+        "id": "00000000-0000-4000-8000-000000000021",
+        "platform": "slack",
+        "display_name": "My Team Slack",
+        "organization_external_id": "T00000000",
+        "is_primary": true,
+        "status": "connected",
+        "capabilities": {
+          "directory": true,
+          "reporting": true,
+          "direct_messages": true
+        }
+      }
+    ]
+  }
+}

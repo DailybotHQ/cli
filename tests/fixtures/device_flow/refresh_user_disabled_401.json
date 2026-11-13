@@ -1,0 +1,9 @@
+{
+  "door": "POST /v1/cli/auth/refresh/",
+  "status": 401,
+  "headers": {},
+  "body": {
+    "detail": "Example detail for user_disabled.",
+    "code": "user_disabled"
+  }
+}
