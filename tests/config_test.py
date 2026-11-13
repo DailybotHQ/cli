@@ -402,3 +402,27 @@ class TestTokenPairCredentials:
         self._save_pair()
         assert get_refresh_token_for("https://api.dailybot.com") == "dbc_rt_test-refresh"
         assert get_refresh_token_for("http://localhost:8000") is None
+
+
+def test_rotating_the_pair_replaces_the_file_atomically(
+    tmp_config: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from dailybot_cli.config import update_token_pair
+
+    save_credentials(
+        token="dbc_at_a", email="e", organization="o", organization_uuid="u", refresh="dbc_rt_a"
+    )
+    replaced: list[tuple[str, str]] = []
+    real_replace: Any = os.replace
+
+    def spy(src: Any, dst: Any) -> None:
+        replaced.append((Path(src).name, Path(dst).name))
+        real_replace(src, dst)
+
+    monkeypatch.setattr("dailybot_cli.config.os.replace", spy)
+    update_token_pair(access="dbc_at_b", refresh="dbc_rt_b", expires_at=None)
+    assert replaced and replaced[0][1] == "credentials.json"
+    assert replaced[0][0].endswith(".tmp")
+    assert sorted(p.name for p in tmp_config.iterdir() if p.name.startswith("credentials")) == [
+        "credentials.json"
+    ]

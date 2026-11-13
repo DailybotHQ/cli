@@ -1,6 +1,7 @@
 """HTTP client for Dailybot CLI API endpoints."""
 
 import functools
+import os
 import platform
 import re
 import time
@@ -22,6 +23,8 @@ from dailybot_cli.config import (
     get_api_key_source,
     get_api_url,
     get_login_token_for,
+    get_refresh_token_for,
+    update_token_pair,
 )
 from dailybot_cli.install_method import detect_install_method
 
@@ -85,6 +88,12 @@ _AUTH_RETRY_STATUS_CODES: frozenset[int] = frozenset({401, 403})
 # RFC 8628 device flow (PLAN_002, frozen at checkpoint 1: DEVICE_FLOW_WIRE).
 DEVICE_CLIENT_ID: str = "dailybot-cli"
 DEVICE_GRANT_TYPE: str = "urn:ietf:params:oauth:grant-type:device_code"
+# The only 401 that refreshes a device-flow pair (L36). Every other 401 code
+# (refresh_token_expired, user_disabled, invalid_credentials, session_revoked)
+# keeps the long-standing behaviour: no refresh loop.
+ACCESS_TOKEN_EXPIRED_CODE: str = "access_token_expired"
+SESSION_REVOKED_CODE: str = "session_revoked"
+HTTP_UNAUTHORIZED: int = 401
 
 # The person-shaped Tasks doors have a third refusal shape: `400 actor_required`,
 # meaning "this credential is an organization with nobody to be". It is the same
@@ -614,6 +623,12 @@ class DailyBotClient:
             lambda: httpx.request(method, url, **kwargs), method=method
         )
 
+        if self._needs_refresh(response) and self._refresh_session():
+            kwargs["headers"] = self._agent_headers()
+            response = self._guard_transport(
+                lambda: httpx.request(method, url, **kwargs), method=method
+            )
+
         if _is_auth_retryable(response):
             alt: dict[str, str] | None = self._alt_auth_headers()
             if alt is not None:
@@ -684,6 +699,15 @@ class DailyBotClient:
 
         response: httpx.Response = self._dispatch_guarded(method, url, **kwargs)
 
+        if self._needs_refresh(response) and self._refresh_session():
+            replay_headers: dict[str, str] = self._headers()
+            if files is not None or content is not None:
+                replay_headers.pop("Content-Type", None)
+            if extra_headers:
+                replay_headers.update(extra_headers)
+            kwargs["headers"] = replay_headers
+            response = self._dispatch_guarded(method, url, **kwargs)
+
         if _is_auth_retryable(response) and not self._is_final_person_refusal(url, response):
             alt: dict[str, str] | None = self._alt_auth_headers()
             if alt is not None:
@@ -698,6 +722,67 @@ class DailyBotClient:
                 response = self._dispatch_guarded(method, url, **kwargs)
 
         return response
+
+    def _needs_refresh(self, response: httpx.Response) -> bool:
+        """A Bearer request refused with ``401 access_token_expired`` (and nothing else)."""
+        return (
+            response.status_code == HTTP_UNAUTHORIZED
+            and self._agent_auth_mode == "bearer"
+            and _json_field(response, "code") == ACCESS_TOKEN_EXPIRED_CODE
+        )
+
+    def _refresh_session(self) -> bool:
+        """Rotate the stored device-flow pair once; ``True`` when a new access is in hand.
+
+        Only the session ``dailybot login`` stored for this host refreshes: a legacy
+        token, a ``DAILYBOT_CLI_TOKEN`` and a pair issued by another host never do.
+        If another CLI process already rotated the file, its access is adopted
+        without a second refresh. On ``session_revoked`` the file is re-read once and
+        the refresh found there is tried if it differs (L36). Any other refusal
+        returns ``False``, so the caller keeps today's 401 handling. A transport
+        failure or a non-401 answer is raised instead: an infrastructure problem is
+        never a reason to fall back to another credential or to touch the session.
+        """
+        if os.environ.get("DAILYBOT_CLI_TOKEN"):
+            return False
+        refresh: str | None = get_refresh_token_for(self.api_url)
+        if not refresh:
+            return False
+        stored_access: str | None = get_login_token_for(self.api_url)
+        if stored_access and stored_access != self.token:
+            self.token = stored_access
+            return True
+        try:
+            pair: dict[str, Any] = self.refresh_token_pair(refresh)
+        except APIError as error:
+            if error.status_code != HTTP_UNAUTHORIZED:
+                raise
+            if error.code != SESSION_REVOKED_CODE:
+                return False
+            reread: str | None = get_refresh_token_for(self.api_url)
+            if not reread or reread == refresh:
+                return False
+            try:
+                pair = self.refresh_token_pair(reread)
+            except APIError as second:
+                if second.status_code != HTTP_UNAUTHORIZED:
+                    raise
+                return False
+        finally:
+            # The refresh door is unauthenticated; the replay is a Bearer request again.
+            self._agent_auth_mode = "bearer"
+        access: Any = pair.get("access")
+        new_refresh: Any = pair.get("refresh")
+        if not isinstance(access, str) or not access or not isinstance(new_refresh, str):
+            return False
+        update_token_pair(
+            access=access,
+            refresh=new_refresh,
+            expires_at=pair.get("expires_at"),
+            refresh_expires_at=pair.get("refresh_expires_at"),
+        )
+        self.token = access
+        return True
 
     def _is_final_person_refusal(self, url: str, response: httpx.Response) -> bool:
         """A Tasks door that refused the signed-in person keeps that answer.

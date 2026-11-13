@@ -30,6 +30,8 @@ The Dailybot CLI persists state in `~/.config/dailybot/` by default. The path ca
 
   Migration: none is needed. A legacy file keeps loading and authenticating unchanged, and `--email --code` still writes exactly the five legacy keys. The refresh token is bound to the issuing `api_url` like the access token (`get_refresh_token_for`), so it never travels to another host. An older CLI reading a device-session file uses the access token until it expires, then asks for `dailybot login` again.
 
+  Refresh lifecycle: the CLI refreshes a device-flow session only when a request is refused with `401 access_token_expired`. It rotates the pair once through `POST /v1/cli/auth/refresh/`, writes the new `token`, `refresh`, `expires_at` and `refresh_expires_at` in place (atomically, `0o600`), and replays the request once. The refresh token lasts 90 days from its last use and at most 365 days from the first sign-in; after that, `dailybot login --device` again. Details and failure handling: `docs/SECURITY.md` § Bearer Token Lifecycle.
+
 **`config.json`** — extended via `save_config({...})`. Setting a key to `None` removes it. Accessed only through `load_config()` / `save_config()` — never read directly elsewhere.
 
 **`agents.json`** — `default` points to a profile slug under `profiles`. Slugs are derived from the agent name via `_slugify` (lowercase, alphanumeric + hyphens). When `save_agent_profile` is called and `default` is unset, the new profile becomes the default automatically.

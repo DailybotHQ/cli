@@ -187,7 +187,16 @@ def update_token_pair(
             "refresh_expires_at": refresh_expires_at,
         }
     )
-    _write_secret_file(_credentials_path(), json.dumps(creds, indent=2))
+    # Atomic: a concurrent CLI process reads either the old pair or the new one,
+    # never a truncated file. The temporary file is 0o600 from its first byte.
+    target: Path = _credentials_path()
+    staging: Path = target.with_name(f"{target.name}.{os.getpid()}.tmp")
+    try:
+        _write_secret_file(staging, json.dumps(creds, indent=2))
+        os.replace(staging, target)
+    finally:
+        if staging.exists():
+            staging.unlink()
     return True
 
 
