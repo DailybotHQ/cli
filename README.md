@@ -154,6 +154,9 @@ Authenticate once with your Dailybot email, then submit updates, complete check-
 # Log in (interactive, email OTP)
 dailybot login
 
+# Or sign in through the browser: approve a short code at a Dailybot link
+dailybot login --device
+
 # See what check-ins are waiting for you
 dailybot status
 
@@ -622,6 +625,10 @@ dailybot config key=your-key
 dailybot login
 ```
 
+### Browser sign-in (`--device`)
+
+`dailybot login --device` prints a Dailybot link and a short code such as `BCDF-GHJK`. Open the link in any browser where you use Dailybot (it does not have to be on the same machine, so it works over SSH), check that the page shows the same code, and approve it. The CLI waits at the interval the server asks for and saves the session as soon as you approve. The session renews itself while you use the CLI, so you do not have to log in again every few hours. Denying the request in the browser, or letting the code expire (10 minutes), stops the command without changing your stored session. On a Dailybot server that does not offer browser sign-in yet, the command continues with the email code.
+
 ### Non-interactive login
 
 AI agents (e.g. Claude Code) and scripts can log in without interactive prompts using a two-step flow:
@@ -838,7 +845,7 @@ Replies to agent emails land as messages retrievable via `dailybot agent message
 
 | Command | Description |
 |---------|-------------|
-| `dailybot login` | Authenticate with email OTP |
+| `dailybot login` | Authenticate with email OTP, or in the browser with `--device` |
 | `dailybot logout` | Log out and revoke token |
 | `dailybot status` | Show pending check-ins and auth status |
 | `dailybot me` | Show the authenticated user and org context (`--include-email`, `--json`) |

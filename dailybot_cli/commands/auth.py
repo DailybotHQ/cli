@@ -7,6 +7,7 @@ import click
 import questionary
 
 from dailybot_cli.api_client import APIError, DailyBotClient
+from dailybot_cli.commands import _device_login
 from dailybot_cli.config import (
     RepoEnvError,
     clear_credentials,
@@ -278,7 +279,7 @@ def _verify_non_interactive(email: str, code: str, org_uuid: str | None) -> None
 
 
 @click.command()
-@click.option("--email", prompt="Email", help="Your Dailybot account email.")
+@click.option("--email", default=None, help="Your Dailybot account email (email-code sign-in).")
 @click.option(
     "--code",
     default=None,
@@ -291,9 +292,20 @@ def _verify_non_interactive(email: str, code: str, org_uuid: str | None) -> None
     type=str,
     help="Organization UUID to log in to (for multi-org accounts). Shown after requesting a code.",
 )
-@click.pass_context
-def login(ctx: click.Context, email: str, code: str | None, org_uuid: str | None) -> None:
-    """Authenticate with Dailybot via email OTP.
+@click.option(
+    "--device",
+    "use_device",
+    is_flag=True,
+    default=False,
+    help="Sign in through the browser: approve a short code at a Dailybot link. "
+    "Falls back to the email code on servers that do not offer it yet.",
+)
+def login(email: str | None, code: str | None, org_uuid: str | None, use_device: bool) -> None:
+    """Authenticate with Dailybot via email OTP, or in the browser with --device.
+
+    \b
+    Browser sign-in (prints a link and a code to approve; works over SSH):
+      dailybot login --device
 
     \b
     Non-interactive usage (for scripts and AI agents):
@@ -304,11 +316,27 @@ def login(ctx: click.Context, email: str, code: str | None, org_uuid: str | None
       Multi-org: pass --org with the UUID shown in step 1
         dailybot login --email=user@example.com --code=123456 --org=abc-123
     """
-    email_from_flag: bool = (
-        ctx.get_parameter_source("email") == click.core.ParameterSource.COMMANDLINE
-    )
+    if use_device and (code is not None or org_uuid is not None):
+        raise click.UsageError("--device cannot be combined with --code or --org.")
 
     _warn_if_env_json_redirects_login()
+
+    browser: bool = use_device or (
+        _device_login.DEVICE_LOGIN_IS_DEFAULT and email is None and code is None
+    )
+    if browser:
+        try:
+            _device_login.device_login(DailyBotClient())
+            return
+        except _device_login.DeviceFlowUnsupported:
+            print_info(
+                "This Dailybot server does not offer browser sign-in yet. "
+                "Continuing with an email code."
+            )
+
+    email_from_flag: bool = email is not None
+    if email is None:
+        email = click.prompt("Email", type=str)
 
     if code is not None:
         # Non-interactive step 2: verify code directly

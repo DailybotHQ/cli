@@ -44,6 +44,24 @@ def print_info(message: str) -> None:
     console.print(f"[dim]{escape(message)}[/dim]")
 
 
+def print_device_login_instructions(
+    verification_uri: str, user_code: str, verification_uri_complete: str | None = None
+) -> None:
+    """Show where to approve a browser (device-flow) sign-in and the code to compare.
+
+    The URL and code are server text: neutralized and escaped. The link is printed
+    for copying, never opened automatically, so a remote or headless shell works.
+    """
+    link: str = verification_uri_complete or verification_uri
+    console.print("To sign in, open this link in a browser where you use Dailybot:")
+    console.print(f"  [bold cyan]{safe_text(link)}[/bold cyan]")
+    console.print(
+        f"Check that the page shows the code [bold]{safe_text(user_code)}[/bold], then approve it."
+    )
+    if verification_uri_complete and verification_uri_complete != verification_uri:
+        print_info(f"Or open {plain_text(verification_uri)} and enter the code yourself.")
+
+
 def print_raw_value(value: str) -> None:
     """Print one bare value for a shell variable: no styling, no wrapping, stdout."""
     click.echo(value)
