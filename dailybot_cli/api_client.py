@@ -55,12 +55,22 @@ def user_agent() -> str:
     return f"{USER_AGENT_PRODUCT}/{__version__} (python/{python}; {os_name}; {method})"
 
 
+# Telemetry headers (DEVICE_FLOW_WIRE, W1): the server counts clients and versions
+# from them. They never affect authorization, throttling or responses, and they go
+# only to the Dailybot API (never to a presigned storage host).
+CLIENT_HEADER: str = "X-Dailybot-Client"
+CLIENT_VERSION_HEADER: str = "X-Dailybot-Client-Version"
+CLIENT_HEADER_VALUE: str = "cli"
+
+
 def _base_headers() -> dict[str, str]:
     """The headers every Dailybot API request carries, before any credential."""
     return {
         "Content-Type": "application/json",
         "Accept": "application/json",
         "User-Agent": user_agent(),
+        CLIENT_HEADER: CLIENT_HEADER_VALUE,
+        CLIENT_VERSION_HEADER: __version__,
     }
 
 
