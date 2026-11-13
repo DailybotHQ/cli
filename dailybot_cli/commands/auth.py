@@ -15,7 +15,9 @@ from dailybot_cli.config import (
     get_active_env_profile,
     get_api_key,
     get_api_url,
+    get_refresh_token_for,
     get_token,
+    is_access_token_expired,
     load_credentials,
     load_org_cache,
     login_token_origin_url,
@@ -370,23 +372,34 @@ def logout() -> None:
     # Revoke every session this invocation knows: a DAILYBOT_CLI_TOKEN on the
     # current API (the caller's explicit session), and a stored login on the
     # host that issued it. Best-effort each; local credentials are cleared after.
-    targets: list[tuple[str, str]] = []
+    # A device-flow pair is revoked as a whole family: with the Bearer access, or
+    # with the refresh token alone once the access has expired.
+    targets: list[tuple[str, str, str | None]] = []
     env_token: str | None = os.environ.get("DAILYBOT_CLI_TOKEN")
     if env_token:
-        targets.append((get_api_url(), env_token))
+        targets.append((get_api_url(), env_token, None))
     stored: dict[str, Any] | None = load_credentials()
     if stored and stored.get("token"):
-        targets.append((login_token_origin_url(), str(stored["token"])))
+        origin: str = login_token_origin_url()
+        targets.append((origin, str(stored["token"]), get_refresh_token_for(origin)))
     if not targets:
-        targets.append((login_token_origin_url(), token))
-    for api_url, session_token in targets:
+        targets.append((login_token_origin_url(), token, None))
+    access_expired: bool = is_access_token_expired()
+    unrevoked_pair: bool = False
+    for api_url, session_token, refresh in targets:
         client: DailyBotClient = DailyBotClient(api_url=api_url, token=session_token)
         client.api_key = None
         try:
             with console.status("Logging out..."):
-                client.logout()
+                client.logout(refresh=refresh, access_expired=access_expired and bool(refresh))
         except APIError:
-            pass  # Revoke best-effort; clear local credentials regardless
+            # Revoke best-effort; clear local credentials regardless
+            unrevoked_pair = unrevoked_pair or bool(refresh)
 
     clear_credentials()
+    if unrevoked_pair:
+        print_warning(
+            "Could not revoke the session on the server; it stays valid there until it "
+            "expires. The local credentials were removed."
+        )
     print_success("Logged out.")

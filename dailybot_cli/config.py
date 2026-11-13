@@ -2,6 +2,7 @@
 
 import json
 import os
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 from urllib.parse import SplitResult, urlsplit
@@ -314,6 +315,25 @@ def get_login_token_for(api_url: str) -> str | None:
         return None
     token: Any = creds.get("token")
     return str(token) if token else None
+
+
+def is_access_token_expired(now: datetime | None = None) -> bool:
+    """Whether a device-flow session's stored ``expires_at`` is already in the past.
+
+    ``False`` for a legacy session, a missing or unreadable date: only a known
+    expiry counts, and the server's answer stays authoritative either way.
+    """
+    creds: dict[str, Any] | None = load_credentials()
+    raw: Any = (creds or {}).get("expires_at")
+    if not isinstance(raw, str) or not raw:
+        return False
+    try:
+        expires: datetime = datetime.fromisoformat(raw.replace("Z", "+00:00"))
+    except ValueError:
+        return False
+    if expires.tzinfo is None:
+        expires = expires.replace(tzinfo=timezone.utc)
+    return expires <= (now or datetime.now(timezone.utc))
 
 
 def get_refresh_token_for(api_url: str) -> str | None:

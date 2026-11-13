@@ -1214,17 +1214,44 @@ class DailyBotClient:
         response: httpx.Response = self._request("GET", f"{self.api_url}/v1/cli/auth/status/")
         return self._handle_response(response)
 
-    def logout(self) -> dict[str, Any]:
+    def logout(self, refresh: str | None = None, *, access_expired: bool = False) -> dict[str, Any]:
         """POST /v1/cli/auth/logout/
 
         Uses ``_headers`` directly (no fallback) because logout is a
         Bearer-only lifecycle operation — retrying with an API key would
         neither succeed nor be semantically meaningful.
+
+        For a device-flow pair (``refresh`` given) the Bearer form revokes the whole
+        family. When the access token has expired (``access_expired``, or the server
+        answers ``401 access_token_expired``) the unauthenticated ``{"refresh": ...}``
+        body form revokes it instead, without a refresh round-trip. Without
+        ``refresh`` this is today's call, byte for byte.
         """
+        if refresh and access_expired:
+            return self._logout_with_refresh(refresh)
         response: httpx.Response = self._guard_transport(
             lambda: httpx.post(
                 f"{self.api_url}/v1/cli/auth/logout/",
                 headers=self._headers(),
+                timeout=self.timeout,
+            ),
+            method="POST",
+        )
+        if (
+            refresh
+            and response.status_code == HTTP_UNAUTHORIZED
+            and _json_field(response, "code") == ACCESS_TOKEN_EXPIRED_CODE
+        ):
+            return self._logout_with_refresh(refresh)
+        return self._handle_response(response)
+
+    def _logout_with_refresh(self, refresh: str) -> dict[str, Any]:
+        """The unauthenticated logout form: the refresh token in the body is the proof."""
+        response: httpx.Response = self._guard_transport(
+            lambda: httpx.post(
+                f"{self.api_url}/v1/cli/auth/logout/",
+                json={"refresh": refresh},
+                headers=self._headers(authenticated=False),
                 timeout=self.timeout,
             ),
             method="POST",
