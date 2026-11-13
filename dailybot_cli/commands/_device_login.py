@@ -10,7 +10,7 @@ import time
 from typing import Any
 
 from dailybot_cli.api_client import APIError, DailyBotClient, TransportError
-from dailybot_cli.config import save_credentials, save_org_plan
+from dailybot_cli.config import save_credentials, save_org_plan, text_or_none
 from dailybot_cli.display import (
     console,
     print_device_login_instructions,
@@ -127,8 +127,8 @@ def _save_pair(client: DailyBotClient, token: dict[str, Any]) -> tuple[str, str]
         organization_uuid=org_uuid,
         api_url=client.api_url,
         refresh=refresh,
-        expires_at=token.get("expires_at"),
-        refresh_expires_at=token.get("refresh_expires_at"),
+        expires_at=text_or_none(token.get("expires_at")),
+        refresh_expires_at=text_or_none(token.get("refresh_expires_at")),
     )
     plan: Any = org.get("plan")
     tier: Any = None

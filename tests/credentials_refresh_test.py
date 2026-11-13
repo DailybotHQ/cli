@@ -347,3 +347,50 @@ def test_tokens_never_reach_an_error_message() -> None:
     for secret in (OLD_ACCESS, OLD_REFRESH):
         assert secret not in str(caught.value)
         assert secret not in caught.value.detail
+
+
+class TestReviewFixes:
+    """AI review round 1 on PR 145 (fp=077b35cf, fp=402bf40b)."""
+
+    @pytest.mark.parametrize("field", ["access", "refresh"])
+    def test_an_empty_token_in_the_refresh_answer_is_rejected(
+        self, field: str, _isolated_environment: Path
+    ) -> None:
+        _save_pair()
+        broken: MagicMock = fixture_response("refresh_success_200")
+        body: dict[str, Any] = dict(broken.json.return_value)
+        body[field] = ""
+        broken.json.return_value = body
+        client: DailyBotClient = DailyBotClient(api_url=API)
+        with (
+            patch(
+                "dailybot_cli.api_client.httpx.get",
+                return_value=fixture_response("bearer_access_token_expired_401"),
+            ) as get,
+            patch("dailybot_cli.api_client.httpx.post", return_value=broken),
+            pytest.raises(APIError),
+        ):
+            client.get_status()
+        assert get.call_count == 1  # no replay with a broken pair
+        creds: dict[str, Any] | None = load_credentials()
+        assert creds is not None
+        assert creds["token"] == OLD_ACCESS and creds["refresh"] == OLD_REFRESH
+
+    def test_a_pair_that_cannot_be_persisted_is_not_used(self) -> None:
+        _save_pair()
+        client: DailyBotClient = DailyBotClient(api_url=API)
+        with (
+            patch(
+                "dailybot_cli.api_client.httpx.get",
+                return_value=fixture_response("bearer_access_token_expired_401"),
+            ) as get,
+            patch(
+                "dailybot_cli.api_client.httpx.post",
+                return_value=fixture_response("refresh_success_200"),
+            ),
+            patch("dailybot_cli.api_client.update_token_pair", return_value=False),
+            pytest.raises(APIError),
+        ):
+            client.get_status()
+        assert get.call_count == 1
+        assert client.token == OLD_ACCESS

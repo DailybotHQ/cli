@@ -24,6 +24,7 @@ from dailybot_cli.config import (
     get_api_url,
     get_login_token_for,
     get_refresh_token_for,
+    text_or_none,
     update_token_pair,
 )
 from dailybot_cli.install_method import detect_install_method
@@ -813,16 +814,21 @@ class DailyBotClient:
         finally:
             # The refresh door is unauthenticated; the replay is a Bearer request again.
             self._agent_auth_mode = "bearer"
-        access: Any = pair.get("access")
-        new_refresh: Any = pair.get("refresh")
-        if not isinstance(access, str) or not access or not isinstance(new_refresh, str):
+        # Same bar as login's `_save_pair`: an empty token never replaces a working one.
+        access: str | None = text_or_none(pair.get("access"))
+        new_refresh: str | None = text_or_none(pair.get("refresh"))
+        if access is None or new_refresh is None:
             return False
-        update_token_pair(
+        persisted: bool = update_token_pair(
             access=access,
             refresh=new_refresh,
-            expires_at=pair.get("expires_at"),
-            refresh_expires_at=pair.get("refresh_expires_at"),
+            expires_at=text_or_none(pair.get("expires_at")),
+            refresh_expires_at=text_or_none(pair.get("refresh_expires_at")),
         )
+        if not persisted:
+            # The session file vanished mid-refresh (a logout elsewhere): do not keep
+            # using a pair that exists only in this process.
+            return False
         self.token = access
         return True
 

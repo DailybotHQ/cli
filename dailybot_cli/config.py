@@ -120,6 +120,15 @@ def load_credentials() -> dict[str, Any] | None:
         return None
 
 
+def text_or_none(value: Any) -> str | None:
+    """A non-empty string as is; anything else (a number, an object, "") as ``None``.
+
+    Server-sent expiries are stored only in the shape their readers expect, so
+    :func:`is_access_token_expired` never meets a number or an object.
+    """
+    return value if isinstance(value, str) and value else None
+
+
 AUTH_METHOD_DEVICE: str = "device"
 """``credentials.json::auth_method`` for a device-flow session (access + refresh pair).
 
@@ -137,8 +146,8 @@ def save_credentials(
     api_url: str = DEFAULT_API_URL,
     *,
     refresh: str | None = None,
-    expires_at: str | None = None,
-    refresh_expires_at: str | None = None,
+    expires_at: Any = None,
+    refresh_expires_at: Any = None,
 ) -> None:
     """Save credentials to disk.
 
@@ -159,8 +168,8 @@ def save_credentials(
             {
                 "auth_method": AUTH_METHOD_DEVICE,
                 "refresh": refresh,
-                "expires_at": expires_at,
-                "refresh_expires_at": refresh_expires_at,
+                "expires_at": text_or_none(expires_at),
+                "refresh_expires_at": text_or_none(refresh_expires_at),
             }
         )
     _write_secret_file(creds_path, json.dumps(data, indent=2))
@@ -169,8 +178,8 @@ def save_credentials(
 def update_token_pair(
     access: str,
     refresh: str,
-    expires_at: str | None,
-    refresh_expires_at: str | None = None,
+    expires_at: Any,
+    refresh_expires_at: Any = None,
 ) -> bool:
     """Replace the stored access/refresh pair after a rotation, keeping every other key.
 
@@ -184,8 +193,8 @@ def update_token_pair(
             "token": access,
             "auth_method": AUTH_METHOD_DEVICE,
             "refresh": refresh,
-            "expires_at": expires_at,
-            "refresh_expires_at": refresh_expires_at,
+            "expires_at": text_or_none(expires_at),
+            "refresh_expires_at": text_or_none(refresh_expires_at),
         }
     )
     # Atomic: a concurrent CLI process reads either the old pair or the new one,

@@ -307,3 +307,88 @@ def test_a_legacy_login_still_writes_exactly_the_legacy_keys(
     assert result.exit_code == 0, result.output
     raw: dict[str, Any] = json.loads(_credentials_file(_isolated_environment).read_text())
     assert set(raw) == {"token", "email", "organization", "organization_uuid", "api_url"}
+
+
+@pytest.mark.parametrize("bad", [123, {"at": "x"}, ""])
+def test_device_login_stores_expiries_only_as_strings(
+    runner: CliRunner, sleeps: MagicMock, bad: Any, _isolated_environment: Path
+) -> None:
+    token: MagicMock = fixture_response("device_token_success_200")
+    body: dict[str, Any] = dict(token.json.return_value)
+    body["expires_at"] = bad
+    body["refresh_expires_at"] = bad
+    token.json.return_value = body
+    with patch(POST, side_effect=[fixture_response("device_start_200"), token]):
+        result: Result = _login(runner)
+    assert result.exit_code == 0, result.output
+    raw: dict[str, Any] = json.loads(_credentials_file(_isolated_environment).read_text())
+    assert raw["expires_at"] is None and raw["refresh_expires_at"] is None
+
+
+class TestInteractiveFollowsTheDefault:
+    """AI review fp=ef8269f2: the TUI login takes the same branch as `dailybot login`."""
+
+    @patch("dailybot_cli.commands.interactive.questionary")
+    @patch("dailybot_cli.commands.interactive._do_login")
+    @patch("dailybot_cli.commands.interactive.load_credentials")
+    @patch("dailybot_cli.commands.interactive.get_token", return_value=None)
+    def test_off_prompts_for_the_email_code(
+        self,
+        _token: MagicMock,
+        load_creds: MagicMock,
+        do_login: MagicMock,
+        tui: MagicMock,
+        runner: CliRunner,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        monkeypatch.setattr(_device_login, "DEVICE_LOGIN_IS_DEFAULT", False)
+        load_creds.side_effect = [None, {"token": "t", "email": "e", "organization": "o"}]
+        tui.select.return_value.ask.return_value = "exit"
+        with patch("dailybot_cli.commands.interactive._device_login.device_login") as device:
+            runner.invoke(cli, [], input="me@example.com\n")
+        do_login.assert_called_once_with("me@example.com")
+        device.assert_not_called()
+
+    @patch("dailybot_cli.commands.interactive.questionary")
+    @patch("dailybot_cli.commands.interactive._do_login")
+    @patch("dailybot_cli.commands.interactive.load_credentials")
+    @patch("dailybot_cli.commands.interactive.get_token", return_value=None)
+    def test_on_starts_the_browser_sign_in(
+        self,
+        _token: MagicMock,
+        load_creds: MagicMock,
+        do_login: MagicMock,
+        tui: MagicMock,
+        runner: CliRunner,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        monkeypatch.setattr(_device_login, "DEVICE_LOGIN_IS_DEFAULT", True)
+        load_creds.side_effect = [None, {"token": "t", "email": "e", "organization": "o"}]
+        tui.select.return_value.ask.return_value = "exit"
+        with patch("dailybot_cli.commands.interactive._device_login.device_login") as device:
+            runner.invoke(cli, [])
+        device.assert_called_once()
+        do_login.assert_not_called()
+
+    @patch("dailybot_cli.commands.interactive.questionary")
+    @patch("dailybot_cli.commands.interactive._do_login")
+    @patch("dailybot_cli.commands.interactive.load_credentials")
+    @patch("dailybot_cli.commands.interactive.get_token", return_value=None)
+    def test_on_falls_back_to_the_email_code_on_an_older_server(
+        self,
+        _token: MagicMock,
+        load_creds: MagicMock,
+        do_login: MagicMock,
+        tui: MagicMock,
+        runner: CliRunner,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        monkeypatch.setattr(_device_login, "DEVICE_LOGIN_IS_DEFAULT", True)
+        load_creds.side_effect = [None, {"token": "t", "email": "e", "organization": "o"}]
+        tui.select.return_value.ask.return_value = "exit"
+        with patch(
+            "dailybot_cli.commands.interactive._device_login.device_login",
+            side_effect=_device_login.DeviceFlowUnsupported,
+        ):
+            runner.invoke(cli, [], input="me@example.com\n")
+        do_login.assert_called_once_with("me@example.com")

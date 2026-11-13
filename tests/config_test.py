@@ -426,3 +426,33 @@ def test_rotating_the_pair_replaces_the_file_atomically(
     assert sorted(p.name for p in tmp_config.iterdir() if p.name.startswith("credentials")) == [
         "credentials.json"
     ]
+
+
+@pytest.mark.parametrize("bad", [123, 1.5, {"at": "x"}, ["x"], "", True])
+def test_expiry_fields_are_stored_only_as_non_empty_strings(tmp_config: Path, bad: Any) -> None:
+    """AI review fp=f2766c72 / fp=dbaf3967: never a number or object in credentials.json."""
+    from dailybot_cli.config import update_token_pair
+
+    save_credentials(
+        token="dbc_at_a",
+        email="e",
+        organization="o",
+        organization_uuid="u",
+        refresh="dbc_rt_a",
+        expires_at=bad,
+        refresh_expires_at=bad,
+    )
+    raw: dict[str, Any] = json.loads((tmp_config / "credentials.json").read_text())
+    assert raw["expires_at"] is None and raw["refresh_expires_at"] is None
+    update_token_pair(access="dbc_at_b", refresh="dbc_rt_b", expires_at=bad, refresh_expires_at=bad)
+    raw = json.loads((tmp_config / "credentials.json").read_text())
+    assert raw["expires_at"] is None and raw["refresh_expires_at"] is None
+    update_token_pair(
+        access="dbc_at_c",
+        refresh="dbc_rt_c",
+        expires_at="2030-01-01T00:00:00Z",
+        refresh_expires_at="2030-04-01T00:00:00Z",
+    )
+    raw = json.loads((tmp_config / "credentials.json").read_text())
+    assert raw["expires_at"] == "2030-01-01T00:00:00Z"
+    assert raw["refresh_expires_at"] == "2030-04-01T00:00:00Z"

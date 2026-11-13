@@ -216,3 +216,14 @@ class TestTasksResolver:
         client: MagicMock = self._client("organization_legacy_200", [])
         with pytest.raises(click.UsageError):
             resolve_channel(client, "slack:C0")
+
+
+def test_resolve_channel_refuses_dailybot_like_chat_send() -> None:
+    """AI review fp=d08a1001: routes, reports and notifications refuse `dailybot:` too."""
+    client: MagicMock = _org_client("organization_native_200")
+    with pytest.raises(click.UsageError) as from_resolver:
+        resolve_channel(client, "dailybot:C1")
+    with pytest.raises(click.UsageError) as from_chat:
+        check_chat_channel_references(client, {"target_channels": ["dailybot:C1"]})
+    assert from_resolver.value.message == from_chat.value.message
+    client.search_channels.assert_not_called()

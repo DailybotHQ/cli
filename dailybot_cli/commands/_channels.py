@@ -85,6 +85,13 @@ def _qualified_refused(reference: ChannelReference) -> click.UsageError:
     )
 
 
+def _dailybot_refused() -> click.UsageError:
+    return click.UsageError(
+        "`dailybot:` is not a chat send destination: messages are never delivered to "
+        "Dailybot Chat. Target a channel on a connected chat platform (see `dailybot org`)."
+    )
+
+
 def check_chat_channel_references(client: Any, payload: dict[str, Any]) -> None:
     """Validate the `target_channels` of a chat send payload against the grammar.
 
@@ -103,10 +110,7 @@ def check_chat_channel_references(client: Any, payload: dict[str, Any]) -> None:
             references.append(parse_channel_reference(raw))
     for reference in references:
         if reference.kind == "dailybot":
-            raise click.UsageError(
-                "`dailybot:` is not a chat send destination: messages are never delivered to "
-                "Dailybot Chat. Target a channel on a connected chat platform (see `dailybot org`)."
-            )
+            raise _dailybot_refused()
     qualified: list[ChannelReference] = [r for r in references if r.is_qualified]
     if qualified and _org_serves_chat_platforms(client) is False:
         raise _qualified_refused(qualified[0])
@@ -125,6 +129,8 @@ def resolve_channel(client: Any, reference: str, *, public_only: bool = False) -
     wanted: str = reference.strip()
     channel_type: str | None = PUBLIC_CHANNEL_TYPE if public_only else None
     parsed: ChannelReference = parse_channel_reference(wanted)
+    if parsed.kind == "dailybot":
+        raise _dailybot_refused()
     if parsed.is_qualified:
         return _resolve_qualified(client, parsed, channel_type)
 
