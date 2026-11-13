@@ -62,11 +62,25 @@ def _warn_if_env_json_redirects_login() -> None:
         )
 
 
+STANDALONE_ORG_HINT: str = " (Dailybot)"
+
+
+def org_choice_label(org: dict[str, Any]) -> str:
+    """An org's name in a picker, marking a standalone Dailybot organization.
+
+    The frozen marker is ``standalone: true`` (W2), never ``platform == "dailybot"``
+    alone: agent organizations are ``dailybot`` too and are not standalone. It tells
+    apart a Slack workspace and the standalone organization that share a name.
+    """
+    name: str = str(org.get("name", "Unknown"))
+    return f"{name}{STANDALONE_ORG_HINT}" if org.get("standalone") is True else name
+
+
 def _prompt_org_selection_numbered(organizations: list[dict[str, Any]]) -> dict[str, Any]:
     """Numbered org picker — fallback when questionary TUI is unavailable."""
     print_info("You belong to multiple organizations. Select one by number:")
     for index, org in enumerate(organizations, start=1):
-        org_name: str = org.get("name", "Unknown")
+        org_name: str = org_choice_label(org)
         org_uuid: str = org.get("uuid", "")
         click.echo(f"  {index}. {org_name} (uuid: {org_uuid})")
 
@@ -80,7 +94,7 @@ def _prompt_org_selection_numbered(organizations: list[dict[str, Any]]) -> dict[
 def _prompt_org_selection(organizations: list[dict[str, Any]]) -> dict[str, Any]:
     """Display orgs and prompt the user to pick one."""
     choices: list[questionary.Choice] = [
-        questionary.Choice(title=org.get("name", "Unknown"), value=org) for org in organizations
+        questionary.Choice(title=org_choice_label(org), value=org) for org in organizations
     ]
     selected: dict[str, Any] | None = questionary.select(
         "You belong to multiple organizations. Select one:",
