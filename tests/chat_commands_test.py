@@ -1,13 +1,17 @@
 """Tests for the `dailybot chat` command group and payload builder."""
 
+import json
+from typing import Any
 from unittest.mock import MagicMock, patch
 
 import pytest
 from click.testing import CliRunner
 
-from dailybot_cli.api_client import APIError
+from dailybot_cli.api_client import APIError, DailyBotClient
 from dailybot_cli.commands.chat import ChatPayloadError, build_chat_payload
+from dailybot_cli.commands.public_api_helpers import ERROR_CODE_MESSAGES, EXIT_USAGE_ERROR
 from dailybot_cli.main import cli
+from tests.wire_fixture_loader import fixture_response
 
 
 @pytest.fixture
@@ -544,3 +548,57 @@ class TestSendAsUser:
         # (chat send overrides it with the --send-as-user hint at the call site).
         assert "admin" in ERROR_CODE_MESSAGES["org_admin_required"].lower()
         assert "send_as_user_not_found" in ERROR_CODE_MESSAGES
+
+
+class TestPlatformNotConnected:
+    """PLAN_002 T-chat-not-connected: a Dailybot-only org never gets a silent Dailybot Chat delivery."""
+
+    @staticmethod
+    def _real_client(mock_resolve: MagicMock) -> DailyBotClient:
+        client: DailyBotClient = DailyBotClient(
+            api_url="https://api.example.com", api_key="test-key"
+        )
+        mock_resolve.return_value = ("CLI Agent", client, {})
+        return client
+
+    @patch("dailybot_cli.commands.chat._resolve_agent_context")
+    def test_platform_not_connected_renders_the_catalogue_message(
+        self, mock_resolve: MagicMock, runner: CliRunner
+    ) -> None:
+        self._real_client(mock_resolve)
+        with patch(
+            "dailybot_cli.api_client.httpx.request",
+            return_value=fixture_response("send_message_platform_not_connected_400"),
+        ):
+            result = runner.invoke(cli, ["chat", "send", "-c", "C0", "-m", "Deploy done"])
+        assert result.exit_code == EXIT_USAGE_ERROR
+        assert ERROR_CODE_MESSAGES["platform_not_connected"] in " ".join(result.output.split())
+
+    @patch("dailybot_cli.commands.chat._resolve_agent_context")
+    def test_platform_not_connected_sends_exactly_the_users_targets_once(
+        self, mock_resolve: MagicMock, runner: CliRunner
+    ) -> None:
+        self._real_client(mock_resolve)
+        with patch(
+            "dailybot_cli.api_client.httpx.request",
+            return_value=fixture_response("send_message_platform_not_connected_400"),
+        ) as request:
+            runner.invoke(cli, ["chat", "send", "-c", "C0", "-u", "me@example.com", "-m", "hi"])
+        assert request.call_count == 1
+        body: dict[str, Any] = request.call_args.kwargs["json"]
+        assert body["target_channels"] == ["C0"]
+        assert body["target_users"] == ["me@example.com"]
+        assert "dailybot" not in json.dumps(body).lower()
+
+    @patch("dailybot_cli.commands.chat._resolve_agent_context")
+    def test_platform_not_connected_in_json_mode_keeps_the_code(
+        self, mock_resolve: MagicMock, runner: CliRunner
+    ) -> None:
+        self._real_client(mock_resolve)
+        with patch(
+            "dailybot_cli.api_client.httpx.request",
+            return_value=fixture_response("send_message_platform_not_connected_400"),
+        ):
+            result = runner.invoke(cli, ["chat", "send", "-c", "C0", "-m", "hi", "--json"])
+        assert result.exit_code == EXIT_USAGE_ERROR
+        assert json.loads(result.output)["code"] == "platform_not_connected"

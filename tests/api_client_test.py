@@ -6,7 +6,15 @@ from unittest.mock import MagicMock, patch
 import httpx
 import pytest
 
-from dailybot_cli.api_client import APIError, DailyBotClient
+from dailybot_cli import __version__
+from dailybot_cli.api_client import (
+    DEVICE_CLIENT_ID,
+    DEVICE_GRANT_TYPE,
+    APIError,
+    DailyBotClient,
+    TransportError,
+)
+from tests.wire_fixture_loader import fixture_body, fixture_response
 
 
 @pytest.fixture
@@ -2208,3 +2216,164 @@ class TestErrorCodesAndRateLimits:
         assert send.call_count == 2
         assert sleep.call_count == 1
         assert out.status_code == 200
+
+
+# --- PLAN_002 T-device-client: device-flow doors against the recorded fixtures ---
+
+DEVICE_API: str = "https://api.example.com"
+
+
+@pytest.fixture
+def device_client() -> DailyBotClient:
+    return DailyBotClient(api_url=DEVICE_API, token="dbc_at_existing", api_key="test-key")
+
+
+class TestDeviceStartAuthorization:
+    def test_the_frozen_request_without_credentials(self, device_client: DailyBotClient) -> None:
+        with patch(
+            "dailybot_cli.api_client.httpx.post", return_value=fixture_response("device_start_200")
+        ) as post:
+            result: dict[str, Any] = device_client.start_device_authorization()
+        assert result == fixture_body("device_start_200")
+        url: str = post.call_args.args[0]
+        assert url == f"{DEVICE_API}/v1/cli/auth/device/"
+        assert post.call_args.kwargs["json"] == {
+            "client_id": "dailybot-cli",
+            "client_version": __version__,
+        }
+        headers: dict[str, str] = post.call_args.kwargs["headers"]
+        assert "Authorization" not in headers
+        assert "X-API-KEY" not in headers
+
+    @pytest.mark.parametrize(
+        "name,status",
+        [("device_start_not_found_404", 404), ("device_start_method_not_allowed_405", 405)],
+    )
+    def test_an_old_server_surfaces_its_status(
+        self, device_client: DailyBotClient, name: str, status: int
+    ) -> None:
+        with (
+            patch("dailybot_cli.api_client.httpx.post", return_value=fixture_response(name)),
+            pytest.raises(APIError) as caught,
+        ):
+            device_client.start_device_authorization()
+        assert caught.value.status_code == status
+
+    def test_invalid_client(self, device_client: DailyBotClient) -> None:
+        with (
+            patch(
+                "dailybot_cli.api_client.httpx.post",
+                return_value=fixture_response("device_start_invalid_client_400"),
+            ),
+            pytest.raises(APIError) as caught,
+        ):
+            device_client.start_device_authorization()
+        assert caught.value.code == "invalid_client"
+
+
+class TestPollDeviceToken:
+    def test_the_frozen_request_without_credentials(self, device_client: DailyBotClient) -> None:
+        with patch(
+            "dailybot_cli.api_client.httpx.post",
+            return_value=fixture_response("device_token_success_200"),
+        ) as post:
+            result: dict[str, Any] = device_client.poll_device_token("the-device-code")
+        assert result == fixture_body("device_token_success_200")
+        assert post.call_args.args[0] == f"{DEVICE_API}/v1/cli/auth/device/token/"
+        assert post.call_args.kwargs["json"] == {
+            "grant_type": "urn:ietf:params:oauth:grant-type:device_code",
+            "device_code": "the-device-code",
+            "client_id": "dailybot-cli",
+        }
+        headers: dict[str, str] = post.call_args.kwargs["headers"]
+        assert "Authorization" not in headers
+        assert "X-API-KEY" not in headers
+
+    @pytest.mark.parametrize(
+        "code",
+        [
+            "authorization_pending",
+            "slow_down",
+            "access_denied",
+            "expired_token",
+            "invalid_grant",
+            "invalid_client",
+        ],
+    )
+    def test_each_state_is_its_code_and_never_an_auth_retry(
+        self, device_client: DailyBotClient, code: str
+    ) -> None:
+        with (
+            patch(
+                "dailybot_cli.api_client.httpx.post",
+                return_value=fixture_response(f"device_token_{code}_400"),
+            ) as post,
+            pytest.raises(APIError) as caught,
+        ):
+            device_client.poll_device_token("the-device-code")
+        assert caught.value.code == code
+        assert caught.value.status_code == 400
+        assert post.call_count == 1
+
+    def test_slow_down_carries_the_new_interval(self, device_client: DailyBotClient) -> None:
+        with (
+            patch(
+                "dailybot_cli.api_client.httpx.post",
+                return_value=fixture_response("device_token_slow_down_400"),
+            ),
+            pytest.raises(APIError) as caught,
+        ):
+            device_client.poll_device_token("the-device-code")
+        assert caught.value.extra["interval"] == 10
+
+    def test_a_timeout_does_not_say_the_code_is_spent(self, device_client: DailyBotClient) -> None:
+        with (
+            patch("dailybot_cli.api_client.httpx.post", side_effect=httpx.ReadTimeout("slow")),
+            pytest.raises(TransportError) as caught,
+        ):
+            device_client.poll_device_token("the-device-code")
+        assert "again" in str(caught.value).lower()
+
+
+class TestDeviceRefreshTokenPair:
+    def test_the_frozen_request_without_credentials(self, device_client: DailyBotClient) -> None:
+        with patch(
+            "dailybot_cli.api_client.httpx.post",
+            return_value=fixture_response("refresh_success_200"),
+        ) as post:
+            result: dict[str, Any] = device_client.refresh_token_pair("dbc_rt_old")
+        assert result == fixture_body("refresh_success_200")
+        assert post.call_args.args[0] == f"{DEVICE_API}/v1/cli/auth/refresh/"
+        assert post.call_args.kwargs["json"] == {"refresh": "dbc_rt_old"}
+        headers: dict[str, str] = post.call_args.kwargs["headers"]
+        assert "Authorization" not in headers
+        assert "X-API-KEY" not in headers
+
+    @pytest.mark.parametrize("code", ["session_revoked", "refresh_token_expired", "user_disabled"])
+    def test_failures_keep_their_code(self, device_client: DailyBotClient, code: str) -> None:
+        with (
+            patch(
+                "dailybot_cli.api_client.httpx.post",
+                return_value=fixture_response(f"refresh_{code}_401"),
+            ) as post,
+            pytest.raises(APIError) as caught,
+        ):
+            device_client.refresh_token_pair("dbc_rt_old")
+        assert caught.value.code == code
+        assert post.call_count == 1
+
+
+def test_device_constants_are_the_frozen_values() -> None:
+    assert DEVICE_CLIENT_ID == "dailybot-cli"
+    assert DEVICE_GRANT_TYPE == "urn:ietf:params:oauth:grant-type:device_code"
+
+
+def test_device_refresh_tokens_never_reach_the_error_text(device_client: DailyBotClient) -> None:
+    response: MagicMock = fixture_response("refresh_session_revoked_401")
+    with (
+        patch("dailybot_cli.api_client.httpx.post", return_value=response),
+        pytest.raises(APIError) as caught,
+    ):
+        device_client.refresh_token_pair("dbc_rt_secret-value")
+    assert "dbc_rt_secret-value" not in str(caught.value)
+    assert "dbc_rt_secret-value" not in caught.value.detail

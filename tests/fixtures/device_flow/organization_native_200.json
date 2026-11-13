@@ -1,0 +1,49 @@
+{
+  "door": "GET /v1/organization/",
+  "status": 200,
+  "headers": {},
+  "body": {
+    "uuid": "00000000-0000-4000-8000-000000000002",
+    "name": "My Team",
+    "timezone": "UTC",
+    "image": null,
+    "platform": "dailybot",
+    "chat_platform_data": {},
+    "supported_domains": [],
+    "has_email_password_enabled": false,
+    "has_external_chat_platform": false,
+    "primary_chat_platform": {
+      "id": "00000000-0000-4000-8000-000000000020",
+      "platform": "dailybot",
+      "display_name": "My Team",
+      "organization_external_id": null,
+      "is_primary": true,
+      "status": "connected",
+      "capabilities": {
+        "directory": true,
+        "reporting": true,
+        "direct_messages": true
+      }
+    },
+    "chat_platforms": [
+      {
+        "id": "00000000-0000-4000-8000-000000000020",
+        "platform": "dailybot",
+        "display_name": "My Team",
+        "organization_external_id": null,
+        "is_primary": true,
+        "status": "connected",
+        "capabilities": {
+          "directory": true,
+          "reporting": true,
+          "direct_messages": true
+        }
+      }
+    ],
+    "plan": {
+      "tier": "free",
+      "effective_tier": "free",
+      "is_trial": false
+    }
+  }
+}

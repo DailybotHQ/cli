@@ -2,14 +2,28 @@
 
 import json
 import re
+import time
 from collections.abc import Callable
 from typing import Any, NoReturn
 
 import click
 import questionary
 
-from dailybot_cli.api_client import APIError, DailyBotClient
-from dailybot_cli.config import get_agent_auth, get_org_plan, get_person_token, load_credentials
+from dailybot_cli.api_client import (
+    AUTH_BACKEND_UNAVAILABLE_CODE,
+    APIError,
+    DailyBotClient,
+    TransportError,
+)
+from dailybot_cli.config import (
+    get_agent_auth,
+    get_org_plan,
+    get_org_plan_refreshed_at,
+    get_person_token,
+    load_credentials,
+    mark_org_plan_refreshed,
+    save_org_plan,
+)
 from dailybot_cli.display import error_console, print_error, print_info
 
 # Plan tiers the server treats as "free" (matched case-insensitively). Kept
@@ -52,6 +66,78 @@ EXIT_USER_ABORTED: int = 7
 # Server-side error codes from {detail, code} responses. Kept here so command
 # handlers and tests share a single source of truth.
 ERROR_CODE_MESSAGES: dict[str, str] = {
+    # --- Sessions (PLAN_002, CONTRACT_SESSION §7) -----------------------------
+    AUTH_BACKEND_UNAVAILABLE_CODE: (
+        "Dailybot sign-in is temporarily unavailable. Your session is fine; try again in a moment."
+    ),
+    "session_revoked": (
+        "Your Dailybot session was signed out (a logout elsewhere, or it was revoked). "
+        "Run `dailybot login` to sign in again."
+    ),
+    "session_migrated": (
+        "Your Dailybot session was replaced by a newer sign-in. "
+        "Run `dailybot login` to sign in again."
+    ),
+    "refresh_token_expired": (
+        "Your Dailybot session has expired. Run `dailybot login` to sign in again."
+    ),
+    "access_token_expired": (
+        "Your Dailybot session needs renewing. Run the command again, and "
+        "`dailybot login` if it keeps failing."
+    ),
+    "user_disabled": (
+        "This Dailybot account is deactivated. Ask an organization admin to reactivate it."
+    ),
+    # --- Browser (device-flow) sign-in, RFC 8628 ------------------------------
+    "authorization_pending": "The sign-in has not been approved in the browser yet.",
+    "slow_down": "The CLI checked for the approval too often; wait a few seconds and retry.",
+    "access_denied": "The sign-in was denied in the browser.",
+    "expired_token": (
+        "The sign-in code expired before it was approved. Run `dailybot login --device` again."
+    ),
+    "invalid_grant": (
+        "This sign-in request is no longer valid. Run `dailybot login --device` again."
+    ),
+    "invalid_client": (
+        "The server refused this sign-in request. Update the Dailybot CLI with "
+        "`dailybot upgrade` and try again."
+    ),
+    # --- Chat platforms: attach (web) and qualified channel references -------
+    "tenant_already_bound": (
+        "That chat workspace is already connected to another Dailybot organization. "
+        "Disconnect it there first, from the Dailybot web app."
+    ),
+    "pending_link": (
+        "This chat workspace is waiting for its connection to be confirmed in the Dailybot web app."
+    ),
+    "channel_write_forbidden": (
+        "This organization's chat platforms are managed in the Dailybot web app; "
+        "that change is not allowed here."
+    ),
+    "tenant_ambiguous": (
+        "Dailybot could not tell which chat workspace to use. Connect it from the Dailybot web app."
+    ),
+    "channel_attach_unsupported": (
+        "This organization cannot connect another chat platform. Manage its chat "
+        "platforms in the Dailybot web app."
+    ),
+    "attach_forbidden": (
+        "Only an organization admin can connect a chat platform, from the Dailybot web app."
+    ),
+    "channel_reference_ambiguous": (
+        "More than one chat platform matches that channel. Qualify it with the platform "
+        "(`slack:<id>`, `msteams:<id>`, `discord:<id>`, `hangouts:<id>`) or the platform "
+        "id from `dailybot org` (`<platform-id>:<id>`)."
+    ),
+    "channel_reference_unknown": (
+        "That chat platform is not connected to this organization. Run `dailybot org` "
+        "to see the chat platforms you can use."
+    ),
+    # Today a field on the legacy login doors; after the sunset, their error code.
+    "cli_auth_deprecated": (
+        "Email-code sign-in has been retired. Run `dailybot upgrade`, then sign in with "
+        "`dailybot login --device`."
+    ),
     # --- Tasks (/v1/plan/*) -------------------------------------------------
     # Written against what the server actually returned in the live probe
     # recorded in the plan's PERMISSION_MATRIX_OBSERVED.md, not against prose.
@@ -1033,6 +1119,19 @@ def agent_error_message(exc: APIError) -> str:
     return f"{message}{_throttle_hint(exc, _retry_after_seconds(exc))}"
 
 
+# 401 codes of the device-flow session (DEVICE_FLOW_WIRE §4, CONTRACT_SESSION §7)
+# whose message replaces the generic "Session expired" line.
+SESSION_401_CODES: frozenset[str] = frozenset(
+    {
+        "session_revoked",
+        "session_migrated",
+        "refresh_token_expired",
+        "access_token_expired",
+        "user_disabled",
+    }
+)
+
+
 def exit_for_api_error(
     exc: APIError,
     json_mode: bool,
@@ -1052,6 +1151,10 @@ def exit_for_api_error(
     """
     code: str | None = getattr(exc, "code", None)
     extra: dict[str, Any] = getattr(exc, "extra", {}) or {}
+    if code == PAYWALL_CODE:
+        # The server says the plan does not allow this: re-read the effective tier
+        # so the cache matches (throttled; the local short-circuit just read it).
+        refresh_cached_tier(_signed_in_org_uuid())
     mapped_message: str | None = ERROR_CODE_MESSAGES.get(code) if code else None
     if mapped_message and code:
         mapped_message = _augment_code_message(mapped_message, code, extra)
@@ -1059,7 +1162,12 @@ def exit_for_api_error(
         mapped_message = code_overrides[code]
 
     if exc.status_code == 401:
-        message: str = "Session expired. Run: dailybot login"
+        # The session codes name why the session ended; any other 401 keeps today's text.
+        message: str = (
+            mapped_message
+            if code in SESSION_401_CODES and mapped_message
+            else "Session expired. Run: dailybot login"
+        )
         exit_code: int = EXIT_NOT_AUTHENTICATED
     elif exc.status_code == 403:
         message = mapped_message or exc.detail
@@ -1087,6 +1195,10 @@ def exit_for_api_error(
     elif exc.status_code == 400:
         message = mapped_message or exc.detail
         exit_code = EXIT_USAGE_ERROR
+    elif code == AUTH_BACKEND_UNAVAILABLE_CODE:
+        # Transient: the session is fine, the server's sign-in backend is not.
+        message = mapped_message or exc.detail
+        exit_code = EXIT_RATE_LIMITED
     else:
         message = mapped_message or exc.detail
         exit_code = 1
@@ -1106,6 +1218,56 @@ def exit_for_api_error(
     raise SystemExit(exit_code)
 
 
+# The cached tier is re-read from `/v1/organization/` at most this often per org, and
+# only on a cached-free hit or a paywall code (L37) — never for a paid/unknown tier.
+TIER_REFRESH_MIN_INTERVAL_SECS: float = 600.0
+PAYWALL_CODE: str = "plan_upgrade_required"
+
+
+def remember_effective_tier(organization: dict[str, Any], org_uuid: str | None) -> str | None:
+    """Cache ``plan.effective_tier`` from an organization payload; return it, or ``None``.
+
+    Only a payload for ``org_uuid`` (the signed-in org) is cached: a repo API key may
+    resolve to another org. An absent ``plan`` (L43, the field is switched off) leaves
+    the cache untouched.
+    """
+    if not org_uuid or organization.get("uuid") != org_uuid:
+        return None
+    plan: Any = organization.get("plan")
+    tier: Any = plan.get("effective_tier") or plan.get("tier") if isinstance(plan, dict) else None
+    if not isinstance(tier, str) or not tier:
+        return None
+    save_org_plan(org_uuid, tier)
+    return tier
+
+
+def refresh_cached_tier(org_uuid: str | None) -> str | None:
+    """Re-read the org's effective tier, within the throttle; ``None`` when unknown.
+
+    Returns the cached tier when it was read recently or the server omits ``plan``,
+    and ``None`` when the read fails: a refresh problem never blocks a command.
+    """
+    if not org_uuid:
+        return None
+    now: float = time.time()
+    last: float | None = get_org_plan_refreshed_at(org_uuid)
+    if last is not None and now - last < TIER_REFRESH_MIN_INTERVAL_SECS:
+        return get_org_plan(org_uuid)
+    try:
+        organization: dict[str, Any] = DailyBotClient().get_organization()
+    except (APIError, TransportError):
+        return None
+    mark_org_plan_refreshed(org_uuid, now)
+    fresh: str | None = remember_effective_tier(organization, org_uuid)
+    return fresh if fresh is not None else get_org_plan(org_uuid)
+
+
+def _signed_in_org_uuid() -> str | None:
+    creds: dict[str, Any] | None = load_credentials()
+    value: Any = creds.get("organization_uuid") if creds else None
+    return value if isinstance(value, str) and value else None
+
+
 def enforce_plan_access(action: str, *, json_mode: bool = False) -> None:
     """Short-circuit a non-allowlisted command when the active org is known-free.
 
@@ -1113,17 +1275,21 @@ def enforce_plan_access(action: str, *, json_mode: bool = False) -> None:
     the source of truth: when the plan tier is **unknown** (the API hasn't
     exposed it, or no cache yet) this is a no-op and the call proceeds, so a
     stale/absent cache can never *block* a command the server would allow.
+    A cached free tier is re-read first (``refresh_cached_tier``): a trial's
+    effective tier lets the command through, and a failed read never blocks.
     Allowlisted (agent-scoped / me / org / cli-status) actions never short-circuit.
     """
     if action in FREE_PLAN_ALLOWLIST:
         return
-    creds: dict[str, Any] | None = load_credentials()
-    org_uuid: str | None = creds.get("organization_uuid") if creds else None
+    org_uuid: str | None = _signed_in_org_uuid()
     tier: str | None = get_org_plan(org_uuid)
+    if tier is None or tier.lower() not in FREE_PLAN_TIERS:
+        return
+    tier = refresh_cached_tier(org_uuid)
     if tier is not None and tier.lower() in FREE_PLAN_TIERS:
         # Reuse the Task 2 upgrade-message renderer + exit code (no second renderer).
         exit_for_api_error(
-            APIError(403, "This action requires a paid plan.", code="plan_upgrade_required"),
+            APIError(403, "This action requires a paid plan.", code=PAYWALL_CODE),
             json_mode,
         )
 

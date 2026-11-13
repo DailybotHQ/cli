@@ -1,0 +1,11 @@
+{
+  "door": "web-session doors (defensive)",
+  "status": 503,
+  "headers": {
+    "Retry-After": "2"
+  },
+  "body": {
+    "detail": "Authentication is temporarily unavailable.",
+    "code": "auth_backend_unavailable"
+  }
+}

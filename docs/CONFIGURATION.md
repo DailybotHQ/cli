@@ -6,9 +6,10 @@ The Dailybot CLI persists state in `~/.config/dailybot/` by default. The path ca
 
 | File | Owner | Contents | Permissions |
 |------|-------|----------|-------------|
-| `credentials.json` | `dailybot login` | `{ token, email, organization, organization_uuid, api_url }` | `0o600` |
+| `credentials.json` | `dailybot login` | `{ token, email, organization, organization_uuid, api_url }`, plus `{ auth_method, refresh, expires_at, refresh_expires_at }` for a browser (device-flow) session | `0o600` |
 | `config.json` | `dailybot config` | `{ api_key }` (and any future settings) | `0o600` |
 | `agents.json` | `dailybot agent configure` / `register` | `{ default, profiles: { <slug>: { agent_name, api_key?, agent_email? } } }` | `0o600` |
+| `plan_cache.json` | `dailybot login`, `dailybot org`, the plan short-circuit | `{ <org_uuid>: <tier>, _refreshed_at: { <org_uuid>: <epoch seconds> } }` — tiers only, never a secret | `0o600` |
 | `org_cache.json` | `dailybot login --email` (step 1) | `{ email, organizations: [...] }` | (no chmod — non-secret) |
 | `ledger/<repo-slug>.json` | `dailybot hook ...` / `dailybot agent update` | Per-repo report ledger: `{ repo, first_seen_at, last_report_at, last_reported_commit, last_nudge_at, last_activity_at, work_pending, snoozed_until, turns_since_report, reported_by }` | `0o600` (dir `0o700`) |
 | `ledger/_global.json` | `dailybot hook session-start` | Cross-repo hook state: `{ last_login_nudge_at }` | `0o600` |
@@ -17,7 +18,24 @@ The Dailybot CLI persists state in `~/.config/dailybot/` by default. The path ca
 
 ### Schema notes
 
+**`plan_cache.json`** — the effective plan tier per org, used only to skip a request the server would refuse on a free plan. It is written at login (the browser sign-in caches `organization.plan.effective_tier`), by `dailybot org`, and when the CLI re-reads `/v1/organization/`. That re-read happens only on a cached-free hit or a `plan_upgrade_required` answer, at most once per org every 10 minutes (`TIER_REFRESH_MIN_INTERVAL_SECS`; the time is kept under the reserved `_refreshed_at` key, which older CLIs ignore). When the server omits `plan` (the field is switched off for most orgs) the cached tier is kept, and a failed re-read never blocks a command: an unknown tier always lets the server decide.
+
 **`credentials.json`** — created by `save_credentials(...)`. Backwards-compatible additions are safe; `load_credentials()` treats missing keys as absent. The `api_url` field captures which API the user authenticated against, so re-running commands from a different default URL doesn't accidentally use the wrong one.
+
+  **Browser (device-flow) sessions** add four keys and rename or remove none (Rule 16):
+
+  | Key | Meaning |
+  |---|---|
+  | `auth_method` | `"device"`. Absent means a legacy email-code session: one opaque 90-day `token`, no refresh. |
+  | `token` | For a device session, the short-lived access token (`dbc_at_…`, about 1 hour). Every call path sends it as before, and an older CLI still reads it. |
+  | `refresh` | The refresh token (`dbc_rt_…`). It rotates on every refresh, and the new pair replaces the old one in place (`update_token_pair`). |
+  | `expires_at`, `refresh_expires_at` | ISO-8601 expiries of the access and refresh tokens, as the server sent them. |
+
+  Migration: none is needed. A legacy file keeps loading and authenticating unchanged, and `--email --code` still writes exactly the five legacy keys. The refresh token is bound to the issuing `api_url` like the access token (`get_refresh_token_for`), so it never travels to another host. An older CLI reading a device-session file uses the access token until it expires, then asks for `dailybot login` again.
+
+  Refresh lifecycle: the CLI refreshes a device-flow session only when a request is refused with `401 access_token_expired`. It rotates the pair once through `POST /v1/cli/auth/refresh/`, writes the new `token`, `refresh`, `expires_at` and `refresh_expires_at` in place (atomically, `0o600`), and replays the request once. The refresh token lasts 90 days from its last use and at most 365 days from the first sign-in; after that, `dailybot login --device` again. Details and failure handling: `docs/SECURITY.md` § Bearer Token Lifecycle.
+
+  Logout: `dailybot logout` revokes a device-flow session as a whole (access and refresh). While the access token is valid it sends `Authorization: Bearer <access>`; once `expires_at` has passed, or the server answers `401 access_token_expired`, it sends the body `{"refresh": "<refresh>"}` with no credential header instead, so logging out never needs a refresh first. The server answers `200` even for an already revoked session. The local file is removed either way; if the server could not be reached or refused, the CLI says the session stays valid there until it expires. A legacy session's logout request is unchanged.
 
 **`config.json`** — extended via `save_config({...})`. Setting a key to `None` removes it. Accessed only through `load_config()` / `save_config()` — never read directly elsewhere.
 

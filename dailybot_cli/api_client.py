@@ -1,6 +1,7 @@
 """HTTP client for Dailybot CLI API endpoints."""
 
 import functools
+import os
 import platform
 import re
 import time
@@ -22,6 +23,9 @@ from dailybot_cli.config import (
     get_api_key_source,
     get_api_url,
     get_login_token_for,
+    get_refresh_token_for,
+    text_or_none,
+    update_token_pair,
 )
 from dailybot_cli.install_method import detect_install_method
 
@@ -55,12 +59,22 @@ def user_agent() -> str:
     return f"{USER_AGENT_PRODUCT}/{__version__} (python/{python}; {os_name}; {method})"
 
 
+# Telemetry headers (DEVICE_FLOW_WIRE, W1): the server counts clients and versions
+# from them. They never affect authorization, throttling or responses, and they go
+# only to the Dailybot API (never to a presigned storage host).
+CLIENT_HEADER: str = "X-Dailybot-Client"
+CLIENT_VERSION_HEADER: str = "X-Dailybot-Client-Version"
+CLIENT_HEADER_VALUE: str = "cli"
+
+
 def _base_headers() -> dict[str, str]:
     """The headers every Dailybot API request carries, before any credential."""
     return {
         "Content-Type": "application/json",
         "Accept": "application/json",
         "User-Agent": user_agent(),
+        CLIENT_HEADER: CLIENT_HEADER_VALUE,
+        CLIENT_VERSION_HEADER: __version__,
     }
 
 
@@ -71,6 +85,25 @@ def _base_headers() -> dict[str, str]:
 # stripped or malformed). Retrying on both makes env.json + a stale
 # session work seamlessly regardless of which convention the server uses.
 _AUTH_RETRY_STATUS_CODES: frozenset[int] = frozenset({401, 403})
+
+# RFC 8628 device flow (PLAN_002, frozen at checkpoint 1: DEVICE_FLOW_WIRE).
+DEVICE_CLIENT_ID: str = "dailybot-cli"
+DEVICE_GRANT_TYPE: str = "urn:ietf:params:oauth:grant-type:device_code"
+# The only 401 that refreshes a device-flow pair (L36). Every other 401 code
+# (refresh_token_expired, user_disabled, invalid_credentials, session_revoked)
+# keeps the long-standing behaviour: no refresh loop.
+ACCESS_TOKEN_EXPIRED_CODE: str = "access_token_expired"
+SESSION_REVOKED_CODE: str = "session_revoked"
+HTTP_UNAUTHORIZED: int = 401
+
+# 503 auth_backend_unavailable (CONTRACT_SESSION §7, W1, L38): the server's auth
+# backend is briefly down. Transient by definition: retried with a bounded wait,
+# never treated as an expired session, a refresh trigger or a credential fallback.
+AUTH_BACKEND_UNAVAILABLE_CODE: str = "auth_backend_unavailable"
+HTTP_SERVICE_UNAVAILABLE: int = 503
+AUTH_BACKEND_MAX_RETRIES: int = 3
+AUTH_BACKEND_MAX_WAIT_SECS: float = 5.0
+AUTH_BACKEND_DEFAULT_RETRY_AFTER_SECS: float = 2.0
 
 # The person-shaped Tasks doors have a third refusal shape: `400 actor_required`,
 # meaning "this credential is an organization with nobody to be". It is the same
@@ -393,6 +426,48 @@ class APIError(Exception):
         super().__init__(f"API error {status_code}: {detail}")
 
 
+def _json_field(response: httpx.Response, key: str) -> Any:
+    """One top-level field of a JSON body, or ``None`` when the body is not a JSON object."""
+    try:
+        body: Any = response.json()
+    except Exception:
+        return None
+    return body.get(key) if isinstance(body, dict) else None
+
+
+def _is_auth_backend_unavailable(response: httpx.Response) -> bool:
+    return (
+        response.status_code == HTTP_SERVICE_UNAVAILABLE
+        and _json_field(response, "code") == AUTH_BACKEND_UNAVAILABLE_CODE
+    )
+
+
+def _auth_backend_wait(response: httpx.Response) -> float:
+    """``Retry-After`` in seconds, defaulted when absent or unreadable, capped at 5 s."""
+    raw: Any = response.headers.get("Retry-After")
+    try:
+        wait: float = float(raw) if raw is not None else AUTH_BACKEND_DEFAULT_RETRY_AFTER_SECS
+    except (TypeError, ValueError):
+        wait = AUTH_BACKEND_DEFAULT_RETRY_AFTER_SECS
+    return min(max(wait, 0.0), AUTH_BACKEND_MAX_WAIT_SECS)
+
+
+def _retry_auth_backend(send: Callable[[], httpx.Response]) -> httpx.Response:
+    """Send, retrying a ``503 auth_backend_unavailable`` up to the bounded budget.
+
+    The refusal comes from the authentication layer, before any view runs, so a
+    retried write is never applied twice. ``time.sleep`` is referenced through the
+    module so tests can patch it.
+    """
+    response: httpx.Response = send()
+    attempt: int = 0
+    while _is_auth_backend_unavailable(response) and attempt < AUTH_BACKEND_MAX_RETRIES:
+        time.sleep(_auth_backend_wait(response))
+        attempt += 1
+        response = send()
+    return response
+
+
 def _invalid_identifier() -> APIError:
     """The refusal for an identifier that would change which door a path reaches.
 
@@ -591,6 +666,16 @@ class DailyBotClient:
             lambda: httpx.request(method, url, **kwargs), method=method
         )
 
+        # At most one refresh per request: before the alternate credential when the
+        # Bearer went first, or after it when the Bearer was the fallback (a repo key
+        # preferred on the login's own host was refused).
+        refresh_tried: bool = self._needs_refresh(response)
+        if refresh_tried and self._refresh_session():
+            kwargs["headers"] = self._agent_headers()
+            response = self._guard_transport(
+                lambda: httpx.request(method, url, **kwargs), method=method
+            )
+
         if _is_auth_retryable(response):
             alt: dict[str, str] | None = self._alt_auth_headers()
             if alt is not None:
@@ -598,6 +683,12 @@ class DailyBotClient:
                 response = self._guard_transport(
                     lambda: httpx.request(method, url, **kwargs), method=method
                 )
+
+        if not refresh_tried and self._needs_refresh(response) and self._refresh_session():
+            kwargs["headers"] = self._bearer_headers()
+            response = self._guard_transport(
+                lambda: httpx.request(method, url, **kwargs), method=method
+            )
 
         return response
 
@@ -661,6 +752,12 @@ class DailyBotClient:
 
         response: httpx.Response = self._dispatch_guarded(method, url, **kwargs)
 
+        # At most one refresh per request (see `_agent_request`).
+        refresh_tried: bool = self._needs_refresh(response)
+        if refresh_tried and self._refresh_session():
+            kwargs["headers"] = self._replay_headers(self._headers(), files, content, extra_headers)
+            response = self._dispatch_guarded(method, url, **kwargs)
+
         if _is_auth_retryable(response) and not self._is_final_person_refusal(url, response):
             alt: dict[str, str] | None = self._alt_auth_headers()
             if alt is not None:
@@ -674,7 +771,102 @@ class DailyBotClient:
                 kwargs["headers"] = retry_headers
                 response = self._dispatch_guarded(method, url, **kwargs)
 
+        if not refresh_tried and self._needs_refresh(response) and self._refresh_session():
+            kwargs["headers"] = self._replay_headers(
+                self._bearer_headers(), files, content, extra_headers
+            )
+            response = self._dispatch_guarded(method, url, **kwargs)
+
         return response
+
+    @staticmethod
+    def _replay_headers(
+        headers: dict[str, str],
+        files: dict[str, Any] | None,
+        content: bytes | None,
+        extra_headers: dict[str, str] | None,
+    ) -> dict[str, str]:
+        """Headers for a replay, with the same body rules as the first attempt."""
+        replay: dict[str, str] = dict(headers)
+        if files is not None or content is not None:
+            replay.pop("Content-Type", None)
+        if extra_headers:
+            replay.update(extra_headers)
+        return replay
+
+    def _bearer_headers(self) -> dict[str, str]:
+        """The login session's Bearer alone: the replay after a refresh that followed a
+        fallback to the session, so the refused repo key is not sent again."""
+        headers: dict[str, str] = _base_headers()
+        headers["Authorization"] = f"Bearer {self.token}"
+        self._agent_auth_mode = "bearer"
+        return headers
+
+    def _needs_refresh(self, response: httpx.Response) -> bool:
+        """A Bearer request refused with ``401 access_token_expired`` (and nothing else)."""
+        return (
+            response.status_code == HTTP_UNAUTHORIZED
+            and self._agent_auth_mode == "bearer"
+            and _json_field(response, "code") == ACCESS_TOKEN_EXPIRED_CODE
+        )
+
+    def _refresh_session(self) -> bool:
+        """Rotate the stored device-flow pair once; ``True`` when a new access is in hand.
+
+        Only the session ``dailybot login`` stored for this host refreshes: a legacy
+        token, a ``DAILYBOT_CLI_TOKEN`` and a pair issued by another host never do.
+        If another CLI process already rotated the file, its access is adopted
+        without a second refresh. On ``session_revoked`` the file is re-read once and
+        the refresh found there is tried if it differs (L36). Any other refusal
+        returns ``False``, so the caller keeps today's 401 handling. A transport
+        failure or a non-401 answer is raised instead: an infrastructure problem is
+        never a reason to fall back to another credential or to touch the session.
+        """
+        if os.environ.get("DAILYBOT_CLI_TOKEN"):
+            return False
+        refresh: str | None = get_refresh_token_for(self.api_url)
+        if not refresh:
+            return False
+        stored_access: str | None = get_login_token_for(self.api_url)
+        if stored_access and stored_access != self.token:
+            self.token = stored_access
+            return True
+        try:
+            pair: dict[str, Any] = self.refresh_token_pair(refresh)
+        except APIError as error:
+            if error.status_code != HTTP_UNAUTHORIZED:
+                raise
+            if error.code != SESSION_REVOKED_CODE:
+                return False
+            reread: str | None = get_refresh_token_for(self.api_url)
+            if not reread or reread == refresh:
+                return False
+            try:
+                pair = self.refresh_token_pair(reread)
+            except APIError as second:
+                if second.status_code != HTTP_UNAUTHORIZED:
+                    raise
+                return False
+        finally:
+            # The refresh door is unauthenticated; the replay is a Bearer request again.
+            self._agent_auth_mode = "bearer"
+        # Same bar as login's `_save_pair`: an empty token never replaces a working one.
+        access: str | None = text_or_none(pair.get("access"))
+        new_refresh: str | None = text_or_none(pair.get("refresh"))
+        if access is None or new_refresh is None:
+            return False
+        persisted: bool = update_token_pair(
+            access=access,
+            refresh=new_refresh,
+            expires_at=text_or_none(pair.get("expires_at")),
+            refresh_expires_at=text_or_none(pair.get("refresh_expires_at")),
+        )
+        if not persisted:
+            # The session file vanished mid-refresh (a logout elsewhere): do not keep
+            # using a pair that exists only in this process.
+            return False
+        self.token = access
+        return True
 
     def _is_final_person_refusal(self, url: str, response: httpx.Response) -> bool:
         """A Tasks door that refused the signed-in person keeps that answer.
@@ -748,7 +940,7 @@ class DailyBotClient:
         of the documented transport exit.
         """
         try:
-            return send()
+            return _retry_auth_backend(send)
         except httpx.HTTPError as exc:
             if timeout_message and isinstance(exc, httpx.TimeoutException):
                 raise TransportTimeout(timeout_message) from exc
@@ -771,7 +963,9 @@ class DailyBotClient:
             isinstance(params, dict) and str(params.get("dry_run")).lower() in {"true", "1"}
         )
         try:
-            return self._dispatch_http(method, url, **kwargs)
+            # The one server-signalled exception: a 503 auth_backend_unavailable is
+            # retried with a bounded wait (`_retry_auth_backend`).
+            return _retry_auth_backend(lambda: self._dispatch_http(method, url, **kwargs))
         except httpx.HTTPError as exc:
             # No retry on purpose. The bounded 429 backoff in `_send_with_retry`
             # is the only retry this client has; silently retrying a connection
@@ -813,6 +1007,11 @@ class DailyBotClient:
                 raw_extra: Any = body.get("extra")
                 if isinstance(raw_extra, dict):
                     extra = dict(raw_extra)
+                # The legacy login doors carry a `deprecation` object on 400 bodies
+                # too (W1); surface it so the notice reaches the renderer.
+                raw_deprecation: Any = body.get("deprecation")
+                if isinstance(raw_deprecation, dict):
+                    extra["deprecation"] = dict(raw_deprecation)
                 # Plan-gating responses carry upgrade_url at the top level; surface it
                 # in extra so downstream reads a single place.
                 upgrade_url: Any = body.get("upgrade_url")
@@ -826,7 +1025,7 @@ class DailyBotClient:
             if response.status_code == 401 and self._agent_auth_mode == "bearer":
                 detail = "Session expired. Run 'dailybot login' to re-authenticate."
             retry_after: float | None = None
-            if response.status_code == 429:
+            if response.status_code == 429 or code == AUTH_BACKEND_UNAVAILABLE_CODE:
                 raw_retry: str | None = response.headers.get("Retry-After")
                 if raw_retry:
                     try:
@@ -1034,22 +1233,116 @@ class DailyBotClient:
         )
         return self._handle_response(response)
 
+    def start_device_authorization(self) -> dict[str, Any]:
+        """POST /v1/cli/auth/device/ — start an RFC 8628 device authorization.
+
+        Unauthenticated: the CLI has no credential yet. A 404 or 405 means the
+        server predates the device flow; the caller falls back to the email code.
+        """
+        response: httpx.Response = self._guard_transport(
+            lambda: httpx.post(
+                f"{self.api_url}/v1/cli/auth/device/",
+                json={"client_id": DEVICE_CLIENT_ID, "client_version": __version__},
+                headers=self._headers(authenticated=False),
+                timeout=self.timeout,
+            ),
+            method="POST",
+            timeout_message="The request timed out. Run `dailybot login` again.",
+        )
+        return self._handle_response(response)
+
+    def poll_device_token(self, device_code: str) -> dict[str, Any]:
+        """POST /v1/cli/auth/device/token/ — redeem an approved device code.
+
+        Each pending state is a 400 whose ``code`` names it (``authorization_pending``,
+        ``slow_down``, ``access_denied``, ``expired_token``, ``invalid_grant``,
+        ``invalid_client``). They are never retried as authentication failures; a
+        ``slow_down`` carries the new polling interval in ``APIError.extra["interval"]``.
+        """
+        response: httpx.Response = self._guard_transport(
+            lambda: httpx.post(
+                f"{self.api_url}/v1/cli/auth/device/token/",
+                json={
+                    "grant_type": DEVICE_GRANT_TYPE,
+                    "device_code": device_code,
+                    "client_id": DEVICE_CLIENT_ID,
+                },
+                headers=self._headers(authenticated=False),
+                timeout=self.timeout,
+            ),
+            method="POST",
+            # A poll changes nothing until the approval exists, and a code that was
+            # redeemed answers invalid_grant: polling again is always safe.
+            timeout_message="The request timed out. Polling again is safe; the code is still valid.",
+        )
+        try:
+            return self._handle_response(response)
+        except APIError as error:
+            interval: Any = _json_field(response, "interval")
+            if isinstance(interval, int) and not isinstance(interval, bool):
+                error.extra["interval"] = interval
+            raise
+
+    def refresh_token_pair(self, refresh: str) -> dict[str, Any]:
+        """POST /v1/cli/auth/refresh/ — rotate a device-flow session's token pair.
+
+        Unauthenticated: the refresh token in the body is the proof. Failures keep
+        their ``code`` (``session_revoked``, ``refresh_token_expired``, ``user_disabled``).
+        """
+        response: httpx.Response = self._guard_transport(
+            lambda: httpx.post(
+                f"{self.api_url}/v1/cli/auth/refresh/",
+                json={"refresh": refresh},
+                headers=self._headers(authenticated=False),
+                timeout=self.timeout,
+            ),
+            method="POST",
+        )
+        return self._handle_response(response)
+
     def auth_status(self) -> dict[str, Any]:
         """GET /v1/cli/auth/status/"""
         response: httpx.Response = self._request("GET", f"{self.api_url}/v1/cli/auth/status/")
         return self._handle_response(response)
 
-    def logout(self) -> dict[str, Any]:
+    def logout(self, refresh: str | None = None, *, access_expired: bool = False) -> dict[str, Any]:
         """POST /v1/cli/auth/logout/
 
         Uses ``_headers`` directly (no fallback) because logout is a
         Bearer-only lifecycle operation — retrying with an API key would
         neither succeed nor be semantically meaningful.
+
+        For a device-flow pair (``refresh`` given) the Bearer form revokes the whole
+        family. When the access token has expired (``access_expired``, or the server
+        answers ``401 access_token_expired``) the unauthenticated ``{"refresh": ...}``
+        body form revokes it instead, without a refresh round-trip. Without
+        ``refresh`` this is today's call, byte for byte.
         """
+        if refresh and access_expired:
+            return self._logout_with_refresh(refresh)
         response: httpx.Response = self._guard_transport(
             lambda: httpx.post(
                 f"{self.api_url}/v1/cli/auth/logout/",
                 headers=self._headers(),
+                timeout=self.timeout,
+            ),
+            method="POST",
+        )
+        if (
+            refresh
+            and response.status_code == HTTP_UNAUTHORIZED
+            and _json_field(response, "code") == ACCESS_TOKEN_EXPIRED_CODE
+        ):
+            return self._logout_with_refresh(refresh)
+        return self._handle_response(response)
+
+    def _logout_with_refresh(self, refresh: str) -> dict[str, Any]:
+        """The unauthenticated logout form: the refresh token in the body is the proof."""
+        response: httpx.Response = self._guard_transport(
+            lambda: httpx.post(
+                f"{self.api_url}/v1/cli/auth/logout/",
+                json={"refresh": refresh},
+                headers=self._headers(authenticated=False),
                 timeout=self.timeout,
             ),
             method="POST",

@@ -41,6 +41,18 @@ Common issues and how to fix them. If you hit something that isn't here, add it 
 - The Bearer token has expired. Re-run `dailybot login`.
 - The API URL has changed (e.g., switched from prod to staging without re-authenticating). Tokens are URL-scoped — log in to the new URL.
 
+### "Dailybot sign-in is temporarily unavailable" (`auth_backend_unavailable`, exit 6)
+
+The server answered `503` with `code: auth_backend_unavailable`: its sign-in backend is briefly down. Your session is fine. The CLI already retried 3 times, waiting what the server's `Retry-After` asked for (at most 5 seconds each), before giving up. It never treats this as an expired session: it does not refresh, does not switch to your API key, and does not change `credentials.json`. Wait a moment and run the command again. `dailybot logout` on this error keeps your local session so you can retry the logout and revoke it on the server.
+
+### `dailybot login --device`: "The sign-in code expired" / "was denied"
+
+The browser sign-in waits up to 10 minutes for you to approve the code. "Expired" means it was not approved in time; "denied" means someone pressed Deny on the page. Nothing is saved in either case: run `dailybot login --device` again. If the server does not offer browser sign-in yet, the command continues with the email code by itself.
+
+### "Email-code sign-in is being retired on …" (`cli_auth_deprecated`)
+
+Dailybot is retiring the email-code sign-in in favour of the browser sign-in. While the notice is on, the server adds a `deprecation` field to the email-code answers; the CLI shows the sunset date once per `dailybot login` and the login itself works as before. If your CLI is older than the version the server asks for, the notice tells you to run `dailybot upgrade` first; either way, sign in next time with `dailybot login --device`. After the sunset date the email-code doors stop working.
+
 ### Login OTP never arrives
 
 - Check spam.
@@ -129,6 +141,12 @@ dailybot form response get <form_uuid> <resp_uuid> --json | jq -r '.content[]' |
 ```
 
 If the printed output has real line breaks (not `\n` literals) and uses `#` rather than `##` / `###`, the webapp will render it correctly.
+
+## Chat
+
+### `dailybot chat send` → 400 / `platform_not_connected`
+
+"No chat platform is connected for this organization, so channels and messages are not available." The organization has no Slack, Microsoft Teams, Discord or Google Chat installation (a standalone Dailybot organization starts this way), so there is nowhere to deliver a bot message. The CLI never redirects the message to Dailybot Chat. Run `dailybot org` to see the organization's chat platforms; connect one in the Dailybot web app, then send again. The command exits `2`, and `--json` keeps `"code": "platform_not_connected"`.
 
 ## Teams & Kudos
 

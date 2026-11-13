@@ -11,6 +11,7 @@ from questionary import Choice, Separator
 
 from dailybot_cli import __version__
 from dailybot_cli.api_client import APIError, DailyBotClient, resource_uuid
+from dailybot_cli.commands import _device_login
 from dailybot_cli.commands.auth import _do_login
 from dailybot_cli.commands.chat import ChatPayloadError, build_chat_payload
 from dailybot_cli.commands.kudos import execute_kudos_give
@@ -95,6 +96,25 @@ _HANDLER_MAP: dict[str, str] = {
 }
 
 
+def _login_interactively() -> None:
+    """Sign in the way a bare `dailybot login` does (`DEVICE_LOGIN_IS_DEFAULT`).
+
+    With the browser flow as the default it starts there and falls back to the
+    email code on a server that does not offer it; otherwise it asks for the email.
+    """
+    if _device_login.DEVICE_LOGIN_IS_DEFAULT:
+        try:
+            _device_login.device_login(DailyBotClient())
+            return
+        except _device_login.DeviceFlowUnsupported:
+            print_info(
+                "This Dailybot server does not offer browser sign-in yet. "
+                "Continuing with an email code."
+            )
+    email: str = click.prompt("Email")
+    _do_login(email)
+
+
 def _checkin_label(checkin: dict[str, Any]) -> str:
     name: str = str(checkin.get("followup_name") or "Check-in")
     question_count: int = len(checkin.get("template_questions", []))
@@ -172,9 +192,8 @@ def run_interactive() -> None:
         console.print()
         print_info("Let's get you logged in.")
         console.print()
-        email: str = click.prompt("Email")
         try:
-            _do_login(email)
+            _login_interactively()
         except SystemExit:
             print_error("Login failed.")
             return
@@ -206,9 +225,8 @@ def run_interactive() -> None:
                 "Run: dailybot login"
             )
             console.print()
-            email = click.prompt("Email")
             try:
-                _do_login(email)
+                _login_interactively()
             except SystemExit:
                 print_error("Login failed.")
                 return

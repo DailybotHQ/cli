@@ -154,6 +154,9 @@ Authenticate once with your Dailybot email, then submit updates, complete check-
 # Log in (interactive, email OTP)
 dailybot login
 
+# Or sign in through the browser: approve a short code at a Dailybot link
+dailybot login --device
+
 # See what check-ins are waiting for you
 dailybot status
 
@@ -622,6 +625,10 @@ dailybot config key=your-key
 dailybot login
 ```
 
+### Browser sign-in (`--device`)
+
+`dailybot login --device` prints a Dailybot link and a short code such as `BCDF-GHJK`. Open the link in any browser where you use Dailybot (it does not have to be on the same machine, so it works over SSH), check that the page shows the same code, and approve it. The CLI waits at the interval the server asks for and saves the session as soon as you approve. The session renews itself while you use the CLI, so you do not have to log in again every few hours. Denying the request in the browser, or letting the code expire (10 minutes), stops the command without changing your stored session. On a Dailybot server that does not offer browser sign-in yet, the command continues with the email code.
+
 ### Non-interactive login
 
 AI agents (e.g. Claude Code) and scripts can log in without interactive prompts using a two-step flow:
@@ -838,11 +845,11 @@ Replies to agent emails land as messages retrievable via `dailybot agent message
 
 | Command | Description |
 |---------|-------------|
-| `dailybot login` | Authenticate with email OTP |
-| `dailybot logout` | Log out and revoke token |
+| `dailybot login` | Authenticate with email OTP, or in the browser with `--device` |
+| `dailybot logout` | Log out and revoke the session (both tokens of a browser sign-in) |
 | `dailybot status` | Show pending check-ins and auth status |
 | `dailybot me` | Show the authenticated user and org context (`--include-email`, `--json`) |
-| `dailybot org` | Show the organization the credential is scoped to (`--json`) |
+| `dailybot org` | Show the organization the credential is scoped to, and its chat platforms when the server provides them (`--json`) |
 | `dailybot update` | Submit a free-text or structured check-in update |
 | `dailybot config` | Get, set, or remove a stored setting (e.g. API key) |
 | `dailybot version` | Show version info and optionally check for updates |
@@ -945,7 +952,7 @@ humans who own them.
 | `dailybot plan <group> ...` | The one root of **Dailybot Plan** (API root `/v1/plan/`): the `tasks`, `task`, `board`, `project` and `goal` groups all live under it, e.g. `dailybot plan tasks status` |
 | `dailybot plan tasks timeline` | Dated work in a window: the goals that overlap it, the tasks with start or due dates, the milestones in the window and the projects overlapping it (`--since` / `--until` / `--date` / `--today` / `--last-week`, `--include-unscheduled`, repeatable `--project` and `--milestone`). One document, not a paged list |
 | `dailybot plan tasks notifications catalog` · `get` · `set` | Personal notification preferences: the kinds (`catalog`), your kind × chat × email matrix and destination (`get`), and a partial `set` (`--kind` repeatable with `--chat/--no-chat`, `--email/--no-email`, and `--dm` or `--channel <name\|external id>`, public channels only). **Needs a person: `dailybot login` or a personal API key** |
-| `dailybot plan tasks channels search [-q <text>] [--type public]` | The chat-platform channels you can pick (admins also see the private ones the bot is in); the external id it shows is what routes, reports and `chat send --channel` take. Not `channels list` (report channels) |
+| `dailybot plan tasks channels search [-q <text>] [--type public]` | The chat-platform channels you can pick (admins also see the private ones the bot is in); the external id it shows is what routes, reports and `chat send --channel` take (optionally qualified as `slack:<id>` or `<platform-id>:<id>` on organizations with several chat platforms). Not `channels list` (report channels) |
 | `dailybot plan tasks routes list` · `get` · `create` · `update` · `delete` · `send-test` · `deliveries` | Post organization events (card created/completed/blocked, project health or lead changed, milestone reached, ...) to a channel: `create --name --channel --kind ...` with optional `--board` / `--project` scope. **Admins write, members read.** `send-test` always previews with a dry run first and posts only after confirmation or `--yes`; `delete` states its consequence |
 | `dailybot plan tasks reports list` · `get` · `create` · `update` · `delete` · `preview` · `send-test` · `runs` | Scheduled Tasks digests (`daily`, `week_start`, `week_end`) to a channel and/or by email: `--weekdays mon,fri` (weekly kinds take exactly one), `--time 09:00`, `--timezone` (yours by default), `--email-to <name\|uuid>`. `preview` is the exact document; `send-test` is dry-run first. Admins write, members read |
 | `dailybot plan tasks briefing get` · `set` · `preview` · `send-test` | Your personal daily briefing (overdue, due today, in progress, blocked, mentions, projects you lead), by DM and/or email, on chosen weekdays and time. Person doors; `send-test` is dry-run first |
@@ -1083,7 +1090,7 @@ Works headless for agents (`--json` prints the `bot_message_id`).
 
 | Command | Description |
 |---------|-------------|
-| `dailybot chat send` | Send a bot message to users (`-u`), channels (`-c`), and/or teams (`-t`) |
+| `dailybot chat send` | Send a bot message to users (`-u`), channels (`-c`, a channel id or a qualified `slack:<id>` / `<platform-id>:<id>`), and/or teams (`-t`) |
 | `dailybot chat update <bot_message_id>` | Edit a previously sent message (parent **or** a thread reply) |
 | `dailybot conversation open` | Open (or reuse) a Slack group DM with the bot; optionally post a message (`-m`) |
 

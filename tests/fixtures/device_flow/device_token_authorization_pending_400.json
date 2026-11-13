@@ -1,0 +1,10 @@
+{
+  "door": "POST /v1/cli/auth/device/token/",
+  "status": 400,
+  "headers": {},
+  "body": {
+    "error": "authorization_pending",
+    "code": "authorization_pending",
+    "detail": "Example detail for authorization_pending."
+  }
+}

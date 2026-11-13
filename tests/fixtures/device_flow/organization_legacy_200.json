@@ -1,0 +1,15 @@
+{
+  "door": "GET /v1/organization/",
+  "status": 200,
+  "headers": {},
+  "body": {
+    "uuid": "00000000-0000-4000-8000-000000000001",
+    "name": "My Team",
+    "timezone": "UTC",
+    "image": null,
+    "platform": "slack",
+    "chat_platform_data": {},
+    "supported_domains": [],
+    "has_email_password_enabled": false
+  }
+}

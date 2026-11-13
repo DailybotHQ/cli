@@ -135,6 +135,10 @@ Every command that talks to an authenticated endpoint must resolve credentials t
 
 For the resolution order specifics, see [CONFIGURATION.md](CONFIGURATION.md).
 
+### Login paths
+
+`dailybot login` has two paths. The email code (`--email`, `--code`, `--org`) is unchanged and stays the scriptable two-step flow. The browser sign-in (`--device`, RFC 8628) lives in `commands/_device_login.py`, outside the Click callback: it starts the device authorization, prints the link and code through `display.print_device_login_instructions`, polls at the server's `interval` (a `slow_down` adopts the body's `interval`, capped at 30 s), and writes credentials only when the pair arrives. A 404 or 405 on the start door raises `DeviceFlowUnsupported`, and the callback continues with the email code. `DEVICE_LOGIN_IS_DEFAULT` decides whether a bare `dailybot login` starts the browser path; it stays `False` until the API doors are live everywhere, and `interactive.py` follows the same default.
+
 ## Spinner Usage
 
 Wrap every `client.*` call in a `console.status(...)`:

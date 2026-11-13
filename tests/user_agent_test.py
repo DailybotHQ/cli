@@ -164,6 +164,52 @@ class TestEveryPathCarriesIt:
         assert "Authorization" not in headers and "X-API-KEY" not in headers
 
 
+class TestClientTelemetryHeaders:
+    """PLAN_002 T-client-header: X-Dailybot-Client / -Version on every API request (W1)."""
+
+    def _assert_client_headers(self, headers: dict[str, str]) -> None:
+        assert headers["X-Dailybot-Client"] == "cli"
+        assert headers["X-Dailybot-Client-Version"] == __version__
+
+    def test_client_headers_on_unauthenticated_auth_doors(self) -> None:
+        client: DailyBotClient = DailyBotClient(api_url=API_URL)
+        with patch(
+            "dailybot_cli.api_client.httpx.post", return_value=_response(body={"ok": True})
+        ) as post:
+            client.start_device_authorization()
+        self._assert_client_headers(_sent_headers(post))
+        with patch("dailybot_cli.api_client.httpx.post", return_value=_response(body={})) as post:
+            client.request_code("me@example.com")
+        self._assert_client_headers(_sent_headers(post))
+
+    def test_client_headers_on_user_and_agent_requests(self) -> None:
+        client: DailyBotClient = DailyBotClient(api_url=API_URL, token="test-token")
+        with patch("dailybot_cli.api_client.httpx.get", return_value=_response(body={})) as get:
+            client.get_status()
+        self._assert_client_headers(_sent_headers(get))
+        keyed: DailyBotClient = DailyBotClient(api_url=API_URL, api_key="test-key")
+        with patch(
+            "dailybot_cli.api_client.httpx.request", return_value=_response(body={})
+        ) as request:
+            keyed.get_agent_health(agent_name="a")
+        self._assert_client_headers(_sent_headers(request))
+
+    def test_client_headers_never_reach_a_presigned_upload(self) -> None:
+        client: DailyBotClient = DailyBotClient(api_url=API_URL, token="test-token")
+        presign: dict[str, Any] = {"upload_url": STORAGE_URL, "method": "PUT", "headers": {}}
+        with patch("dailybot_cli.api_client.httpx.request", return_value=_response()) as request:
+            client.upload_attachment_bytes(presign, b"hello")
+        headers: dict[str, str] = _sent_headers(request)
+        assert "X-Dailybot-Client" not in headers
+        assert "X-Dailybot-Client-Version" not in headers
+
+    def test_client_headers_never_reach_a_storage_download(self) -> None:
+        with patch("dailybot_cli.api_client.httpx.stream", return_value=_Stream()) as stream:
+            DailyBotClient._download_from_storage(STORAGE_URL)
+        headers: dict[str, str] = stream.call_args.kwargs["headers"]
+        assert "X-Dailybot-Client" not in headers
+
+
 @pytest.fixture(autouse=True)
 def _fresh_user_agent() -> Any:
     user_agent.cache_clear()

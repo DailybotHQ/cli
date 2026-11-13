@@ -35,7 +35,7 @@
 
 **Dailybot CLI** is a Python command-line tool that bridges **humans** and **agents** with the [Dailybot](https://www.dailybot.com) platform. It provides:
 
-- **For humans** — email-OTP login, **managing Tasks** (`tasks` for the workspace, `task` for one task, plus `board` / `project` / `goal`), viewing pending check-ins, submitting structured/free-text updates, **filling out forms** (one-shot or driven through a workflow state machine: `pre_release → qa → code_review → ready_to_release → released`), **browsing teams** (role-scoped server-side), **giving kudos to users or whole teams**, interactive TUI mode.
+- **For humans** — email-OTP or browser (device-flow) login, **managing Tasks** (`tasks` for the workspace, `task` for one task, plus `board` / `project` / `goal`), viewing pending check-ins, submitting structured/free-text updates, **filling out forms** (one-shot or driven through a workflow state machine: `pre_release → qa → code_review → ready_to_release → released`), **browsing teams** (role-scoped server-side), **giving kudos to users or whole teams**, interactive TUI mode.
 - **For agents (AI assistants, CI jobs, deploy scripts, bots)** — progress reports, milestone tracking, agent health, webhook registration, agent-to-agent messaging, transactional email, standalone agent registration (creates an org without a human Dailybot account), **and the full forms-response lifecycle** (`get / responses / response get / update / transition / delete`) so an agent can drive any form — including workflow-enabled ones — end-to-end after `dailybot login`.
 
 It talks exclusively to the Dailybot HTTP API under `/v1/cli/*`, `/v1/agent*/*`, `/v1/forms/*`, `/v1/plan/*`, `/v1/teams/*`, `/v1/kudos/`, `/v1/users/`, and `/v1/checkins/*` endpoints. There is no local database; all state is either in `~/.config/dailybot/` (credentials, agent profiles, config) or fetched from the API.
@@ -55,7 +55,8 @@ dailybot_cli/                # Source package
 ├── ledger.py                # Local report ledger (per-repo work signals) for `hook`
 └── commands/
     ├── __init__.py
-    ├── auth.py              # login / logout (email OTP, multi-org)
+    ├── auth.py              # login / logout (email OTP, multi-org; --device browser sign-in)
+    ├── _device_login.py     # RFC 8628 browser sign-in: start, poll, save the token pair
     ├── status.py            # pending check-ins + --auth status
     ├── update.py            # submit human check-in update
     ├── config.py            # get/set/remove stored settings (api_key)
@@ -158,6 +159,17 @@ tests/                       # pytest suite (file naming: *_test.py)
 ├── tasks_agent_attribution_test.py # --agent-name stamp: body vs header, encoding, refusal, rendering
 ├── task_brief_test.py       # task brief: embeds, dedicated-door fallback, safe downloads
 ├── token_host_binding_test.py # a login token only travels to the host that issued it
+├── wire_fixtures_test.py    # recorded device-flow / standalone wire fixtures (tests/fixtures/device_flow/)
+├── device_login_test.py     # `login --device`: poll, slow_down, denial, expiry, 404/405 fallback
+├── credentials_refresh_test.py # refresh only on 401 access_token_expired; two-process re-read
+├── logout_pair_test.py      # logout revokes the pair (Bearer or refresh-body form)
+├── auth_backend_unavailable_test.py # 503 auth_backend_unavailable: bounded retry, never a logout
+├── standalone_org_login_test.py # standalone Dailybot orgs in the login picker
+├── effective_tier_test.py   # cached plan tier refreshed from /v1/organization/
+├── org_channels_test.py     # `dailybot org` chat platforms (ChatPlatformSummary)
+├── cli_auth_deprecation_test.py # the cli_auth_deprecated notice on email-code sign-in
+├── standalone_error_codes_test.py # session, sign-in and chat-platform error codes
+├── qualified_channels_test.py # slack:<id> / <platform-id>:<id> channel references
 ├── tasks_server_refusal_rendering_test.py # server refusals of agent keys / guests: exit + envelope
 ├── milestones_updates_test.py # milestone attachments/restore; project update get/edit/delete/attachments
 ├── tasks_reactions_test.py   # reactions: who reacted, project-update react/unreact, full reactor lists

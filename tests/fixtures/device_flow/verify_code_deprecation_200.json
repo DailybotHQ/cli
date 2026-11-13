@@ -1,0 +1,23 @@
+{
+  "door": "POST /v1/cli/auth/verify-code/",
+  "status": 200,
+  "headers": {
+    "Deprecation": "true",
+    "Sunset": "Wed, 31 Mar 2027 00:00:00 GMT",
+    "Link": "<https://docs.example.com/cli-auth>; rel=\"deprecation\""
+  },
+  "body": {
+    "token": "legacy-test-token",
+    "organization": {
+      "id": 101,
+      "name": "My Team",
+      "uuid": "00000000-0000-4000-8000-000000000001"
+    },
+    "deprecation": {
+      "code": "cli_auth_deprecated",
+      "min_version": "3.29.0",
+      "sunset": "2027-03-31",
+      "detail": "This sign-in method is being retired. Update the Dailybot CLI to 3.29.0 or later and run `dailybot login`."
+    }
+  }
+}

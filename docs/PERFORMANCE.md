@@ -49,6 +49,8 @@ Rules of thumb:
 - Transport failures (`httpx.HTTPError` and its subclasses) are converted to `TransportError` at the dispatch boundary and are **never retried** — the bounded 429 backoff in `_send_with_retry` remains the only retry. Silently retrying a connection failure hides an outage from the caller and can double-post a non-idempotent write.
 - Retries are intentionally **not** layered into `api_client.py`. The Dailybot API is idempotent only for the read tier; transparent retry of submits would risk double-posting. If a future read endpoint needs jittered retry, add it as an opt-in helper, not a default.
 
+**Plan-tier re-read (PLAN_002, L37).** The free-plan short-circuit (`enforce_plan_access`) costs **zero** requests for a paid or unknown cached tier. On a cached *free* tier it re-reads `/v1/organization/` once before blocking, at most once per org every `TIER_REFRESH_MIN_INTERVAL_SECS = 600` s (a `plan_upgrade_required` answer shares the same throttle). The re-read replaces the guaranteed-403 roundtrip it used to save only while the throttle is cold; within the window the short-circuit is local again. The brief's "re-read on every command start" was narrowed to this to stay inside the HTTP budget.
+
 ### 3. Terminal rendering budget — `display.py` / `rich`
 
 `rich` rendering itself is fast. The risk is **shelling spinners around fast operations** (e.g. wrapping a local file read in `console.status("…")` — flicker without value).

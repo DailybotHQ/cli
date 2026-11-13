@@ -1,0 +1,8 @@
+{
+  "door": "POST /v1/cli/auth/device/",
+  "status": 404,
+  "headers": {},
+  "body": {
+    "detail": "Not found."
+  }
+}

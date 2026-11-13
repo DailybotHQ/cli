@@ -1,0 +1,13 @@
+{
+  "door": "POST /v1/cli/auth/device/",
+  "status": 200,
+  "headers": {},
+  "body": {
+    "device_code": "fake-device-code-00000000000000000000000000",
+    "user_code": "BCDF-GHJK",
+    "verification_uri": "https://app.example.com/auth/device",
+    "verification_uri_complete": "https://app.example.com/auth/device?user_code=BCDF-GHJK",
+    "expires_in": 600,
+    "interval": 5
+  }
+}

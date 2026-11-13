@@ -2,6 +2,7 @@
 
 import json
 import os
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 from urllib.parse import SplitResult, urlsplit
@@ -119,29 +120,109 @@ def load_credentials() -> dict[str, Any] | None:
         return None
 
 
+def text_or_none(value: Any) -> str | None:
+    """A non-empty string as is; anything else (a number, an object, "") as ``None``.
+
+    Server-sent expiries are stored only in the shape their readers expect, so
+    :func:`is_access_token_expired` never meets a number or an object.
+    """
+    return value if isinstance(value, str) and value else None
+
+
+AUTH_METHOD_DEVICE: str = "device"
+"""``credentials.json::auth_method`` for a device-flow session (access + refresh pair).
+
+A file without ``auth_method`` is a legacy email-code session: one opaque ``token``
+and no refresh. For a device session ``token`` holds the short-lived access token,
+so every existing call path sends it unchanged and an older CLI still reads it.
+"""
+
+
 def save_credentials(
     token: str,
     email: str,
     organization: str,
     organization_uuid: str,
     api_url: str = DEFAULT_API_URL,
+    *,
+    refresh: str | None = None,
+    expires_at: Any = None,
+    refresh_expires_at: Any = None,
 ) -> None:
-    """Save credentials to disk."""
+    """Save credentials to disk.
+
+    Without ``refresh`` the file keeps exactly the legacy keys. With it, the
+    device-flow pair keys are added (Rule 16: keys are only ever added).
+    """
     creds_path: Path = _credentials_path()
     get_config_dir()
-    _write_secret_file(
-        creds_path,
-        json.dumps(
+    data: dict[str, Any] = {
+        "token": token,
+        "email": email,
+        "organization": organization,
+        "organization_uuid": organization_uuid,
+        "api_url": api_url,
+    }
+    if refresh:
+        data.update(
             {
-                "token": token,
-                "email": email,
-                "organization": organization,
-                "organization_uuid": organization_uuid,
-                "api_url": api_url,
-            },
-            indent=2,
-        ),
+                "auth_method": AUTH_METHOD_DEVICE,
+                "refresh": refresh,
+                "expires_at": text_or_none(expires_at),
+                "refresh_expires_at": text_or_none(refresh_expires_at),
+            }
+        )
+    _write_secret_file(creds_path, json.dumps(data, indent=2))
+
+
+def update_token_pair(
+    access: str,
+    refresh: str,
+    expires_at: Any,
+    refresh_expires_at: Any = None,
+) -> bool:
+    """Replace the stored access/refresh pair after a rotation, keeping every other key.
+
+    Returns ``False`` (and writes nothing) when there is no stored session.
+    """
+    creds: dict[str, Any] | None = load_credentials()
+    if creds is None:
+        return False
+    creds.update(
+        {
+            "token": access,
+            "auth_method": AUTH_METHOD_DEVICE,
+            "refresh": refresh,
+            "expires_at": text_or_none(expires_at),
+            "refresh_expires_at": text_or_none(refresh_expires_at),
+        }
     )
+    # Atomic: a concurrent CLI process reads either the old pair or the new one,
+    # never a truncated file. The temporary file is 0o600 from its first byte.
+    target: Path = _credentials_path()
+    staging: Path = target.with_name(f"{target.name}.{os.getpid()}.tmp")
+    try:
+        _write_secret_file(staging, json.dumps(creds, indent=2))
+        os.replace(staging, target)
+    finally:
+        if staging.exists():
+            staging.unlink()
+    return True
+
+
+def is_pair_session() -> bool:
+    """Whether the stored login is a device-flow session with a refresh token."""
+    creds: dict[str, Any] | None = load_credentials()
+    return bool(creds and creds.get("auth_method") == AUTH_METHOD_DEVICE and creds.get("refresh"))
+
+
+def get_refresh_token() -> str | None:
+    """The stored refresh token of a device-flow session, or ``None`` for a legacy one."""
+    creds: dict[str, Any] | None = load_credentials()
+    if not creds or creds.get("auth_method") != AUTH_METHOD_DEVICE:
+        return None
+    refresh: Any = creds.get("refresh")
+    return str(refresh) if refresh else None
 
 
 def clear_credentials() -> None:
@@ -243,6 +324,40 @@ def get_login_token_for(api_url: str) -> str | None:
         return None
     token: Any = creds.get("token")
     return str(token) if token else None
+
+
+def is_access_token_expired(now: datetime | None = None) -> bool:
+    """Whether a device-flow session's stored ``expires_at`` is already in the past.
+
+    ``False`` for a legacy session, a missing or unreadable date: only a known
+    expiry counts, and the server's answer stays authoritative either way.
+    """
+    creds: dict[str, Any] | None = load_credentials()
+    raw: Any = (creds or {}).get("expires_at")
+    if not isinstance(raw, str) or not raw:
+        return False
+    try:
+        expires: datetime = datetime.fromisoformat(raw.replace("Z", "+00:00"))
+    except ValueError:
+        return False
+    if expires.tzinfo is None:
+        expires = expires.replace(tzinfo=timezone.utc)
+    return expires <= (now or datetime.now(timezone.utc))
+
+
+def get_refresh_token_for(api_url: str) -> str | None:
+    """The stored refresh token, only when ``api_url`` is the host that issued it.
+
+    Same binding as :func:`get_login_token_for`: a refresh token never travels to
+    another host, not even to rotate the pair.
+    """
+    creds: dict[str, Any] | None = load_credentials()
+    if not creds:
+        return None
+    issued_by: str = str(creds.get("api_url") or DEFAULT_API_URL)
+    if _origin(issued_by) != _origin(api_url):
+        return None
+    return get_refresh_token()
 
 
 def login_token_origin_url() -> str:
@@ -403,6 +518,46 @@ def save_org_plan(organization_uuid: str, plan: str | None) -> None:
     else:
         data[organization_uuid] = plan
     _write_secret_file(cache_path, json.dumps(data, indent=2))
+
+
+PLAN_REFRESHED_AT_KEY: str = "_refreshed_at"
+"""Reserved ``plan_cache.json`` key: ``{org_uuid: epoch seconds}`` of the last tier read.
+
+Additive (Rule 16): it can never collide with an org UUID, and older CLIs only
+read ``data[org_uuid]``.
+"""
+
+
+def _load_plan_cache() -> dict[str, Any]:
+    cache_path: Path = _plan_cache_path()
+    if not cache_path.exists():
+        return {}
+    try:
+        loaded: Any = json.loads(cache_path.read_text())
+    except (json.JSONDecodeError, OSError):
+        return {}
+    return loaded if isinstance(loaded, dict) else {}
+
+
+def get_org_plan_refreshed_at(organization_uuid: str | None) -> float | None:
+    """When the org's tier was last read from the server, or ``None``."""
+    if not organization_uuid:
+        return None
+    stamps: Any = _load_plan_cache().get(PLAN_REFRESHED_AT_KEY)
+    value: Any = stamps.get(organization_uuid) if isinstance(stamps, dict) else None
+    return float(value) if isinstance(value, (int, float)) and not isinstance(value, bool) else None
+
+
+def mark_org_plan_refreshed(organization_uuid: str, when: float) -> None:
+    """Record that the org's tier was just read from the server (the refresh throttle)."""
+    if not organization_uuid:
+        return
+    data: dict[str, Any] = _load_plan_cache()
+    stamps: Any = data.get(PLAN_REFRESHED_AT_KEY)
+    stamps = dict(stamps) if isinstance(stamps, dict) else {}
+    stamps[organization_uuid] = when
+    data[PLAN_REFRESHED_AT_KEY] = stamps
+    _write_secret_file(_plan_cache_path(), json.dumps(data, indent=2))
 
 
 def get_org_plan(organization_uuid: str | None) -> str | None:

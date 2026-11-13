@@ -282,7 +282,17 @@ The `org_cache.json` is cleared after a successful verify.
 - Revoked by `dailybot logout` (best-effort `POST /v1/cli/auth/logout/` + local file removal).
 - Treated as expired/invalid on a 401 from a Bearer-mode call → `_handle_response` rewrites the error to "Session expired. Run 'dailybot login' to re-authenticate." A 403 is an authorization refusal, not a dead session: it keeps the server's `detail` and `code`, and the command maps the code to a message.
 
-There is no automatic refresh. Tokens have a server-defined lifetime; the user is expected to re-run `dailybot login` when prompted.
+A legacy email-code session (`--email --code`) has no automatic refresh: its single token has a server-defined lifetime (90 days), and the user re-runs `dailybot login` when prompted.
+
+### Browser (device-flow) sessions: the refresh token
+
+`dailybot login --device` stores a short-lived access token (`dbc_at_…`, about 1 hour) in `token` and a refresh token (`dbc_rt_…`) in `refresh`, both in the same `0o600` `credentials.json`. Neither is ever printed, logged or put in an error message.
+
+- **When it refreshes.** Only a Bearer request answered `401` with `code: access_token_expired` refreshes (`DailyBotClient._refresh_session`): one `POST /v1/cli/auth/refresh/`, then one replay of the original request. Every other `401` code (`refresh_token_expired`, `user_disabled`, `invalid_credentials`, `session_revoked`) and every `403` keeps the behaviour above. A legacy token and a `DAILYBOT_CLI_TOKEN` are never refreshed.
+- **Where it travels.** The refresh token is bound to the host that issued it, like the access token (`get_refresh_token_for`). The refresh door is unauthenticated: the refresh token in the body is the only credential sent, and no API key rides along.
+- **Rotation.** Every refresh rotates the pair. The new pair replaces the old one atomically (a `0o600` temporary file, then `os.replace`), so a concurrent CLI process never reads a half-written file. If another process already rotated the file, its access token is adopted without a second refresh. On `session_revoked` the CLI re-reads the file once and retries with the refresh it finds there if it differs (the server returns the current pair for a refresh reused within 60 seconds); otherwise the user is asked to log in again.
+- **Failures are not logouts.** A transport failure or a non-`401` answer on the refresh door (for example a `503`) is reported as such. It never falls back to the API key, never clears the stored session and never rewrites it.
+- **Logout** revokes the whole pair (see `dailybot logout`).
 
 ## User-Scoped Commands — Privacy Considerations
 

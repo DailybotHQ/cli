@@ -125,6 +125,13 @@ Shows the authenticated user and the org context of the active credential. Calls
 
 Shows the organization the credential is scoped to. Calls `GET /v1/organization/`.
 
+When the server serves them (organizations with chat-platform management, and every standalone Dailybot organization), the payload carries three more keys, which `dailybot org` renders under **Chat platforms** and `--json` passes through unchanged:
+
+- `has_external_chat_platform` — `false` when only the Dailybot platform exists (then `dailybot chat send` has nowhere to deliver).
+- `primary_chat_platform` and `chat_platforms[]` — `ChatPlatformSummary` objects: `{ id, platform, display_name, organization_external_id, is_primary, status, capabilities: { directory, reporting, direct_messages } }`. `platform` is `dailybot`, `slack`, `msteams`, `discord` or `hangouts`; `status` is `connected`, `needs_reauth` or `disabled`; `id` is the value an installation-qualified channel reference uses (`<id>:<channel>`).
+
+Missing keys mean the information is unavailable, not that there are no platforms: the output is then exactly what it was before. The optional `plan { tier, effective_tier, is_trial }` object (served for standalone organizations) refreshes the cached plan tier.
+
 ---
 
 ### `dailybot checkin` (group) — user-scoped, Bearer or API key auth
@@ -527,8 +534,18 @@ At least one target is required. Targets:
 | Flag | Repeatable | Accepts |
 |------|-----------|---------|
 | `--user` / `-u` | yes | user UUID, email, or chat external id (delivered as DM) |
-| `--channel` / `-c` | yes | channel id |
+| `--channel` / `-c` | yes | channel id, or a qualified reference (below) |
 | `--team` / `-t` | yes | team UUID (expanded to members as DMs) |
+
+**Channel references.** `--channel` here, and `--channel` on `plan tasks routes` / `reports` / `notifications`, take three forms:
+
+| Form | Example | Meaning |
+|------|---------|---------|
+| raw | `C024BE91L`, `19:abc@thread.tacv2` | the channel on the organization's chat platform, as today. A Microsoft Teams id starting `19:` is always raw. |
+| platform-qualified | `slack:C024BE91L`, `msteams:19:abc@thread.tacv2` | the channel on the organization's `slack`, `msteams`, `discord` or `hangouts` platform. Split on the first colon only. |
+| platform-id-qualified | `<platform-id>:C024BE91L` | the channel on one specific chat platform; the platform id is the `id` `dailybot org` lists under **Chat platforms**. |
+
+Qualified forms are sent verbatim, and only to organizations whose `/v1/organization/` serves `chat_platforms` (the CLI reads it once, and only when a qualified reference was typed); other organizations get a usage error asking for the raw id. `dailybot:<id>` is refused: a message is never delivered to Dailybot Chat. The server answers `409 channel_reference_ambiguous` when a raw id matches more than one platform, and `400 channel_reference_unknown` when the qualified platform is not connected. Raw ids keep working until the multi-channel release plus 90 days.
 
 Content & options: `--text/-m`, `--image-url/-i`, `--link-button "Label::url"`
 (repeatable), `--button "Label::value"` (interactive, repeatable),
@@ -657,9 +674,13 @@ All endpoints are POSTed to `{api_url}/v1/...`. The default `api_url` is `https:
 | Method | Path | Request | Response (200/201) | Notes |
 |--------|------|---------|--------------------|-------|
 | `POST` | `/v1/cli/auth/request-code/` | `{ email }` | `{ is_multi_org, organizations: [{id, uuid, name}] }` | No auth |
-| `POST` | `/v1/cli/auth/verify-code/` | `{ email, code, organization_id? }` | `{ token, organization: {name, uuid} }` or `{ requires_organization_selection: true, organizations: [...] }` | No auth |
+| `POST` | `/v1/cli/auth/verify-code/` | `{ email, code, organization_id? }` | `{ token, organization: {name, uuid} }` or `{ requires_organization_selection: true, organizations: [...] }` (a standalone organization adds `platform: "dailybot", standalone: true`) | No auth |
+| — | request-code / verify-code `deprecation` | — | `deprecation: { code: "cli_auth_deprecated", min_version, sunset, detail }` on 200 **and** 400 bodies, plus `Deprecation`, `Sunset` and `Link` headers, while the server's notice is on | A field, never an error. The CLI shows the `sunset` date once and suggests `dailybot upgrade` only when its version is below `min_version` (`APIError.extra["deprecation"]` on a 400). |
 | `GET` | `/v1/cli/auth/status/` | — | `{ user: {email}, organization: {name, uuid} }` | Bearer |
 | `POST` | `/v1/cli/auth/logout/` | — | `{ detail }` | Bearer |
+| `POST` | `/v1/cli/auth/device/` | `{ client_id: "dailybot-cli", client_version }` | `{ device_code, user_code, verification_uri, verification_uri_complete, expires_in, interval }` | No auth. `start_device_authorization()`. A 404/405 means the server predates the device flow. |
+| `POST` | `/v1/cli/auth/device/token/` | `{ grant_type: "urn:ietf:params:oauth:grant-type:device_code", device_code, client_id }` | `{ token_type, access, expires_at, refresh, refresh_expires_at, user, organization }` | No auth. `poll_device_token()`. Pending states are `400` with `code` = `authorization_pending`, `slow_down` (body `interval` → `APIError.extra["interval"]`), `access_denied`, `expired_token`, `invalid_grant`, `invalid_client`. |
+| `POST` | `/v1/cli/auth/refresh/` | `{ refresh }` | the same token body (a rotated pair) | No auth. `refresh_token_pair()`. `401` codes: `session_revoked`, `refresh_token_expired`, `user_disabled`. |
 
 ### CLI-personal (X-API-KEY *or* Bearer)
 
@@ -716,7 +737,7 @@ key, so all of these commands work with `DAILYBOT_API_KEY` set even without
 | `GET` | `/v1/mood/track/` | `?date` | `{ ... }` | Read today's mood |
 | `POST` | `/v1/mood/track/` | `{ score, date? }` | `{ ... }` | `/mood` |
 | `GET` | `/v1/me/` | — | `{ user: { uuid, full_name, email }, organization: { uuid, name } }` | `dailybot me` |
-| `GET` | `/v1/organization/` | — | `{ uuid, name, ... }` | `dailybot org` |
+| `GET` | `/v1/organization/` | — | `{ uuid, name, platform, ..., has_external_chat_platform?, primary_chat_platform?, chat_platforms?, plan? }` | `dailybot org`; the optional keys are served only when gated on |
 | `GET` | `/v1/users/` | — | `{ results: [{ uuid, full_name }], next: url\|null }` | Paginated |
 | `GET` | `/v1/users/<uuid>/` | — | `{ uuid, full_name, email? }` | `dailybot user get` |
 | `GET` | `/v1/teams/` | — | `{ results: [{ uuid, name, active, members_count, is_default }], next? }` | Server-scoped: admins see all, members see own |
@@ -742,7 +763,7 @@ key, so all of these commands work with `DAILYBOT_API_KEY` set even without
 | `POST` | `/v1/agent-email/send/` | `{ agent_name, to, subject, body_html, metadata? }` | `{ sent_count, total_recipients, reply_to? }` | 429 = hourly limit |
 | `POST` | `/v1/agent-messages/` | `{ agent_name, content, message_type?, metadata?, expires_at?, sender_type?, sender_name? }` | `{ id, agent_name, sender_name, sender_type, message_type, content }` | |
 | `GET` | `/v1/agent-messages/?agent_name=...&delivered=true|false` | — | `[{ id, message_type, sender_type, sender_name, content, delivered, created_at }]` | Returns a bare array, not a wrapped object |
-| `POST` | `/v1/send-message/` | `{ message?/messages?, image_url?, buttons?, thread_responses?, target_users?/target_channels?/target_teams?, platform_settings?, metadata?, skip_users_on_time_off?, send_as_user?, bot_message_id? }` | `{ bot_message_id, thread_responses?: [ids] }` | **X-API-KEY or Bearer** (login, role-scoped); ≥1 target; `thread_responses` posts replies in the parent thread (≤10); `send_as_user` (Slack, admin-only) posts with that user's identity; `bot_message_id` in → edits that message (parent or reply) |
+| `POST` | `/v1/send-message/` | `{ message?/messages?, image_url?, buttons?, thread_responses?, target_users?/target_channels?/target_teams?, platform_settings?, metadata?, skip_users_on_time_off?, send_as_user?, bot_message_id? }` | `{ bot_message_id, thread_responses?: [ids] }` | **X-API-KEY or Bearer** (login, role-scoped); ≥1 target; `thread_responses` posts replies in the parent thread (≤10); `send_as_user` (Slack, admin-only) posts with that user's identity; `bot_message_id` in → edits that message (parent or reply); an org with no external chat platform answers `400 platform_not_connected`, and the message is never delivered to Dailybot Chat instead |
 | `POST` | `/v1/open-conversation/` | `{ users_uuids: [uuid, ...] }` | `{ channel }` | **X-API-KEY or Bearer**; **Slack only** (`406 open_conversation_not_supported` otherwise), **org-admin only** (`403`); idempotent (same users → same channel); `dailybot conversation open` |
 | `PATCH` | `/v1/agent-messages/read/` | `{ message_ids: [...] }` | `{ updated }` | |
 
@@ -809,6 +830,26 @@ not a dead session: it keeps the server's `detail` and `code`.
 | 400 with "ai processing failed" | — | `update.py` rewrites to a support-contact message |
 | 429 | passes through (`retry_after` from the `Retry-After` header) | A known `code` (`registration_rate_limited`, `free_plan_daily_limit_exceeded`) shows its message plus "Try again in Ns."; without a code, `agent email send` says "Hourly email limit exceeded" and `agent register` says "Rate limited." with the wait |
 | `httpx.TimeoutException` | propagates from httpx | `update.py` and `interactive.py` catch and emit a "may be processing your update" message |
+| 401 `access_token_expired` (device-flow session) | the client refreshes the pair once and replays the request once (`_refresh_session`) | — |
+| 503 `auth_backend_unavailable` | retried 3 times, each waiting `min(Retry-After, 5 s)`; never a refresh, an API-key fallback or a credential change | "Dailybot sign-in is temporarily unavailable", exit `6`; `logout` keeps the local session |
+
+### Session, sign-in and chat-platform codes (PLAN_002)
+
+`exit_for_api_error` maps each of these codes to its `ERROR_CODE_MESSAGES` entry; the exit code follows the status as for every other code (401 → `3`, 403 → `4`, 400 → `2`, 409 → `1`, 503 → `6`). An unknown code still shows the server's `detail`. Any other 401 keeps "Session expired. Run: dailybot login".
+
+| Code | Status | Where it comes from |
+| --- | --- | --- |
+| `access_token_expired` | 401 | any `/v1/*` door with an expired device-flow access token (refreshed transparently first) |
+| `refresh_token_expired`, `session_revoked`, `session_migrated`, `user_disabled` | 401 | the refresh door, or any door with an ended session |
+| `authorization_pending`, `slow_down`, `access_denied`, `expired_token`, `invalid_grant`, `invalid_client` | 400 | the device-token door (`dailybot login --device` handles them in its polling loop) |
+| `auth_backend_unavailable` | 503 + `Retry-After` | web-session doors; defensive for the CLI |
+| `cli_auth_deprecated` | a body field today | the legacy email-code doors (see the auth table) |
+| `channel_reference_ambiguous` | 409 | `/v1/send-message/`, Tasks routes and channels: a raw id matches more than one chat platform; qualify it |
+| `channel_reference_unknown` | 400 | same doors: the qualified platform or platform id is not connected to the organization |
+| `platform_not_connected` | 400 | `chat send` / Tasks channel routes on an organization with no external chat platform |
+| `tenant_already_bound`, `pending_link`, `tenant_ambiguous`, `channel_attach_unsupported` | 409 | connecting a chat platform in the web app |
+| `attach_forbidden`, `feature_not_available` | 403 | connecting a chat platform in the web app |
+| `channel_write_forbidden` | 400 | a legacy writer touching an organization whose chat platforms are managed in the web app |
 
 ## Plan — `/v1/plan/*`
 

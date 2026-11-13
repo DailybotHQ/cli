@@ -1,0 +1,9 @@
+{
+  "door": "POST /v1/send-message/",
+  "status": 409,
+  "headers": {},
+  "body": {
+    "detail": "More than one installation matches.",
+    "code": "channel_reference_ambiguous"
+  }
+}

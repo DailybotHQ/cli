@@ -1,0 +1,10 @@
+{
+  "door": "POST /v1/cli/auth/device/token/",
+  "status": 400,
+  "headers": {},
+  "body": {
+    "error": "access_denied",
+    "code": "access_denied",
+    "detail": "Example detail for access_denied."
+  }
+}

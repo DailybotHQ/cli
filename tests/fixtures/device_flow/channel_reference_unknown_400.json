@@ -1,0 +1,9 @@
+{
+  "door": "POST /v1/send-message/",
+  "status": 400,
+  "headers": {},
+  "body": {
+    "detail": "Unknown platform or installation.",
+    "code": "channel_reference_unknown"
+  }
+}

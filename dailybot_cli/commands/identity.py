@@ -9,9 +9,11 @@ from dailybot_cli.commands.public_api_helpers import (
     emit_json,
     enforce_plan_access,
     exit_for_api_error,
+    remember_effective_tier,
     require_auth,
 )
-from dailybot_cli.display import console, print_detail_panel
+from dailybot_cli.config import load_credentials
+from dailybot_cli.display import console, print_detail_panel, print_org_chat_platforms
 
 _ME_FIELDS: list[tuple[str, str]] = [
     ("Name", "full_name"),
@@ -72,7 +74,10 @@ def org(json_mode: bool) -> None:
             data: dict[str, Any] = client.get_organization()
     except APIError as exc:
         exit_for_api_error(exc, json_mode)
+    creds: dict[str, Any] | None = load_credentials()
+    remember_effective_tier(data, creds.get("organization_uuid") if creds else None)
     if json_mode:
         emit_json(data)
         return
     print_detail_panel("Organization", data, _ORG_FIELDS)
+    print_org_chat_platforms(data)

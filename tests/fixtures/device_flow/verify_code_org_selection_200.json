@@ -1,0 +1,22 @@
+{
+  "door": "POST /v1/cli/auth/verify-code/",
+  "status": 200,
+  "headers": {},
+  "body": {
+    "requires_organization_selection": true,
+    "organizations": [
+      {
+        "id": 101,
+        "name": "My Team (Slack)",
+        "uuid": "00000000-0000-4000-8000-000000000001"
+      },
+      {
+        "id": 202,
+        "name": "My Team",
+        "uuid": "00000000-0000-4000-8000-000000000002",
+        "platform": "dailybot",
+        "standalone": true
+      }
+    ]
+  }
+}

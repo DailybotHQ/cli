@@ -44,6 +44,45 @@ def print_info(message: str) -> None:
     console.print(f"[dim]{escape(message)}[/dim]")
 
 
+def print_device_login_instructions(
+    verification_uri: str, user_code: str, verification_uri_complete: str | None = None
+) -> None:
+    """Show where to approve a browser (device-flow) sign-in and the code to compare.
+
+    The URL and code are server text: neutralized and escaped. The link is printed
+    for copying, never opened automatically, so a remote or headless shell works.
+    """
+    link: str = verification_uri_complete or verification_uri
+    console.print("To sign in, open this link in a browser where you use Dailybot:")
+    console.print(f"  [bold cyan]{safe_text(link)}[/bold cyan]")
+    console.print(
+        f"Check that the page shows the code [bold]{safe_text(user_code)}[/bold], then approve it."
+    )
+    if verification_uri_complete and verification_uri_complete != verification_uri:
+        print_info(f"Or open {plain_text(verification_uri)} and enter the code yourself.")
+
+
+def print_cli_auth_deprecation(sunset: str, upgrade_to: str | None = None) -> None:
+    """The one-time notice that email-code sign-in is being retired (`cli_auth_deprecated`).
+
+    ``upgrade_to`` is set only when this CLI is older than the server's ``min_version``.
+    The server's own ``detail`` prose is never shown: the instruction depends on this
+    CLI's version, which only the CLI knows.
+    """
+    when: str = plain_text(sunset) if sunset else "a future date"
+    if upgrade_to:
+        print_warning(
+            f"Email-code sign-in is being retired on {when}. Update the Dailybot CLI to "
+            f"{plain_text(upgrade_to)} or later (`dailybot upgrade`), then sign in with "
+            "`dailybot login --device`."
+        )
+        return
+    print_warning(
+        f"Email-code sign-in is being retired on {when}. Next time, sign in through the "
+        "browser with `dailybot login --device`."
+    )
+
+
 def print_raw_value(value: str) -> None:
     """Print one bare value for a shell variable: no styling, no wrapping, stdout."""
     click.echo(value)
@@ -263,6 +302,49 @@ def print_detail_panel(title: str, data: dict[str, Any], fields: list[tuple[str,
         value: str = str(raw) if raw not in (None, "") else "[dim]—[/dim]"
         table.add_row(label, value)
     console.print(Panel(table, title=title, border_style="cyan", expand=False))
+
+
+CHAT_PLATFORM_NAMES: dict[str, str] = {
+    "dailybot": "Dailybot",
+    "slack": "Slack",
+    "msteams": "Microsoft Teams",
+    "discord": "Discord",
+    "hangouts": "Google Chat",
+}
+
+
+def print_org_chat_platforms(organization: dict[str, Any]) -> None:
+    """Render an organization's chat platforms (ChatPlatformSummary, L74), when served.
+
+    The keys are appended only when the server's gate is on. A missing key means
+    "unavailable", not "none", so nothing is printed and the output stays exactly
+    what it was before these fields existed. Names and ids are server text.
+    """
+    platforms: Any = organization.get("chat_platforms")
+    if not isinstance(platforms, list):
+        return
+    # One block per platform instead of a table: the id is what installation-qualified
+    # references use, so it is printed whole on its own line, never truncated or folded.
+    console.print("[bold cyan]Chat platforms[/bold cyan]")
+    for item in platforms:
+        if not isinstance(item, dict):
+            continue
+        platform: str = str(item.get("platform") or "")
+        label: str = CHAT_PLATFORM_NAMES.get(platform, platform)
+        primary: str = " [dim](primary)[/dim]" if item.get("is_primary") is True else ""
+        status: str = str(item.get("status") or "")
+        status_style: str = "green" if status == "connected" else "yellow"
+        status_text: str = (
+            f" · [{status_style}]{safe_text(status)}[/{status_style}]" if status else ""
+        )
+        name: str = safe_text(item.get("display_name") or "")
+        console.print(f"  [bold]{safe_text(label)}[/bold]{primary} · {name}{status_text}")
+        console.print(f"    [dim]id[/dim] {safe_text(item.get('id') or '')}", soft_wrap=True)
+    if organization.get("has_external_chat_platform") is False:
+        print_info(
+            "No external chat platform is connected (Slack, Microsoft Teams, Discord or "
+            "Google Chat). `dailybot chat send` needs one."
+        )
 
 
 def print_pagination_footer(
