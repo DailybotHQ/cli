@@ -660,6 +660,9 @@ All endpoints are POSTed to `{api_url}/v1/...`. The default `api_url` is `https:
 | `POST` | `/v1/cli/auth/verify-code/` | `{ email, code, organization_id? }` | `{ token, organization: {name, uuid} }` or `{ requires_organization_selection: true, organizations: [...] }` | No auth |
 | `GET` | `/v1/cli/auth/status/` | — | `{ user: {email}, organization: {name, uuid} }` | Bearer |
 | `POST` | `/v1/cli/auth/logout/` | — | `{ detail }` | Bearer |
+| `POST` | `/v1/cli/auth/device/` | `{ client_id: "dailybot-cli", client_version }` | `{ device_code, user_code, verification_uri, verification_uri_complete, expires_in, interval }` | No auth. `start_device_authorization()`. A 404/405 means the server predates the device flow. |
+| `POST` | `/v1/cli/auth/device/token/` | `{ grant_type: "urn:ietf:params:oauth:grant-type:device_code", device_code, client_id }` | `{ token_type, access, expires_at, refresh, refresh_expires_at, user, organization }` | No auth. `poll_device_token()`. Pending states are `400` with `code` = `authorization_pending`, `slow_down` (body `interval` → `APIError.extra["interval"]`), `access_denied`, `expired_token`, `invalid_grant`, `invalid_client`. |
+| `POST` | `/v1/cli/auth/refresh/` | `{ refresh }` | the same token body (a rotated pair) | No auth. `refresh_token_pair()`. `401` codes: `session_revoked`, `refresh_token_expired`, `user_disabled`. |
 
 ### CLI-personal (X-API-KEY *or* Bearer)
 

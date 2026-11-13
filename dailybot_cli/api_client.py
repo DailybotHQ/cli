@@ -72,6 +72,10 @@ def _base_headers() -> dict[str, str]:
 # session work seamlessly regardless of which convention the server uses.
 _AUTH_RETRY_STATUS_CODES: frozenset[int] = frozenset({401, 403})
 
+# RFC 8628 device flow (PLAN_002, frozen at checkpoint 1: DEVICE_FLOW_WIRE).
+DEVICE_CLIENT_ID: str = "dailybot-cli"
+DEVICE_GRANT_TYPE: str = "urn:ietf:params:oauth:grant-type:device_code"
+
 # The person-shaped Tasks doors have a third refusal shape: `400 actor_required`,
 # meaning "this credential is an organization with nobody to be". It is the same
 # condition as a 401 — the wrong *kind* of credential was presented — but it does
@@ -391,6 +395,15 @@ class APIError(Exception):
         # known, so a message about an agent key is never shown to a login session.
         self.credential: str | None = credential
         super().__init__(f"API error {status_code}: {detail}")
+
+
+def _json_field(response: httpx.Response, key: str) -> Any:
+    """One top-level field of a JSON body, or ``None`` when the body is not a JSON object."""
+    try:
+        body: Any = response.json()
+    except Exception:
+        return None
+    return body.get(key) if isinstance(body, dict) else None
 
 
 def _invalid_identifier() -> APIError:
@@ -1031,6 +1044,73 @@ class DailyBotClient:
                 "The request timed out. The code may already have been used, so "
                 "verifying it again can fail: run `dailybot login` to request a new one."
             ),
+        )
+        return self._handle_response(response)
+
+    def start_device_authorization(self) -> dict[str, Any]:
+        """POST /v1/cli/auth/device/ — start an RFC 8628 device authorization.
+
+        Unauthenticated: the CLI has no credential yet. A 404 or 405 means the
+        server predates the device flow; the caller falls back to the email code.
+        """
+        response: httpx.Response = self._guard_transport(
+            lambda: httpx.post(
+                f"{self.api_url}/v1/cli/auth/device/",
+                json={"client_id": DEVICE_CLIENT_ID, "client_version": __version__},
+                headers=self._headers(authenticated=False),
+                timeout=self.timeout,
+            ),
+            method="POST",
+            timeout_message="The request timed out. Run `dailybot login` again.",
+        )
+        return self._handle_response(response)
+
+    def poll_device_token(self, device_code: str) -> dict[str, Any]:
+        """POST /v1/cli/auth/device/token/ — redeem an approved device code.
+
+        Each pending state is a 400 whose ``code`` names it (``authorization_pending``,
+        ``slow_down``, ``access_denied``, ``expired_token``, ``invalid_grant``,
+        ``invalid_client``). They are never retried as authentication failures; a
+        ``slow_down`` carries the new polling interval in ``APIError.extra["interval"]``.
+        """
+        response: httpx.Response = self._guard_transport(
+            lambda: httpx.post(
+                f"{self.api_url}/v1/cli/auth/device/token/",
+                json={
+                    "grant_type": DEVICE_GRANT_TYPE,
+                    "device_code": device_code,
+                    "client_id": DEVICE_CLIENT_ID,
+                },
+                headers=self._headers(authenticated=False),
+                timeout=self.timeout,
+            ),
+            method="POST",
+            # A poll changes nothing until the approval exists, and a code that was
+            # redeemed answers invalid_grant: polling again is always safe.
+            timeout_message="The request timed out. Polling again is safe; the code is still valid.",
+        )
+        try:
+            return self._handle_response(response)
+        except APIError as error:
+            interval: Any = _json_field(response, "interval")
+            if isinstance(interval, int) and not isinstance(interval, bool):
+                error.extra["interval"] = interval
+            raise
+
+    def refresh_token_pair(self, refresh: str) -> dict[str, Any]:
+        """POST /v1/cli/auth/refresh/ — rotate a device-flow session's token pair.
+
+        Unauthenticated: the refresh token in the body is the proof. Failures keep
+        their ``code`` (``session_revoked``, ``refresh_token_expired``, ``user_disabled``).
+        """
+        response: httpx.Response = self._guard_transport(
+            lambda: httpx.post(
+                f"{self.api_url}/v1/cli/auth/refresh/",
+                json={"refresh": refresh},
+                headers=self._headers(authenticated=False),
+                timeout=self.timeout,
+            ),
+            method="POST",
         )
         return self._handle_response(response)
 
