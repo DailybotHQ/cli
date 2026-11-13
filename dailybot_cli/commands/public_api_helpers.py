@@ -70,6 +70,69 @@ ERROR_CODE_MESSAGES: dict[str, str] = {
     AUTH_BACKEND_UNAVAILABLE_CODE: (
         "Dailybot sign-in is temporarily unavailable. Your session is fine; try again in a moment."
     ),
+    "session_revoked": (
+        "Your Dailybot session was signed out (a logout elsewhere, or it was revoked). "
+        "Run `dailybot login` to sign in again."
+    ),
+    "session_migrated": (
+        "Your Dailybot session was replaced by a newer sign-in. "
+        "Run `dailybot login` to sign in again."
+    ),
+    "refresh_token_expired": (
+        "Your Dailybot session has expired. Run `dailybot login` to sign in again."
+    ),
+    "access_token_expired": (
+        "Your Dailybot session needs renewing. Run the command again, and "
+        "`dailybot login` if it keeps failing."
+    ),
+    "user_disabled": (
+        "This Dailybot account is deactivated. Ask an organization admin to reactivate it."
+    ),
+    # --- Browser (device-flow) sign-in, RFC 8628 ------------------------------
+    "authorization_pending": "The sign-in has not been approved in the browser yet.",
+    "slow_down": "The CLI checked for the approval too often; wait a few seconds and retry.",
+    "access_denied": "The sign-in was denied in the browser.",
+    "expired_token": (
+        "The sign-in code expired before it was approved. Run `dailybot login --device` again."
+    ),
+    "invalid_grant": (
+        "This sign-in request is no longer valid. Run `dailybot login --device` again."
+    ),
+    "invalid_client": (
+        "The server refused this sign-in request. Update the Dailybot CLI with "
+        "`dailybot upgrade` and try again."
+    ),
+    # --- Chat platforms: attach (web) and qualified channel references -------
+    "tenant_already_bound": (
+        "That chat workspace is already connected to another Dailybot organization. "
+        "Disconnect it there first, from the Dailybot web app."
+    ),
+    "pending_link": (
+        "This chat workspace is waiting for its connection to be confirmed in the Dailybot web app."
+    ),
+    "channel_write_forbidden": (
+        "This organization's chat platforms are managed in the Dailybot web app; "
+        "that change is not allowed here."
+    ),
+    "tenant_ambiguous": (
+        "Dailybot could not tell which chat workspace to use. Connect it from the Dailybot web app."
+    ),
+    "channel_attach_unsupported": (
+        "This organization cannot connect another chat platform. Manage its chat "
+        "platforms in the Dailybot web app."
+    ),
+    "attach_forbidden": (
+        "Only an organization admin can connect a chat platform, from the Dailybot web app."
+    ),
+    "channel_reference_ambiguous": (
+        "More than one chat platform matches that channel. Qualify it with the platform "
+        "(`slack:<id>`, `msteams:<id>`, `discord:<id>`, `hangouts:<id>`) or the platform "
+        "id from `dailybot org` (`<platform-id>:<id>`)."
+    ),
+    "channel_reference_unknown": (
+        "That chat platform is not connected to this organization. Run `dailybot org` "
+        "to see the chat platforms you can use."
+    ),
     # Today a field on the legacy login doors; after the sunset, their error code.
     "cli_auth_deprecated": (
         "Email-code sign-in has been retired. Run `dailybot upgrade`, then sign in with "
@@ -1056,6 +1119,19 @@ def agent_error_message(exc: APIError) -> str:
     return f"{message}{_throttle_hint(exc, _retry_after_seconds(exc))}"
 
 
+# 401 codes of the device-flow session (DEVICE_FLOW_WIRE §4, CONTRACT_SESSION §7)
+# whose message replaces the generic "Session expired" line.
+SESSION_401_CODES: frozenset[str] = frozenset(
+    {
+        "session_revoked",
+        "session_migrated",
+        "refresh_token_expired",
+        "access_token_expired",
+        "user_disabled",
+    }
+)
+
+
 def exit_for_api_error(
     exc: APIError,
     json_mode: bool,
@@ -1086,7 +1162,12 @@ def exit_for_api_error(
         mapped_message = code_overrides[code]
 
     if exc.status_code == 401:
-        message: str = "Session expired. Run: dailybot login"
+        # The session codes name why the session ended; any other 401 keeps today's text.
+        message: str = (
+            mapped_message
+            if code in SESSION_401_CODES and mapped_message
+            else "Session expired. Run: dailybot login"
+        )
         exit_code: int = EXIT_NOT_AUTHENTICATED
     elif exc.status_code == 403:
         message = mapped_message or exc.detail

@@ -820,6 +820,26 @@ not a dead session: it keeps the server's `detail` and `code`.
 | 400 with "ai processing failed" | — | `update.py` rewrites to a support-contact message |
 | 429 | passes through (`retry_after` from the `Retry-After` header) | A known `code` (`registration_rate_limited`, `free_plan_daily_limit_exceeded`) shows its message plus "Try again in Ns."; without a code, `agent email send` says "Hourly email limit exceeded" and `agent register` says "Rate limited." with the wait |
 | `httpx.TimeoutException` | propagates from httpx | `update.py` and `interactive.py` catch and emit a "may be processing your update" message |
+| 401 `access_token_expired` (device-flow session) | the client refreshes the pair once and replays the request once (`_refresh_session`) | — |
+| 503 `auth_backend_unavailable` | retried 3 times, each waiting `min(Retry-After, 5 s)`; never a refresh, an API-key fallback or a credential change | "Dailybot sign-in is temporarily unavailable", exit `6`; `logout` keeps the local session |
+
+### Session, sign-in and chat-platform codes (PLAN_002)
+
+`exit_for_api_error` maps each of these codes to its `ERROR_CODE_MESSAGES` entry; the exit code follows the status as for every other code (401 → `3`, 403 → `4`, 400 → `2`, 409 → `1`, 503 → `6`). An unknown code still shows the server's `detail`. Any other 401 keeps "Session expired. Run: dailybot login".
+
+| Code | Status | Where it comes from |
+| --- | --- | --- |
+| `access_token_expired` | 401 | any `/v1/*` door with an expired device-flow access token (refreshed transparently first) |
+| `refresh_token_expired`, `session_revoked`, `session_migrated`, `user_disabled` | 401 | the refresh door, or any door with an ended session |
+| `authorization_pending`, `slow_down`, `access_denied`, `expired_token`, `invalid_grant`, `invalid_client` | 400 | the device-token door (`dailybot login --device` handles them in its polling loop) |
+| `auth_backend_unavailable` | 503 + `Retry-After` | web-session doors; defensive for the CLI |
+| `cli_auth_deprecated` | a body field today | the legacy email-code doors (see the auth table) |
+| `channel_reference_ambiguous` | 409 | `/v1/send-message/`, Tasks routes and channels: a raw id matches more than one chat platform; qualify it |
+| `channel_reference_unknown` | 400 | same doors: the qualified platform or platform id is not connected to the organization |
+| `platform_not_connected` | 400 | `chat send` / Tasks channel routes on an organization with no external chat platform |
+| `tenant_already_bound`, `pending_link`, `tenant_ambiguous`, `channel_attach_unsupported` | 409 | connecting a chat platform in the web app |
+| `attach_forbidden`, `feature_not_available` | 403 | connecting a chat platform in the web app |
+| `channel_write_forbidden` | 400 | a legacy writer touching an organization whose chat platforms are managed in the web app |
 
 ## Plan — `/v1/plan/*`
 
