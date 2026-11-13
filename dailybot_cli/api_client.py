@@ -666,7 +666,11 @@ class DailyBotClient:
             lambda: httpx.request(method, url, **kwargs), method=method
         )
 
-        if self._needs_refresh(response) and self._refresh_session():
+        # At most one refresh per request: before the alternate credential when the
+        # Bearer went first, or after it when the Bearer was the fallback (a repo key
+        # preferred on the login's own host was refused).
+        refresh_tried: bool = self._needs_refresh(response)
+        if refresh_tried and self._refresh_session():
             kwargs["headers"] = self._agent_headers()
             response = self._guard_transport(
                 lambda: httpx.request(method, url, **kwargs), method=method
@@ -679,6 +683,12 @@ class DailyBotClient:
                 response = self._guard_transport(
                     lambda: httpx.request(method, url, **kwargs), method=method
                 )
+
+        if not refresh_tried and self._needs_refresh(response) and self._refresh_session():
+            kwargs["headers"] = self._bearer_headers()
+            response = self._guard_transport(
+                lambda: httpx.request(method, url, **kwargs), method=method
+            )
 
         return response
 
@@ -742,13 +752,10 @@ class DailyBotClient:
 
         response: httpx.Response = self._dispatch_guarded(method, url, **kwargs)
 
-        if self._needs_refresh(response) and self._refresh_session():
-            replay_headers: dict[str, str] = self._headers()
-            if files is not None or content is not None:
-                replay_headers.pop("Content-Type", None)
-            if extra_headers:
-                replay_headers.update(extra_headers)
-            kwargs["headers"] = replay_headers
+        # At most one refresh per request (see `_agent_request`).
+        refresh_tried: bool = self._needs_refresh(response)
+        if refresh_tried and self._refresh_session():
+            kwargs["headers"] = self._replay_headers(self._headers(), files, content, extra_headers)
             response = self._dispatch_guarded(method, url, **kwargs)
 
         if _is_auth_retryable(response) and not self._is_final_person_refusal(url, response):
@@ -764,7 +771,36 @@ class DailyBotClient:
                 kwargs["headers"] = retry_headers
                 response = self._dispatch_guarded(method, url, **kwargs)
 
+        if not refresh_tried and self._needs_refresh(response) and self._refresh_session():
+            kwargs["headers"] = self._replay_headers(
+                self._bearer_headers(), files, content, extra_headers
+            )
+            response = self._dispatch_guarded(method, url, **kwargs)
+
         return response
+
+    @staticmethod
+    def _replay_headers(
+        headers: dict[str, str],
+        files: dict[str, Any] | None,
+        content: bytes | None,
+        extra_headers: dict[str, str] | None,
+    ) -> dict[str, str]:
+        """Headers for a replay, with the same body rules as the first attempt."""
+        replay: dict[str, str] = dict(headers)
+        if files is not None or content is not None:
+            replay.pop("Content-Type", None)
+        if extra_headers:
+            replay.update(extra_headers)
+        return replay
+
+    def _bearer_headers(self) -> dict[str, str]:
+        """The login session's Bearer alone: the replay after a refresh that followed a
+        fallback to the session, so the refused repo key is not sent again."""
+        headers: dict[str, str] = _base_headers()
+        headers["Authorization"] = f"Bearer {self.token}"
+        self._agent_auth_mode = "bearer"
+        return headers
 
     def _needs_refresh(self, response: httpx.Response) -> bool:
         """A Bearer request refused with ``401 access_token_expired`` (and nothing else)."""

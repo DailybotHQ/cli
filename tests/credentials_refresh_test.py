@@ -394,3 +394,83 @@ class TestReviewFixes:
             client.get_status()
         assert get.call_count == 1
         assert client.token == OLD_ACCESS
+
+
+class TestRefreshAfterTheAlternateCredential:
+    """AI review round 1 (unthreaded warnings at api_client.py:680 and :764).
+
+    A repo key preferred on the login's own host is refused, the client falls back to
+    the Bearer session, and that access token has expired: the pair refreshes once and
+    the request is replayed with the new Bearer.
+    """
+
+    @staticmethod
+    def _client() -> DailyBotClient:
+        _save_pair()
+        return DailyBotClient(api_url=API, api_key="test-key", prefer_api_key=True)
+
+    def test_the_user_path(self) -> None:
+        client: DailyBotClient = self._client()
+        with (
+            patch(
+                "dailybot_cli.api_client.httpx.get",
+                side_effect=[
+                    _plain(401, {"detail": "Invalid key."}),
+                    fixture_response("bearer_access_token_expired_401"),
+                    _ok(),
+                ],
+            ) as get,
+            patch(
+                "dailybot_cli.api_client.httpx.post",
+                return_value=fixture_response("refresh_success_200"),
+            ) as post,
+        ):
+            assert client.get_status() == {"ok": True}
+        assert post.call_count == 1
+        sent: list[dict[str, str]] = [c.kwargs["headers"] for c in get.call_args_list]
+        assert sent[0].get("X-API-KEY") == "test-key"
+        assert sent[1].get("Authorization") == f"Bearer {OLD_ACCESS}"
+        assert sent[2].get("Authorization") == f"Bearer {NEW['access']}"
+        assert "X-API-KEY" not in sent[2]
+
+    def test_the_agent_path(self) -> None:
+        client: DailyBotClient = self._client()
+        with (
+            patch(
+                "dailybot_cli.api_client.httpx.request",
+                side_effect=[
+                    _plain(401, {"detail": "Invalid key."}),
+                    fixture_response("bearer_access_token_expired_401"),
+                    _ok(),
+                ],
+            ) as request,
+            patch(
+                "dailybot_cli.api_client.httpx.post",
+                return_value=fixture_response("refresh_success_200"),
+            ),
+        ):
+            client.get_agent_health(agent_name="a")
+        replay: dict[str, str] = request.call_args_list[2].kwargs["headers"]
+        assert replay.get("Authorization") == f"Bearer {NEW['access']}"
+        assert "X-API-KEY" not in replay
+
+    def test_never_more_than_one_refresh_per_request(self) -> None:
+        _save_pair()
+        client: DailyBotClient = DailyBotClient(api_url=API, api_key="test-key")
+        with (
+            patch(
+                "dailybot_cli.api_client.httpx.get",
+                side_effect=[
+                    fixture_response("bearer_access_token_expired_401"),
+                    fixture_response("bearer_access_token_expired_401"),
+                    _plain(401, {"detail": "Invalid key."}),
+                ],
+            ),
+            patch(
+                "dailybot_cli.api_client.httpx.post",
+                return_value=fixture_response("refresh_success_200"),
+            ) as post,
+            pytest.raises(APIError),
+        ):
+            client.get_status()
+        assert post.call_count == 1
