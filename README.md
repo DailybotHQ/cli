@@ -846,7 +846,7 @@ Replies to agent emails land as messages retrievable via `dailybot agent message
 | Command | Description |
 |---------|-------------|
 | `dailybot login` | Authenticate with email OTP, or in the browser with `--device` |
-| `dailybot logout` | Log out and revoke token |
+| `dailybot logout` | Log out and revoke the session (both tokens of a browser sign-in) |
 | `dailybot status` | Show pending check-ins and auth status |
 | `dailybot me` | Show the authenticated user and org context (`--include-email`, `--json`) |
 | `dailybot org` | Show the organization the credential is scoped to, and its chat platforms when the server provides them (`--json`) |

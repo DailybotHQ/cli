@@ -67,7 +67,7 @@ The single HTTP boundary. Owns:
 ### `dailybot_cli/config.py`
 The on-disk credential and configuration store. Owns:
 
-- `~/.config/dailybot/credentials.json` — login session (token, email, organization, organization_uuid, api_url)
+- `~/.config/dailybot/credentials.json` — login session (token, email, organization, organization_uuid, api_url; a browser sign-in adds auth_method, refresh, expires_at, refresh_expires_at)
 - `~/.config/dailybot/config.json` — stored settings (currently just `api_key`)
 - `~/.config/dailybot/agents.json` — named agent profiles + default-profile pointer
 - `~/.config/dailybot/org_cache.json` — temporary cache of the org list during multi-org non-interactive login
@@ -116,7 +116,7 @@ def <name>(...) -> None:
 
 Specific notes per file:
 
-- **`auth.py`** — login is a 4-step flow (request code → optional org list → enter code → verify-and-save). Three call paths share `_verify_and_save`: interactive, non-interactive step 2 (`_verify_non_interactive`), and the auto-recurse on `requires_organization_selection`. The cached org list (`org_cache.json`) is critical for non-interactive multi-org login — re-calling `request_code` would invalidate the OTP.
+- **`auth.py`** — login is a 4-step flow (request code → optional org list → enter code → verify-and-save). Three call paths share `_verify_and_save`: interactive, non-interactive step 2 (`_verify_non_interactive`), and the auto-recurse on `requires_organization_selection`. The cached org list (`org_cache.json`) is critical for non-interactive multi-org login — re-calling `request_code` would invalidate the OTP. `login --device` runs the RFC 8628 browser sign-in in `commands/_device_login.py` (start → show link and code → poll at the server interval → save the access/refresh pair), falling back to the email code on a 404/405 start. The client refreshes that pair only on `401 access_token_expired` (`DailyBotClient._refresh_session`), and retries `503 auth_backend_unavailable` with a bounded wait (`_retry_auth_backend`).
 - **`status.py`** — two modes: list pending check-ins (default) or verify auth (`--auth`). The `--auth` path tries OTP first, then API key, with carefully tuned error messages.
 - **`update.py`** — supports free-text + structured fields. When invoked with no args, falls back to a stdin loop (Enter twice to submit). 401/403 → `dailybot login`; 400 with "ai processing failed" → contact support.
 - **`agent.py`** — the largest module. Sub-groups: `webhook`, `message`, `email`. The `_resolve_agent_context` helper centralizes the 5-step auth resolution and is the only function that should be touched if the resolution order needs to change. The `register` command implements a math-challenge handshake (no auth needed).

@@ -60,7 +60,7 @@ The Dailybot API exposes three distinct endpoint families that the CLI consumes:
 ### CLI-personal endpoints — `/v1/cli/status/`, `/v1/cli/updates/`
 
 - Authenticate with **either** a Bearer token (`Authorization: Bearer <token>`) **or** an org API key (`X-API-KEY`).
-- The Bearer token is issued by the email-OTP flow (`/v1/cli/auth/{request-code,verify-code}`); the API key resolves to its owning user server-side, so scope is identical.
+- The Bearer token is issued by the email-OTP flow (`/v1/cli/auth/{request-code,verify-code}`) or by the browser sign-in (`/v1/cli/auth/device/` + `/device/token/`, an access/refresh pair rotated through `/v1/cli/auth/refresh/`); the API key resolves to its owning user server-side, so scope is identical.
 - Scope: a single user within a single organization.
 
 The CLI's `_headers(authenticated=True)` builds these. Used by `status`, `update`. The auth-lifecycle endpoints (`/v1/cli/auth/*`, used by `login` / `logout`) remain Bearer/OTP only.
@@ -101,7 +101,7 @@ The CLI itself doesn't receive webhooks. `dailybot agent webhook register --url 
 
 ### "I should add Slack OAuth to the CLI"
 
-No. Chat-platform OAuth is owned by the Dailybot API. The CLI only ever authenticates against `/v1/cli/auth/...` (email OTP) or carries a pre-existing API key.
+No. Chat-platform OAuth is owned by the Dailybot API. The CLI only ever authenticates against `/v1/cli/auth/...` (email OTP, or the browser device-flow sign-in, where the approval happens on a Dailybot web page) or carries a pre-existing API key.
 
 ### "The CLI should cache follow-ups locally for offline mode"
 
