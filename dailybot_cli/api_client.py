@@ -95,6 +95,15 @@ ACCESS_TOKEN_EXPIRED_CODE: str = "access_token_expired"
 SESSION_REVOKED_CODE: str = "session_revoked"
 HTTP_UNAUTHORIZED: int = 401
 
+# 503 auth_backend_unavailable (CONTRACT_SESSION §7, W1, L38): the server's auth
+# backend is briefly down. Transient by definition: retried with a bounded wait,
+# never treated as an expired session, a refresh trigger or a credential fallback.
+AUTH_BACKEND_UNAVAILABLE_CODE: str = "auth_backend_unavailable"
+HTTP_SERVICE_UNAVAILABLE: int = 503
+AUTH_BACKEND_MAX_RETRIES: int = 3
+AUTH_BACKEND_MAX_WAIT_SECS: float = 5.0
+AUTH_BACKEND_DEFAULT_RETRY_AFTER_SECS: float = 2.0
+
 # The person-shaped Tasks doors have a third refusal shape: `400 actor_required`,
 # meaning "this credential is an organization with nobody to be". It is the same
 # condition as a 401 — the wrong *kind* of credential was presented — but it does
@@ -423,6 +432,39 @@ def _json_field(response: httpx.Response, key: str) -> Any:
     except Exception:
         return None
     return body.get(key) if isinstance(body, dict) else None
+
+
+def _is_auth_backend_unavailable(response: httpx.Response) -> bool:
+    return (
+        response.status_code == HTTP_SERVICE_UNAVAILABLE
+        and _json_field(response, "code") == AUTH_BACKEND_UNAVAILABLE_CODE
+    )
+
+
+def _auth_backend_wait(response: httpx.Response) -> float:
+    """``Retry-After`` in seconds, defaulted when absent or unreadable, capped at 5 s."""
+    raw: Any = response.headers.get("Retry-After")
+    try:
+        wait: float = float(raw) if raw is not None else AUTH_BACKEND_DEFAULT_RETRY_AFTER_SECS
+    except (TypeError, ValueError):
+        wait = AUTH_BACKEND_DEFAULT_RETRY_AFTER_SECS
+    return min(max(wait, 0.0), AUTH_BACKEND_MAX_WAIT_SECS)
+
+
+def _retry_auth_backend(send: Callable[[], httpx.Response]) -> httpx.Response:
+    """Send, retrying a ``503 auth_backend_unavailable`` up to the bounded budget.
+
+    The refusal comes from the authentication layer, before any view runs, so a
+    retried write is never applied twice. ``time.sleep`` is referenced through the
+    module so tests can patch it.
+    """
+    response: httpx.Response = send()
+    attempt: int = 0
+    while _is_auth_backend_unavailable(response) and attempt < AUTH_BACKEND_MAX_RETRIES:
+        time.sleep(_auth_backend_wait(response))
+        attempt += 1
+        response = send()
+    return response
 
 
 def _invalid_identifier() -> APIError:
@@ -856,7 +898,7 @@ class DailyBotClient:
         of the documented transport exit.
         """
         try:
-            return send()
+            return _retry_auth_backend(send)
         except httpx.HTTPError as exc:
             if timeout_message and isinstance(exc, httpx.TimeoutException):
                 raise TransportTimeout(timeout_message) from exc
@@ -879,7 +921,9 @@ class DailyBotClient:
             isinstance(params, dict) and str(params.get("dry_run")).lower() in {"true", "1"}
         )
         try:
-            return self._dispatch_http(method, url, **kwargs)
+            # The one server-signalled exception: a 503 auth_backend_unavailable is
+            # retried with a bounded wait (`_retry_auth_backend`).
+            return _retry_auth_backend(lambda: self._dispatch_http(method, url, **kwargs))
         except httpx.HTTPError as exc:
             # No retry on purpose. The bounded 429 backoff in `_send_with_retry`
             # is the only retry this client has; silently retrying a connection
@@ -934,7 +978,7 @@ class DailyBotClient:
             if response.status_code == 401 and self._agent_auth_mode == "bearer":
                 detail = "Session expired. Run 'dailybot login' to re-authenticate."
             retry_after: float | None = None
-            if response.status_code == 429:
+            if response.status_code == 429 or code == AUTH_BACKEND_UNAVAILABLE_CODE:
                 raw_retry: str | None = response.headers.get("Retry-After")
                 if raw_retry:
                     try:

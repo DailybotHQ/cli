@@ -41,6 +41,14 @@ Common issues and how to fix them. If you hit something that isn't here, add it 
 - The Bearer token has expired. Re-run `dailybot login`.
 - The API URL has changed (e.g., switched from prod to staging without re-authenticating). Tokens are URL-scoped — log in to the new URL.
 
+### "Dailybot sign-in is temporarily unavailable" (`auth_backend_unavailable`, exit 6)
+
+The server answered `503` with `code: auth_backend_unavailable`: its sign-in backend is briefly down. Your session is fine. The CLI already retried 3 times, waiting what the server's `Retry-After` asked for (at most 5 seconds each), before giving up. It never treats this as an expired session: it does not refresh, does not switch to your API key, and does not change `credentials.json`. Wait a moment and run the command again. `dailybot logout` on this error keeps your local session so you can retry the logout and revoke it on the server.
+
+### `dailybot login --device`: "The sign-in code expired" / "was denied"
+
+The browser sign-in waits up to 10 minutes for you to approve the code. "Expired" means it was not approved in time; "denied" means someone pressed Deny on the page. Nothing is saved in either case: run `dailybot login --device` again. If the server does not offer browser sign-in yet, the command continues with the email code by itself.
+
 ### Login OTP never arrives
 
 - Check spam.

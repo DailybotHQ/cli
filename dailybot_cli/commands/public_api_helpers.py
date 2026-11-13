@@ -8,7 +8,7 @@ from typing import Any, NoReturn
 import click
 import questionary
 
-from dailybot_cli.api_client import APIError, DailyBotClient
+from dailybot_cli.api_client import AUTH_BACKEND_UNAVAILABLE_CODE, APIError, DailyBotClient
 from dailybot_cli.config import get_agent_auth, get_org_plan, get_person_token, load_credentials
 from dailybot_cli.display import error_console, print_error, print_info
 
@@ -52,6 +52,10 @@ EXIT_USER_ABORTED: int = 7
 # Server-side error codes from {detail, code} responses. Kept here so command
 # handlers and tests share a single source of truth.
 ERROR_CODE_MESSAGES: dict[str, str] = {
+    # --- Sessions (PLAN_002, CONTRACT_SESSION §7) -----------------------------
+    AUTH_BACKEND_UNAVAILABLE_CODE: (
+        "Dailybot sign-in is temporarily unavailable. Your session is fine; try again in a moment."
+    ),
     # --- Tasks (/v1/plan/*) -------------------------------------------------
     # Written against what the server actually returned in the live probe
     # recorded in the plan's PERMISSION_MATRIX_OBSERVED.md, not against prose.
@@ -1087,6 +1091,10 @@ def exit_for_api_error(
     elif exc.status_code == 400:
         message = mapped_message or exc.detail
         exit_code = EXIT_USAGE_ERROR
+    elif code == AUTH_BACKEND_UNAVAILABLE_CODE:
+        # Transient: the session is fine, the server's sign-in backend is not.
+        message = mapped_message or exc.detail
+        exit_code = EXIT_RATE_LIMITED
     else:
         message = mapped_message or exc.detail
         exit_code = 1

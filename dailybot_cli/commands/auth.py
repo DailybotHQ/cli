@@ -6,8 +6,9 @@ from typing import Any
 import click
 import questionary
 
-from dailybot_cli.api_client import APIError, DailyBotClient
+from dailybot_cli.api_client import AUTH_BACKEND_UNAVAILABLE_CODE, APIError, DailyBotClient
 from dailybot_cli.commands import _device_login
+from dailybot_cli.commands.public_api_helpers import exit_for_api_error
 from dailybot_cli.config import (
     RepoEnvError,
     clear_credentials,
@@ -392,7 +393,10 @@ def logout() -> None:
         try:
             with console.status("Logging out..."):
                 client.logout(refresh=refresh, access_expired=access_expired and bool(refresh))
-        except APIError:
+        except APIError as error:
+            if error.code == AUTH_BACKEND_UNAVAILABLE_CODE:
+                # Transient: keep the session so logout can be retried and revoke it.
+                exit_for_api_error(error, json_mode=False)
             # Revoke best-effort; clear local credentials regardless
             unrevoked_pair = unrevoked_pair or bool(refresh)
 
