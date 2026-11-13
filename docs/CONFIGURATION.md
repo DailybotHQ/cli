@@ -6,7 +6,7 @@ The Dailybot CLI persists state in `~/.config/dailybot/` by default. The path ca
 
 | File | Owner | Contents | Permissions |
 |------|-------|----------|-------------|
-| `credentials.json` | `dailybot login` | `{ token, email, organization, organization_uuid, api_url }` | `0o600` |
+| `credentials.json` | `dailybot login` | `{ token, email, organization, organization_uuid, api_url }`, plus `{ auth_method, refresh, expires_at, refresh_expires_at }` for a browser (device-flow) session | `0o600` |
 | `config.json` | `dailybot config` | `{ api_key }` (and any future settings) | `0o600` |
 | `agents.json` | `dailybot agent configure` / `register` | `{ default, profiles: { <slug>: { agent_name, api_key?, agent_email? } } }` | `0o600` |
 | `org_cache.json` | `dailybot login --email` (step 1) | `{ email, organizations: [...] }` | (no chmod — non-secret) |
@@ -18,6 +18,17 @@ The Dailybot CLI persists state in `~/.config/dailybot/` by default. The path ca
 ### Schema notes
 
 **`credentials.json`** — created by `save_credentials(...)`. Backwards-compatible additions are safe; `load_credentials()` treats missing keys as absent. The `api_url` field captures which API the user authenticated against, so re-running commands from a different default URL doesn't accidentally use the wrong one.
+
+  **Browser (device-flow) sessions** add four keys and rename or remove none (Rule 16):
+
+  | Key | Meaning |
+  |---|---|
+  | `auth_method` | `"device"`. Absent means a legacy email-code session: one opaque 90-day `token`, no refresh. |
+  | `token` | For a device session, the short-lived access token (`dbc_at_…`, about 1 hour). Every call path sends it as before, and an older CLI still reads it. |
+  | `refresh` | The refresh token (`dbc_rt_…`). It rotates on every refresh, and the new pair replaces the old one in place (`update_token_pair`). |
+  | `expires_at`, `refresh_expires_at` | ISO-8601 expiries of the access and refresh tokens, as the server sent them. |
+
+  Migration: none is needed. A legacy file keeps loading and authenticating unchanged, and `--email --code` still writes exactly the five legacy keys. The refresh token is bound to the issuing `api_url` like the access token (`get_refresh_token_for`), so it never travels to another host. An older CLI reading a device-session file uses the access token until it expires, then asks for `dailybot login` again.
 
 **`config.json`** — extended via `save_config({...})`. Setting a key to `None` removes it. Accessed only through `load_config()` / `save_config()` — never read directly elsewhere.
 
