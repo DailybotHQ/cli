@@ -9,6 +9,7 @@ The Dailybot CLI persists state in `~/.config/dailybot/` by default. The path ca
 | `credentials.json` | `dailybot login` | `{ token, email, organization, organization_uuid, api_url }`, plus `{ auth_method, refresh, expires_at, refresh_expires_at }` for a browser (device-flow) session | `0o600` |
 | `config.json` | `dailybot config` | `{ api_key }` (and any future settings) | `0o600` |
 | `agents.json` | `dailybot agent configure` / `register` | `{ default, profiles: { <slug>: { agent_name, api_key?, agent_email? } } }` | `0o600` |
+| `plan_cache.json` | `dailybot login`, `dailybot org`, the plan short-circuit | `{ <org_uuid>: <tier>, _refreshed_at: { <org_uuid>: <epoch seconds> } }` — tiers only, never a secret | `0o600` |
 | `org_cache.json` | `dailybot login --email` (step 1) | `{ email, organizations: [...] }` | (no chmod — non-secret) |
 | `ledger/<repo-slug>.json` | `dailybot hook ...` / `dailybot agent update` | Per-repo report ledger: `{ repo, first_seen_at, last_report_at, last_reported_commit, last_nudge_at, last_activity_at, work_pending, snoozed_until, turns_since_report, reported_by }` | `0o600` (dir `0o700`) |
 | `ledger/_global.json` | `dailybot hook session-start` | Cross-repo hook state: `{ last_login_nudge_at }` | `0o600` |
@@ -16,6 +17,8 @@ The Dailybot CLI persists state in `~/.config/dailybot/` by default. The path ca
 | `<repo>/.dailybot/env.json` | `dailybot env` / hand-authored, **gitignored** | `{ disabled?, active?, profiles: [{ name, api_key, api_url?, app_url? }, ...] }` | `0o600` |
 
 ### Schema notes
+
+**`plan_cache.json`** — the effective plan tier per org, used only to skip a request the server would refuse on a free plan. It is written at login (the browser sign-in caches `organization.plan.effective_tier`), by `dailybot org`, and when the CLI re-reads `/v1/organization/`. That re-read happens only on a cached-free hit or a `plan_upgrade_required` answer, at most once per org every 10 minutes (`TIER_REFRESH_MIN_INTERVAL_SECS`; the time is kept under the reserved `_refreshed_at` key, which older CLIs ignore). When the server omits `plan` (the field is switched off for most orgs) the cached tier is kept, and a failed re-read never blocks a command: an unknown tier always lets the server decide.
 
 **`credentials.json`** — created by `save_credentials(...)`. Backwards-compatible additions are safe; `load_credentials()` treats missing keys as absent. The `api_url` field captures which API the user authenticated against, so re-running commands from a different default URL doesn't accidentally use the wrong one.
 

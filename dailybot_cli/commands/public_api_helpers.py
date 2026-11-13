@@ -2,14 +2,28 @@
 
 import json
 import re
+import time
 from collections.abc import Callable
 from typing import Any, NoReturn
 
 import click
 import questionary
 
-from dailybot_cli.api_client import AUTH_BACKEND_UNAVAILABLE_CODE, APIError, DailyBotClient
-from dailybot_cli.config import get_agent_auth, get_org_plan, get_person_token, load_credentials
+from dailybot_cli.api_client import (
+    AUTH_BACKEND_UNAVAILABLE_CODE,
+    APIError,
+    DailyBotClient,
+    TransportError,
+)
+from dailybot_cli.config import (
+    get_agent_auth,
+    get_org_plan,
+    get_org_plan_refreshed_at,
+    get_person_token,
+    load_credentials,
+    mark_org_plan_refreshed,
+    save_org_plan,
+)
 from dailybot_cli.display import error_console, print_error, print_info
 
 # Plan tiers the server treats as "free" (matched case-insensitively). Kept
@@ -1056,6 +1070,10 @@ def exit_for_api_error(
     """
     code: str | None = getattr(exc, "code", None)
     extra: dict[str, Any] = getattr(exc, "extra", {}) or {}
+    if code == PAYWALL_CODE:
+        # The server says the plan does not allow this: re-read the effective tier
+        # so the cache matches (throttled; the local short-circuit just read it).
+        refresh_cached_tier(_signed_in_org_uuid())
     mapped_message: str | None = ERROR_CODE_MESSAGES.get(code) if code else None
     if mapped_message and code:
         mapped_message = _augment_code_message(mapped_message, code, extra)
@@ -1114,6 +1132,56 @@ def exit_for_api_error(
     raise SystemExit(exit_code)
 
 
+# The cached tier is re-read from `/v1/organization/` at most this often per org, and
+# only on a cached-free hit or a paywall code (L37) — never for a paid/unknown tier.
+TIER_REFRESH_MIN_INTERVAL_SECS: float = 600.0
+PAYWALL_CODE: str = "plan_upgrade_required"
+
+
+def remember_effective_tier(organization: dict[str, Any], org_uuid: str | None) -> str | None:
+    """Cache ``plan.effective_tier`` from an organization payload; return it, or ``None``.
+
+    Only a payload for ``org_uuid`` (the signed-in org) is cached: a repo API key may
+    resolve to another org. An absent ``plan`` (L43, the field is switched off) leaves
+    the cache untouched.
+    """
+    if not org_uuid or organization.get("uuid") != org_uuid:
+        return None
+    plan: Any = organization.get("plan")
+    tier: Any = plan.get("effective_tier") or plan.get("tier") if isinstance(plan, dict) else None
+    if not isinstance(tier, str) or not tier:
+        return None
+    save_org_plan(org_uuid, tier)
+    return tier
+
+
+def refresh_cached_tier(org_uuid: str | None) -> str | None:
+    """Re-read the org's effective tier, within the throttle; ``None`` when unknown.
+
+    Returns the cached tier when it was read recently or the server omits ``plan``,
+    and ``None`` when the read fails: a refresh problem never blocks a command.
+    """
+    if not org_uuid:
+        return None
+    now: float = time.time()
+    last: float | None = get_org_plan_refreshed_at(org_uuid)
+    if last is not None and now - last < TIER_REFRESH_MIN_INTERVAL_SECS:
+        return get_org_plan(org_uuid)
+    try:
+        organization: dict[str, Any] = DailyBotClient().get_organization()
+    except (APIError, TransportError):
+        return None
+    mark_org_plan_refreshed(org_uuid, now)
+    fresh: str | None = remember_effective_tier(organization, org_uuid)
+    return fresh if fresh is not None else get_org_plan(org_uuid)
+
+
+def _signed_in_org_uuid() -> str | None:
+    creds: dict[str, Any] | None = load_credentials()
+    value: Any = creds.get("organization_uuid") if creds else None
+    return value if isinstance(value, str) and value else None
+
+
 def enforce_plan_access(action: str, *, json_mode: bool = False) -> None:
     """Short-circuit a non-allowlisted command when the active org is known-free.
 
@@ -1121,17 +1189,21 @@ def enforce_plan_access(action: str, *, json_mode: bool = False) -> None:
     the source of truth: when the plan tier is **unknown** (the API hasn't
     exposed it, or no cache yet) this is a no-op and the call proceeds, so a
     stale/absent cache can never *block* a command the server would allow.
+    A cached free tier is re-read first (``refresh_cached_tier``): a trial's
+    effective tier lets the command through, and a failed read never blocks.
     Allowlisted (agent-scoped / me / org / cli-status) actions never short-circuit.
     """
     if action in FREE_PLAN_ALLOWLIST:
         return
-    creds: dict[str, Any] | None = load_credentials()
-    org_uuid: str | None = creds.get("organization_uuid") if creds else None
+    org_uuid: str | None = _signed_in_org_uuid()
     tier: str | None = get_org_plan(org_uuid)
+    if tier is None or tier.lower() not in FREE_PLAN_TIERS:
+        return
+    tier = refresh_cached_tier(org_uuid)
     if tier is not None and tier.lower() in FREE_PLAN_TIERS:
         # Reuse the Task 2 upgrade-message renderer + exit code (no second renderer).
         exit_for_api_error(
-            APIError(403, "This action requires a paid plan.", code="plan_upgrade_required"),
+            APIError(403, "This action requires a paid plan.", code=PAYWALL_CODE),
             json_mode,
         )
 

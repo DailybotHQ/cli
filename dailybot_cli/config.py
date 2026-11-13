@@ -511,6 +511,46 @@ def save_org_plan(organization_uuid: str, plan: str | None) -> None:
     _write_secret_file(cache_path, json.dumps(data, indent=2))
 
 
+PLAN_REFRESHED_AT_KEY: str = "_refreshed_at"
+"""Reserved ``plan_cache.json`` key: ``{org_uuid: epoch seconds}`` of the last tier read.
+
+Additive (Rule 16): it can never collide with an org UUID, and older CLIs only
+read ``data[org_uuid]``.
+"""
+
+
+def _load_plan_cache() -> dict[str, Any]:
+    cache_path: Path = _plan_cache_path()
+    if not cache_path.exists():
+        return {}
+    try:
+        loaded: Any = json.loads(cache_path.read_text())
+    except (json.JSONDecodeError, OSError):
+        return {}
+    return loaded if isinstance(loaded, dict) else {}
+
+
+def get_org_plan_refreshed_at(organization_uuid: str | None) -> float | None:
+    """When the org's tier was last read from the server, or ``None``."""
+    if not organization_uuid:
+        return None
+    stamps: Any = _load_plan_cache().get(PLAN_REFRESHED_AT_KEY)
+    value: Any = stamps.get(organization_uuid) if isinstance(stamps, dict) else None
+    return float(value) if isinstance(value, (int, float)) and not isinstance(value, bool) else None
+
+
+def mark_org_plan_refreshed(organization_uuid: str, when: float) -> None:
+    """Record that the org's tier was just read from the server (the refresh throttle)."""
+    if not organization_uuid:
+        return
+    data: dict[str, Any] = _load_plan_cache()
+    stamps: Any = data.get(PLAN_REFRESHED_AT_KEY)
+    stamps = dict(stamps) if isinstance(stamps, dict) else {}
+    stamps[organization_uuid] = when
+    data[PLAN_REFRESHED_AT_KEY] = stamps
+    _write_secret_file(_plan_cache_path(), json.dumps(data, indent=2))
+
+
 def get_org_plan(organization_uuid: str | None) -> str | None:
     """Return the cached plan tier for an org UUID, or None if unknown.
 
