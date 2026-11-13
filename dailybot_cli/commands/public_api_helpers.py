@@ -70,6 +70,11 @@ ERROR_CODE_MESSAGES: dict[str, str] = {
     AUTH_BACKEND_UNAVAILABLE_CODE: (
         "Dailybot sign-in is temporarily unavailable. Your session is fine; try again in a moment."
     ),
+    # Today a field on the legacy login doors; after the sunset, their error code.
+    "cli_auth_deprecated": (
+        "Email-code sign-in has been retired. Run `dailybot upgrade`, then sign in with "
+        "`dailybot login --device`."
+    ),
     # --- Tasks (/v1/plan/*) -------------------------------------------------
     # Written against what the server actually returned in the live probe
     # recorded in the plan's PERMISSION_MATRIX_OBSERVED.md, not against prose.

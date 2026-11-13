@@ -965,6 +965,11 @@ class DailyBotClient:
                 raw_extra: Any = body.get("extra")
                 if isinstance(raw_extra, dict):
                     extra = dict(raw_extra)
+                # The legacy login doors carry a `deprecation` object on 400 bodies
+                # too (W1); surface it so the notice reaches the renderer.
+                raw_deprecation: Any = body.get("deprecation")
+                if isinstance(raw_deprecation, dict):
+                    extra["deprecation"] = dict(raw_deprecation)
                 # Plan-gating responses carry upgrade_url at the top level; surface it
                 # in extra so downstream reads a single place.
                 upgrade_url: Any = body.get("upgrade_url")

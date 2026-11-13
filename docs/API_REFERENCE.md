@@ -664,7 +664,8 @@ All endpoints are POSTed to `{api_url}/v1/...`. The default `api_url` is `https:
 | Method | Path | Request | Response (200/201) | Notes |
 |--------|------|---------|--------------------|-------|
 | `POST` | `/v1/cli/auth/request-code/` | `{ email }` | `{ is_multi_org, organizations: [{id, uuid, name}] }` | No auth |
-| `POST` | `/v1/cli/auth/verify-code/` | `{ email, code, organization_id? }` | `{ token, organization: {name, uuid} }` or `{ requires_organization_selection: true, organizations: [...] }` | No auth |
+| `POST` | `/v1/cli/auth/verify-code/` | `{ email, code, organization_id? }` | `{ token, organization: {name, uuid} }` or `{ requires_organization_selection: true, organizations: [...] }` (a standalone organization adds `platform: "dailybot", standalone: true`) | No auth |
+| — | request-code / verify-code `deprecation` | — | `deprecation: { code: "cli_auth_deprecated", min_version, sunset, detail }` on 200 **and** 400 bodies, plus `Deprecation`, `Sunset` and `Link` headers, while the server's notice is on | A field, never an error. The CLI shows the `sunset` date once and suggests `dailybot upgrade` only when its version is below `min_version` (`APIError.extra["deprecation"]` on a 400). |
 | `GET` | `/v1/cli/auth/status/` | — | `{ user: {email}, organization: {name, uuid} }` | Bearer |
 | `POST` | `/v1/cli/auth/logout/` | — | `{ detail }` | Bearer |
 | `POST` | `/v1/cli/auth/device/` | `{ client_id: "dailybot-cli", client_version }` | `{ device_code, user_code, verification_uri, verification_uri_complete, expires_in, interval }` | No auth. `start_device_authorization()`. A 404/405 means the server predates the device flow. |

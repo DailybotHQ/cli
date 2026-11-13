@@ -62,6 +62,27 @@ def print_device_login_instructions(
         print_info(f"Or open {plain_text(verification_uri)} and enter the code yourself.")
 
 
+def print_cli_auth_deprecation(sunset: str, upgrade_to: str | None = None) -> None:
+    """The one-time notice that email-code sign-in is being retired (`cli_auth_deprecated`).
+
+    ``upgrade_to`` is set only when this CLI is older than the server's ``min_version``.
+    The server's own ``detail`` prose is never shown: the instruction depends on this
+    CLI's version, which only the CLI knows.
+    """
+    when: str = plain_text(sunset) if sunset else "a future date"
+    if upgrade_to:
+        print_warning(
+            f"Email-code sign-in is being retired on {when}. Update the Dailybot CLI to "
+            f"{plain_text(upgrade_to)} or later (`dailybot upgrade`), then sign in with "
+            "`dailybot login --device`."
+        )
+        return
+    print_warning(
+        f"Email-code sign-in is being retired on {when}. Next time, sign in through the "
+        "browser with `dailybot login --device`."
+    )
+
+
 def print_raw_value(value: str) -> None:
     """Print one bare value for a shell variable: no styling, no wrapping, stdout."""
     click.echo(value)

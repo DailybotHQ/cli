@@ -49,6 +49,10 @@ The server answered `503` with `code: auth_backend_unavailable`: its sign-in bac
 
 The browser sign-in waits up to 10 minutes for you to approve the code. "Expired" means it was not approved in time; "denied" means someone pressed Deny on the page. Nothing is saved in either case: run `dailybot login --device` again. If the server does not offer browser sign-in yet, the command continues with the email code by itself.
 
+### "Email-code sign-in is being retired on …" (`cli_auth_deprecated`)
+
+Dailybot is retiring the email-code sign-in in favour of the browser sign-in. While the notice is on, the server adds a `deprecation` field to the email-code answers; the CLI shows the sunset date once per `dailybot login` and the login itself works as before. If your CLI is older than the version the server asks for, the notice tells you to run `dailybot upgrade` first; either way, sign in next time with `dailybot login --device`. After the sunset date the email-code doors stop working.
+
 ### Login OTP never arrives
 
 - Check spam.

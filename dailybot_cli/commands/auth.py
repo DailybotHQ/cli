@@ -1,11 +1,13 @@
 """Authentication commands for Dailybot CLI."""
 
 import os
+import re
 from typing import Any
 
 import click
 import questionary
 
+from dailybot_cli import __version__
 from dailybot_cli.api_client import AUTH_BACKEND_UNAVAILABLE_CODE, APIError, DailyBotClient
 from dailybot_cli.commands import _device_login
 from dailybot_cli.commands.public_api_helpers import exit_for_api_error
@@ -28,11 +30,55 @@ from dailybot_cli.config import (
 )
 from dailybot_cli.display import (
     console,
+    print_cli_auth_deprecation,
     print_error,
     print_info,
     print_success,
     print_warning,
 )
+
+CLI_AUTH_DEPRECATED_CODE: str = "cli_auth_deprecated"
+_LEADING_DIGITS: re.Pattern[str] = re.compile(r"^(\d+)")
+
+# One notice per `dailybot login` run, even when two doors both carry the field.
+_deprecation_noticed: bool = False
+
+
+def _version_parts(version: str) -> tuple[int, ...] | None:
+    """``"3.29.0rc1"`` → ``(3, 29, 0)``; ``None`` when the first part is not numeric."""
+    parts: list[int] = []
+    for segment in version.strip().split("."):
+        match: re.Match[str] | None = _LEADING_DIGITS.match(segment)
+        if match is None:
+            break
+        parts.append(int(match.group(1)))
+    return tuple(parts) if parts else None
+
+
+def is_version_below(current: str, minimum: str) -> bool:
+    """Whether ``current`` is older than ``minimum``; ``False`` when either is unreadable."""
+    have: tuple[int, ...] | None = _version_parts(current)
+    need: tuple[int, ...] | None = _version_parts(minimum)
+    if have is None or need is None:
+        return False
+    width: int = max(len(have), len(need))
+    return have + (0,) * (width - len(have)) < need + (0,) * (width - len(need))
+
+
+def _notice_deprecation(body: dict[str, Any] | None) -> None:
+    """Show the `cli_auth_deprecated` notice once, if the body (or error extra) carries it."""
+    global _deprecation_noticed
+    deprecation: Any = (body or {}).get("deprecation")
+    if _deprecation_noticed or not isinstance(deprecation, dict):
+        return
+    if deprecation.get("code") != CLI_AUTH_DEPRECATED_CODE:
+        return
+    minimum: str = str(deprecation.get("min_version") or "")
+    print_cli_auth_deprecation(
+        sunset=str(deprecation.get("sunset") or ""),
+        upgrade_to=minimum if minimum and is_version_below(__version__, minimum) else None,
+    )
+    _deprecation_noticed = True
 
 
 def _warn_if_env_json_redirects_login() -> None:
@@ -141,7 +187,9 @@ def _verify_and_save(
             )
     except APIError as e:
         print_error(e.detail)
+        _notice_deprecation(e.extra)
         raise SystemExit(1)
+    _notice_deprecation(result)
 
     # If the API says org selection is required, auto-select or prompt
     if result.get("requires_organization_selection"):
@@ -214,7 +262,9 @@ def _do_login(email: str) -> None:
             request_result: dict[str, Any] = client.request_code(email)
     except APIError as e:
         print_error(e.detail)
+        _notice_deprecation(e.extra)
         raise SystemExit(1)
+    _notice_deprecation(request_result)
 
     print_success(f"Verification code sent to {email}")
     print_info("Check your inbox (including spam folder).")
@@ -254,7 +304,9 @@ def _request_code_non_interactive(email: str) -> None:
             request_result: dict[str, Any] = client.request_code(email)
     except APIError as e:
         print_error(e.detail)
+        _notice_deprecation(e.extra)
         raise SystemExit(1)
+    _notice_deprecation(request_result)
 
     print_success(f"Verification code sent to {email}")
     print_info("Check your inbox (including spam folder).")
@@ -335,6 +387,9 @@ def login(email: str | None, code: str | None, org_uuid: str | None, use_device:
     """
     if use_device and (code is not None or org_uuid is not None):
         raise click.UsageError("--device cannot be combined with --code or --org.")
+
+    global _deprecation_noticed
+    _deprecation_noticed = False
 
     _warn_if_env_json_redirects_login()
 
