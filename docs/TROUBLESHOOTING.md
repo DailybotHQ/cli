@@ -138,6 +138,12 @@ dailybot form response get <form_uuid> <resp_uuid> --json | jq -r '.content[]' |
 
 If the printed output has real line breaks (not `\n` literals) and uses `#` rather than `##` / `###`, the webapp will render it correctly.
 
+## Chat
+
+### `dailybot chat send` → 400 / `platform_not_connected`
+
+"No chat platform is connected for this organization, so channels and messages are not available." The organization has no Slack, Microsoft Teams, Discord or Google Chat installation (a standalone Dailybot organization starts this way), so there is nowhere to deliver a bot message. The CLI never redirects the message to Dailybot Chat. Run `dailybot org` to see the organization's chat platforms; connect one in the Dailybot web app, then send again. The command exits `2`, and `--json` keeps `"code": "platform_not_connected"`.
+
 ## Teams & Kudos
 
 ### `dailybot team list` shows fewer teams than I expect
