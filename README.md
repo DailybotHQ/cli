@@ -952,7 +952,7 @@ humans who own them.
 | `dailybot plan <group> ...` | The one root of **Dailybot Plan** (API root `/v1/plan/`): the `tasks`, `task`, `board`, `project` and `goal` groups all live under it, e.g. `dailybot plan tasks status` |
 | `dailybot plan tasks timeline` | Dated work in a window: the goals that overlap it, the tasks with start or due dates, the milestones in the window and the projects overlapping it (`--since` / `--until` / `--date` / `--today` / `--last-week`, `--include-unscheduled`, repeatable `--project` and `--milestone`). One document, not a paged list |
 | `dailybot plan tasks notifications catalog` · `get` · `set` | Personal notification preferences: the kinds (`catalog`), your kind × chat × email matrix and destination (`get`), and a partial `set` (`--kind` repeatable with `--chat/--no-chat`, `--email/--no-email`, and `--dm` or `--channel <name\|external id>`, public channels only). **Needs a person: `dailybot login` or a personal API key** |
-| `dailybot plan tasks channels search [-q <text>] [--type public]` | The chat-platform channels you can pick (admins also see the private ones the bot is in); the external id it shows is what routes, reports and `chat send --channel` take. Not `channels list` (report channels) |
+| `dailybot plan tasks channels search [-q <text>] [--type public]` | The chat-platform channels you can pick (admins also see the private ones the bot is in); the external id it shows is what routes, reports and `chat send --channel` take (optionally qualified as `slack:<id>` or `<platform-id>:<id>` on organizations with several chat platforms). Not `channels list` (report channels) |
 | `dailybot plan tasks routes list` · `get` · `create` · `update` · `delete` · `send-test` · `deliveries` | Post organization events (card created/completed/blocked, project health or lead changed, milestone reached, ...) to a channel: `create --name --channel --kind ...` with optional `--board` / `--project` scope. **Admins write, members read.** `send-test` always previews with a dry run first and posts only after confirmation or `--yes`; `delete` states its consequence |
 | `dailybot plan tasks reports list` · `get` · `create` · `update` · `delete` · `preview` · `send-test` · `runs` | Scheduled Tasks digests (`daily`, `week_start`, `week_end`) to a channel and/or by email: `--weekdays mon,fri` (weekly kinds take exactly one), `--time 09:00`, `--timezone` (yours by default), `--email-to <name\|uuid>`. `preview` is the exact document; `send-test` is dry-run first. Admins write, members read |
 | `dailybot plan tasks briefing get` · `set` · `preview` · `send-test` | Your personal daily briefing (overdue, due today, in progress, blocked, mentions, projects you lead), by DM and/or email, on chosen weekdays and time. Person doors; `send-test` is dry-run first |
@@ -1090,7 +1090,7 @@ Works headless for agents (`--json` prints the `bot_message_id`).
 
 | Command | Description |
 |---------|-------------|
-| `dailybot chat send` | Send a bot message to users (`-u`), channels (`-c`), and/or teams (`-t`) |
+| `dailybot chat send` | Send a bot message to users (`-u`), channels (`-c`, a channel id or a qualified `slack:<id>` / `<platform-id>:<id>`), and/or teams (`-t`) |
 | `dailybot chat update <bot_message_id>` | Edit a previously sent message (parent **or** a thread reply) |
 | `dailybot conversation open` | Open (or reuse) a Slack group DM with the bot; optionally post a message (`-m`) |
 

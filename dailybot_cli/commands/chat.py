@@ -26,6 +26,7 @@ from typing import Any
 import click
 
 from dailybot_cli.api_client import APIError, DailyBotClient
+from dailybot_cli.commands._channels import check_chat_channel_references
 from dailybot_cli.commands.agent import _merge_repo_metadata, _resolve_agent_context
 from dailybot_cli.commands.public_api_helpers import (
     EXIT_NOT_AUTHENTICATED,
@@ -305,6 +306,7 @@ def _execute_send(
     json_mode: bool = False,
 ) -> dict[str, Any]:
     """Call the API with friendly error translation; return the result or exit."""
+    check_chat_channel_references(client, payload)
     if payload.get("platform_settings", {}).get("is_ephemeral") and not payload.get("target_users"):
         # The API silently skips an ephemeral message with no resolvable user.
         print_warning(

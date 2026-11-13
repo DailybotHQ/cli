@@ -534,8 +534,18 @@ At least one target is required. Targets:
 | Flag | Repeatable | Accepts |
 |------|-----------|---------|
 | `--user` / `-u` | yes | user UUID, email, or chat external id (delivered as DM) |
-| `--channel` / `-c` | yes | channel id |
+| `--channel` / `-c` | yes | channel id, or a qualified reference (below) |
 | `--team` / `-t` | yes | team UUID (expanded to members as DMs) |
+
+**Channel references.** `--channel` here, and `--channel` on `plan tasks routes` / `reports` / `notifications`, take three forms:
+
+| Form | Example | Meaning |
+|------|---------|---------|
+| raw | `C024BE91L`, `19:abc@thread.tacv2` | the channel on the organization's chat platform, as today. A Microsoft Teams id starting `19:` is always raw. |
+| platform-qualified | `slack:C024BE91L`, `msteams:19:abc@thread.tacv2` | the channel on the organization's `slack`, `msteams`, `discord` or `hangouts` platform. Split on the first colon only. |
+| platform-id-qualified | `<platform-id>:C024BE91L` | the channel on one specific chat platform; the platform id is the `id` `dailybot org` lists under **Chat platforms**. |
+
+Qualified forms are sent verbatim, and only to organizations whose `/v1/organization/` serves `chat_platforms` (the CLI reads it once, and only when a qualified reference was typed); other organizations get a usage error asking for the raw id. `dailybot:<id>` is refused: a message is never delivered to Dailybot Chat. The server answers `409 channel_reference_ambiguous` when a raw id matches more than one platform, and `400 channel_reference_unknown` when the qualified platform is not connected. Raw ids keep working until the multi-channel release plus 90 days.
 
 Content & options: `--text/-m`, `--image-url/-i`, `--link-button "Label::url"`
 (repeatable), `--button "Label::value"` (interactive, repeatable),
