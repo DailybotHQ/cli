@@ -157,14 +157,17 @@ class TestPolling:
             clock[0] += seconds
 
         sleeps.side_effect = tick
-        pending: list[MagicMock] = [
-            fixture_response("device_token_authorization_pending_400") for _ in range(200)
-        ]
+        pending: MagicMock = fixture_response("device_token_authorization_pending_400")
+        start: MagicMock = fixture_response("device_start_200")
+
+        def door(url: str, **_kwargs: Any) -> MagicMock:
+            return start if url.endswith("/v1/cli/auth/device/") else pending
+
         with (
             patch(
                 "dailybot_cli.commands._device_login.time.monotonic", side_effect=lambda: clock[0]
             ),
-            patch(POST, side_effect=[fixture_response("device_start_200"), *pending]),
+            patch(POST, side_effect=door),
         ):
             result: Result = _login(runner)
         assert result.exit_code == 1
