@@ -42,7 +42,7 @@ The full pack lives under [`.agents/skills/dailybot/`](../skills/dailybot/) (rou
 
 ### Deep Work Plan skill pack (vendored from [`DailybotHQ/deepworkplan-skill`](https://github.com/DailybotHQ/deepworkplan-skill))
 
-The full pack lives under [`.agents/skills/deepworkplan/`](../skills/deepworkplan/) (router + 9 sub-skills + addons). Vendored at **v7.10.0** (DWP standard **7.0.0**). The router auto-routes by intent — read [`skills/deepworkplan/SKILL.md`](../skills/deepworkplan/SKILL.md) and let it pick the right sub-skill. Each sub-skill is independently invocable, and each has a short `dwp-*` alias in [`.agents/commands/`](../commands/) for ergonomic typing.
+The full pack lives under [`.agents/skills/deepworkplan/`](../skills/deepworkplan/) (router + 9 sub-skills + addons). Vendored at **v7.10.1** (DWP standard **7.0.0**). The router auto-routes by intent — read [`skills/deepworkplan/SKILL.md`](../skills/deepworkplan/SKILL.md) and let it pick the right sub-skill. Each sub-skill is independently invocable, and each has a short `dwp-*` alias in [`.agents/commands/`](../commands/) for ergonomic typing.
 
 | Slug | Procedure | Use when |
 |------|-----------|----------|
@@ -121,6 +121,6 @@ Persona definitions. Use these as the system prompt / role when spawning a sub-a
 - Don't see a skill that matches? Don't invent one. Do the work directly and tell the user what you did.
 - Don't see a persona that matches? Default to `cli-developer`.
 
-## Dogfood reconciliation — 2026-10-25
+## Dogfood reconciliation — 2026-11-15
 
-DeepWorkPlan v7.10.0, AI Diff Reviewer v3.3.16 and Dailybot skill v3.23.20 are pinned in `skills-lock.json` (dailybot sits one patch ahead of the pack's v3.23.17 floor). The pack's herdr addon now pins herdr-peers v1.1.0, and the addon registry and the `dev.sh` host install hint follow it. The container is **not** re-rendered: devcontainer-kit stays v1.0.1 and still embeds herdr-peers v1.0.0 (with coding-agents-kit v1.0.1; DeepWorkPlan Vim v1.0.0 remains a container editor layer), so host tools and the container embeds disagree on herdr-peers until dck ships a newer release. The addon registry records agentkit/devcontainer at v1.0.1, herdr at v1.1.0 and vim at v1.0.0. Repository hooks, review rules, design documentation and historical plans are preserved.
+DeepWorkPlan v7.10.1, AI Diff Reviewer v3.3.16 and Dailybot skill v3.23.20 are pinned in `skills-lock.json` (dailybot sits one patch ahead of the pack's v3.23.17 floor). The pack's herdr addon now pins herdr-peers v1.2.1 — 1.2.x adds `herdr-peers autopilot`, an optional daemon only a human starts (no message, peer or plan can start it) — and the addon registry and the `dev.sh` host install hint follow it. The container is **not** re-rendered: devcontainer-kit stays v1.0.1 and still embeds herdr-peers v1.0.0 (with coding-agents-kit v1.0.1; DeepWorkPlan Vim v1.0.0 remains a container editor layer), so host tools and the container embeds disagree on herdr-peers until dck ships a newer release. The addon registry records agentkit v1.1.0, devcontainer v1.0.1, herdr v1.2.1 and vim v1.0.0, with the pack addons (dependency-upgrade, design-system) at v7.10.1. Repository hooks, review rules, design documentation and historical plans are preserved.
