@@ -9,6 +9,14 @@ Do not edit it by hand — your edits will be overwritten on the next release.
 
 <!-- version list -->
 
+## v3.29.1 (2026-11-15)
+
+### Testing
+
+- **auth**: Pin a clean sign_in_method_not_allowed on every CLI sign-in path
+  ([`b674573`](https://github.com/DailybotHQ/cli/commit/b6745737ccebfc38dbd96c9f0bcbb0220a43f99a))
+
+
 ## v3.29.0 (2026-11-13)
 
 ### Bug Fixes
