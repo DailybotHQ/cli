@@ -170,6 +170,7 @@ tests/                       # pytest suite (file naming: *_test.py)
 ├── cli_auth_deprecation_test.py # the cli_auth_deprecated notice on email-code sign-in
 ├── standalone_error_codes_test.py # session, sign-in and chat-platform error codes
 ├── qualified_channels_test.py # slack:<id> / <platform-id>:<id> channel references
+├── sign_in_policy_refusal_test.py # 403 sign_in_method_not_allowed renders cleanly on every CLI sign-in path
 ├── tasks_server_refusal_rendering_test.py # server refusals of agent keys / guests: exit + envelope
 ├── milestones_updates_test.py # milestone attachments/restore; project update get/edit/delete/attachments
 ├── tasks_reactions_test.py   # reactions: who reacted, project-update react/unreact, full reactor lists
