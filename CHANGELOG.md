@@ -9,6 +9,14 @@ Do not edit it by hand — your edits will be overwritten on the next release.
 
 <!-- version list -->
 
+## v3.29.2 (2026-11-15)
+
+### Chores
+
+- Adopt DeepWorkPlan 7.10.1 (herdr-peers 1.2.1 pin)
+  ([`353e827`](https://github.com/DailybotHQ/cli/commit/353e827d95e73d5d8f8c3ca4ab96396ef2a09388))
+
+
 ## v3.29.1 (2026-11-15)
 
 ### Testing
