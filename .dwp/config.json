@@ -14,19 +14,19 @@
     },
     "dependency-upgrade": {
       "enabled": true,
-      "version": "v8.0.1"
+      "version": "v8.0.2"
     },
     "design-system": {
       "enabled": true,
-      "version": "v8.0.1"
+      "version": "v8.0.2"
     },
     "devcontainer": {
       "enabled": true,
-      "version": "v1.3.0"
+      "version": "v1.4.0"
     },
     "herdr": {
       "enabled": true,
-      "version": "v2.1.0"
+      "version": "v2.2.0"
     },
     "vim": {
       "enabled": true,
