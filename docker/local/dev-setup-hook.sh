@@ -18,6 +18,16 @@ fi
 
 rc=0
 
+# herdr-peers state (open asks, replies, plan lead records) on the dck state
+# volume, so a rebuild does not drop an agentic loop mid-flight.
+if [ -r /usr/local/lib/dck/entrypoint.sh ]; then
+  (
+    . /usr/local/lib/dck/entrypoint.sh
+    mkdir -p "$HOME/.local/state/herdr-peers"
+    dck_persist state "$HOME/.local/state/herdr-peers" dir
+  ) || { log "herdr-peers state is not persisted"; rc=1; }
+fi
+
 # 1. /app -> /workspace. The Dailybot tooling contract is /workspace; tools that
 #    assume the devcontainer-kit default path find the same checkout at /app.
 if [ ! -e /app ]; then
