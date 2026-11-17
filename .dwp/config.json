@@ -22,11 +22,11 @@
     },
     "devcontainer": {
       "enabled": true,
-      "version": "v1.4.0"
+      "version": "v1.4.2"
     },
     "herdr": {
       "enabled": true,
-      "version": "v2.2.0"
+      "version": "v2.2.1"
     },
     "vim": {
       "enabled": true,
