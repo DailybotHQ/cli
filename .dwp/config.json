@@ -14,11 +14,11 @@
     },
     "dependency-upgrade": {
       "enabled": true,
-      "version": "v8.0.0"
+      "version": "v8.0.1"
     },
     "design-system": {
       "enabled": true,
-      "version": "v8.0.0"
+      "version": "v8.0.1"
     },
     "devcontainer": {
       "enabled": true,
@@ -30,7 +30,7 @@
     },
     "vim": {
       "enabled": true,
-      "version": "v1.0.1"
+      "version": "v1.1.0"
     }
   },
   "host": {
