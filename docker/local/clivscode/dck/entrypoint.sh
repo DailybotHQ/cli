@@ -12,6 +12,8 @@
 #
 #   dck_persist <name> <target> [dir|file]   named-volume symlink: seed on first
 #                                            run, preserve on rebuild
+#   dck_persist_private_dir <name> <target>  dck_persist for a private dir: 0700 on the
+#                                            volume, the container's copy never lost
 #   dck_env_profile                          the container's environment for ssh
 #                                            sessions (0600, O_EXCL, never logged)
 #   dck_sshd                                 host keys generated at runtime into a
@@ -161,6 +163,45 @@ dck_persist() {
   _dck_chown "$DCK_USER:$(_dck_group)" "$vol"
   _dck_chown -R "$DCK_USER:$(_dck_group)" "$store"
   _dck_chown -h "$DCK_USER:$(_dck_group)" "$target"
+}
+
+# --------------------------------------------------------------------------
+# dck_persist_private_dir <name> <target>
+# --------------------------------------------------------------------------
+# dck_persist for a private directory (herdr-peers' state). It differs in two ways:
+#   * the volume copy is 0700; the files inside keep their own modes (cp -a seeds,
+#     nothing is chmod-ed below the directory);
+#   * nothing the container holds is lost: a real, non-empty directory at the target
+#     moves into the volume when the volume copy is empty (dck_persist's seed). If
+#     the volume copy already has data, the target moves beside it as
+#     <key>.container-<UTC stamp> (0700), not deleted and not shadowed.
+
+dck_persist_private_dir() {
+  _dck_env
+  local name="${1:-}" target="${2:-}" store stamp
+  case "$name" in
+    ''|*[!a-z0-9_-]*) dck_log "persist: invalid volume name '$name'"; return 1 ;;
+  esac
+  case "$target" in
+    "$DCK_HOME"/?*) ;;
+    *) dck_log "persist: refusing '$target' (must be under $DCK_HOME)"; return 1 ;;
+  esac
+  store="$DCK_PERSIST_ROOT/$name/$(_dck_persist_key "${target#"$DCK_HOME"/}")"
+  _dck_as_user mkdir -p "$(dirname "$target")" 2>/dev/null || mkdir -p "$(dirname "$target")"
+  if [ -d "$target" ] && [ ! -L "$target" ] && [ -n "$(ls -A "$target" 2>/dev/null)" ] \
+     && [ -d "$store" ] && [ ! -L "$store" ] && [ -n "$(ls -A "$store" 2>/dev/null)" ]; then
+    stamp="$(date -u +%Y%m%dT%H%M%SZ)"
+    if mv "$target" "$store.container-$stamp"; then
+      chmod 0700 "$store.container-$stamp" 2>/dev/null || true
+      _dck_chown -R "$DCK_USER:$(_dck_group)" "$store.container-$stamp"
+      dck_log "persist: the container's copy moved to $name/${store##*/}.container-$stamp (the volume copy is kept)"
+    else
+      dck_log "persist: could not move the container's copy of ${store##*/} aside; left in place"
+      return 1
+    fi
+  fi
+  dck_persist "$name" "$target" dir || return 1
+  [ -L "$store" ] || chmod 0700 "$store" 2>/dev/null || true
 }
 
 # --------------------------------------------------------------------------
@@ -1451,6 +1492,9 @@ dck_start() {
   # other state (agent detection) next to the link.
   _dck_as_user mkdir -p "$DCK_HOME/.local/state/herdr" 2>/dev/null || true
   dck_persist state "$DCK_HOME/.local/state/herdr/client" dir || true
+  # herdr-peers' own state (the delegation log, lead records, replies, autopilot
+  # state): private, so the volume copy is kept 0700.
+  dck_persist_private_dir state "$DCK_HOME/.local/state/herdr-peers" || true
   dck_persist state "$DCK_HOME/.bash_history" file || true
   dck_container_only || true
   dck_layer_persist || true
