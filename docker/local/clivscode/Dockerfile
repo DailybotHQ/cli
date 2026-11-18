@@ -4,7 +4,7 @@
 # base block copies live next to this file in dck/ (vendored by `dck init`,
 # devcontainer-kit v1.4.2); no shared base image is involved.
 # >>> dck:base >>>
-# dck:managed v1.4.2 base
+# dck:managed v1.4.3 base
 # Both ARGs come before any FROM, so they are global (an ARG after a FROM is
 # scoped to that stage).
 ARG BASE_IMAGE=python:3.14.4-slim-trixie@sha256:2ca02f32b4d9d893863367ce07ec1972819f476dd38d8612f2a9cb6a41cbb727
@@ -48,7 +48,7 @@ ENV LANG=en_US.UTF-8 \
     VISUAL=nvim \
     GIT_EDITOR=nvim \
     DCK_IMAGE_FLAVOUR=python-3.13 \
-    DCK_IMAGE_VERSION=1.4.2
+    DCK_IMAGE_VERSION=1.4.3
 
 # dck.toml asks for user "dev-user": rename the uid-1000 user. Before WORKDIR: a
 # workspace under /home/dev-user would otherwise create that home first, and
