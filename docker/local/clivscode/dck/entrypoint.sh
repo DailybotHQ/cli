@@ -12,6 +12,8 @@
 #
 #   dck_persist <name> <target> [dir|file]   named-volume symlink: seed on first
 #                                            run, preserve on rebuild
+#   dck_persist_private_dir <name> <target>  dck_persist for a private dir: 0700 on the
+#                                            volume, the container's copy never lost
 #   dck_env_profile                          the container's environment for ssh
 #                                            sessions (0600, O_EXCL, never logged)
 #   dck_sshd                                 host keys generated at runtime into a
@@ -19,6 +21,7 @@
 #   dck_authorize_keys [--add]               the dck block of authorized_keys
 #   dck_herdr_config                         Herdr config defaults, in place
 #   dck_repo_hook                            docker/local/dev-setup-hook.sh, if present
+#   dck_container_only                       the container-only volume mount points owned by the user
 #   dck_layer_persist                        per-CLI volumes of the agents layer
 #   dck_host_volume_profiles                 non-shared CLIs' ak profiles on the agentkit volume
 #   dck_git_identity                         global git [user] settings from DCK_GIT_* (no host file)
@@ -37,6 +40,7 @@
 #   DCK_USER (dev)  DCK_HOME (that user's home)  DCK_WORKSPACE (/workspace)
 #   DCK_SSH (1|0)   DCK_AUTHORIZED_KEYS          DCK_AGENTS ("claude codex ...")
 #   DCK_PERSIST_ROOT ($DCK_HOME/.dck/volumes)    DCK_REPO_HOOK
+#   DCK_CONTAINER_ONLY (workspace subpaths on named volumes, [compose] container_only)
 #   DCK_HOST_PROFILES ("claude codex": ak profiles shared from the host)
 #   DCK_HOST_CODEX (the host's Codex home, mounted)   AGENTKIT_PERMISSIONS
 #   DCK_SSH_COPY_KEYS (1: copy ~/.ssh_host/id_* into ~/.ssh; [ssh] copy_keys)
@@ -159,6 +163,45 @@ dck_persist() {
   _dck_chown "$DCK_USER:$(_dck_group)" "$vol"
   _dck_chown -R "$DCK_USER:$(_dck_group)" "$store"
   _dck_chown -h "$DCK_USER:$(_dck_group)" "$target"
+}
+
+# --------------------------------------------------------------------------
+# dck_persist_private_dir <name> <target>
+# --------------------------------------------------------------------------
+# dck_persist for a private directory (herdr-peers' state). It differs in two ways:
+#   * the volume copy is 0700; the files inside keep their own modes (cp -a seeds,
+#     nothing is chmod-ed below the directory);
+#   * nothing the container holds is lost: a real, non-empty directory at the target
+#     moves into the volume when the volume copy is empty (dck_persist's seed). If
+#     the volume copy already has data, the target moves beside it as
+#     <key>.container-<UTC stamp> (0700), not deleted and not shadowed.
+
+dck_persist_private_dir() {
+  _dck_env
+  local name="${1:-}" target="${2:-}" store stamp
+  case "$name" in
+    ''|*[!a-z0-9_-]*) dck_log "persist: invalid volume name '$name'"; return 1 ;;
+  esac
+  case "$target" in
+    "$DCK_HOME"/?*) ;;
+    *) dck_log "persist: refusing '$target' (must be under $DCK_HOME)"; return 1 ;;
+  esac
+  store="$DCK_PERSIST_ROOT/$name/$(_dck_persist_key "${target#"$DCK_HOME"/}")"
+  _dck_as_user mkdir -p "$(dirname "$target")" 2>/dev/null || mkdir -p "$(dirname "$target")"
+  if [ -d "$target" ] && [ ! -L "$target" ] && [ -n "$(ls -A "$target" 2>/dev/null)" ] \
+     && [ -d "$store" ] && [ ! -L "$store" ] && [ -n "$(ls -A "$store" 2>/dev/null)" ]; then
+    stamp="$(date -u +%Y%m%dT%H%M%SZ)"
+    if mv "$target" "$store.container-$stamp"; then
+      chmod 0700 "$store.container-$stamp" 2>/dev/null || true
+      _dck_chown -R "$DCK_USER:$(_dck_group)" "$store.container-$stamp"
+      dck_log "persist: the container's copy moved to $name/${store##*/}.container-$stamp (the volume copy is kept)"
+    else
+      dck_log "persist: could not move the container's copy of ${store##*/} aside; left in place"
+      return 1
+    fi
+  fi
+  dck_persist "$name" "$target" dir || return 1
+  [ -L "$store" ] || chmod 0700 "$store" 2>/dev/null || true
 }
 
 # --------------------------------------------------------------------------
@@ -433,6 +476,54 @@ dck_repo_hook() {
     (cd "$DCK_WORKSPACE" 2>/dev/null || cd /; bash "$hook") || rc=$?
   fi
   [ "$rc" = 0 ] || dck_log "repo hook: exited $rc (the container keeps running)"
+  return 0
+}
+
+# --------------------------------------------------------------------------
+# dck_container_only — the container-only volumes ([compose] container_only)
+# --------------------------------------------------------------------------
+# Each path in DCK_CONTAINER_ONLY is a named volume mounted over a workspace
+# subpath (the workspace bind stays underneath it). Docker creates the mount
+# point root-owned, so at every start it is given to the user: the mount point
+# only, never recursively (what the volume already holds keeps its owner) and
+# never the workspace bind itself. Only normalised paths under the workspace
+# are accepted (no '..', no '.', no '//', no glob characters — the variable is
+# split with globbing off); a path outside the workspace, or one with no
+# directory there, is skipped: the compose file that set the variable did not
+# mount a volume at it after all. Runs as root in the standard start; as the
+# user (a repository's own entrypoint), it says so and changes nothing.
+
+dck_container_only() {
+  _dck_env
+  local p given=0
+  set -f
+  for p in ${DCK_CONTAINER_ONLY:-}; do
+    case "$p" in
+      */../*|*/..|*/./*|*//*|*.)
+        dck_log "container-only: skipping '$p' (not a normalised path)"
+        continue ;;
+      "$DCK_WORKSPACE"|"$DCK_WORKSPACE"/)
+        dck_log "container-only: refusing '$p' (the workspace itself is never taken over)"
+        continue ;;
+      "$DCK_WORKSPACE"/*) ;;
+      *)
+        dck_log "container-only: skipping '$p' (not a subpath of $DCK_WORKSPACE)"
+        continue ;;
+    esac
+    [ -d "$p" ] || continue
+    if _dck_is_root; then
+      if chown "$DCK_USER:$(_dck_group)" "$p" 2>/dev/null; then
+        given=$((given + 1))
+      else
+        dck_log "container-only: could not give '$p' to $DCK_USER"
+      fi
+    fi
+  done
+  set +f
+  if ! _dck_is_root; then
+    dck_log "container-only: not root; the mount point(s) are only given to $DCK_USER by the standard start"
+  fi
+  [ "$given" -gt 0 ] && dck_log "container-only: $given mount point(s) given to $DCK_USER"
   return 0
 }
 
@@ -1401,7 +1492,11 @@ dck_start() {
   # other state (agent detection) next to the link.
   _dck_as_user mkdir -p "$DCK_HOME/.local/state/herdr" 2>/dev/null || true
   dck_persist state "$DCK_HOME/.local/state/herdr/client" dir || true
+  # herdr-peers' own state (the delegation log, lead records, replies, autopilot
+  # state): private, so the volume copy is kept 0700.
+  dck_persist_private_dir state "$DCK_HOME/.local/state/herdr-peers" || true
   dck_persist state "$DCK_HOME/.bash_history" file || true
+  dck_container_only || true
   dck_layer_persist || true
   dck_git_identity || true
   dck_ssh_agent_access || true

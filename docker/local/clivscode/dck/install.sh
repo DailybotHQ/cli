@@ -62,7 +62,7 @@ rm -rf /tmp/gh.tgz "/tmp/gh_${GH_VERSION}_linux_${ARCH}"
 
 # --- Herdr: system-wide, so a non-login SSH session (PATH=/usr/local/bin:...)
 # finds it when the host attaches the container as a machine ---------------
-fetch "https://github.com/ogulcancelik/herdr/releases/download/v${HERDR_VERSION}/${HERDR_ASSET}" "$HERDR_SHA" /usr/local/bin/herdr
+fetch "https://github.com/herdrdev/herdr/releases/download/v${HERDR_VERSION}/${HERDR_ASSET}" "$HERDR_SHA" /usr/local/bin/herdr
 chmod 0755 /usr/local/bin/herdr
 
 # --- Neovim (official tarball) ---------------------------------------------

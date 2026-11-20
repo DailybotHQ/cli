@@ -2,7 +2,7 @@
   "addons": {
     "agentkit": {
       "enabled": true,
-      "version": "v1.5.1"
+      "version": "v1.5.2"
     },
     "ai-diff-reviewer": {
       "enabled": true,
@@ -10,7 +10,7 @@
     },
     "dailybot": {
       "enabled": true,
-      "version": "v3.23.20"
+      "version": "v3.23.21"
     },
     "dependency-upgrade": {
       "enabled": true,
@@ -26,11 +26,11 @@
     },
     "herdr": {
       "enabled": true,
-      "version": "v2.2.1"
+      "version": "v2.2.2"
     },
     "vim": {
       "enabled": true,
-      "version": "v1.1.0"
+      "version": "v1.1.1"
     }
   },
   "host": {
