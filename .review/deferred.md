@@ -37,3 +37,15 @@ unverified claim (`herdr-peers list --json` emits `n` as an integer today).
 | `79ff4ee83a2f2cd5` | warning (unverified) | `dev.sh:1456` (`mesh_resolve_number`) | `row.get("n") == want` breaks if `n` is ever emitted as a string. |
 | `efc53666fb7104c1` | warning | `dev.sh:1339` (`mesh_default_scope`) | Empty `DAILYBOT_WORKSPACE_ID` applies the primary filter on a `… · WS <id>`-labelled satellite (`docker/local/docker.sh` `satellite_label` default). |
 | `b865f480aa5b4ad5` | info | `dev.sh:1486` (`cmd_herdr_ask`) | The `ask` flag allowlist drops boolean herdr-peers flags such as `--trust-cwd`. |
+
+## PR #152 — DeepWorkPlan 8.0.6 / devcontainer-kit 1.4.4 upgrade (review of `02153c1`)
+
+`docker/local/clivscode/dck/entrypoint.sh` is a vendored copy that `dck init`
+rewrites from devcontainer-kit. A local patch would be erased by the next
+render, so the hardening belongs upstream in `DailybotHQ/devcontainer-kit`.
+Today's only call site passes the fixed `$DCK_HOME/.local/state/herdr-peers`,
+so nothing is exploitable in this repository meanwhile.
+
+| Fingerprint | Severity | Location | Finding |
+|---|---|---|---|
+| `92291bda80bfb5f3` | warning | `docker/local/clivscode/dck/entrypoint.sh:185` | `dck_persist_private_dir` checks only the `$DCK_HOME/` prefix before `mv`; it should apply `dck_persist`'s normalised-path and volume-root refusals first. |
