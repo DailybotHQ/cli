@@ -9,6 +9,39 @@ Do not edit it by hand — your edits will be overwritten on the next release.
 
 <!-- version list -->
 
+## v3.29.3 (2026-11-19)
+
+### Chores
+
+- Adopt DeepWorkPlan 7.12.1 (herdr-peers 1.3.1, ak 1.4.0 pins)
+  ([#148](https://github.com/DailybotHQ/cli/pull/148),
+  [`a432a35`](https://github.com/DailybotHQ/cli/commit/a432a35ae90fbd699723dbbd6272759f32e5cc0a))
+
+- Adopt DeepWorkPlan 8.0.1 (herdr-peers 2.1.0, ak 1.5.0, vim 1.1.0 pins)
+  ([#150](https://github.com/DailybotHQ/cli/pull/150),
+  [`d1d956a`](https://github.com/DailybotHQ/cli/commit/d1d956a92d83c1f9a6923f5853fcf9d807b6e603))
+
+- Adopt DeepWorkPlan 8.0.2 (herdr-peers 2.2.0, devcontainer-kit 1.4.0 pins)
+  ([#151](https://github.com/DailybotHQ/cli/pull/151),
+  [`71eb605`](https://github.com/DailybotHQ/cli/commit/71eb6052601443cf2d73168947ddd07d28b3f53b))
+
+- Adopt DeepWorkPlan 8.0.3 (herdr-peers 2.2.1, devcontainer-kit 1.4.2 pins)
+  ([#153](https://github.com/DailybotHQ/cli/pull/153),
+  [`ef5a4e6`](https://github.com/DailybotHQ/cli/commit/ef5a4e602a3142ec70580ad315ce3078b09562b2))
+
+- Adopt DeepWorkPlan 8.0.5 (coding-agents-kit 1.5.1, devcontainer-kit 1.4.3 pins)
+  ([#154](https://github.com/DailybotHQ/cli/pull/154),
+  [`13552b4`](https://github.com/DailybotHQ/cli/commit/13552b47e33082f83dbf12e43a8739835dba0b14))
+
+- Adopt DeepWorkPlan 8.0.6 (devcontainer-kit 1.4.4 pin)
+  ([#155](https://github.com/DailybotHQ/cli/pull/155),
+  [`e8ffc4f`](https://github.com/DailybotHQ/cli/commit/e8ffc4f978e793c69d0545ec92f0019dc49739ad))
+
+- Pin the dev.sh host install hint to herdr-peers v2.0.0
+  ([#149](https://github.com/DailybotHQ/cli/pull/149),
+  [`e6e37ed`](https://github.com/DailybotHQ/cli/commit/e6e37ed407de9a475c10c90bb83e91c014304bdd))
+
+
 ## v3.29.2 (2026-11-15)
 
 ### Chores

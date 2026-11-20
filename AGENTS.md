@@ -798,7 +798,7 @@ Host capability declaration (abilities not listed are `false` — never inferred
 
 **Authority boundaries (from this repo's Mandatory Rules):** plan authorship is by the working agent; approval is `pre_authorization` only when the developer explicitly requests unattended continuation (`trust`/`auto`) or approves a plan up front. Always stop and ask before: push to remote, merge to `main`, force-push, publishing a release, sending external messages (email/chat) with guessed recipients, reading or writing secrets, replacing existing hand-written harness content, or applying `[skip release]` outside its two allowed use cases. Outcome checks for plan gates come from [docs/TESTING_GUIDE.md](docs/TESTING_GUIDE.md) and the Quick Commands block (`pytest`, `ruff`, `mypy`) — never invent a gate command.
 
-DWP standard: 8.0.0 (onboarded 2026-06-12; upgraded 2026-10-01, 2026-10-11, 2026-10-12, 2026-10-13, 2026-10-14, 2026-10-25, 2026-11-01, 2026-11-16, 2026-11-18 and 2026-11-20; skill 8.0.6, vendored 2026-11-18)
+DWP standard: 8.0.0 (onboarded 2026-06-12; upgraded 2026-10-01, 2026-10-11, 2026-10-12, 2026-10-13, 2026-10-14, 2026-10-25, 2026-11-01, 2026-11-16, 2026-11-18, 2026-11-19 and 2026-11-20; skill 8.0.6, vendored 2026-11-20)
 
 ## Documentation Maintenance
 
