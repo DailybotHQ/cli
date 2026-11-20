@@ -9,6 +9,47 @@ Do not edit it by hand — your edits will be overwritten on the next release.
 
 <!-- version list -->
 
+## v3.29.4 (2026-11-20)
+
+### Bug Fixes
+
+- **review**: Align version notes with the DeepWorkPlan 8.0.6 pins
+  ([#152](https://github.com/DailybotHQ/cli/pull/152),
+  [`9db00f7`](https://github.com/DailybotHQ/cli/commit/9db00f7b357e50fa1bc8e376f907a0543e67ea88))
+
+### Chores
+
+- Move to DeepWorkPlan 8.0.4, herdr-peers 2.2.1 and devcontainer-kit 1.4.3
+  ([#152](https://github.com/DailybotHQ/cli/pull/152),
+  [`9db00f7`](https://github.com/DailybotHQ/cli/commit/9db00f7b357e50fa1bc8e376f907a0543e67ea88))
+
+- Move to DeepWorkPlan 8.0.6, herdr-peers 2.2.2 and devcontainer-kit 1.4.4
+  ([#152](https://github.com/DailybotHQ/cli/pull/152),
+  [`9db00f7`](https://github.com/DailybotHQ/cli/commit/9db00f7b357e50fa1bc8e376f907a0543e67ea88))
+
+- **cli**: Upgrade the dev container to devcontainer-kit 1.4.1
+  ([#152](https://github.com/DailybotHQ/cli/pull/152),
+  [`9db00f7`](https://github.com/DailybotHQ/cli/commit/9db00f7b357e50fa1bc8e376f907a0543e67ea88))
+
+- **dev**: Move the dev containers to devcontainer-kit 1.4.2
+  ([#152](https://github.com/DailybotHQ/cli/pull/152),
+  [`9db00f7`](https://github.com/DailybotHQ/cli/commit/9db00f7b357e50fa1bc8e376f907a0543e67ea88))
+
+### Documentation
+
+- Align version pins with the DeepWorkPlan 8 upgrade
+  ([#152](https://github.com/DailybotHQ/cli/pull/152),
+  [`9db00f7`](https://github.com/DailybotHQ/cli/commit/9db00f7b357e50fa1bc8e376f907a0543e67ea88))
+
+- **cli**: Record the devcontainer-kit 1.4.1 re-render in the skills catalog
+  ([#152](https://github.com/DailybotHQ/cli/pull/152),
+  [`9db00f7`](https://github.com/DailybotHQ/cli/commit/9db00f7b357e50fa1bc8e376f907a0543e67ea88))
+
+- **review**: Record deferred findings for the 8.0.6 upgrade
+  ([#152](https://github.com/DailybotHQ/cli/pull/152),
+  [`9db00f7`](https://github.com/DailybotHQ/cli/commit/9db00f7b357e50fa1bc8e376f907a0543e67ea88))
+
+
 ## v3.29.3 (2026-11-19)
 
 ### Chores
