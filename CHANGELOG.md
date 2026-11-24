@@ -9,6 +9,15 @@ Do not edit it by hand — your edits will be overwritten on the next release.
 
 <!-- version list -->
 
+## v3.29.5 (2026-11-24)
+
+### Bug Fixes
+
+- **cli**: Forms accept file questions (questions add, create)
+  ([#156](https://github.com/DailybotHQ/cli/pull/156),
+  [`ea0a059`](https://github.com/DailybotHQ/cli/commit/ea0a0596e123c89ea0838ae00dcfea1228fff601))
+
+
 ## v3.29.4 (2026-11-20)
 
 ### Bug Fixes
