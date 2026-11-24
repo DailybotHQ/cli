@@ -446,3 +446,88 @@ class TestEndedSession:
         assert "removed" in result.output
         assert "dailybot login" in result.output
         assert load_credentials() is None
+
+
+# The server's confirmed answers (PLAN_006 contract), byte for byte.
+REVOKED_DETAIL: str = "This CLI session was revoked. Log in again."
+ATTEMPTS_DETAIL: str = (
+    "Too many incorrect codes for this email. Wait 15 minute(s), then run `dailybot login` again."
+)
+COOLDOWN_DETAIL: str = (
+    "A code was just requested for this email. Wait 30 second(s) before asking for another one."
+)
+
+
+class TestConfirmedContract:
+    def test_a_revoked_access_token_ends_the_session_without_a_refresh(self) -> None:
+        _save_pair()
+        revoked: MagicMock = _response(401, {"detail": REVOKED_DETAIL, "code": "session_revoked"})
+        with patch(GET, return_value=revoked), patch(POST) as post:
+            result: Result = CliRunner().invoke(cli, ["user", "list"])
+        post.assert_not_called()
+        assert result.exit_code == 3
+        assert "signed out" in result.output
+        assert REVOKED_DETAIL in result.output
+        assert load_credentials() is None
+
+    def test_a_revoked_refresh_ends_the_session(self) -> None:
+        _save_pair()
+        expired: MagicMock = _response(
+            401, {"detail": "Access token expired.", "code": "access_token_expired"}
+        )
+        revoked: MagicMock = _response(401, {"detail": REVOKED_DETAIL, "code": "session_revoked"})
+        with patch(GET, return_value=expired), patch(POST, return_value=revoked):
+            result: Result = CliRunner().invoke(cli, ["user", "list"])
+        assert result.exit_code == 3
+        assert "signed out" in result.output
+        assert REVOKED_DETAIL in result.output
+        assert load_credentials() is None
+
+    def test_a_bare_401_on_a_legacy_token_means_log_in_again(self) -> None:
+        _save_legacy()
+        bare: MagicMock = _response(
+            401, {"detail": "Authentication credentials were not provided."}
+        )
+        with patch(GET, return_value=bare):
+            result: Result = CliRunner().invoke(cli, ["user", "list"])
+        assert result.exit_code == 3
+        assert "dailybot login" in result.output
+        assert load_credentials() is None
+
+    def test_an_org_uuid_that_is_not_offered_shows_the_400(self) -> None:
+        refused: MagicMock = _response(
+            400, {"detail": "That organization is not available for this account."}
+        )
+        with patch(POST, return_value=refused) as post:
+            result: Result = CliRunner().invoke(
+                cli, ["login", "--email", EMAIL, "--code", CODE, "--org", "not-mine"]
+            )
+        assert result.exit_code == 1
+        assert "That organization is not available for this account." in result.output
+        assert len(_verify_payloads(post)) == 1
+
+    @pytest.mark.parametrize(
+        ("argv", "body", "wait"),
+        [
+            (
+                ["login", "--email", EMAIL],
+                {"detail": COOLDOWN_DETAIL, "code": "otp_cooldown", "retry_after": 30},
+                "30 seconds",
+            ),
+            (
+                ["login", "--email", EMAIL, "--code", CODE],
+                {"detail": ATTEMPTS_DETAIL, "code": "otp_attempts_exceeded", "retry_after": 900},
+                "15 minutes",
+            ),
+        ],
+    )
+    def test_the_429_sentences_are_shown_as_sent(
+        self, argv: list[str], body: dict[str, Any], wait: str
+    ) -> None:
+        headers: dict[str, str] = {"Retry-After": str(body["retry_after"])}
+        with patch(POST, return_value=_response(429, body, headers)) as post:
+            result: Result = CliRunner().invoke(cli, argv)
+        assert result.exit_code == EXIT_RATE_LIMITED
+        assert " ".join(str(body["detail"]).split()) in " ".join(result.output.split())
+        assert wait in result.output
+        assert post.call_count == 1
