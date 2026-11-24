@@ -22,6 +22,9 @@ from dailybot_cli.display import print_error
 
 # Question types accepted by the server. Anything else is rejected with 400.
 VALID_QUESTION_TYPES: tuple[str, ...] = ("text", "multiple_choice", "boolean", "numeric")
+# Tables (forms) also take a ``file`` question: people attach images or PDFs.
+# Check-ins can't ask for an upload, so the server refuses it there.
+FORM_QUESTION_TYPES: tuple[str, ...] = (*VALID_QUESTION_TYPES, "file")
 # Server-side ceiling; mirrored here so the CLI fails fast on obviously-too-many.
 MAX_QUESTIONS: int = 50
 # Report-channel cap (forms + check-ins); server rejects > 3 with too_many_report_channels.
@@ -202,6 +205,7 @@ def build_question(
     short_question: str | None = None,
     variations: list[str] | None = None,
     logic: dict[str, Any] | None = None,
+    allowed_types: tuple[str, ...] = VALID_QUESTION_TYPES,
 ) -> dict[str, Any]:
     """Build a validated question payload (explicit ``question_type``/``question``).
 
@@ -211,13 +215,16 @@ def build_question(
     ``short_question`` (report title), ``variations`` (alternate phrasings), and
     ``logic`` (conditional branching) are optional per-question extras; callers
     pass already-validated values (see ``resolve_question_extras``).
+    ``allowed_types`` is ``VALID_QUESTION_TYPES`` for check-ins and
+    ``FORM_QUESTION_TYPES`` (adds ``file``) for tables.
     """
     qtype: str = question_type.strip().lower()
-    if qtype not in VALID_QUESTION_TYPES:
+    if qtype not in allowed_types:
         raise AuthoringError(
-            f"Invalid question type '{question_type}'. "
-            f"Choose from: {', '.join(VALID_QUESTION_TYPES)}."
+            f"Invalid question type '{question_type}'. Choose from: {', '.join(allowed_types)}."
         )
+    if qtype == "file" and is_blocker:
+        raise AuthoringError("A file question can't be the blocker question.")
     text: str = question.strip()
     if not text:
         raise AuthoringError("Question text is required.")
@@ -528,11 +535,14 @@ def resolve_question_extras(
     return extras
 
 
-def parse_questions_file(path: str) -> list[dict[str, Any]]:
+def parse_questions_file(
+    path: str, allowed_types: tuple[str, ...] = VALID_QUESTION_TYPES
+) -> list[dict[str, Any]]:
     """Load and validate a JSON array of question objects from ``path``.
 
     Accepts both field conventions (``question_type``/``question`` or
-    ``type``/``label``) and enforces ``MAX_QUESTIONS``.
+    ``type``/``label``) and enforces ``MAX_QUESTIONS``. Tables pass
+    ``FORM_QUESTION_TYPES`` so ``file`` questions are accepted.
     """
     try:
         raw: str = Path(path).read_text(encoding="utf-8")
@@ -583,6 +593,7 @@ def parse_questions_file(path: str) -> list[dict[str, Any]]:
                 options=options,
                 required=required,
                 is_blocker=is_blocker,
+                allowed_types=allowed_types,
                 **extras,
             )
         )
@@ -1019,7 +1030,10 @@ def resolve_form_config(
     )
 
 
-def build_questions_interactively(ai_short_question: bool = False) -> list[dict[str, Any]]:
+def build_questions_interactively(
+    ai_short_question: bool = False,
+    allowed_types: tuple[str, ...] = VALID_QUESTION_TYPES,
+) -> list[dict[str, Any]]:
     """Walk the user through building questions with questionary prompts.
 
     Every question passes through ``build_question``, so the interactive path
@@ -1036,9 +1050,7 @@ def build_questions_interactively(ai_short_question: bool = False) -> list[dict[
 
     questions: list[dict[str, Any]] = []
     while len(questions) < MAX_QUESTIONS:
-        qtype: str | None = questionary.select(
-            "Question type:", choices=list(VALID_QUESTION_TYPES)
-        ).ask()
+        qtype: str | None = questionary.select("Question type:", choices=list(allowed_types)).ask()
         if qtype is None:
             break
         text: str | None = questionary.text("Question text:").ask()
@@ -1073,6 +1085,7 @@ def build_questions_interactively(ai_short_question: bool = False) -> list[dict[
                     required=bool(required),
                     is_blocker=bool(is_blocker),
                     short_question=short_question,
+                    allowed_types=allowed_types,
                 )
             )
         except AuthoringError as exc:

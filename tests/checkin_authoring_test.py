@@ -459,6 +459,27 @@ class TestCheckinQuestions:
         assert result.exit_code != 0
         assert "--jump-if-equals" in result.output
 
+    def test_add_file_is_rejected_for_check_ins(self, runner: CliRunner) -> None:
+        # File questions are for tables; a check-in can't ask for an upload.
+        with _auth(), _client() as cls:
+            result = runner.invoke(
+                cli,
+                [
+                    "checkin",
+                    "questions",
+                    "add",
+                    "fu-1",
+                    "--type",
+                    "file",
+                    "--question",
+                    "Screenshot",
+                    "--ai-short-question",
+                ],
+            )
+            cls.return_value.add_checkin_question.assert_not_called()
+        assert result.exit_code != 0
+        assert "Invalid question type 'file'" in result.output
+
     def test_add_without_short_question_is_rejected(self, runner: CliRunner) -> None:
         # A report title is required unless --ai-short-question opts into AI titling.
         with _auth(), _client() as cls:

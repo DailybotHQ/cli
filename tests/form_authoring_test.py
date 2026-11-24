@@ -470,6 +470,83 @@ class TestFormQuestions:
         assert result.exit_code == 0
         assert client.add_form_question.call_args[0][1]["is_blocker"] is True
 
+    def test_add_file(self, runner: CliRunner) -> None:
+        """Tables take a File question (e.g. an optional Screenshot)."""
+        with _auth(), _client() as cls:
+            client: MagicMock = cls.return_value
+            client.add_form_question.return_value = {"uuid": "q-file", "question": "Screenshot"}
+            result = runner.invoke(
+                cli,
+                [
+                    "form",
+                    "questions",
+                    "add",
+                    "form-uuid",
+                    "--type",
+                    "file",
+                    "--question",
+                    "Screenshot",
+                    "--short-question",
+                    "Screenshot",
+                    "--optional",
+                ],
+            )
+        assert result.exit_code == 0, result.output
+        payload = client.add_form_question.call_args[0][1]
+        assert payload["question_type"] == "file"
+        assert payload["required"] is False
+
+    def test_add_file_as_blocker_fails_fast(self, runner: CliRunner) -> None:
+        with _auth(), _client() as cls:
+            result = runner.invoke(
+                cli,
+                [
+                    "form",
+                    "questions",
+                    "add",
+                    "form-uuid",
+                    "--type",
+                    "file",
+                    "--question",
+                    "Screenshot",
+                    "--blocker",
+                    "--ai-short-question",
+                ],
+            )
+            cls.return_value.add_form_question.assert_not_called()
+        assert result.exit_code != 0
+        assert "blocker" in result.output
+
+    def test_add_help_lists_file(self, runner: CliRunner) -> None:
+        result = runner.invoke(cli, ["form", "questions", "add", "--help"])
+        assert result.exit_code == 0
+        assert "file" in result.output
+
+    def test_create_with_a_file_question(self, runner: CliRunner, tmp_path: Any) -> None:
+        qfile = tmp_path / "q.json"
+        qfile.write_text(
+            json.dumps(
+                [
+                    {"question_type": "text", "question": "What?", "short_question": "What"},
+                    {
+                        "question_type": "file",
+                        "question": "Screenshot",
+                        "short_question": "Screenshot",
+                        "required": False,
+                    },
+                ]
+            )
+        )
+        with _auth(), _client() as cls:
+            client: MagicMock = cls.return_value
+            client.create_form.return_value = FORM_PAYLOAD
+            result = runner.invoke(
+                cli, ["form", "create", "-n", "Bugs", "--questions-file", str(qfile)]
+            )
+        assert result.exit_code == 0, result.output
+        sent = json.dumps(client.create_form.call_args)
+        assert '"question_type": "file"' in sent
+
     def test_add_multiple_choice_needs_options(self, runner: CliRunner) -> None:
         with _auth(), _client() as cls:
             result = runner.invoke(

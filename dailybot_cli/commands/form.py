@@ -12,6 +12,7 @@ from dailybot_cli.api_client import (
     DailyBotClient,
 )
 from dailybot_cli.commands.authoring_helpers import (
+    FORM_QUESTION_TYPES,
     build_question,
     build_question_edit_fields,
     build_questions_interactively,
@@ -1045,9 +1046,11 @@ def form_create(
     client = require_auth()
     check_report_channels(report_channels)
     if interactive:
-        questions: list[dict[str, Any]] | None = build_questions_interactively(ai_short_question)
+        questions: list[dict[str, Any]] | None = build_questions_interactively(
+            ai_short_question, allowed_types=FORM_QUESTION_TYPES
+        )
     elif questions_file:
-        questions = parse_questions_file(questions_file)
+        questions = parse_questions_file(questions_file, allowed_types=FORM_QUESTION_TYPES)
     else:
         questions = None
     require_questions(questions, "form")
@@ -1238,7 +1241,10 @@ def form_questions_list(form_uuid: str, json_mode: bool) -> None:
 @form_questions.command("add")
 @click.argument("form_uuid")
 @click.option(
-    "--type", "question_type", required=True, help="text/multiple_choice/boolean/numeric."
+    "--type",
+    "question_type",
+    required=True,
+    help="text/multiple_choice/boolean/numeric/file (file: an image or PDF people attach).",
 )
 @click.option("--question", required=True, help="The question text.")
 @click.option("--options", default=None, help="Comma-separated options (multiple_choice only).")
@@ -1283,6 +1289,8 @@ def form_questions_add(
         --question "Rating?" --options "Excellent,Good,Average,Poor" --ai-short-question
       dailybot form questions add <form_uuid> --type boolean --question "Ship it?" \\
         --short-question "Ship" --jump-if-equals "No" --jump-to 4
+      dailybot form questions add <form_uuid> --type file --question "Screenshot" \\
+        --short-question "Screenshot" --optional
     """
     client = require_auth()
     require_short_question(extra_flags.get("short_question"), ai_short_question)
@@ -1293,6 +1301,7 @@ def form_questions_add(
         options=parse_options(options),
         required=required,
         is_blocker=is_blocker,
+        allowed_types=FORM_QUESTION_TYPES,
         **extras,
     )
     if ai_short_question:
@@ -1314,7 +1323,12 @@ def form_questions_add(
 @click.argument("form_uuid")
 @click.argument("question_uuid")
 @click.option("--question", default=None, help="New question text.")
-@click.option("--type", "question_type", default=None, help="New question type.")
+@click.option(
+    "--type",
+    "question_type",
+    default=None,
+    help="New question type (text/multiple_choice/boolean/numeric/file).",
+)
 @click.option("--options", default=None, help="New comma-separated options (multiple_choice).")
 @click.option("--required/--optional", "required", default=None, help="Toggle required.")
 @click.option(
