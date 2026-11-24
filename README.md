@@ -373,9 +373,10 @@ dailybot checkin questions add <followup_uuid> --type text --question "Focus tod
 dailybot checkin questions reorder <followup_uuid> <q2> <q1>
 ```
 
-> **Question types:** `text`, `multiple_choice`, `boolean`, `numeric` (the complete
-> catalog). `multiple_choice` needs `--options`; `boolean` auto-generates Yes/No
-> (don't pass options). Up to 50 questions per form/check-in.
+> **Question types:** `text`, `multiple_choice`, `boolean`, `numeric`; forms also
+> take `file` (an image or PDF people attach; never the blocker). `multiple_choice`
+> needs `--options`; `boolean` auto-generates Yes/No (don't pass options). Up to 50
+> questions per form/check-in.
 >
 > **Per-question extras** (on `questions add`/`edit`, forms and check-ins):
 > `--short-question` (title shown in web & chat reports), `--variation` (repeatable

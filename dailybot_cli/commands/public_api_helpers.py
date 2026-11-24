@@ -361,7 +361,8 @@ ERROR_CODE_MESSAGES: dict[str, str] = {
     "response_date_format_is_invalid": "Invalid date. Use YYYY-MM-DD.",
     # Forms & check-ins authoring (create/edit/questions/responses)
     "invalid_question_type": (
-        "Invalid question type. Use one of: text, multiple_choice, boolean, numeric."
+        "Invalid question type. Use one of: text, multiple_choice, boolean, numeric "
+        "(forms also take file)."
     ),
     "multiple_choice_requires_options": (
         "Multiple-choice questions need at least one option (--options)."

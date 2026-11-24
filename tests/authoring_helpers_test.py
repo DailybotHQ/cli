@@ -9,6 +9,7 @@ import pytest
 
 from dailybot_cli import display
 from dailybot_cli.commands.authoring_helpers import (
+    FORM_QUESTION_TYPES,
     MAX_QUESTIONS,
     AuthoringError,
     build_checkin_config,
@@ -75,6 +76,48 @@ class TestBuildQuestion:
 
     def test_is_blocker_flag_forwarded(self) -> None:
         assert build_question("boolean", "Blocked?", is_blocker=True)["is_blocker"] is True
+
+
+class TestFileQuestions:
+    """Tables (forms) take a ``file`` question; check-ins don't (server refuses it)."""
+
+    def test_file_is_a_form_type(self) -> None:
+        assert "file" in FORM_QUESTION_TYPES
+
+    def test_file_question_for_a_form(self) -> None:
+        result: dict[str, Any] = build_question(
+            "file", "Screenshot", required=False, allowed_types=FORM_QUESTION_TYPES
+        )
+        assert result == {
+            "question_type": "file",
+            "question": "Screenshot",
+            "required": False,
+            "is_blocker": False,
+        }
+
+    def test_file_rejected_by_default_for_check_ins(self) -> None:
+        with pytest.raises(AuthoringError, match="Invalid question type 'file'"):
+            build_question("file", "Screenshot")
+
+    def test_file_cannot_be_the_blocker(self) -> None:
+        with pytest.raises(AuthoringError, match="blocker"):
+            build_question("file", "Screenshot", is_blocker=True, allowed_types=FORM_QUESTION_TYPES)
+
+    def test_file_takes_no_options(self) -> None:
+        with pytest.raises(AuthoringError):
+            build_question("file", "Screenshot", options=["a"], allowed_types=FORM_QUESTION_TYPES)
+
+    def test_questions_file_accepts_file_for_forms(self, tmp_path: Path) -> None:
+        path = tmp_path / "q.json"
+        path.write_text(json.dumps([{"type": "file", "label": "Screenshot", "required": False}]))
+        questions = parse_questions_file(str(path), allowed_types=FORM_QUESTION_TYPES)
+        assert questions[0]["question_type"] == "file"
+
+    def test_questions_file_rejects_file_for_check_ins(self, tmp_path: Path) -> None:
+        path = tmp_path / "q.json"
+        path.write_text(json.dumps([{"type": "file", "label": "Screenshot"}]))
+        with pytest.raises(AuthoringError, match="Invalid question type 'file'"):
+            parse_questions_file(str(path))
 
 
 class TestBuildQuestionEditFields:
