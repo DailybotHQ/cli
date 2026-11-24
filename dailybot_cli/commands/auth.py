@@ -2,7 +2,7 @@
 
 import os
 import re
-from typing import Any
+from typing import Any, NoReturn
 
 import click
 import questionary
@@ -10,7 +10,12 @@ import questionary
 from dailybot_cli import __version__
 from dailybot_cli.api_client import AUTH_BACKEND_UNAVAILABLE_CODE, APIError, DailyBotClient
 from dailybot_cli.commands import _device_login
-from dailybot_cli.commands.public_api_helpers import exit_for_api_error
+from dailybot_cli.commands.public_api_helpers import (
+    ERROR_CODE_MESSAGES,
+    EXIT_RATE_LIMITED,
+    exit_for_api_error,
+    retry_after_seconds,
+)
 from dailybot_cli.config import (
     RepoEnvError,
     clear_credentials,
@@ -30,14 +35,21 @@ from dailybot_cli.config import (
 )
 from dailybot_cli.display import (
     console,
+    plain_text,
     print_cli_auth_deprecation,
     print_error,
     print_info,
+    print_sign_in_refusal,
     print_success,
     print_warning,
 )
 
 CLI_AUTH_DEPRECATED_CODE: str = "cli_auth_deprecated"
+HTTP_TOO_MANY_REQUESTS: int = 429
+# Shown in the next-step hints instead of the code itself, so it never reaches
+# scrollback, logs or a transcript.
+CODE_PLACEHOLDER: str = "CODE"
+LOGIN_RATE_LIMITED_FALLBACK: str = "Too many sign-in requests for this email right now."
 _LEADING_DIGITS: re.Pattern[str] = re.compile(r"^(\d+)")
 
 # One notice per `dailybot login` run, even when two doors both carry the field.
@@ -171,57 +183,110 @@ def _resolve_org_uuid(organizations: list[dict[str, Any]], org_uuid: str) -> int
     return None
 
 
+def _exit_for_login_door_error(error: APIError) -> NoReturn:
+    """Render a refusal from the email-code doors and exit; never retried here.
+
+    A 429 (too many requests for this email, or a cooldown between codes) shows the
+    server's sentence and the wait, and exits with the rate-limit status, so it is
+    never mistaken for a wrong code. Anything else keeps the long-standing output.
+    """
+    if error.status_code == HTTP_TOO_MANY_REQUESTS:
+        fallback: str = ERROR_CODE_MESSAGES.get(error.code or "") or LOGIN_RATE_LIMITED_FALLBACK
+        print_sign_in_refusal(error.detail.strip() or fallback, retry_after_seconds(error))
+        _notice_deprecation(error.extra)
+        raise SystemExit(EXIT_RATE_LIMITED)
+    print_error(error.detail)
+    _notice_deprecation(error.extra)
+    raise SystemExit(1)
+
+
+def _print_code_requested(email: str, request_result: dict[str, Any]) -> None:
+    """Confirm the code request with the server's own sentence when it sends one."""
+    detail: Any = request_result.get("detail")
+    if isinstance(detail, str) and detail.strip():
+        print_success(plain_text(detail))
+    else:
+        print_success(f"Verification code sent to {email}")
+    print_info("Check your inbox (including spam folder).")
+
+
+def _org_rerun_hint(email: str) -> None:
+    """How to finish a non-interactive sign-in with an organization (code not repeated)."""
+    print_info(f"Run: dailybot login --email={email} --code={CODE_PLACEHOLDER} --org=ORG_UUID")
+
+
 def _verify_and_save(
     client: DailyBotClient,
     email: str,
     code: str,
-    organization_id: int | None,
+    organization_id: int | None = None,
     *,
+    organization_uuid: str | None = None,
     allow_interactive_org_pick: bool = False,
+    picked: bool = False,
 ) -> None:
-    """Verify OTP code and save credentials."""
+    """Verify the code, choose the organization if the server asks, save credentials.
+
+    The organization always comes from verify-code's ``requires_organization_selection``
+    answer (the code is not spent by that answer; the pick is a second call with the
+    same code). ``picked`` marks that second call, so a repeated selection answer
+    stops instead of looping.
+    """
+    org_kwargs: dict[str, Any] = {"organization_id": organization_id}
+    if organization_uuid is not None:
+        org_kwargs["organization_uuid"] = organization_uuid
     try:
         with console.status("Verifying code..."):
-            result: dict[str, Any] = client.verify_code(
-                email, code, organization_id=organization_id
-            )
+            result: dict[str, Any] = client.verify_code(email, code, **org_kwargs)
     except APIError as e:
-        print_error(e.detail)
-        _notice_deprecation(e.extra)
-        raise SystemExit(1)
+        _exit_for_login_door_error(e)
     _notice_deprecation(result)
 
-    # If the API says org selection is required, auto-select or prompt
     if result.get("requires_organization_selection"):
-        organizations: list[dict[str, Any]] = result.get("organizations", [])
-        if len(organizations) == 1:
-            # Auto-select the only org and retry
-            auto_org_id: int = organizations[0]["id"]
-            print_info(f"Auto-selecting organization: {organizations[0].get('name', 'Unknown')}")
-            _verify_and_save(
-                client,
-                email,
-                code,
-                auto_org_id,
-                allow_interactive_org_pick=allow_interactive_org_pick,
-            )
-            return
-        elif organizations:
-            if allow_interactive_org_pick:
-                selected_org: dict[str, Any] = _prompt_org_selection(organizations)
-                _verify_and_save(
-                    client,
-                    email,
-                    code,
-                    selected_org["id"],
-                    allow_interactive_org_pick=True,
-                )
-                return
-            _print_org_list(organizations)
-            print_info(f"Run: dailybot login --email={email} --code={code} --org=ORG_UUID")
-        else:
+        raw_orgs: Any = result.get("organizations")
+        organizations: list[dict[str, Any]] = (
+            [org for org in raw_orgs if isinstance(org, dict)] if isinstance(raw_orgs, list) else []
+        )
+        if organizations:
+            # A later `--org` rerun resolves against this list (finite life).
+            save_org_cache(email, organizations)
+        choice: dict[str, Any] | None = None
+        if not organizations:
             print_error("Organization selection required but no organizations returned.")
-        raise SystemExit(1)
+        elif picked:
+            print_error("The organization could not be selected. Pick one from this list:")
+            _print_org_list(organizations)
+            _org_rerun_hint(email)
+        elif organization_uuid is not None:
+            choice = next((o for o in organizations if o.get("uuid") == organization_uuid), None)
+            if choice is None:
+                print_error(
+                    f"Organization '{plain_text(organization_uuid)}' is not one of this "
+                    "account's organizations."
+                )
+                _print_org_list(organizations)
+                _org_rerun_hint(email)
+        elif len(organizations) == 1:
+            choice = organizations[0]
+            print_info(f"Auto-selecting organization: {choice.get('name', 'Unknown')}")
+        elif allow_interactive_org_pick:
+            choice = _prompt_org_selection(organizations)
+        else:
+            _print_org_list(organizations)
+            _org_rerun_hint(email)
+        if choice is None:
+            raise SystemExit(1)
+        choice_uuid: Any = choice.get("uuid")
+        _verify_and_save(
+            client,
+            email,
+            code,
+            choice.get("id"),
+            organization_uuid=str(choice_uuid) if choice_uuid else None,
+            allow_interactive_org_pick=allow_interactive_org_pick,
+            picked=True,
+        )
+        return
 
     token: str | None = result.get("token")
     if not token:
@@ -242,6 +307,7 @@ def _verify_and_save(
         organization_uuid=org_uuid,
         api_url=client.api_url,
     )
+    clear_org_cache()
     # Cache the (non-sensitive) plan tier when the login response exposes it, so
     # non-allowlisted commands can short-circuit on a free plan. Absent = unknown.
     plan_tier: Any = (org_raw.get("plan") if isinstance(org_raw, dict) else None) or result.get(
@@ -256,43 +322,21 @@ def _do_login(email: str) -> None:
     """Shared login logic for 'dailybot login' and interactive mode."""
     client: DailyBotClient = DailyBotClient()
 
-    # Step 1: Request OTP code
+    # Step 1: Request the code. Its answer is never needed to pick the organization.
     try:
         with console.status("Sending verification code..."):
             request_result: dict[str, Any] = client.request_code(email)
     except APIError as e:
-        print_error(e.detail)
-        _notice_deprecation(e.extra)
-        raise SystemExit(1)
+        _exit_for_login_door_error(e)
     _notice_deprecation(request_result)
+    _print_code_requested(email, request_result)
 
-    print_success(f"Verification code sent to {email}")
-    print_info("Check your inbox (including spam folder).")
-
-    is_multi_org: bool = request_result.get("is_multi_org", False)
-    organizations: list[dict[str, Any]] = request_result.get("organizations", [])
-
-    # Step 2: Pick organization before the code prompt so questionary TUI works
-    # reliably (click.prompt can break questionary if it runs afterward).
-    organization_id: int | None = None
-    if is_multi_org and len(organizations) > 1:
-        selected_org: dict[str, Any] = _prompt_org_selection(organizations)
-        organization_id = selected_org["id"]
-    elif len(organizations) == 1:
-        organization_id = organizations[0].get("id")
-
-    # Step 3: Enter code
-    code: str = click.prompt("Enter the 6-digit code", type=str)
+    # Step 2: Enter the code (not shown while typing).
+    code: str = click.prompt("Enter the 6-digit code", type=str, hide_input=True)
     code = code.strip()
 
-    # Step 4: Verify code and save credentials
-    _verify_and_save(
-        client,
-        email,
-        code,
-        organization_id,
-        allow_interactive_org_pick=True,
-    )
+    # Step 3: Verify; the organization is picked here if the account has several.
+    _verify_and_save(client, email, code, allow_interactive_org_pick=True)
 
 
 def _request_code_non_interactive(email: str) -> None:
@@ -303,48 +347,44 @@ def _request_code_non_interactive(email: str) -> None:
         with console.status("Sending verification code..."):
             request_result: dict[str, Any] = client.request_code(email)
     except APIError as e:
-        print_error(e.detail)
-        _notice_deprecation(e.extra)
-        raise SystemExit(1)
+        _exit_for_login_door_error(e)
     _notice_deprecation(request_result)
-
-    print_success(f"Verification code sent to {email}")
-    print_info("Check your inbox (including spam folder).")
+    _print_code_requested(email, request_result)
 
     is_multi_org: bool = request_result.get("is_multi_org", False)
-    organizations: list[dict[str, Any]] = request_result.get("organizations", [])
+    raw_orgs: Any = request_result.get("organizations")
+    organizations: list[dict[str, Any]] = raw_orgs if isinstance(raw_orgs, list) else []
 
     if is_multi_org and len(organizations) > 1:
+        # Servers that still list organizations here: keep the familiar output.
         save_org_cache(email, organizations)
         _print_org_list(organizations)
-        print_info(f"Run: dailybot login --email={email} --code=CODE --org=ORG_UUID")
-    else:
-        print_info(f"Run: dailybot login --email={email} --code=CODE")
+        _org_rerun_hint(email)
+        return
+    print_info(f"Run: dailybot login --email={email} --code={CODE_PLACEHOLDER}")
+    if not organizations:
+        print_info(
+            "If you belong to several organizations, that step lists them; "
+            "pick one with --org=ORG_UUID."
+        )
 
 
 def _verify_non_interactive(email: str, code: str, org_uuid: str | None) -> None:
-    """Non-interactive step 2: verify code, handle missing --org for multi-org."""
+    """Non-interactive step 2: verify the code, with the organization from ``--org``.
+
+    ``--org`` is sent as ``organization_uuid``. When a recent organization list is
+    cached (from step 1 or an earlier selection answer) its integer id is sent too,
+    for servers that only read ``organization_id``.
+    """
     client: DailyBotClient = DailyBotClient()
 
     organization_id: int | None = None
     if org_uuid is not None:
-        # Resolve UUID → integer ID from the cached org list (saved in step 1).
-        # This avoids calling request_code or verify_code without org_id,
-        # which would consume/invalidate the OTP.
         cached_orgs: list[dict[str, Any]] | None = load_org_cache(email)
-        if cached_orgs is None:
-            print_error("No cached organization list found. Run step 1 first:")
-            print_info(f"  dailybot login --email={email}")
-            raise SystemExit(1)
+        if cached_orgs:
+            organization_id = _resolve_org_uuid(cached_orgs, org_uuid)
 
-        organization_id = _resolve_org_uuid(cached_orgs, org_uuid)
-        if organization_id is None:
-            print_error(f"Organization with uuid '{org_uuid}' not found.")
-            _print_org_list(cached_orgs)
-            raise SystemExit(1)
-
-    _verify_and_save(client, email, code.strip(), organization_id)
-    clear_org_cache()
+    _verify_and_save(client, email, code.strip(), organization_id, organization_uuid=org_uuid)
 
 
 @click.command()

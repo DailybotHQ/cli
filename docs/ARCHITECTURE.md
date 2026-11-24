@@ -116,7 +116,7 @@ def <name>(...) -> None:
 
 Specific notes per file:
 
-- **`auth.py`** — login is a 4-step flow (request code → optional org list → enter code → verify-and-save). Three call paths share `_verify_and_save`: interactive, non-interactive step 2 (`_verify_non_interactive`), and the auto-recurse on `requires_organization_selection`. The cached org list (`org_cache.json`) is critical for non-interactive multi-org login — re-calling `request_code` would invalidate the OTP. `login --device` runs the RFC 8628 browser sign-in in `commands/_device_login.py` (start → show link and code → poll at the server interval → save the access/refresh pair), falling back to the email code on a 404/405 start. The client refreshes that pair only on `401 access_token_expired` (`DailyBotClient._refresh_session`), and retries `503 auth_backend_unavailable` with a bounded wait (`_retry_auth_backend`).
+- **`auth.py`** — login is request code → enter code → verify → (pick the organization when verify-code answers `requires_organization_selection`, then verify again with the same code) → save. The request-code answer is never used to choose the organization. Three call paths share `_verify_and_save`: interactive, non-interactive step 2 (`_verify_non_interactive`, `--org` sent as `organization_uuid`), and the single re-call after a selection answer (`picked`, so a repeated selection answer stops). `org_cache.json` (10-minute life) only supplies the integer id for servers that read `organization_id`; re-calling `request_code` would invalidate the OTP. A `429` on either door goes through `_exit_for_login_door_error` (server sentence + wait, exit `6`, no retry). `login --device` runs the RFC 8628 browser sign-in in `commands/_device_login.py` (start → show link and code → poll at the server interval → save the access/refresh pair), falling back to the email code on a 404/405 start. The client refreshes that pair only on `401 access_token_expired` (`DailyBotClient._refresh_session`), and retries `503 auth_backend_unavailable` with a bounded wait (`_retry_auth_backend`).
 - **`status.py`** — two modes: list pending check-ins (default) or verify auth (`--auth`). The `--auth` path tries OTP first, then API key, with carefully tuned error messages.
 - **`update.py`** — supports free-text + structured fields. When invoked with no args, falls back to a stdin loop (Enter twice to submit). 401/403 → `dailybot login`; 400 with "ai processing failed" → contact support.
 - **`agent.py`** — the largest module. Sub-groups: `webhook`, `message`, `email`. The `_resolve_agent_context` helper centralizes the 5-step auth resolution and is the only function that should be touched if the resolution order needs to change. The `register` command implements a math-challenge handshake (no auth needed).
@@ -140,13 +140,14 @@ user runs `dailybot login`
   │
   ├─ commands/auth.py::login → _do_login(email)
   │    ├─ DailyBotClient().request_code(email)
-  │    │    POST /v1/cli/auth/request-code/  →  { is_multi_org, organizations: [...] }
+  │    │    POST /v1/cli/auth/request-code/  →  { detail, ... }  (organizations not used)
   │    │
-  │    ├─ display._print_org_list(orgs)
-  │    ├─ click.prompt for the 6-digit code
-  │    ├─ questionary.select an org
-  │    └─ _verify_and_save(client, email, code, org_id)
-  │         ├─ client.verify_code(...) → { token, organization, organization_uuid }
+  │    ├─ click.prompt for the 6-digit code (hidden input)
+  │    └─ _verify_and_save(client, email, code)
+  │         ├─ client.verify_code(email, code) → { requires_organization_selection, organizations }
+  │         ├─ questionary.select an org
+  │         ├─ client.verify_code(email, code, organization_id, organization_uuid)
+  │         │    → { token, organization }
   │         ├─ config.save_credentials(...)  (chmod 0600)
   │         └─ print_success(f"Logged in as {email} ({org_name})")
 ```

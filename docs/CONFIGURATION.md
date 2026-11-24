@@ -10,7 +10,7 @@ The Dailybot CLI persists state in `~/.config/dailybot/` by default. The path ca
 | `config.json` | `dailybot config` | `{ api_key }` (and any future settings) | `0o600` |
 | `agents.json` | `dailybot agent configure` / `register` | `{ default, profiles: { <slug>: { agent_name, api_key?, agent_email? } } }` | `0o600` |
 | `plan_cache.json` | `dailybot login`, `dailybot org`, the plan short-circuit | `{ <org_uuid>: <tier>, _refreshed_at: { <org_uuid>: <epoch seconds> } }` — tiers only, never a secret | `0o600` |
-| `org_cache.json` | `dailybot login --email` (step 1) | `{ email, organizations: [...] }` | (no chmod — non-secret) |
+| `org_cache.json` | `dailybot login --email` (step 1), or a verify-code selection answer | `{ email, organizations: [...], saved_at }` — read only for 10 minutes (`ORG_CACHE_TTL_SECS`); a file without `saved_at` counts as expired; removed after a successful login | `0o600` |
 | `ledger/<repo-slug>.json` | `dailybot hook ...` / `dailybot agent update` | Per-repo report ledger: `{ repo, first_seen_at, last_report_at, last_reported_commit, last_nudge_at, last_activity_at, work_pending, snoozed_until, turns_since_report, reported_by }` | `0o600` (dir `0o700`) |
 | `ledger/_global.json` | `dailybot hook session-start` | Cross-repo hook state: `{ last_login_nudge_at }` | `0o600` |
 | `<repo>/.dailybot/profile.json` | hand-authored, committed to git | `{ name?, profile?, default_metadata?, vars?, report? }` | (no chmod — must be readable by team) |

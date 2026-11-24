@@ -118,7 +118,10 @@ class TestInteractive:
 
         with (
             patch("dailybot_cli.commands.auth.questionary.select", side_effect=pick),
-            patch(POST, side_effect=[_request_code_multi(), _token_for(NATIVE_ORG)]) as post,
+            patch(
+                POST,
+                side_effect=[_request_code_multi(), _selection_required(), _token_for(NATIVE_ORG)],
+            ) as post,
         ):
             result: Result = CliRunner().invoke(cli, ["login"], input="me@example.com\n123456\n")
         assert result.exit_code == 0, result.output
@@ -133,10 +136,14 @@ class TestInteractive:
         native_index: int = ORGS.index(NATIVE_ORG) + 1
         with (
             patch("dailybot_cli.commands.auth.questionary.select", return_value=question),
-            patch(POST, side_effect=[_request_code_multi(), _token_for(NATIVE_ORG)]) as post,
+            patch(
+                POST,
+                side_effect=[_request_code_multi(), _selection_required(), _token_for(NATIVE_ORG)],
+            ) as post,
         ):
+            # The organization is picked after the code now.
             result: Result = CliRunner().invoke(
-                cli, ["login"], input=f"me@example.com\n{native_index}\n123456\n"
+                cli, ["login"], input=f"me@example.com\n123456\n{native_index}\n"
             )
         assert result.exit_code == 0, result.output
         assert org_choice_label(NATIVE_ORG) in result.output

@@ -44,6 +44,39 @@ def print_info(message: str) -> None:
     console.print(f"[dim]{escape(message)}[/dim]")
 
 
+SECONDS_PER_MINUTE: int = 60
+
+
+def format_wait(seconds: int) -> str:
+    """A wait in words: ``"30 seconds"``, ``"1 minute"``, ``"15 minutes"`` (rounded up)."""
+    if seconds < SECONDS_PER_MINUTE:
+        return f"{seconds} second" if seconds == 1 else f"{seconds} seconds"
+    minutes: int = -(-seconds // SECONDS_PER_MINUTE)
+    return "1 minute" if minutes == 1 else f"{minutes} minutes"
+
+
+def print_sign_in_refusal(message: str, wait_secs: int | None = None) -> None:
+    """A sign-in door asked the person to wait: the server's sentence, then the wait."""
+    print_error(_neutralize(message))
+    if wait_secs is not None and wait_secs > 0:
+        print_info(f"Try again in {format_wait(wait_secs)}.")
+    else:
+        print_info("Wait a little, then try again.")
+
+
+def print_sign_in_ended(server_detail: str | None, code: str | None, cleared: bool) -> None:
+    """Why the stored sign-in stopped working, and what was done about it (stderr)."""
+    if server_detail or code:
+        reason: str = _neutralize(server_detail or "")
+        tag: str = f" ({_neutralize(code)})" if code else ""
+        error_console.print(f"[dim]Server response: {escape(reason)}{escape(tag)}[/dim]")
+    if cleared:
+        error_console.print(
+            "[dim]The saved sign-in was removed from this computer. "
+            "Run `dailybot login` to sign in again.[/dim]"
+        )
+
+
 def print_device_login_instructions(
     verification_uri: str, user_code: str, verification_uri_complete: str | None = None
 ) -> None:

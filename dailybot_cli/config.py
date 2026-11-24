@@ -2,6 +2,7 @@
 
 import json
 import os
+import time
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -9,6 +10,9 @@ from urllib.parse import SplitResult, urlsplit
 
 DEFAULT_API_URL: str = "https://api.dailybot.com"
 DEFAULT_APP_URL: str = "https://app.dailybot.com"
+# How long the organization list saved by `dailybot login` stays usable: the life
+# of a verification code, so a stale list never outlives the sign-in it served.
+ORG_CACHE_TTL_SECS: int = 600
 _api_url_override: str | None = None
 # The agent executing this invocation on a person's behalf (root `--agent-name`).
 _agent_name_override: str | None = None
@@ -230,6 +234,34 @@ def clear_credentials() -> None:
     creds_path: Path = _credentials_path()
     if creds_path.exists():
         creds_path.unlink()
+
+
+def clear_credentials_if_current(
+    api_url: str, *, token: str | None = None, refresh: str | None = None
+) -> bool:
+    """Remove the stored login only if it is still the session the server refused.
+
+    Compare-and-clear: the file must have been issued by ``api_url``'s host and
+    still hold ``token`` (or ``refresh``). A session another CLI process rotated or
+    replaced meanwhile is kept. Returns ``True`` when the file was removed.
+    """
+    if not token and not refresh:
+        return False
+    creds: dict[str, Any] | None = load_credentials()
+    if not creds:
+        return False
+    issued_by: str = str(creds.get("api_url") or DEFAULT_API_URL)
+    if _origin(issued_by) != _origin(api_url):
+        return False
+    matches_token: bool = bool(token) and creds.get("token") == token
+    matches_refresh: bool = bool(refresh) and creds.get("refresh") == refresh
+    if not (matches_token or matches_refresh):
+        return False
+    try:
+        _credentials_path().unlink()
+    except FileNotFoundError:
+        return False
+    return True
 
 
 def get_api_url() -> str:
@@ -466,12 +498,21 @@ def _safe_active_env_profile() -> dict[str, Any] | None:
 def save_org_cache(email: str, organizations: list[dict[str, Any]]) -> None:
     """Cache the org list from request_code for UUID resolution in step 2."""
     get_config_dir()
-    data: dict[str, Any] = {"email": email, "organizations": organizations}
+    data: dict[str, Any] = {
+        "email": email,
+        "organizations": organizations,
+        "saved_at": time.time(),
+    }
     _write_secret_file(_org_cache_path(), json.dumps(data))
 
 
 def load_org_cache(email: str) -> list[dict[str, Any]] | None:
-    """Load cached org list for the given email. Returns None if missing or stale."""
+    """Load cached org list for the given email.
+
+    Returns ``None`` when the file is missing, belongs to another email, or is older
+    than :data:`ORG_CACHE_TTL_SECS` (a file without ``saved_at``, written by an older
+    CLI, counts as expired).
+    """
     cache_path: Path = _org_cache_path()
     if not cache_path.exists():
         return None
@@ -479,9 +520,15 @@ def load_org_cache(email: str) -> list[dict[str, Any]] | None:
         data: dict[str, Any] = json.loads(cache_path.read_text())
     except (json.JSONDecodeError, OSError):
         return None
-    if data.get("email") != email:
+    if not isinstance(data, dict) or data.get("email") != email:
         return None
-    return data.get("organizations")
+    saved_at: Any = data.get("saved_at")
+    if not isinstance(saved_at, (int, float)) or isinstance(saved_at, bool):
+        return None
+    if time.time() - saved_at > ORG_CACHE_TTL_SECS:
+        return None
+    organizations: Any = data.get("organizations")
+    return organizations if isinstance(organizations, list) else None
 
 
 def clear_org_cache() -> None:

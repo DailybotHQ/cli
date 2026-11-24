@@ -75,15 +75,15 @@ Authenticate via email-OTP. Three modes:
 
 | Mode | Invocation | Behavior |
 |------|------------|----------|
-| Fully interactive | `dailybot login` | Prompts for email, requests code, prompts for code, prompts for org if multi-org |
+| Fully interactive | `dailybot login` | Prompts for email, requests code, prompts for code (not shown while typing), then prompts for the org when verify-code asks for one |
 | Non-interactive step 1 | `dailybot login --email=<email>` | Sends OTP, prints next-step instructions, exits |
-| Non-interactive step 2 | `dailybot login --email=<email> --code=<code> [--org=<uuid>]` | Verifies and saves credentials |
+| Non-interactive step 2 | `dailybot login --email=<email> --code=<code> [--org=<uuid>]` | Verifies and saves credentials. Without `--org` on a multi-org account it lists the organizations and exits `1` with the rerun hint (`--code=CODE`, the code is never printed back) |
 
 | Flag | Notes |
 |------|-------|
 | `--email` | If flag is present (vs. prompted), CLI runs in non-interactive mode |
 | `--code` | Required for step 2; without it, runs step 1 |
-| `--org` | Org UUID (not integer ID) — resolved against `org_cache.json` saved during step 1 |
+| `--org` | Org UUID (not integer ID) — sent as `organization_uuid`; when `org_cache.json` (step 1 or an earlier selection answer, valid 10 minutes) holds it, its `organization_id` is sent too. If verify-code still asks for a selection, the id is taken from that answer and the same code is sent once more |
 
 Persists: `~/.config/dailybot/credentials.json` (`0o600`).
 
@@ -673,8 +673,8 @@ All endpoints are POSTed to `{api_url}/v1/...`. The default `api_url` is `https:
 
 | Method | Path | Request | Response (200/201) | Notes |
 |--------|------|---------|--------------------|-------|
-| `POST` | `/v1/cli/auth/request-code/` | `{ email }` | `{ is_multi_org, organizations: [{id, uuid, name}] }` | No auth |
-| `POST` | `/v1/cli/auth/verify-code/` | `{ email, code, organization_id? }` | `{ token, organization: {name, uuid} }` or `{ requires_organization_selection: true, organizations: [...] }` (a standalone organization adds `platform: "dailybot", standalone: true`) | No auth |
+| `POST` | `/v1/cli/auth/request-code/` | `{ email }` | `{ detail, is_multi_org, organizations: [{id, uuid, name}] }` (`organizations` may be empty: the CLI never needs it and chooses the organization from verify-code) | No auth. `429` with `code` `otp_cooldown` and `retry_after` (+ `Retry-After`) |
+| `POST` | `/v1/cli/auth/verify-code/` | `{ email, code, organization_id?, organization_uuid? }` | `{ token, organization: {name, uuid} }` or `{ requires_organization_selection: true, organizations: [...] }` (a standalone organization adds `platform: "dailybot", standalone: true`); a selection answer does not use up the code, the pick is a second call with it | No auth. `400` for a wrong code; `429` with `code` `otp_attempts_exceeded` and `retry_after` (+ `Retry-After`). On a `429` either door prints the server's sentence and the wait, never retries, and exits `6` |
 | — | request-code / verify-code `deprecation` | — | `deprecation: { code: "cli_auth_deprecated", min_version, sunset, detail }` on 200 **and** 400 bodies, plus `Deprecation`, `Sunset` and `Link` headers, while the server's notice is on | A field, never an error. The CLI shows the `sunset` date once and suggests `dailybot upgrade` only when its version is below `min_version` (`APIError.extra["deprecation"]` on a 400). |
 | `GET` | `/v1/cli/auth/status/` | — | `{ user: {email}, organization: {name, uuid} }` | Bearer |
 | `POST` | `/v1/cli/auth/logout/` | — | `{ detail }` | Bearer |
@@ -823,7 +823,7 @@ not a dead session: it keeps the server's `detail` and `code`.
 | HTTP | Default behavior | Per-command override |
 |------|------------------|----------------------|
 | Any | `APIError(status_code, detail)` | All commands wrap calls in `try/except APIError` |
-| 401 (bearer) | `_handle_response` rewrites detail to "Session expired. Run 'dailybot login' to re-authenticate." | Multiple commands also catch and prefix with their own context |
+| 401 (bearer) | `_handle_response` rewrites detail to "Session expired. Run 'dailybot login' to re-authenticate.", keeps the server's sentence in `extra["server_detail"]` (a refused refresh's code and sentence win), and removes the stored login when it still holds the refused token (`extra["session_cleared"]`; never for `DAILYBOT_CLI_TOKEN`) | `exit_for_api_error` prints the server response and that the saved sign-in was removed. Multiple commands also catch and prefix with their own context |
 | 401 (api_key) | passes through with the backend's `detail` and `code` | `agent configure` treats it as an invalid key |
 | 403 (either credential) | passes through with the backend's `detail` and `code` (never rewritten to "Session expired") | Commands dispatch on `code` via `ERROR_CODE_MESSAGES`; agent commands use `agent_error_message` (`plan_upgrade_required` explains the agent-key scope and appends `upgrade_url`; `invalid_credentials` mentions a deleted agent). `agent configure` treats a 403 `plan_upgrade_required` as a valid key that is out of scope, and any other 401/403 as an invalid key |
 | 400 with a known `code` | passes through | Agent commands and `agent register` show the code's message; an unknown or absent code shows `detail` |
