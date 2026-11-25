@@ -40,6 +40,11 @@ Common issues and how to fix them. If you hit something that isn't here, add it 
 
 - The Bearer token has expired. Re-run `dailybot login`.
 - The API URL has changed (e.g., switched from prod to staging without re-authenticating). Tokens are URL-scoped — log in to the new URL.
+- The sign-in was ended on the server (for example after a password change, or a logout elsewhere). The line `Server response: …` under the error shows the server's own reason. When the stored sign-in on this computer is the one that was refused, the CLI removes it and says so; `dailybot login` stores a new one. A `DAILYBOT_CLI_TOKEN` in the environment is never removed from anywhere.
+
+### `dailybot login`: "Try again in …" (exit 6)
+
+The sign-in doors answered `429`: a code was requested for this email moments ago, or too many codes were tried. The CLI prints the server's sentence and the wait, and does not retry by itself. Use the code already in your inbox if you have one, or wait the time shown and run `dailybot login` again.
 
 ### "Dailybot sign-in is temporarily unavailable" (`auth_backend_unavailable`, exit 6)
 

@@ -514,9 +514,9 @@ class TestLoginCommand:
         assert "Logged in" in result.output
         assert "MyOrg" in result.output
         mock_save.assert_called_once()
-        # Single-org: verify is called once with organization_id
+        # The organization never comes from request-code: one verify, no pick needed.
         mock_client.verify_code.assert_called_once_with(
-            "user@test.com", "123456", organization_id=1
+            "user@test.com", "123456", organization_id=None
         )
 
     @patch("dailybot_cli.commands.auth.DailyBotClient")
@@ -592,12 +592,14 @@ class TestLoginCommand:
             "organizations": orgs,
             "is_multi_org": True,
         }
-        mock_client.verify_code.return_value = {
-            "requires_organization_selection": False,
-            "token": "tok456",
-            "user": {"email": "user@test.com"},
-            "organization": {"id": 2, "name": "Side Project", "uuid": "def-456"},
-        }
+        mock_client.verify_code.side_effect = [
+            {"requires_organization_selection": True, "organizations": orgs},
+            {
+                "token": "tok456",
+                "user": {"email": "user@test.com"},
+                "organization": {"id": 2, "name": "Side Project", "uuid": "def-456"},
+            },
+        ]
         # Mock questionary.select to return the second org
         mock_questionary.select.return_value.ask.return_value = orgs[1]
 
@@ -606,9 +608,10 @@ class TestLoginCommand:
         assert result.exit_code == 0
         assert "Logged in" in result.output
         assert "Side Project" in result.output
-        # Org selected before verify — single call with org_id
-        mock_client.verify_code.assert_called_once_with(
-            "user@test.com", "123456", organization_id=2
+        # Org picked from verify-code's selection answer, then the same code again
+        assert mock_client.verify_code.call_count == 2
+        mock_client.verify_code.assert_called_with(
+            "user@test.com", "123456", organization_id=2, organization_uuid="def-456"
         )
 
     @patch("dailybot_cli.commands.auth.DailyBotClient")
@@ -681,9 +684,9 @@ class TestLoginCommand:
         assert "Side Project" in result.output
         # Should NOT call request_code (would invalidate the OTP)
         mock_client.request_code.assert_not_called()
-        # Single verify call with resolved integer ID
+        # Single verify call with the uuid and the id resolved from the cache
         mock_client.verify_code.assert_called_once_with(
-            "user@test.com", "654321", organization_id=2
+            "user@test.com", "654321", organization_id=2, organization_uuid="def-456"
         )
         mock_clear_cache.assert_called_once()
 
@@ -695,32 +698,49 @@ class TestLoginCommand:
         mock_load_cache: MagicMock,
         runner: CliRunner,
     ) -> None:
-        """Non-interactive --org with unknown UUID shows error and org list."""
-        mock_load_cache.return_value = [
-            {"id": 1, "name": "Acme Corp", "uuid": "abc-123"},
-        ]
+        """Non-interactive --org with an unknown UUID: the server's list is shown."""
+        orgs = [{"id": 1, "name": "Acme Corp", "uuid": "abc-123"}]
+        mock_load_cache.return_value = orgs
+        mock_client: MagicMock = mock_client_cls.return_value
+        mock_client.verify_code.return_value = {
+            "requires_organization_selection": True,
+            "organizations": [*orgs, {"id": 2, "name": "Side Project", "uuid": "def-456"}],
+        }
 
         result = runner.invoke(
             cli, ["login", "--email=user@test.com", "--code=654321", "--org=wrong-uuid"]
         )
         assert result.exit_code != 0
-        assert "not found" in result.output
+        assert "wrong-uuid" in result.output
+        assert "not one of this account's organizations" in result.output
         assert "Acme Corp" in result.output
 
     @patch("dailybot_cli.commands.auth.load_org_cache")
+    @patch("dailybot_cli.commands.auth.DailyBotClient")
+    @patch("dailybot_cli.commands.auth.save_credentials")
     def test_login_non_interactive_verify_with_org_no_cache(
         self,
+        mock_save: MagicMock,
+        mock_client_cls: MagicMock,
         mock_load_cache: MagicMock,
         runner: CliRunner,
     ) -> None:
-        """Non-interactive --org without cached org list tells user to run step 1."""
+        """Non-interactive --org without a cached list sends the uuid as is."""
         mock_load_cache.return_value = None
+        mock_client: MagicMock = mock_client_cls.return_value
+        mock_client.api_url = "https://api.dailybot.com"
+        mock_client.verify_code.return_value = {
+            "token": "tok-uuid",
+            "organization": {"id": 1, "name": "Acme Corp", "uuid": "abc-123"},
+        }
 
         result = runner.invoke(
             cli, ["login", "--email=user@test.com", "--code=654321", "--org=abc-123"]
         )
-        assert result.exit_code != 0
-        assert "No cached organization list" in result.output
+        assert result.exit_code == 0
+        mock_client.verify_code.assert_called_once_with(
+            "user@test.com", "654321", organization_id=None, organization_uuid="abc-123"
+        )
 
     @patch("dailybot_cli.commands.auth.save_org_cache")
     @patch("dailybot_cli.commands.auth.DailyBotClient")
@@ -808,7 +828,9 @@ class TestLoginCommand:
         assert "Auto-selecting organization: MyOrg" in result.output
         assert "Logged in" in result.output
         assert mock_client.verify_code.call_count == 2
-        mock_client.verify_code.assert_called_with("user@test.com", "123456", organization_id=1)
+        mock_client.verify_code.assert_called_with(
+            "user@test.com", "123456", organization_id=1, organization_uuid="org-uuid"
+        )
 
     @patch("dailybot_cli.commands.auth.DailyBotClient")
     def test_login_non_interactive_request_code_single_org(

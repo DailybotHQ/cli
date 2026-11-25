@@ -219,7 +219,7 @@ class TestNoRefresh:
 
 class TestRefreshFailures:
     @pytest.mark.parametrize("code", ["refresh_token_expired", "user_disabled"])
-    def test_a_refused_refresh_keeps_todays_fallback(self, code: str) -> None:
+    def test_a_refused_refresh_falls_back_and_ends_the_stored_session(self, code: str) -> None:
         _save_pair()
         client: DailyBotClient = DailyBotClient(api_url=API, api_key="test-key")
         with (
@@ -234,8 +234,8 @@ class TestRefreshFailures:
         ):
             assert client.get_status() == {"ok": True}
         assert get.call_args_list[1].kwargs["headers"].get("X-API-KEY") == "test-key"
-        creds: dict[str, Any] | None = load_credentials()
-        assert creds is not None and creds["token"] == OLD_ACCESS
+        # The refused pair is over: it is removed, the key keeps the command working.
+        assert load_credentials() is None
 
     def test_a_transport_failure_never_falls_back_or_changes_credentials(self) -> None:
         _save_pair()

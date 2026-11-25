@@ -23,8 +23,9 @@ from dailybot_cli.config import (
     load_credentials,
     mark_org_plan_refreshed,
     save_org_plan,
+    text_or_none,
 )
-from dailybot_cli.display import error_console, print_error, print_info
+from dailybot_cli.display import error_console, print_error, print_info, print_sign_in_ended
 
 # Plan tiers the server treats as "free" (matched case-insensitively). Kept
 # tolerant of naming so the client short-circuit activates once the API exposes
@@ -132,6 +133,16 @@ ERROR_CODE_MESSAGES: dict[str, str] = {
     "channel_reference_unknown": (
         "That chat platform is not connected to this organization. Run `dailybot org` "
         "to see the chat platforms you can use."
+    ),
+    # --- Email-code sign-in doors ---------------------------------------------
+    # Fallback copy only: the server's own sentence is shown when it sends one.
+    "otp_cooldown": (
+        "A verification code was requested for this email moments ago. "
+        "Check your inbox, or wait before asking for another one."
+    ),
+    "otp_attempts_exceeded": (
+        "Sign-in with a verification code is paused for this email for a while. "
+        "Wait, then request a new code."
     ),
     # Today a field on the legacy login doors; after the sunset, their error code.
     "cli_auth_deprecated": (
@@ -989,7 +1000,7 @@ def rows_of(data: Any) -> list[dict[str, Any]]:
     return []
 
 
-def _retry_after_seconds(exc: APIError) -> int | None:
+def retry_after_seconds(exc: APIError) -> int | None:
     """Whole seconds to wait after a 429: the body's `extra.retry_after`, else the header's."""
     if exc.status_code != 429:
         return None
@@ -1030,7 +1041,7 @@ def exit_for_tasks_error(
         if is_person_shaped_refusal(exc, door=door)
         else tasks_write_exit_code(exc)
     )
-    wait: int | None = _retry_after_seconds(exc)
+    wait: int | None = retry_after_seconds(exc)
     if json_mode:
         emit_json(
             {
@@ -1117,7 +1128,7 @@ def agent_error_message(exc: APIError) -> str:
     message: str = (
         _augment_code_message(base, code, exc.extra or {}) if base and code else exc.detail
     )
-    return f"{message}{_throttle_hint(exc, _retry_after_seconds(exc))}"
+    return f"{message}{_throttle_hint(exc, retry_after_seconds(exc))}"
 
 
 # 401 codes of the device-flow session (DEVICE_FLOW_WIRE §4, CONTRACT_SESSION §7)
@@ -1170,6 +1181,14 @@ def exit_for_api_error(
             else "Session expired. Run: dailybot login"
         )
         exit_code: int = EXIT_NOT_AUTHENTICATED
+        if not json_mode:
+            print_error(message)
+            print_sign_in_ended(
+                text_or_none(extra.get("server_detail")),
+                code,
+                bool(extra.get("session_cleared")),
+            )
+            raise SystemExit(exit_code)
     elif exc.status_code == 403:
         message = mapped_message or exc.detail
         exit_code = EXIT_PERMISSION_DENIED
@@ -1210,9 +1229,15 @@ def exit_for_api_error(
             payload["code"] = code
         if exc.detail and exc.detail != message:
             payload["detail"] = exc.detail
-        retry_after_seconds: float | None = getattr(exc, "retry_after", None)
-        if exc.status_code == 429 and retry_after_seconds is not None:
-            payload["retry_after_seconds"] = int(retry_after_seconds)
+        header_wait: float | None = getattr(exc, "retry_after", None)
+        if exc.status_code == 429 and header_wait is not None:
+            payload["retry_after_seconds"] = int(header_wait)
+        if exc.status_code == 401:
+            server_detail: str | None = text_or_none(extra.get("server_detail"))
+            if server_detail:
+                payload["server_detail"] = server_detail
+            if extra.get("session_cleared"):
+                payload["session_cleared"] = True
         emit_json(payload)
     else:
         print_error(message)

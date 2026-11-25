@@ -18,6 +18,7 @@ import httpx
 from dailybot_cli import __version__
 from dailybot_cli.config import (
     API_KEY_SOURCE_ENV_JSON,
+    clear_credentials_if_current,
     get_agent_name,
     get_api_key,
     get_api_key_source,
@@ -564,6 +565,11 @@ class DailyBotClient:
         self.api_key: str | None = api_key or get_api_key()
         self.timeout: float = timeout
         self._agent_auth_mode: str | None = None
+        # The refusal that ended the stored login session during this client's life
+        # (a refused refresh), and whether the stored session was removed because of
+        # it. Both feed the final 401 so the person sees the server's own reason.
+        self._session_end: APIError | None = None
+        self._session_cleared: bool = False
         # Credential preference on the wire. A key resolved from
         # `.dailybot/env.json` expresses per-repo intent, so it must beat the
         # global Bearer session on the FIRST attempt — otherwise the Bearer
@@ -590,6 +596,10 @@ class DailyBotClient:
         wins on the first attempt; the 401/403 retry covers the reverse.
         """
         headers: dict[str, str] = _base_headers()
+        if not authenticated:
+            # This request carries no credential: its answer says nothing about the
+            # stored session (a refused refresh or login door is not a dead Bearer).
+            self._agent_auth_mode = None
         if authenticated:
             if self.api_key and (self._prefer_api_key or not self.token):
                 headers["X-API-KEY"] = self.api_key
@@ -837,15 +847,18 @@ class DailyBotClient:
             if error.status_code != HTTP_UNAUTHORIZED:
                 raise
             if error.code != SESSION_REVOKED_CODE:
+                self._end_session_after_refusal(error, refresh)
                 return False
             reread: str | None = get_refresh_token_for(self.api_url)
             if not reread or reread == refresh:
+                self._end_session_after_refusal(error, refresh)
                 return False
             try:
                 pair = self.refresh_token_pair(reread)
             except APIError as second:
                 if second.status_code != HTTP_UNAUTHORIZED:
                     raise
+                self._end_session_after_refusal(second, reread)
                 return False
         finally:
             # The refresh door is unauthenticated; the replay is a Bearer request again.
@@ -867,6 +880,37 @@ class DailyBotClient:
             return False
         self.token = access
         return True
+
+    def _end_session_after_refusal(self, error: APIError, refresh: str) -> None:
+        """A refused refresh ends the stored session: remember why, and remove it.
+
+        Only the pair that was refused is removed (compare-and-clear), so a pair
+        another CLI process stored meanwhile is kept.
+        """
+        self._session_end = error
+        if clear_credentials_if_current(self.api_url, refresh=refresh):
+            self._session_cleared = True
+
+    def _end_stored_session(self, code: str | None) -> bool:
+        """Remove the stored login after a final 401 to its Bearer; ``True`` if removed.
+
+        A ``DAILYBOT_CLI_TOKEN`` is the caller's own credential and never touches the
+        file; a file that no longer holds the refused token is kept. An expired access
+        token whose pair still holds an unrefused refresh token is not an ended
+        session (the renewal itself may simply have failed), so it is kept too.
+        """
+        if self._session_cleared:
+            return True
+        if os.environ.get("DAILYBOT_CLI_TOKEN"):
+            return False
+        if (
+            code == ACCESS_TOKEN_EXPIRED_CODE
+            and self._session_end is None
+            and get_refresh_token_for(self.api_url)
+        ):
+            return False
+        self._session_cleared = clear_credentials_if_current(self.api_url, token=self.token)
+        return self._session_cleared
 
     def _is_final_person_refusal(self, url: str, response: httpx.Response) -> bool:
         """A Tasks door that refused the signed-in person keeps that answer.
@@ -1017,12 +1061,28 @@ class DailyBotClient:
                 upgrade_url: Any = body.get("upgrade_url")
                 if isinstance(upgrade_url, str):
                     extra["upgrade_url"] = upgrade_url
+                # Some doors send the wait at the top level of a 429 body; keep it
+                # where the renderers read it.
+                body_retry_after: Any = body.get("retry_after")
+                if (
+                    "retry_after" not in extra
+                    and isinstance(body_retry_after, (int, float))
+                    and not isinstance(body_retry_after, bool)
+                ):
+                    extra["retry_after"] = body_retry_after
             except Exception:
                 detail = _fallback_detail(response)
             # Only a 401 means the session is unusable. A 403 is an authorization
             # verdict (wrong role, wrong plan) whose server detail explains the
             # actual cause — overwriting it sends the user into a re-login loop.
             if response.status_code == 401 and self._agent_auth_mode == "bearer":
+                server_detail: str = detail
+                if self._session_end is not None:
+                    # The refused refresh is the real reason the session ended.
+                    code = self._session_end.code or code
+                    server_detail = self._session_end.detail
+                extra["server_detail"] = server_detail
+                extra["session_cleared"] = self._end_stored_session(code)
                 detail = "Session expired. Run 'dailybot login' to re-authenticate."
             retry_after: float | None = None
             if response.status_code == 429 or code == AUTH_BACKEND_UNAVAILABLE_CODE:
@@ -1211,11 +1271,18 @@ class DailyBotClient:
         email: str,
         code: str,
         organization_id: int | None = None,
+        organization_uuid: str | None = None,
     ) -> dict[str, Any]:
-        """POST /v1/cli/auth/verify-code/"""
+        """POST /v1/cli/auth/verify-code/
+
+        ``organization_uuid`` names the same organization as ``organization_id``;
+        either (or both) may be sent. Without either the body is unchanged.
+        """
         payload: dict[str, Any] = {"email": email, "code": code}
         if organization_id is not None:
             payload["organization_id"] = organization_id
+        if organization_uuid is not None:
+            payload["organization_uuid"] = organization_uuid
         response: httpx.Response = self._guard_transport(
             lambda: httpx.post(
                 f"{self.api_url}/v1/cli/auth/verify-code/",
