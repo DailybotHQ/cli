@@ -9,6 +9,20 @@ Do not edit it by hand — your edits will be overwritten on the next release.
 
 <!-- version list -->
 
+## v3.29.6 (2026-11-25)
+
+### Bug Fixes
+
+- **auth**: Login robustness and clearer sign-in errors
+  ([#157](https://github.com/DailybotHQ/cli/pull/157),
+  [`718cd2c`](https://github.com/DailybotHQ/cli/commit/718cd2ccaa34648117c1c307b9199963a1ef45dc))
+
+### Testing
+
+- **auth**: Pin the confirmed sign-in answers ([#157](https://github.com/DailybotHQ/cli/pull/157),
+  [`718cd2c`](https://github.com/DailybotHQ/cli/commit/718cd2ccaa34648117c1c307b9199963a1ef45dc))
+
+
 ## v3.29.5 (2026-11-24)
 
 ### Bug Fixes
